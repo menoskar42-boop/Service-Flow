@@ -32,7 +32,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { LogOut, Plus, Download, Check, X, Users, Key } from "lucide-react";
+import { LogOut, Plus, Download, Check, X, Users, Key, Trash2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type User = {
@@ -83,6 +83,8 @@ export default function Dashboard() {
   const [showNotFeasibleDialog, setShowNotFeasibleDialog] = useState(false);
   const [showCreateUserDialog, setShowCreateUserDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [showDeleteUserDialog, setShowDeleteUserDialog] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserListItem | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const [newOrder, setNewOrder] = useState({
@@ -240,6 +242,26 @@ export default function Dashboard() {
     },
   });
 
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiRequest("DELETE", `/api/users/${userId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setShowDeleteUserDialog(false);
+      setUserToDelete(null);
+      toast({ title: "تم حذف المستخدم بنجاح" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "خطأ في حذف المستخدم", 
+        description: error?.message || "حدث خطأ أثناء حذف المستخدم",
+        variant: "destructive" 
+      });
+    },
+  });
+
   const handleExport = () => {
     const exportData = orders.map((o) => ({
       "رقم الطلب": o.id,
@@ -387,6 +409,7 @@ export default function Dashboard() {
                           <TableHead>اسم المستخدم</TableHead>
                           <TableHead>الدور</TableHead>
                           <TableHead>تاريخ الإنشاء</TableHead>
+                          <TableHead>الإجراءات</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -398,6 +421,21 @@ export default function Dashboard() {
                               <Badge variant="outline">{u.role}</Badge>
                             </TableCell>
                             <TableCell>{formatDate(u.createdAt)}</TableCell>
+                            <TableCell>
+                              {u.id !== user?.id && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setUserToDelete(u);
+                                    setShowDeleteUserDialog(true);
+                                  }}
+                                  data-testid={`button-delete-user-${u.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              )}
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -724,6 +762,37 @@ export default function Dashboard() {
               data-testid="button-submit-password"
             >
               {changePasswordMutation.isPending ? "جاري التغيير..." : "تغيير"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteUserDialog} onOpenChange={setShowDeleteUserDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>تأكيد حذف المستخدم</DialogTitle>
+          </DialogHeader>
+          <p className="py-4">
+            هل أنت متأكد من حذف المستخدم "{userToDelete?.username}"؟ لا يمكن التراجع عن هذا الإجراء.
+          </p>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteUserDialog(false);
+                setUserToDelete(null);
+              }}
+              data-testid="button-cancel-delete"
+            >
+              إلغاء
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => userToDelete && deleteUserMutation.mutate(userToDelete.id)}
+              disabled={deleteUserMutation.isPending}
+              data-testid="button-confirm-delete"
+            >
+              {deleteUserMutation.isPending ? "جاري الحذف..." : "حذف"}
             </Button>
           </DialogFooter>
         </DialogContent>

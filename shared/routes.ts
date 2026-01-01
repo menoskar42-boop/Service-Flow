@@ -78,6 +78,16 @@ export const api = {
         401: errorSchemas.unauthorized,
       },
     },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/users/:id',
+      responses: {
+        200: z.object({ message: z.string() }),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
+      },
+    },
   },
   orders: {
     list: {
