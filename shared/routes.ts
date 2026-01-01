@@ -43,6 +43,42 @@ export const api = {
       },
     },
   },
+  users: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/users',
+      responses: {
+        200: z.array(z.custom<typeof users.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/users',
+      input: z.object({
+        username: z.string(),
+        password: z.string(),
+        role: z.string(),
+      }),
+      responses: {
+        201: z.custom<typeof users.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+      },
+    },
+    changePassword: {
+      method: 'PUT' as const,
+      path: '/api/users/password',
+      input: z.object({
+        currentPassword: z.string(),
+        newPassword: z.string(),
+      }),
+      responses: {
+        200: z.object({ message: z.string() }),
+        400: errorSchemas.validation,
+        401: errorSchemas.unauthorized,
+      },
+    },
+  },
   orders: {
     list: {
       method: 'GET' as const,

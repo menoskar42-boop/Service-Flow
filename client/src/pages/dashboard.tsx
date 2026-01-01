@@ -22,15 +22,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { LogOut, Plus, Download, Check, X } from "lucide-react";
+import { LogOut, Plus, Download, Check, X, Users, Key } from "lucide-react";
 import * as XLSX from "xlsx";
 
 type User = {
   id: number;
   username: string;
   role: string;
+};
+
+type UserListItem = {
+  id: number;
+  username: string;
+  role: string;
+  createdAt: string;
 };
 
 type Order = {
@@ -57,6 +72,8 @@ export default function Dashboard() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showFeasibleDialog, setShowFeasibleDialog] = useState(false);
   const [showNotFeasibleDialog, setShowNotFeasibleDialog] = useState(false);
+  const [showCreateUserDialog, setShowCreateUserDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   const [newOrder, setNewOrder] = useState({
@@ -76,6 +93,18 @@ export default function Dashboard() {
     boxNumber: "",
   });
 
+  const [newUser, setNewUser] = useState({
+    username: "",
+    password: "",
+    role: "sales",
+  });
+
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
   const { data: user, isLoading: userLoading } = useQuery<User>({
     queryKey: ["/api/user"],
   });
@@ -83,6 +112,11 @@ export default function Dashboard() {
   const { data: orders = [], isLoading: ordersLoading } = useQuery<Order[]>({
     queryKey: ["/api/orders"],
     enabled: !!user,
+  });
+
+  const { data: usersList = [] } = useQuery<UserListItem[]>({
+    queryKey: ["/api/users"],
+    enabled: !!user && user.role === "admin",
   });
 
   useEffect(() => {
@@ -158,6 +192,41 @@ export default function Dashboard() {
     },
   });
 
+  const createUserMutation = useMutation({
+    mutationFn: async (data: typeof newUser) => {
+      const res = await apiRequest("POST", "/api/users", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      setShowCreateUserDialog(false);
+      setNewUser({ username: "", password: "", role: "sales" });
+      toast({ title: "تم إنشاء المستخدم بنجاح" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "خطأ في إنشاء المستخدم", 
+        description: error?.message || "اسم المستخدم موجود بالفعل",
+        variant: "destructive" 
+      });
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
+      const res = await apiRequest("PUT", "/api/users/password", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowPasswordDialog(false);
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast({ title: "تم تغيير كلمة المرور بنجاح" });
+    },
+    onError: () => {
+      toast({ title: "خطأ في تغيير كلمة المرور", description: "كلمة المرور الحالية غير صحيحة", variant: "destructive" });
+    },
+  });
+
   const handleExport = () => {
     const exportData = orders.map((o) => ({
       "رقم الطلب": o.id,
@@ -185,12 +254,23 @@ export default function Dashboard() {
       case "pending":
         return <Badge variant="secondary">قيد الانتظار</Badge>;
       case "feasible":
-        return <Badge className="bg-green-500 text-white">يمكن التنفيذ</Badge>;
+        return <Badge className="bg-green-600 dark:bg-green-700 text-white">يمكن التنفيذ</Badge>;
       case "not_feasible":
         return <Badge variant="destructive">لا يمكن التنفيذ</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
     }
+  };
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "-";
+    return new Date(dateStr).toLocaleString("ar-EG", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   if (userLoading || ordersLoading) {
@@ -207,6 +287,17 @@ export default function Dashboard() {
   const isTech = user.role === "tech";
   const isAdmin = user.role === "admin";
 
+  const handlePasswordChange = () => {
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      toast({ title: "كلمة المرور الجديدة غير متطابقة", variant: "destructive" });
+      return;
+    }
+    changePasswordMutation.mutate({
+      currentPassword: passwordData.currentPassword,
+      newPassword: passwordData.newPassword,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
@@ -222,6 +313,16 @@ export default function Dashboard() {
                 طلب جديد
               </Button>
             )}
+            {isAdmin && (
+              <Button variant="outline" onClick={() => setShowCreateUserDialog(true)} data-testid="button-new-user">
+                <Users className="w-4 h-4 mr-2" />
+                مستخدم جديد
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setShowPasswordDialog(true)} data-testid="button-change-password">
+              <Key className="w-4 h-4 mr-2" />
+              تغيير كلمة المرور
+            </Button>
             <Button variant="outline" onClick={handleExport} data-testid="button-export">
               <Download className="w-4 h-4 mr-2" />
               تصدير Excel
@@ -239,82 +340,70 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>الطلبات ({orders.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {orders.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">لا توجد طلبات</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>اسم العميل</TableHead>
-                      <TableHead>التليفون</TableHead>
-                      <TableHead>العنوان</TableHead>
-                      {(isTech || isAdmin) && <TableHead>موظف المبيعات</TableHead>}
-                      <TableHead>الحالة</TableHead>
-                      {(isTech || isAdmin) && <TableHead>التفاصيل</TableHead>}
-                      {isTech && <TableHead>الإجراءات</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {orders.map((order) => (
-                      <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
-                        <TableCell>{order.id}</TableCell>
-                        <TableCell>{order.customerName}</TableCell>
-                        <TableCell>{order.customerPhone}</TableCell>
-                        <TableCell>{order.customerAddress}</TableCell>
-                        {(isTech || isAdmin) && <TableCell>{order.salesName}</TableCell>}
-                        <TableCell>{getStatusBadge(order.status)}</TableCell>
-                        {(isTech || isAdmin) && (
-                          <TableCell className="text-sm">
-                            {order.rejectionReason && <div>السبب: {order.rejectionReason}</div>}
-                            {order.cabinNumber && <div>كابينة: {order.cabinNumber}</div>}
-                            {order.boxNumber && <div>بوكس: {order.boxNumber}</div>}
-                            {order.techName && <div>الفني: {order.techName}</div>}
-                          </TableCell>
-                        )}
-                        {isTech && (
-                          <TableCell>
-                            {order.status === "pending" && (
-                              <div className="flex gap-2">
-                                <Button
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedOrder(order);
-                                    setShowFeasibleDialog(true);
-                                  }}
-                                  data-testid={`button-feasible-${order.id}`}
-                                >
-                                  <Check className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => {
-                                    setSelectedOrder(order);
-                                    setShowNotFeasibleDialog(true);
-                                  }}
-                                  data-testid={`button-not-feasible-${order.id}`}
-                                >
-                                  <X className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {isAdmin ? (
+          <Tabs defaultValue="orders">
+            <TabsList className="mb-4">
+              <TabsTrigger value="orders" data-testid="tab-orders">الطلبات</TabsTrigger>
+              <TabsTrigger value="users" data-testid="tab-users">المستخدمين</TabsTrigger>
+            </TabsList>
+            <TabsContent value="orders">
+              <OrdersTable 
+                orders={orders} 
+                isSales={isSales} 
+                isTech={isTech} 
+                isAdmin={isAdmin}
+                getStatusBadge={getStatusBadge}
+                formatDate={formatDate}
+                onFeasible={(order) => { setSelectedOrder(order); setShowFeasibleDialog(true); }}
+                onNotFeasible={(order) => { setSelectedOrder(order); setShowNotFeasibleDialog(true); }}
+              />
+            </TabsContent>
+            <TabsContent value="users">
+              <Card>
+                <CardHeader>
+                  <CardTitle>المستخدمين ({usersList.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>#</TableHead>
+                          <TableHead>اسم المستخدم</TableHead>
+                          <TableHead>الدور</TableHead>
+                          <TableHead>تاريخ الإنشاء</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {usersList.map((u) => (
+                          <TableRow key={u.id} data-testid={`row-user-${u.id}`}>
+                            <TableCell>{u.id}</TableCell>
+                            <TableCell>{u.username}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{u.role}</Badge>
+                            </TableCell>
+                            <TableCell>{formatDate(u.createdAt)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <OrdersTable 
+            orders={orders} 
+            isSales={isSales} 
+            isTech={isTech} 
+            isAdmin={isAdmin}
+            getStatusBadge={getStatusBadge}
+            formatDate={formatDate}
+            onFeasible={(order) => { setSelectedOrder(order); setShowFeasibleDialog(true); }}
+            onNotFeasible={(order) => { setSelectedOrder(order); setShowNotFeasibleDialog(true); }}
+          />
+        )}
       </main>
 
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
@@ -467,6 +556,196 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showCreateUserDialog} onOpenChange={setShowCreateUserDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>إنشاء مستخدم جديد</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>اسم المستخدم</Label>
+              <Input
+                data-testid="input-new-username"
+                value={newUser.username}
+                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>كلمة المرور</Label>
+              <Input
+                type="password"
+                data-testid="input-new-password"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>الدور</Label>
+              <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v })}>
+                <SelectTrigger data-testid="select-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sales">مبيعات (Sales)</SelectItem>
+                  <SelectItem value="tech">فني (Tech)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={() => createUserMutation.mutate(newUser)}
+              disabled={createUserMutation.isPending || !newUser.username || !newUser.password}
+              data-testid="button-submit-user"
+            >
+              {createUserMutation.isPending ? "جاري الإنشاء..." : "إنشاء"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>تغيير كلمة المرور</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>كلمة المرور الحالية</Label>
+              <Input
+                type="password"
+                data-testid="input-current-password"
+                value={passwordData.currentPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>كلمة المرور الجديدة</Label>
+              <Input
+                type="password"
+                data-testid="input-new-password-change"
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>تأكيد كلمة المرور الجديدة</Label>
+              <Input
+                type="password"
+                data-testid="input-confirm-password"
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handlePasswordChange}
+              disabled={changePasswordMutation.isPending || !passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword}
+              data-testid="button-submit-password"
+            >
+              {changePasswordMutation.isPending ? "جاري التغيير..." : "تغيير"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function OrdersTable({ 
+  orders, 
+  isSales, 
+  isTech, 
+  isAdmin, 
+  getStatusBadge, 
+  formatDate,
+  onFeasible,
+  onNotFeasible 
+}: { 
+  orders: Order[];
+  isSales: boolean;
+  isTech: boolean;
+  isAdmin: boolean;
+  getStatusBadge: (status: string) => JSX.Element;
+  formatDate: (date: string | null) => string;
+  onFeasible: (order: Order) => void;
+  onNotFeasible: (order: Order) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>الطلبات ({orders.length})</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {orders.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">لا توجد طلبات</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>اسم العميل</TableHead>
+                  <TableHead>التليفون</TableHead>
+                  <TableHead>العنوان</TableHead>
+                  {(isTech || isAdmin) && <TableHead>موظف المبيعات</TableHead>}
+                  <TableHead>تاريخ الإنشاء</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  {(isTech || isAdmin) && <TableHead>التفاصيل</TableHead>}
+                  {isTech && <TableHead>الإجراءات</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {orders.map((order) => (
+                  <TableRow key={order.id} data-testid={`row-order-${order.id}`}>
+                    <TableCell>{order.id}</TableCell>
+                    <TableCell>{order.customerName}</TableCell>
+                    <TableCell>{order.customerPhone}</TableCell>
+                    <TableCell>{order.customerAddress}</TableCell>
+                    {(isTech || isAdmin) && <TableCell>{order.salesName}</TableCell>}
+                    <TableCell className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</TableCell>
+                    <TableCell>{getStatusBadge(order.status)}</TableCell>
+                    {(isTech || isAdmin) && (
+                      <TableCell className="text-sm">
+                        {order.rejectionReason && <div>السبب: {order.rejectionReason}</div>}
+                        {order.cabinNumber && <div>كابينة: {order.cabinNumber}</div>}
+                        {order.boxNumber && <div>بوكس: {order.boxNumber}</div>}
+                        {order.techName && <div>الفني: {order.techName}</div>}
+                        {order.techResponseAt && <div className="text-muted-foreground">رد الفني: {formatDate(order.techResponseAt)}</div>}
+                      </TableCell>
+                    )}
+                    {isTech && (
+                      <TableCell>
+                        {order.status === "pending" && (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => onFeasible(order)}
+                              data-testid={`button-feasible-${order.id}`}
+                            >
+                              <Check className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => onNotFeasible(order)}
+                              data-testid={`button-not-feasible-${order.id}`}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -126,12 +126,77 @@ export async function registerRoutes(
     res.json(req.user);
   });
 
-  // === Order Routes ===
-  // Middleware to check auth
+  // === Middleware ===
   const requireAuth = (req: any, res: any, next: any) => {
     if (req.isAuthenticated()) return next();
     res.sendStatus(401);
   };
+
+  const requireAdmin = (req: any, res: any, next: any) => {
+    if (req.isAuthenticated() && req.user.role === ROLES.ADMIN) return next();
+    res.status(403).json({ message: "Admin access required" });
+  };
+
+  // === User Management Routes ===
+  app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
+    const userList = await storage.getUsers();
+    const sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt }));
+    res.json(sanitized);
+  });
+
+  app.post(api.users.create.path, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { username, password, role } = req.body;
+      
+      if (!username || !password || !role) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      if (role !== ROLES.SALES && role !== ROLES.TECH) {
+        return res.status(400).json({ message: "Role must be sales or tech" });
+      }
+
+      const existing = await storage.getUserByUsername(username);
+      if (existing) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      const user = await storage.createUser({ username, password: hashedPassword, role });
+      res.status(201).json({ id: user.id, username: user.username, role: user.role });
+    } catch (e) {
+      res.status(500).json({ message: "Error creating user" });
+    }
+  });
+
+  app.put(api.users.changePassword.path, requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      const dbUser = await storage.getUser(user.id);
+      if (!dbUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+
+      const isValid = await comparePassword(currentPassword, dbUser.password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      const hashedPassword = await hashPassword(newPassword);
+      await storage.updateUserPassword(user.id, hashedPassword);
+      res.json({ message: "Password updated successfully" });
+    } catch (e) {
+      res.status(500).json({ message: "Error updating password" });
+    }
+  });
+
+  // === Order Routes ===
 
   app.get(api.orders.list.path, requireAuth, async (req, res) => {
     const user = req.user as any;
