@@ -11,7 +11,7 @@ export interface IStorage {
   
   getOrders(): Promise<Order[]>;
   getOrdersBySalesId(salesId: number): Promise<Order[]>;
-  createOrder(order: InsertOrder): Promise<Order>;
+  createOrder(order: InsertOrder & { salesId: number; salesName: string }): Promise<Order>;
   updateOrder(id: number, order: UpdateOrder & { 
     status?: string, 
     techId?: number, 
@@ -56,7 +56,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(orders).where(eq(orders.salesId, salesId)).orderBy(desc(orders.createdAt));
   }
 
-  async createOrder(insertOrder: InsertOrder): Promise<Order> {
+  async createOrder(insertOrder: InsertOrder & { salesId: number; salesName: string }): Promise<Order> {
     const [order] = await db.insert(orders).values(insertOrder).returning();
     return order;
   }
