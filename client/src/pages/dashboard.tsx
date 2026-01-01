@@ -60,11 +60,20 @@ type Order = {
   rejectionReason: string | null;
   cabinNumber: string | null;
   boxNumber: string | null;
+  nearestBoxDistance: string | null;
+  additionalNotes: string | null;
   techId: number | null;
   techName: string | null;
   techResponseAt: string | null;
   createdAt: string;
 };
+
+const REJECTION_REASONS = [
+  { value: "بوكس معطل", label: "بوكس معطل" },
+  { value: "بوكس مليان", label: "بوكس مليان" },
+  { value: "لا توجد شبكة", label: "لا توجد شبكة" },
+  { value: "أخرى", label: "أخرى" },
+];
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
@@ -91,6 +100,8 @@ export default function Dashboard() {
     rejectionReason: "",
     cabinNumber: "",
     boxNumber: "",
+    nearestBoxDistance: "",
+    additionalNotes: "",
   });
 
   const [newUser, setNewUser] = useState({
@@ -173,6 +184,8 @@ export default function Dashboard() {
         rejectionReason?: string;
         cabinNumber?: string;
         boxNumber?: string;
+        nearestBoxDistance?: string;
+        additionalNotes?: string;
       };
     }) => {
       const res = await apiRequest("PUT", `/api/orders/${id}`, data);
@@ -184,7 +197,7 @@ export default function Dashboard() {
       setShowNotFeasibleDialog(false);
       setSelectedOrder(null);
       setFeasibleData({ cabinNumber: "", boxNumber: "" });
-      setNotFeasibleData({ rejectionReason: "", cabinNumber: "", boxNumber: "" });
+      setNotFeasibleData({ rejectionReason: "", cabinNumber: "", boxNumber: "", nearestBoxDistance: "", additionalNotes: "" });
       toast({ title: "تم تحديث الطلب بنجاح" });
     },
     onError: () => {
@@ -238,6 +251,8 @@ export default function Dashboard() {
       "سبب الرفض": o.rejectionReason || "",
       "رقم الكابينة": o.cabinNumber || "",
       "رقم البوكس": o.boxNumber || "",
+      "مسافة أقرب بوكس": o.nearestBoxDistance || "",
+      "ملاحظات إضافية": o.additionalNotes || "",
       "الفني": o.techName || "",
       "تاريخ الإنشاء": new Date(o.createdAt).toLocaleString("ar-EG"),
       "تاريخ رد الفني": o.techResponseAt ? new Date(o.techResponseAt).toLocaleString("ar-EG") : "",
@@ -494,7 +509,12 @@ export default function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showNotFeasibleDialog} onOpenChange={setShowNotFeasibleDialog}>
+      <Dialog open={showNotFeasibleDialog} onOpenChange={(open) => {
+        setShowNotFeasibleDialog(open);
+        if (!open) {
+          setNotFeasibleData({ rejectionReason: "", cabinNumber: "", boxNumber: "", nearestBoxDistance: "", additionalNotes: "" });
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>لا يمكن التنفيذ</DialogTitle>
@@ -502,53 +522,111 @@ export default function Dashboard() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>السبب (إجباري)</Label>
-              <Textarea
-                data-testid="input-rejection-reason"
-                value={notFeasibleData.rejectionReason}
-                onChange={(e) =>
-                  setNotFeasibleData({ ...notFeasibleData, rejectionReason: e.target.value })
-                }
-                required
-              />
+              <Select 
+                value={notFeasibleData.rejectionReason} 
+                onValueChange={(v) => setNotFeasibleData({ ...notFeasibleData, rejectionReason: v })}
+              >
+                <SelectTrigger data-testid="select-rejection-reason">
+                  <SelectValue placeholder="اختر السبب" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REJECTION_REASONS.map((reason) => (
+                    <SelectItem key={reason.value} value={reason.value}>
+                      {reason.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="space-y-2">
-              <Label>رقم الكابينة (اختياري)</Label>
-              <Input
-                data-testid="input-cabin-number-reject"
-                value={notFeasibleData.cabinNumber}
-                onChange={(e) =>
-                  setNotFeasibleData({ ...notFeasibleData, cabinNumber: e.target.value })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>رقم البوكس (اختياري)</Label>
-              <Input
-                data-testid="input-box-number-reject"
-                value={notFeasibleData.boxNumber}
-                onChange={(e) =>
-                  setNotFeasibleData({ ...notFeasibleData, boxNumber: e.target.value })
-                }
-              />
-            </div>
+
+            {(notFeasibleData.rejectionReason === "بوكس معطل" || notFeasibleData.rejectionReason === "بوكس مليان") && (
+              <>
+                <div className="space-y-2">
+                  <Label>رقم الكابينة (إجباري)</Label>
+                  <Input
+                    data-testid="input-cabin-number-reject"
+                    value={notFeasibleData.cabinNumber}
+                    onChange={(e) =>
+                      setNotFeasibleData({ ...notFeasibleData, cabinNumber: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>رقم البوكس (إجباري)</Label>
+                  <Input
+                    data-testid="input-box-number-reject"
+                    value={notFeasibleData.boxNumber}
+                    onChange={(e) =>
+                      setNotFeasibleData({ ...notFeasibleData, boxNumber: e.target.value })
+                    }
+                  />
+                </div>
+              </>
+            )}
+
+            {notFeasibleData.rejectionReason === "بوكس مليان" && (
+              <div className="space-y-2">
+                <Label>مسافة أقرب بوكس (إجباري)</Label>
+                <Input
+                  data-testid="input-nearest-box-distance"
+                  value={notFeasibleData.nearestBoxDistance}
+                  onChange={(e) =>
+                    setNotFeasibleData({ ...notFeasibleData, nearestBoxDistance: e.target.value })
+                  }
+                  placeholder="مثال: 500 متر"
+                />
+              </div>
+            )}
+
+            {notFeasibleData.rejectionReason === "أخرى" && (
+              <div className="space-y-2">
+                <Label>ملاحظات إضافية (إجباري)</Label>
+                <Textarea
+                  data-testid="input-additional-notes"
+                  value={notFeasibleData.additionalNotes}
+                  onChange={(e) =>
+                    setNotFeasibleData({ ...notFeasibleData, additionalNotes: e.target.value })
+                  }
+                  placeholder="اكتب التفاصيل هنا..."
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
               variant="destructive"
-              onClick={() =>
-                selectedOrder &&
-                notFeasibleData.rejectionReason &&
+              onClick={() => {
+                if (!selectedOrder || !notFeasibleData.rejectionReason) return;
+                
+                const reason = notFeasibleData.rejectionReason;
+                const needsCabinBox = reason === "بوكس معطل" || reason === "بوكس مليان";
+                const needsDistance = reason === "بوكس مليان";
+                const needsNotes = reason === "أخرى";
+                
+                if (needsCabinBox && (!notFeasibleData.cabinNumber || !notFeasibleData.boxNumber)) return;
+                if (needsDistance && !notFeasibleData.nearestBoxDistance) return;
+                if (needsNotes && !notFeasibleData.additionalNotes) return;
+                
                 updateOrderMutation.mutate({
                   id: selectedOrder.id,
                   data: {
                     isFeasible: false,
                     rejectionReason: notFeasibleData.rejectionReason,
-                    cabinNumber: notFeasibleData.cabinNumber || undefined,
-                    boxNumber: notFeasibleData.boxNumber || undefined,
+                    cabinNumber: needsCabinBox ? notFeasibleData.cabinNumber : undefined,
+                    boxNumber: needsCabinBox ? notFeasibleData.boxNumber : undefined,
+                    nearestBoxDistance: needsDistance ? notFeasibleData.nearestBoxDistance : undefined,
+                    additionalNotes: needsNotes ? notFeasibleData.additionalNotes : undefined,
                   },
-                })
+                });
+              }}
+              disabled={
+                updateOrderMutation.isPending || 
+                !notFeasibleData.rejectionReason ||
+                ((notFeasibleData.rejectionReason === "بوكس معطل" || notFeasibleData.rejectionReason === "بوكس مليان") && 
+                  (!notFeasibleData.cabinNumber || !notFeasibleData.boxNumber)) ||
+                (notFeasibleData.rejectionReason === "بوكس مليان" && !notFeasibleData.nearestBoxDistance) ||
+                (notFeasibleData.rejectionReason === "أخرى" && !notFeasibleData.additionalNotes)
               }
-              disabled={updateOrderMutation.isPending || !notFeasibleData.rejectionReason}
               data-testid="button-confirm-not-feasible"
             >
               {updateOrderMutation.isPending ? "جاري التحديث..." : "تأكيد"}
@@ -712,6 +790,8 @@ function OrdersTable({
                         {order.rejectionReason && <div>السبب: {order.rejectionReason}</div>}
                         {order.cabinNumber && <div>كابينة: {order.cabinNumber}</div>}
                         {order.boxNumber && <div>بوكس: {order.boxNumber}</div>}
+                        {order.nearestBoxDistance && <div>مسافة أقرب بوكس: {order.nearestBoxDistance}</div>}
+                        {order.additionalNotes && <div>ملاحظات: {order.additionalNotes}</div>}
                         {order.techName && <div>الفني: {order.techName}</div>}
                         {order.techResponseAt && <div className="text-muted-foreground">رد الفني: {formatDate(order.techResponseAt)}</div>}
                       </TableCell>
