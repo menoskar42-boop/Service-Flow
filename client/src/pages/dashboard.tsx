@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrders } from "@/hooks/use-orders";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -19,6 +20,13 @@ export default function Dashboard() {
   // Initialize WebSocket for real-time updates
   useWebSocket();
 
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setLocation("/login");
+    }
+  }, [authLoading, user, setLocation]);
+
   if (authLoading || ordersLoading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-gray-50">
@@ -28,7 +36,6 @@ export default function Dashboard() {
   }
 
   if (!user) {
-    setLocation("/login");
     return null;
   }
 
