@@ -11,6 +11,7 @@ export interface IStorage {
   getUsers(): Promise<User[]>;
   
   getOrders(): Promise<Order[]>;
+  getOrder(id: number): Promise<Order | undefined>;
   getOrdersBySalesId(salesId: number): Promise<Order[]>;
   createOrder(order: InsertOrder & { salesId: number; salesName: string }): Promise<Order>;
   updateOrder(id: number, order: UpdateOrder & { 
@@ -19,6 +20,7 @@ export interface IStorage {
     techName?: string, 
     techResponseAt?: Date 
   }): Promise<Order>;
+  resetTechResponse(id: number): Promise<Order>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -57,6 +59,11 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(orders).orderBy(desc(orders.createdAt));
   }
 
+  async getOrder(id: number): Promise<Order | undefined> {
+    const [order] = await db.select().from(orders).where(eq(orders.id, id));
+    return order;
+  }
+
   async getOrdersBySalesId(salesId: number): Promise<Order[]> {
     return await db.select().from(orders).where(eq(orders.salesId, salesId)).orderBy(desc(orders.createdAt));
   }
@@ -74,6 +81,26 @@ export class DatabaseStorage implements IStorage {
   }): Promise<Order> {
     const [order] = await db.update(orders)
       .set(update)
+      .where(eq(orders.id, id))
+      .returning();
+    return order;
+  }
+
+  async resetTechResponse(id: number): Promise<Order> {
+    const [order] = await db.update(orders)
+      .set({
+        status: "pending",
+        isFeasible: null,
+        rejectionReason: null,
+        cabinNumber: null,
+        boxNumber: null,
+        nearestBoxDistance: null,
+        additionalNotes: null,
+        centralName: null,
+        techId: null,
+        techName: null,
+        techResponseAt: null,
+      })
       .where(eq(orders.id, id))
       .returning();
     return order;

@@ -290,5 +290,22 @@ export async function registerRoutes(
     }
   });
 
+  app.post(api.orders.resetTechResponse.path, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      const existingOrder = await storage.getOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      const order = await storage.resetTechResponse(id);
+      broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      res.json(order);
+    } catch (e) {
+      res.status(500).json({ message: "Error resetting order" });
+    }
+  });
+
   return httpServer;
 }

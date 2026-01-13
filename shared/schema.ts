@@ -21,6 +21,16 @@ export const REJECTION_REASONS = {
 
 export type RejectionReason = typeof REJECTION_REASONS[keyof typeof REJECTION_REASONS];
 
+// Central Names for Tech Response (when box is broken or full)
+export const CENTRAL_NAMES = {
+  GHANAIM: "الغنايم",
+  GHANAIM_DEIR: "الغنايم-دير الجنادله",
+  GHANAIM_AZAIZA: "الغنايم-العزايزة",
+  GHANAIM_OMDA: "الغنايم-نجع العمدة",
+} as const;
+
+export type CentralName = typeof CENTRAL_NAMES[keyof typeof CENTRAL_NAMES];
+
 // Users Table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -48,6 +58,7 @@ export const orders = pgTable("orders", {
   boxNumber: text("box_number"),
   nearestBoxDistance: text("nearest_box_distance"), // Required if rejectionReason is "بوكس مليان"
   additionalNotes: text("additional_notes"), // Required if rejectionReason is "أخرى"
+  centralName: text("central_name"), // Required if rejectionReason is "بوكس معطل" or "بوكس مليان"
   techId: integer("tech_id").references(() => users.id),
   techName: text("tech_name"),
   techResponseAt: timestamp("tech_response_at"),
@@ -81,6 +92,7 @@ export const updateOrderSchema = createInsertSchema(orders).pick({
   boxNumber: true,
   nearestBoxDistance: true,
   additionalNotes: true,
+  centralName: true,
 }).partial();
 
 // Types

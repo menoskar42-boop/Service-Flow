@@ -1,90 +1,84 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
-import { useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Loader2, Command } from "lucide-react";
+import { useLocation } from "wouter";
 
 export default function Login() {
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const { login, isLoggingIn, user } = useAuth();
+  const [, setLocation] = useLocation();
 
-  const loginMutation = useMutation({
-    mutationFn: async (data: { username: string; password: string }) => {
-      const res = await apiRequest("POST", "/api/login", data);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      setLocation("/");
-    },
-    onError: () => {
-      toast({
-        title: "خطأ في تسجيل الدخول",
-        description: "اسم المستخدم أو كلمة المرور غير صحيحة",
-        variant: "destructive",
-      });
-    },
-  });
+  if (user) {
+    setLocation("/");
+    return null;
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loginMutation.mutate({ username, password });
+    login({ username, password });
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">تسجيل الدخول</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">اسم المستخدم</Label>
-              <Input
-                id="username"
-                data-testid="input-username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="أدخل اسم المستخدم"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">كلمة المرور</Label>
-              <Input
-                id="password"
-                type="password"
-                data-testid="input-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="أدخل كلمة المرور"
-                required
-              />
-            </div>
-            <Button
-              type="submit"
-              className="w-full"
-              data-testid="button-login"
-              disabled={loginMutation.isPending}
-            >
-              {loginMutation.isPending ? "جاري الدخول..." : "دخول"}
-            </Button>
-          </form>
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>بيانات الدخول:</p>
-            <p>Sales: sales / sales</p>
-            <p>Tech: tech / tech</p>
-            <p>Admin: admin / admin</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50/50 p-4">
+      <div className="w-full max-w-md animate-in fade-in zoom-in duration-500">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 mb-4">
+            <Command className="w-8 h-8 text-primary" />
           </div>
-        </CardContent>
-      </Card>
+          <h1 className="text-2xl font-bold font-display tracking-tight text-gray-900">نظام إدارة الطلبات</h1>
+          <p className="text-muted-foreground mt-2">يرجى تسجيل الدخول للمتابعة</p>
+        </div>
+
+        <Card className="border-0 shadow-xl ring-1 ring-black/5">
+          <form onSubmit={handleSubmit}>
+            <CardHeader className="space-y-1 text-right">
+              <CardTitle className="text-xl">تسجيل الدخول</CardTitle>
+              <CardDescription>أدخل بيانات الحساب الخاص بك</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-right">
+              <div className="space-y-2">
+                <Label htmlFor="username">اسم المستخدم</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="admin"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="text-right"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">كلمة المرور</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="text-right"
+                  required
+                />
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button type="submit" className="w-full h-11 text-base" disabled={isLoggingIn}>
+                {isLoggingIn ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                دخول
+              </Button>
+            </CardFooter>
+          </form>
+        </Card>
+        
+        <p className="mt-8 text-center text-sm text-muted-foreground">
+          &copy; 2024 جميع الحقوق محفوظة
+        </p>
+      </div>
     </div>
   );
 }

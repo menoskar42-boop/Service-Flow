@@ -116,6 +116,15 @@ export const api = {
         404: errorSchemas.validation,
       },
     },
+    resetTechResponse: {
+      method: 'POST' as const,
+      path: '/api/orders/:id/reset',
+      responses: {
+        200: z.custom<typeof orders.$inferSelect>(),
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
+      },
+    },
   },
 };
 
