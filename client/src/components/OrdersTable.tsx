@@ -129,11 +129,11 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 <TableCell className="text-muted-foreground whitespace-nowrap">
                   {format(new Date(order.createdAt), "yyyy/MM/dd HH:mm", { locale: ar })}
                 </TableCell>
-                <TableCell className="font-medium text-foreground">{order.customerName}</TableCell>
-                <TableCell className="max-w-[200px] truncate" title={order.customerAddress}>
+                <TableCell className="font-medium text-foreground whitespace-normal break-words min-w-[120px]">{order.customerName}</TableCell>
+                <TableCell className="whitespace-normal break-words min-w-[150px] max-w-[250px]">
                   {order.customerAddress}
                 </TableCell>
-                <TableCell className="font-mono text-xs">{order.customerPhone}</TableCell>
+                <TableCell className="font-mono text-xs whitespace-normal break-words min-w-[100px]">{order.customerPhone}</TableCell>
                 
                 {(user?.role === ROLES.ADMIN || user?.role === ROLES.TECH) && (
                   <TableCell>{order.salesName}</TableCell>
