@@ -116,6 +116,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 <TableHead className="text-right font-bold">المندوب</TableHead>
               )}
               <TableHead className="text-right font-bold">الحالة</TableHead>
+              <TableHead className="text-right font-bold">الفني</TableHead>
               <TableHead className="text-right font-bold">رد الفني</TableHead>
               {(user?.role === ROLES.TECH || user?.role === ROLES.ADMIN) && (
                 <TableHead className="text-right font-bold">إجراء</TableHead>
@@ -140,6 +141,10 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 )}
                 
                 <TableCell>{getStatusBadge(order.status)}</TableCell>
+                
+                <TableCell className="text-sm">
+                  {order.techName || <span className="text-muted-foreground">-</span>}
+                </TableCell>
                 
                 <TableCell className="max-w-[250px] text-sm">
                   {order.status === "pending" ? (
