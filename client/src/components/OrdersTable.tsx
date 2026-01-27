@@ -163,6 +163,9 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               <TableHead className="text-right font-bold">العميل</TableHead>
               <TableHead className="text-right font-bold">العنوان</TableHead>
               <TableHead className="text-right font-bold">رقم الهاتف</TableHead>
+              {(user?.role === ROLES.ADMIN || user?.role === ROLES.SALES) && (
+                <TableHead className="text-right font-bold">الرقم القومي</TableHead>
+              )}
               {(user?.role === ROLES.ADMIN || user?.role === ROLES.TECH) && (
                 <TableHead className="text-right font-bold">المندوب</TableHead>
               )}
@@ -186,6 +189,12 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   {order.customerAddress}
                 </TableCell>
                 <TableCell className="font-mono text-xs whitespace-normal break-words min-w-[100px]">{order.customerPhone}</TableCell>
+                
+                {(user?.role === ROLES.ADMIN || user?.role === ROLES.SALES) && (
+                  <TableCell className="font-mono text-xs">
+                    {order.nationalId || <span className="text-muted-foreground">-</span>}
+                  </TableCell>
+                )}
                 
                 {(user?.role === ROLES.ADMIN || user?.role === ROLES.TECH) && (
                   <TableCell>{order.salesName}</TableCell>

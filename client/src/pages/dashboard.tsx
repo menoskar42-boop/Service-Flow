@@ -49,6 +49,7 @@ export default function Dashboard() {
       "العميل": order.customerName,
       "الهاتف": order.customerPhone,
       "العنوان": order.customerAddress,
+      "الرقم القومي": order.nationalId || "",
       "المندوب": order.salesName,
       "الحالة": order.status === "feasible" ? "يمكن التنفيذ" : order.status === "not_feasible" ? "لا يمكن" : "قيد الانتظار",
       "سبب الرفض": order.rejectionReason || "",

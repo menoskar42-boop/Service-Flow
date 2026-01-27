@@ -13,6 +13,7 @@ export function CreateOrderModal() {
     customerName: "",
     customerPhone: "",
     customerAddress: "",
+    nationalId: "",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -20,7 +21,7 @@ export function CreateOrderModal() {
     createOrder(formData, {
       onSuccess: () => {
         setOpen(false);
-        setFormData({ customerName: "", customerPhone: "", customerAddress: "" });
+        setFormData({ customerName: "", customerPhone: "", customerAddress: "", nationalId: "" });
       },
     });
   };
@@ -69,6 +70,18 @@ export function CreateOrderModal() {
               onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })}
               className="text-right"
               placeholder="الشارع - المنطقة - علامة مميزة"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="nationalId">الرقم القومي</Label>
+            <Input
+              id="nationalId"
+              value={formData.nationalId}
+              onChange={(e) => setFormData({ ...formData, nationalId: e.target.value })}
+              className="text-right"
+              placeholder="الرقم القومي (14 رقم)"
+              maxLength={14}
+              data-testid="input-national-id"
             />
           </div>
           <div className="pt-4 flex justify-end gap-2">

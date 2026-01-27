@@ -47,6 +47,7 @@ export const orders = pgTable("orders", {
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone").notNull(),
   customerAddress: text("customer_address").notNull(),
+  nationalId: text("national_id"), // National ID - visible only to Sales and Admin
   salesId: integer("sales_id").references(() => users.id).notNull(),
   salesName: text("sales_name").notNull(), // Denormalized for easier display/export
 
