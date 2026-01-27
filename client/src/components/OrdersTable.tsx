@@ -23,10 +23,13 @@ interface OrdersTableProps {
   orders: Order[];
 }
 
+type StatusFilter = "all" | "pending" | "feasible" | "not_feasible";
+
 export function OrdersTable({ orders }: OrdersTableProps) {
   const { user } = useAuth();
   const { resetTechResponse, isResetting } = useOrders();
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -47,8 +50,14 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     }
   };
 
-  // Filter orders based on search query
+  // Filter orders based on status filter and search query
   const filteredOrders = orders.filter((order) => {
+    // First filter by status
+    if (statusFilter !== "all" && order.status !== statusFilter) {
+      return false;
+    }
+    
+    // Then filter by search query
     if (!searchQuery.trim()) return true;
     
     const query = searchQuery.toLowerCase();
@@ -75,6 +84,14 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     );
   });
 
+  // Count orders by status for tab badges
+  const statusCounts = {
+    all: orders.length,
+    pending: orders.filter(o => o.status === "pending").length,
+    feasible: orders.filter(o => o.status === "feasible").length,
+    not_feasible: orders.filter(o => o.status === "not_feasible").length,
+  };
+
   if (orders.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground bg-white rounded-lg border border-dashed">
@@ -83,8 +100,42 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     );
   }
 
+  const statusTabs: { key: StatusFilter; label: string }[] = [
+    { key: "all", label: "الكل" },
+    { key: "feasible", label: "يمكن التنفيذ" },
+    { key: "not_feasible", label: "لا يمكن التنفيذ" },
+    { key: "pending", label: "قيد الانتظار" },
+  ];
+
   return (
     <Card className="overflow-hidden shadow-sm border-0 bg-white">
+      {/* Status Filter Tabs */}
+      <div className="border-b overflow-x-auto">
+        <div className="flex min-w-max" dir="rtl">
+          {statusTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setStatusFilter(tab.key)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                statusFilter === tab.key
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+              data-testid={`tab-${tab.key}`}
+            >
+              {tab.label}
+              <span className={`mr-2 px-2 py-0.5 rounded-full text-xs ${
+                statusFilter === tab.key
+                  ? "bg-primary/10 text-primary"
+                  : "bg-muted text-muted-foreground"
+              }`}>
+                {statusCounts[tab.key]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="p-4 border-b">
         <div className="relative">
           <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -97,7 +148,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
             data-testid="input-search"
           />
         </div>
-        {searchQuery && (
+        {(searchQuery || statusFilter !== "all") && (
           <p className="text-sm text-muted-foreground mt-2">
             عدد النتائج: {filteredOrders.length} من {orders.length}
           </p>
