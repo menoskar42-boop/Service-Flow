@@ -79,6 +79,36 @@ export function useUsers() {
     },
   });
 
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await fetch(api.users.delete.path.replace(':id', userId.toString()), {
+        method: api.users.delete.method,
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to delete user");
+      }
+      
+      return api.users.delete.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.users.list.path] });
+      toast({
+        title: "تم حذف المستخدم",
+        description: "تم حذف المستخدم بنجاح",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "خطأ",
+        description: error.message,
+      });
+    },
+  });
+
   return {
     users,
     isLoading,
@@ -86,5 +116,7 @@ export function useUsers() {
     isCreating: createUserMutation.isPending,
     changePassword: changePasswordMutation.mutate,
     isChangingPassword: changePasswordMutation.isPending,
+    deleteUser: deleteUserMutation.mutate,
+    isDeleting: deleteUserMutation.isPending,
   };
 }

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CreateOrderModal } from "@/components/CreateOrderModal";
 import { OrdersTable } from "@/components/OrdersTable";
 import { CreateUserModal } from "@/components/CreateUserModal";
+import { UsersList } from "@/components/UsersList";
 import { ROLES } from "@shared/schema";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, Users } from "lucide-react";
@@ -127,6 +128,13 @@ export default function Dashboard() {
 
         {/* Data Table */}
         <OrdersTable orders={orders || []} />
+
+        {/* Admin Users Management */}
+        {user.role === ROLES.ADMIN && (
+          <div className="mt-8">
+            <UsersList />
+          </div>
+        )}
       </main>
     </div>
   );
