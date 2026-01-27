@@ -97,7 +97,12 @@ export default function Dashboard() {
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-2">
             {user.role === ROLES.SALES && <CreateOrderModal />}
-            {user.role === ROLES.ADMIN && <CreateUserModal />}
+            {user.role === ROLES.ADMIN && (
+              <>
+                <CreateUserModal />
+                <UsersList />
+              </>
+            )}
           </div>
           
           <Button variant="outline" onClick={handleExport} className="bg-white">
@@ -128,13 +133,6 @@ export default function Dashboard() {
 
         {/* Data Table */}
         <OrdersTable orders={orders || []} />
-
-        {/* Admin Users Management */}
-        {user.role === ROLES.ADMIN && (
-          <div className="mt-8">
-            <UsersList />
-          </div>
-        )}
       </main>
     </div>
   );
