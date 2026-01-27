@@ -88,6 +88,19 @@ export const api = {
         404: errorSchemas.validation,
       },
     },
+    suspend: {
+      method: 'PUT' as const,
+      path: '/api/users/:id/suspend',
+      input: z.object({
+        suspended: z.boolean(),
+      }),
+      responses: {
+        200: z.custom<typeof users.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
+      },
+    },
   },
   orders: {
     list: {

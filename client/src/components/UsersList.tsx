@@ -30,11 +30,11 @@ import {
 import { useUsers } from "@/hooks/use-users";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES, type User } from "@shared/schema";
-import { Trash2, Loader2, Users } from "lucide-react";
+import { Trash2, Loader2, Users, Ban, CheckCircle } from "lucide-react";
 
 export function UsersList() {
   const [open, setOpen] = useState(false);
-  const { users, isLoading, deleteUser, isDeleting } = useUsers();
+  const { users, isLoading, deleteUser, isDeleting, suspendUser, isSuspending } = useUsers();
   const { user: currentUser } = useAuth();
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
@@ -51,11 +51,22 @@ export function UsersList() {
     }
   };
 
+  const getStatusBadge = (suspended: boolean) => {
+    if (suspended) {
+      return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">موقوف</Badge>;
+    }
+    return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">نشط</Badge>;
+  };
+
   const handleDelete = () => {
     if (userToDelete) {
       deleteUser(userToDelete.id);
       setUserToDelete(null);
     }
+  };
+
+  const handleToggleSuspend = (user: User) => {
+    suspendUser({ userId: user.id, suspended: !user.suspended });
   };
 
   return (
@@ -66,7 +77,7 @@ export function UsersList() {
           إدارة المستخدمين
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-display text-right flex items-center gap-2">
             <Users className="w-5 h-5 text-primary" />
@@ -91,54 +102,78 @@ export function UsersList() {
                   <TableHead className="text-right font-bold">#</TableHead>
                   <TableHead className="text-right font-bold">اسم المستخدم</TableHead>
                   <TableHead className="text-right font-bold">الدور</TableHead>
-                  <TableHead className="text-right font-bold">إجراء</TableHead>
+                  <TableHead className="text-right font-bold">الحالة</TableHead>
+                  <TableHead className="text-right font-bold">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
-                  <TableRow key={user.id} className="hover:bg-muted/30 transition-colors">
+                  <TableRow key={user.id} className={`hover:bg-muted/30 transition-colors ${user.suspended ? 'opacity-60' : ''}`}>
                     <TableCell className="font-medium">{user.id}</TableCell>
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>{getRoleBadge(user.role)}</TableCell>
+                    <TableCell>{getStatusBadge(user.suspended)}</TableCell>
                     <TableCell>
                       {user.id === currentUser?.id ? (
                         <span className="text-xs text-muted-foreground">(حسابك)</span>
                       ) : (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                              onClick={() => setUserToDelete(user)}
-                              disabled={isDeleting}
-                              data-testid={`button-delete-user-${user.id}`}
-                            >
-                              {isDeleting ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-4 h-4" />
-                              )}
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent dir="rtl">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle className="text-right">تأكيد حذف المستخدم</AlertDialogTitle>
-                              <AlertDialogDescription className="text-right">
-                                هل أنت متأكد من حذف المستخدم "{user.username}"؟ لا يمكن التراجع عن هذا الإجراء.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter className="flex-row-reverse gap-2">
-                              <AlertDialogCancel>إلغاء</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={handleDelete}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={user.suspended 
+                              ? "text-green-600 border-green-300 hover:bg-green-50" 
+                              : "text-orange-600 border-orange-300 hover:bg-orange-50"
+                            }
+                            onClick={() => handleToggleSuspend(user)}
+                            disabled={isSuspending}
+                            data-testid={`button-suspend-user-${user.id}`}
+                          >
+                            {isSuspending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : user.suspended ? (
+                              <CheckCircle className="w-4 h-4" />
+                            ) : (
+                              <Ban className="w-4 h-4" />
+                            )}
+                          </Button>
+                          
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                                onClick={() => setUserToDelete(user)}
+                                disabled={isDeleting}
+                                data-testid={`button-delete-user-${user.id}`}
                               >
-                                حذف
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                                {isDeleting ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent dir="rtl">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-right">تأكيد حذف المستخدم</AlertDialogTitle>
+                                <AlertDialogDescription className="text-right">
+                                  هل أنت متأكد من حذف المستخدم "{user.username}"؟ لا يمكن التراجع عن هذا الإجراء.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter className="flex-row-reverse gap-2">
+                                <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={handleDelete}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                >
+                                  حذف
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>

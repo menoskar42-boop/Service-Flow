@@ -90,6 +90,7 @@ export async function registerRoutes(
       try {
         const user = await storage.getUserByUsername(username);
         if (!user) return done(null, false);
+        if (user.suspended) return done(null, false, { message: "User is suspended" });
         const isValid = await comparePassword(password, user.password);
         if (!isValid) return done(null, false);
         return done(null, user);
@@ -140,7 +141,7 @@ export async function registerRoutes(
   // === User Management Routes ===
   app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
     const userList = await storage.getUsers();
-    const sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt }));
+    const sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, suspended: u.suspended, createdAt: u.createdAt }));
     res.json(sanitized);
   });
 
@@ -214,6 +215,28 @@ export async function registerRoutes(
       res.json({ message: "User deleted successfully" });
     } catch (e) {
       res.status(500).json({ message: "Error deleting user" });
+    }
+  });
+
+  app.put(api.users.suspend.path, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const currentUser = req.user as any;
+      const { suspended } = req.body;
+
+      if (userId === currentUser.id) {
+        return res.status(400).json({ message: "Cannot suspend your own account" });
+      }
+
+      const userToSuspend = await storage.getUser(userId);
+      if (!userToSuspend) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const updatedUser = await storage.suspendUser(userId, suspended);
+      res.json({ id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, suspended: updatedUser.suspended });
+    } catch (e) {
+      res.status(500).json({ message: "Error updating user suspension" });
     }
   });
 

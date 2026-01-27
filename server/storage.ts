@@ -8,6 +8,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUserPassword(id: number, password: string): Promise<User>;
   deleteUser(id: number): Promise<void>;
+  suspendUser(id: number, suspended: boolean): Promise<User>;
   getUsers(): Promise<User[]>;
   
   getOrders(): Promise<Order[]>;
@@ -49,6 +50,14 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUser(id: number): Promise<void> {
     await db.delete(users).where(eq(users.id, id));
+  }
+
+  async suspendUser(id: number, suspended: boolean): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ suspended })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
   }
 
   async getUsers(): Promise<User[]> {

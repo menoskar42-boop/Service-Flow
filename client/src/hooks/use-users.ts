@@ -109,6 +109,38 @@ export function useUsers() {
     },
   });
 
+  const suspendUserMutation = useMutation({
+    mutationFn: async ({ userId, suspended }: { userId: number; suspended: boolean }) => {
+      const res = await fetch(api.users.suspend.path.replace(':id', userId.toString()), {
+        method: api.users.suspend.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suspended }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update user");
+      }
+      
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.users.list.path] });
+      toast({
+        title: variables.suspended ? "تم إيقاف المستخدم" : "تم تفعيل المستخدم",
+        description: variables.suspended ? "تم إيقاف المستخدم عن العمل" : "تم إعادة تفعيل المستخدم",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "خطأ",
+        description: error.message,
+      });
+    },
+  });
+
   return {
     users,
     isLoading,
@@ -118,5 +150,7 @@ export function useUsers() {
     isChangingPassword: changePasswordMutation.isPending,
     deleteUser: deleteUserMutation.mutate,
     isDeleting: deleteUserMutation.isPending,
+    suspendUser: suspendUserMutation.mutate,
+    isSuspending: suspendUserMutation.isPending,
   };
 }
