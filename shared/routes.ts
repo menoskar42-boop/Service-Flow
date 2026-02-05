@@ -138,6 +138,19 @@ export const api = {
         404: errorSchemas.validation,
       },
     },
+    updateContractStatus: {
+      method: 'PUT' as const,
+      path: '/api/orders/:id/contract',
+      input: z.object({
+        contractStatus: z.string(),
+      }),
+      responses: {
+        200: z.custom<typeof orders.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
+      },
+    },
   },
 };
 

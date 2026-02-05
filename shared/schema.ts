@@ -11,6 +11,14 @@ export const ROLES = {
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
+// Contract Status
+export const CONTRACT_STATUS = {
+  CONTRACTED: "تم التعاقد",
+  NOT_CONTRACTED: "لم يتم التعاقد",
+} as const;
+
+export type ContractStatus = typeof CONTRACT_STATUS[keyof typeof CONTRACT_STATUS];
+
 // Rejection Reasons for Tech Response
 export const REJECTION_REASONS = {
   BOX_BROKEN: "بوكس معطل",
@@ -64,6 +72,9 @@ export const orders = pgTable("orders", {
   techId: integer("tech_id").references(() => users.id),
   techName: text("tech_name"),
   techResponseAt: timestamp("tech_response_at"),
+
+  // Contract Status (administrative, not technical)
+  contractStatus: text("contract_status").default("لم يتم التعاقد").notNull(),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

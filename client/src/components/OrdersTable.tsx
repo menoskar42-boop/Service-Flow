@@ -11,25 +11,38 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { type Order, ROLES } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { type Order, ROLES, CONTRACT_STATUS } from "@shared/schema";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { TechActionModal } from "./TechActionModal";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrders } from "@/hooks/use-orders";
-import { Search, RotateCcw, Loader2 } from "lucide-react";
+import { Search, RotateCcw, Loader2, FileCheck, Undo2 } from "lucide-react";
 
 interface OrdersTableProps {
   orders: Order[];
 }
 
 type StatusFilter = "all" | "pending" | "feasible" | "not_feasible";
+type ContractFilter = "all" | "contracted" | "not_contracted";
 
 export function OrdersTable({ orders }: OrdersTableProps) {
   const { user } = useAuth();
-  const { resetTechResponse, isResetting } = useOrders();
+  const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract } = useOrders();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
   
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -42,6 +55,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     }
   };
 
+  const getContractBadge = (contractStatus: string) => {
+    if (contractStatus === CONTRACT_STATUS.CONTRACTED) {
+      return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">تم التعاقد</Badge>;
+    }
+    return <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-200">لم يتم التعاقد</Badge>;
+  };
+
   const getStatusText = (status: string) => {
     switch (status) {
       case "feasible": return "يمكن التنفيذ";
@@ -50,11 +70,21 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     }
   };
 
-  // Filter orders based on status filter and search query
+  // Filter orders based on status filter, contract filter, and search query
   const filteredOrders = orders.filter((order) => {
     // First filter by status
     if (statusFilter !== "all" && order.status !== statusFilter) {
       return false;
+    }
+    
+    // Filter by contract status (admin only)
+    if (user?.role === ROLES.ADMIN && contractFilter !== "all") {
+      if (contractFilter === "contracted" && order.contractStatus !== CONTRACT_STATUS.CONTRACTED) {
+        return false;
+      }
+      if (contractFilter === "not_contracted" && order.contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) {
+        return false;
+      }
     }
     
     // Then filter by search query
@@ -75,6 +105,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       order.nearestBoxDistance || "",
       order.additionalNotes || "",
       order.techName || "",
+      order.contractStatus || "",
       format(new Date(order.createdAt), "yyyy/MM/dd HH:mm"),
       order.techResponseAt ? format(new Date(order.techResponseAt), "yyyy/MM/dd HH:mm") : "",
     ];
@@ -92,6 +123,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     not_feasible: orders.filter(o => o.status === "not_feasible").length,
   };
 
+  // Count by contract status (admin only)
+  const contractCounts = {
+    all: orders.length,
+    contracted: orders.filter(o => o.contractStatus === CONTRACT_STATUS.CONTRACTED).length,
+    not_contracted: orders.filter(o => o.contractStatus === CONTRACT_STATUS.NOT_CONTRACTED).length,
+  };
+
   if (orders.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground bg-white rounded-lg border border-dashed">
@@ -106,6 +144,20 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     { key: "not_feasible", label: "لا يمكن التنفيذ" },
     { key: "pending", label: "قيد الانتظار" },
   ];
+
+  const contractTabs: { key: ContractFilter; label: string }[] = [
+    { key: "all", label: "الكل" },
+    { key: "contracted", label: "تم التعاقد" },
+    { key: "not_contracted", label: "لم يتم التعاقد" },
+  ];
+
+  const handleMarkContracted = (orderId: number) => {
+    updateContractStatus({ orderId, contractStatus: CONTRACT_STATUS.CONTRACTED });
+  };
+
+  const handleRevertContract = (orderId: number) => {
+    updateContractStatus({ orderId, contractStatus: CONTRACT_STATUS.NOT_CONTRACTED });
+  };
 
   return (
     <Card className="overflow-hidden shadow-sm border-0 bg-white">
@@ -136,6 +188,30 @@ export function OrdersTable({ orders }: OrdersTableProps) {
         </div>
       </div>
 
+      {/* Contract Status Filter Tabs (Admin only) */}
+      {user?.role === ROLES.ADMIN && (
+        <div className="border-b overflow-x-auto bg-muted/20">
+          <div className="flex min-w-max items-center gap-2 px-4 py-2" dir="rtl">
+            <span className="text-sm text-muted-foreground">حالة التعاقد:</span>
+            {contractTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setContractFilter(tab.key)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                  contractFilter === tab.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-white text-muted-foreground hover:bg-muted border"
+                }`}
+                data-testid={`contract-tab-${tab.key}`}
+              >
+                {tab.label}
+                <span className="mr-1">({contractCounts[tab.key]})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="p-4 border-b">
         <div className="relative">
           <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -148,7 +224,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
             data-testid="input-search"
           />
         </div>
-        {(searchQuery || statusFilter !== "all") && (
+        {(searchQuery || statusFilter !== "all" || contractFilter !== "all") && (
           <p className="text-sm text-muted-foreground mt-2">
             عدد النتائج: {filteredOrders.length} من {orders.length}
           </p>
@@ -170,11 +246,12 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 <TableHead className="text-right font-bold">المندوب</TableHead>
               )}
               <TableHead className="text-right font-bold">الحالة</TableHead>
+              {user?.role === ROLES.ADMIN && (
+                <TableHead className="text-right font-bold">حالة التعاقد</TableHead>
+              )}
               <TableHead className="text-right font-bold">الفني</TableHead>
               <TableHead className="text-right font-bold">رد الفني</TableHead>
-              {(user?.role === ROLES.TECH || user?.role === ROLES.ADMIN) && (
-                <TableHead className="text-right font-bold">إجراء</TableHead>
-              )}
+              <TableHead className="text-right font-bold">إجراء</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -201,6 +278,10 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 )}
                 
                 <TableCell>{getStatusBadge(order.status)}</TableCell>
+
+                {user?.role === ROLES.ADMIN && (
+                  <TableCell>{getContractBadge(order.contractStatus)}</TableCell>
+                )}
                 
                 <TableCell className="text-sm">
                   {order.techName || <span className="text-muted-foreground">-</span>}
@@ -226,29 +307,89 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   )}
                 </TableCell>
 
-                {(user?.role === ROLES.TECH || user?.role === ROLES.ADMIN) && (
-                  <TableCell>
+                <TableCell>
+                  <div className="flex gap-2 flex-wrap">
+                    {/* Tech actions */}
                     {user?.role === ROLES.TECH && order.status === "pending" && (
-                      <div className="flex gap-2">
+                      <>
                         <TechActionModal order={order} action="feasible" />
                         <TechActionModal order={order} action="not_feasible" />
-                      </div>
+                      </>
                     )}
-                    {user?.role === ROLES.ADMIN && order.status !== "pending" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => resetTechResponse(order.id)}
-                        disabled={isResetting}
-                        className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                        data-testid={`button-reset-${order.id}`}
-                      >
-                        {isResetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
-                        إلغاء رد الفني
-                      </Button>
+                    
+                    {/* Sales contract button - only show after tech response */}
+                    {user?.role === ROLES.SALES && order.status !== "pending" && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-green-600 border-green-300 hover:bg-green-50"
+                            disabled={isUpdatingContract}
+                            data-testid={`button-contract-${order.id}`}
+                          >
+                            {isUpdatingContract ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <FileCheck className="w-4 h-4 mr-1" />
+                            )}
+                            تم التعاقد
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent dir="rtl">
+                          <AlertDialogHeader>
+                            <AlertDialogTitle className="text-right">تأكيد التعاقد</AlertDialogTitle>
+                            <AlertDialogDescription className="text-right">
+                              هل أنت متأكد من إتمام التعاقد؟ لا يمكن التراجع إلا عن طريق الأدمن
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter className="flex-row-reverse gap-2">
+                            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleMarkContracted(order.id)}
+                              className="bg-green-600 text-white hover:bg-green-700"
+                            >
+                              تأكيد التعاقد
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
-                  </TableCell>
-                )}
+                    
+                    {/* Admin actions */}
+                    {user?.role === ROLES.ADMIN && (
+                      <>
+                        {order.status !== "pending" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => resetTechResponse(order.id)}
+                            disabled={isResetting}
+                            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                            data-testid={`button-reset-${order.id}`}
+                          >
+                            {isResetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+                            إلغاء رد الفني
+                          </Button>
+                        )}
+                        
+                        {order.contractStatus === CONTRACT_STATUS.CONTRACTED && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRevertContract(order.id)}
+                            disabled={isUpdatingContract}
+                            className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                            data-testid={`button-revert-contract-${order.id}`}
+                          >
+                            {isUpdatingContract ? <Loader2 className="w-4 h-4 animate-spin" /> : <Undo2 className="w-4 h-4 mr-1" />}
+                            إرجاع إلى لم يتم التعاقد
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

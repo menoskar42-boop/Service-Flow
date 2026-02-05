@@ -22,6 +22,7 @@ export interface IStorage {
     techResponseAt?: Date 
   }): Promise<Order>;
   resetTechResponse(id: number): Promise<Order>;
+  updateContractStatus(id: number, contractStatus: string): Promise<Order>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -110,6 +111,14 @@ export class DatabaseStorage implements IStorage {
         techName: null,
         techResponseAt: null,
       })
+      .where(eq(orders.id, id))
+      .returning();
+    return order;
+  }
+
+  async updateContractStatus(id: number, contractStatus: string): Promise<Order> {
+    const [order] = await db.update(orders)
+      .set({ contractStatus })
       .where(eq(orders.id, id))
       .returning();
     return order;

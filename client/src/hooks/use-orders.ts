@@ -112,6 +112,41 @@ export function useOrders() {
     },
   });
 
+  const updateContractStatusMutation = useMutation({
+    mutationFn: async ({ orderId, contractStatus }: { orderId: number; contractStatus: string }) => {
+      const url = buildUrl(api.orders.updateContractStatus.path, { id: orderId });
+      const res = await fetch(url, {
+        method: api.orders.updateContractStatus.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contractStatus }),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to update contract status");
+      }
+      
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+      toast({
+        title: variables.contractStatus === "تم التعاقد" ? "تم التعاقد" : "تم إلغاء التعاقد",
+        description: variables.contractStatus === "تم التعاقد" 
+          ? "تم تحديث حالة التعاقد بنجاح" 
+          : "تم إرجاع الطلب إلى لم يتم التعاقد",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        title: "خطأ",
+        description: error.message,
+      });
+    },
+  });
+
   return {
     orders,
     isLoading,
@@ -122,5 +157,7 @@ export function useOrders() {
     isUpdating: updateOrderMutation.isPending,
     resetTechResponse: resetTechResponseMutation.mutate,
     isResetting: resetTechResponseMutation.isPending,
+    updateContractStatus: updateContractStatusMutation.mutate,
+    isUpdatingContract: updateContractStatusMutation.isPending,
   };
 }

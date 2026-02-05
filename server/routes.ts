@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertOrderSchema, updateOrderSchema, ROLES, WS_EVENTS } from "@shared/schema";
+import { insertOrderSchema, updateOrderSchema, ROLES, WS_EVENTS, CONTRACT_STATUS } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
@@ -245,8 +245,10 @@ export async function registerRoutes(
   app.get(api.orders.list.path, requireAuth, async (req, res) => {
     const user = req.user as any;
     if (user.role === ROLES.SALES) {
-      const orders = await storage.getOrdersBySalesId(user.id);
-      return res.json(orders);
+      const allOrders = await storage.getOrdersBySalesId(user.id);
+      // Sales only sees non-contracted orders
+      const filteredOrders = allOrders.filter(o => o.contractStatus === CONTRACT_STATUS.NOT_CONTRACTED);
+      return res.json(filteredOrders);
     }
     // Tech and Admin see all
     const orders = await storage.getOrders();
@@ -327,6 +329,47 @@ export async function registerRoutes(
       res.json(order);
     } catch (e) {
       res.status(500).json({ message: "Error resetting order" });
+    }
+  });
+
+  app.put(api.orders.updateContractStatus.path, requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+      const { contractStatus } = req.body;
+
+      // Validate contract status value
+      if (contractStatus !== CONTRACT_STATUS.CONTRACTED && contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) {
+        return res.status(400).json({ message: "Invalid contract status" });
+      }
+
+      const existingOrder = await storage.getOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      // Sales can only mark as contracted, Admin can do both
+      if (user.role === ROLES.SALES) {
+        // Sales can only update their own orders and only to contracted
+        if (existingOrder.salesId !== user.id) {
+          return res.status(403).json({ message: "Cannot update orders of other sales" });
+        }
+        if (contractStatus !== CONTRACT_STATUS.CONTRACTED) {
+          return res.status(403).json({ message: "Sales can only mark as contracted" });
+        }
+        // Sales can only mark as contracted after tech response
+        if (existingOrder.status === "pending") {
+          return res.status(400).json({ message: "Cannot mark as contracted before tech response" });
+        }
+      } else if (user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ message: "Only Sales or Admin can update contract status" });
+      }
+
+      const order = await storage.updateContractStatus(id, contractStatus);
+      broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      res.json(order);
+    } catch (e) {
+      res.status(500).json({ message: "Error updating contract status" });
     }
   });
 

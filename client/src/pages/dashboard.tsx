@@ -53,6 +53,7 @@ export default function Dashboard() {
       "الرقم القومي": order.nationalId || "",
       "المندوب": order.salesName,
       "الحالة": order.status === "feasible" ? "يمكن التنفيذ" : order.status === "not_feasible" ? "لا يمكن" : "قيد الانتظار",
+      "حالة التعاقد": order.contractStatus || "لم يتم التعاقد",
       "سبب الرفض": order.rejectionReason || "",
       "السنترال": order.centralName || "",
       "الكابينة": order.cabinNumber || "",
