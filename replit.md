@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is an order management system with role-based access control supporting sales representatives, technicians, and administrators. The application allows sales staff to create customer orders, technicians to assess feasibility, and admins to manage users. The interface is in Arabic, indicating it's built for an Arabic-speaking market.
+This is an order management system with role-based access control supporting sales representatives, technicians, external affairs supervisors, and administrators. The application allows sales staff to create customer orders, technicians to assess feasibility, sales to request re-inspection by external affairs supervisors for rejected orders, and admins to manage users. The interface is in Arabic, indicating it's built for an Arabic-speaking market.
 
 ## User Preferences
 

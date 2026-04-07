@@ -7,6 +7,7 @@ export const ROLES = {
   SALES: "sales",
   TECH: "tech",
   ADMIN: "admin",
+  EXTERNAL: "external",
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
@@ -39,12 +40,22 @@ export const CENTRAL_NAMES = {
 
 export type CentralName = typeof CENTRAL_NAMES[keyof typeof CENTRAL_NAMES];
 
+// Order Status Values
+export const ORDER_STATUS = {
+  PENDING: "pending",
+  FEASIBLE: "feasible",
+  NOT_FEASIBLE: "not_feasible",
+  NEEDS_EXTERNAL: "needs_external",
+  EXTERNAL_FEASIBLE: "external_feasible",
+  EXTERNAL_NOT_FEASIBLE: "external_not_feasible",
+} as const;
+
 // Users Table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
-  role: text("role").notNull(), // sales, tech, admin
+  role: text("role").notNull(), // sales, tech, admin, external
   suspended: boolean("suspended").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -61,7 +72,7 @@ export const orders = pgTable("orders", {
   salesName: text("sales_name").notNull(), // Denormalized for easier display/export
 
   // Tech Inputs
-  status: text("status").default("pending").notNull(), // pending, feasible, not_feasible
+  status: text("status").default("pending").notNull(), // pending, feasible, not_feasible, needs_external, external_feasible, external_not_feasible
   isFeasible: boolean("is_feasible"),
   rejectionReason: text("rejection_reason"), // Required if isFeasible is false
   cabinNumber: text("cabin_number"),
@@ -72,6 +83,18 @@ export const orders = pgTable("orders", {
   techId: integer("tech_id").references(() => users.id),
   techName: text("tech_name"),
   techResponseAt: timestamp("tech_response_at"),
+
+  // External Affairs Response (additive layer, preserves tech response)
+  externalId: integer("external_id").references(() => users.id),
+  externalName: text("external_name"),
+  externalResponseAt: timestamp("external_response_at"),
+  isFeasibleExternal: boolean("is_feasible_external"),
+  externalRejectionReason: text("external_rejection_reason"),
+  externalCabinNumber: text("external_cabin_number"),
+  externalBoxNumber: text("external_box_number"),
+  externalNearestBoxDistance: text("external_nearest_box_distance"),
+  externalAdditionalNotes: text("external_additional_notes"),
+  externalCentralName: text("external_central_name"),
 
   // Contract Status (administrative, not technical)
   contractStatus: text("contract_status").default("لم يتم التعاقد").notNull(),
@@ -95,7 +118,17 @@ export const insertOrderSchema = createInsertSchema(orders).omit({
   additionalNotes: true,
   techId: true,
   techName: true,
-  techResponseAt: true
+  techResponseAt: true,
+  externalId: true,
+  externalName: true,
+  externalResponseAt: true,
+  isFeasibleExternal: true,
+  externalRejectionReason: true,
+  externalCabinNumber: true,
+  externalBoxNumber: true,
+  externalNearestBoxDistance: true,
+  externalAdditionalNotes: true,
+  externalCentralName: true,
 });
 
 export const updateOrderSchema = createInsertSchema(orders).pick({
@@ -108,12 +141,23 @@ export const updateOrderSchema = createInsertSchema(orders).pick({
   centralName: true,
 }).partial();
 
+export const updateExternalResponseSchema = z.object({
+  isFeasibleExternal: z.boolean(),
+  externalRejectionReason: z.string().nullable().optional(),
+  externalCabinNumber: z.string().nullable().optional(),
+  externalBoxNumber: z.string().nullable().optional(),
+  externalNearestBoxDistance: z.string().nullable().optional(),
+  externalAdditionalNotes: z.string().nullable().optional(),
+  externalCentralName: z.string().nullable().optional(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type UpdateOrder = z.infer<typeof updateOrderSchema>;
+export type UpdateExternalResponse = z.infer<typeof updateExternalResponseSchema>;
 
 // WebSocket Events
 export const WS_EVENTS = {

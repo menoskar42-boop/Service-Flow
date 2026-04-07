@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { insertOrderSchema, updateOrderSchema, ROLES, WS_EVENTS, CONTRACT_STATUS } from "@shared/schema";
+import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
@@ -37,8 +37,6 @@ export async function registerRoutes(
   });
 
   // === Auth Setup ===
-  // Helper to hash passwords (simple for this demo)
-  // In production, use a proper salt and key length per user
   async function hashPassword(password: string) {
     const salt = randomBytes(16).toString("hex");
     const buf = (await scryptAsync(password, salt, 64)) as Buffer;
@@ -69,7 +67,6 @@ export async function registerRoutes(
       }
     }
   };
-  // Run seed
   seedUsers();
 
   app.use(
@@ -153,8 +150,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing required fields" });
       }
       
-      if (role !== ROLES.SALES && role !== ROLES.TECH) {
-        return res.status(400).json({ message: "Role must be sales or tech" });
+      const validRoles = [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ message: "Role must be sales, tech, or external" });
       }
 
       const existing = await storage.getUserByUsername(username);
@@ -244,13 +242,28 @@ export async function registerRoutes(
 
   app.get(api.orders.list.path, requireAuth, async (req, res) => {
     const user = req.user as any;
+
     if (user.role === ROLES.SALES) {
       const allOrders = await storage.getOrdersBySalesId(user.id);
-      // Sales only sees non-contracted orders
+      // Sales sees non-contracted orders only
       const filteredOrders = allOrders.filter(o => o.contractStatus === CONTRACT_STATUS.NOT_CONTRACTED);
       return res.json(filteredOrders);
     }
-    // Tech and Admin see all
+
+    if (user.role === ROLES.EXTERNAL) {
+      // External sees only orders in needs_external state
+      const externalOrders = await storage.getOrdersForExternal();
+      return res.json(externalOrders);
+    }
+
+    if (user.role === ROLES.TECH) {
+      // Tech sees all orders EXCEPT those in needs_external state
+      const allOrders = await storage.getOrders();
+      const techOrders = allOrders.filter(o => o.status !== ORDER_STATUS.NEEDS_EXTERNAL);
+      return res.json(techOrders);
+    }
+
+    // Admin sees all orders
     const orders = await storage.getOrders();
     res.json(orders);
   });
@@ -338,7 +351,6 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const { contractStatus } = req.body;
 
-      // Validate contract status value
       if (contractStatus !== CONTRACT_STATUS.CONTRACTED && contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) {
         return res.status(400).json({ message: "Invalid contract status" });
       }
@@ -348,16 +360,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Order not found" });
       }
 
-      // Sales can only mark as contracted, Admin can do both
       if (user.role === ROLES.SALES) {
-        // Sales can only update their own orders and only to contracted
         if (existingOrder.salesId !== user.id) {
           return res.status(403).json({ message: "Cannot update orders of other sales" });
         }
         if (contractStatus !== CONTRACT_STATUS.CONTRACTED) {
           return res.status(403).json({ message: "Sales can only mark as contracted" });
         }
-        // Sales can only mark as contracted after tech response
         if (existingOrder.status === "pending") {
           return res.status(400).json({ message: "Cannot mark as contracted before tech response" });
         }
@@ -370,6 +379,78 @@ export async function registerRoutes(
       res.json(order);
     } catch (e) {
       res.status(500).json({ message: "Error updating contract status" });
+    }
+  });
+
+  // === External Review Routes ===
+
+  app.post(api.orders.requestExternalReview.path, requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+
+      if (user.role !== ROLES.SALES) {
+        return res.status(403).json({ message: "Only Sales can request external review" });
+      }
+
+      const existingOrder = await storage.getOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (existingOrder.salesId !== user.id) {
+        return res.status(403).json({ message: "Cannot request external review for other sales orders" });
+      }
+
+      if (existingOrder.status !== ORDER_STATUS.NOT_FEASIBLE) {
+        return res.status(400).json({ message: "External review can only be requested for not_feasible orders" });
+      }
+
+      const order = await storage.requestExternalReview(id);
+      broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      res.json(order);
+    } catch (e) {
+      res.status(500).json({ message: "Error requesting external review" });
+    }
+  });
+
+  app.put(api.orders.externalResponse.path, requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+
+      if (user.role !== ROLES.EXTERNAL && user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ message: "Only External Affairs can respond to orders" });
+      }
+
+      const existingOrder = await storage.getOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (existingOrder.status !== ORDER_STATUS.NEEDS_EXTERNAL) {
+        return res.status(400).json({ message: "Order is not awaiting external review" });
+      }
+
+      const input = updateExternalResponseSchema.parse(req.body);
+      const newStatus = input.isFeasibleExternal ? ORDER_STATUS.EXTERNAL_FEASIBLE : ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
+
+      const order = await storage.updateExternalResponse(id, {
+        ...input,
+        externalId: user.id,
+        externalName: user.username,
+        externalResponseAt: new Date(),
+        status: newStatus,
+      });
+
+      broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      res.json(order);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        res.status(400).json(e.errors);
+      } else {
+        res.status(500).json({ message: "Error saving external response" });
+      }
     }
   });
 

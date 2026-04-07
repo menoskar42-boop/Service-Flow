@@ -7,7 +7,7 @@ import { CreateOrderModal } from "@/components/CreateOrderModal";
 import { OrdersTable } from "@/components/OrdersTable";
 import { CreateUserModal } from "@/components/CreateUserModal";
 import { UsersList } from "@/components/UsersList";
-import { ROLES } from "@shared/schema";
+import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, Users } from "lucide-react";
 import * as XLSX from 'xlsx';
@@ -106,31 +106,48 @@ export default function Dashboard() {
             )}
           </div>
           
-          <Button variant="outline" onClick={handleExport} className="bg-white">
-            <FileSpreadsheet className="w-4 h-4 ml-2 text-green-600" />
-            تصدير Excel
-          </Button>
+          {user.role !== ROLES.EXTERNAL && (
+            <Button variant="outline" onClick={handleExport} className="bg-white">
+              <FileSpreadsheet className="w-4 h-4 ml-2 text-green-600" />
+              تصدير Excel
+            </Button>
+          )}
         </div>
 
-        {/* Stats Cards (Optional Polish) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white p-6 rounded-xl border shadow-sm">
-            <div className="text-sm text-muted-foreground mb-1">إجمالي الطلبات</div>
-            <div className="text-2xl font-bold font-display">{orders?.length || 0}</div>
-          </div>
-          <div className="bg-white p-6 rounded-xl border shadow-sm">
-            <div className="text-sm text-muted-foreground mb-1">يمكن التنفيذ</div>
-            <div className="text-2xl font-bold font-display text-green-600">
-              {orders?.filter(o => o.status === "feasible").length || 0}
+        {/* Stats Cards */}
+        {user.role === ROLES.EXTERNAL ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="text-sm text-muted-foreground mb-1">الطلبات المحولة إليك</div>
+              <div className="text-2xl font-bold font-display text-yellow-600">{orders?.length || 0}</div>
+            </div>
+            <div className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="text-sm text-muted-foreground mb-1">بانتظار ردك</div>
+              <div className="text-2xl font-bold font-display text-orange-600">
+                {orders?.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL).length || 0}
+              </div>
             </div>
           </div>
-          <div className="bg-white p-6 rounded-xl border shadow-sm">
-            <div className="text-sm text-muted-foreground mb-1">قيد الانتظار</div>
-            <div className="text-2xl font-bold font-display text-yellow-600">
-              {orders?.filter(o => o.status === "pending").length || 0}
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="text-sm text-muted-foreground mb-1">إجمالي الطلبات</div>
+              <div className="text-2xl font-bold font-display">{orders?.length || 0}</div>
+            </div>
+            <div className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="text-sm text-muted-foreground mb-1">يمكن التنفيذ</div>
+              <div className="text-2xl font-bold font-display text-green-600">
+                {orders?.filter(o => o.status === ORDER_STATUS.FEASIBLE).length || 0}
+              </div>
+            </div>
+            <div className="bg-white p-6 rounded-xl border shadow-sm">
+              <div className="text-sm text-muted-foreground mb-1">قيد الانتظار</div>
+              <div className="text-2xl font-bold font-display text-yellow-600">
+                {orders?.filter(o => o.status === ORDER_STATUS.PENDING).length || 0}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Data Table */}
         <OrdersTable orders={orders || []} />

@@ -1,4 +1,4 @@
-import { users, orders, type User, type InsertUser, type Order, type InsertOrder, type UpdateOrder } from "@shared/schema";
+import { users, orders, type User, type InsertUser, type Order, type InsertOrder, type UpdateOrder, type UpdateExternalResponse, ORDER_STATUS } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 
@@ -14,6 +14,7 @@ export interface IStorage {
   getOrders(): Promise<Order[]>;
   getOrder(id: number): Promise<Order | undefined>;
   getOrdersBySalesId(salesId: number): Promise<Order[]>;
+  getOrdersForExternal(): Promise<Order[]>;
   createOrder(order: InsertOrder & { salesId: number; salesName: string }): Promise<Order>;
   updateOrder(id: number, order: UpdateOrder & { 
     status?: string, 
@@ -23,6 +24,13 @@ export interface IStorage {
   }): Promise<Order>;
   resetTechResponse(id: number): Promise<Order>;
   updateContractStatus(id: number, contractStatus: string): Promise<Order>;
+  requestExternalReview(id: number): Promise<Order>;
+  updateExternalResponse(id: number, data: UpdateExternalResponse & {
+    externalId: number;
+    externalName: string;
+    externalResponseAt: Date;
+    status: string;
+  }): Promise<Order>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -78,6 +86,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(orders).where(eq(orders.salesId, salesId)).orderBy(desc(orders.createdAt));
   }
 
+  async getOrdersForExternal(): Promise<Order[]> {
+    return await db.select().from(orders)
+      .where(eq(orders.status, ORDER_STATUS.NEEDS_EXTERNAL))
+      .orderBy(desc(orders.createdAt));
+  }
+
   async createOrder(insertOrder: InsertOrder & { salesId: number; salesName: string }): Promise<Order> {
     const [order] = await db.insert(orders).values(insertOrder).returning();
     return order;
@@ -119,6 +133,27 @@ export class DatabaseStorage implements IStorage {
   async updateContractStatus(id: number, contractStatus: string): Promise<Order> {
     const [order] = await db.update(orders)
       .set({ contractStatus })
+      .where(eq(orders.id, id))
+      .returning();
+    return order;
+  }
+
+  async requestExternalReview(id: number): Promise<Order> {
+    const [order] = await db.update(orders)
+      .set({ status: ORDER_STATUS.NEEDS_EXTERNAL })
+      .where(eq(orders.id, id))
+      .returning();
+    return order;
+  }
+
+  async updateExternalResponse(id: number, data: UpdateExternalResponse & {
+    externalId: number;
+    externalName: string;
+    externalResponseAt: Date;
+    status: string;
+  }): Promise<Order> {
+    const [order] = await db.update(orders)
+      .set(data)
       .where(eq(orders.id, id))
       .returning();
     return order;

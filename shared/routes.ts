@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertOrderSchema, updateOrderSchema, orders, users } from './schema';
+import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, orders, users } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -144,6 +144,27 @@ export const api = {
       input: z.object({
         contractStatus: z.string(),
       }),
+      responses: {
+        200: z.custom<typeof orders.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
+      },
+    },
+    requestExternalReview: {
+      method: 'POST' as const,
+      path: '/api/orders/:id/external-review',
+      responses: {
+        200: z.custom<typeof orders.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
+      },
+    },
+    externalResponse: {
+      method: 'PUT' as const,
+      path: '/api/orders/:id/external-response',
+      input: updateExternalResponseSchema,
       responses: {
         200: z.custom<typeof orders.$inferSelect>(),
         400: errorSchemas.validation,
