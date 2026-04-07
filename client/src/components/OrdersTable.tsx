@@ -469,6 +469,45 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     {/* Admin actions */}
                     {user?.role === ROLES.ADMIN && (
                       <>
+                        {/* Re-inspection button for admin on not_feasible orders */}
+                        {order.status === ORDER_STATUS.NOT_FEASIBLE && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-yellow-600 border-yellow-300 hover:bg-yellow-50"
+                                disabled={isRequestingExternal}
+                                data-testid={`button-external-review-admin-${order.id}`}
+                              >
+                                {isRequestingExternal ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="w-4 h-4 mr-1" />
+                                )}
+                                إعادة معاينة
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent dir="rtl">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-right">تأكيد إعادة المعاينة</AlertDialogTitle>
+                                <AlertDialogDescription className="text-right">
+                                  هل تريد تحويل هذا الطلب إلى مراقب الشئون الخارجية لإعادة تقييمه؟
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter className="flex-row-reverse gap-2">
+                                <AlertDialogCancel>إلغاء</AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => requestExternalReview(order.id)}
+                                  className="bg-yellow-600 text-white hover:bg-yellow-700"
+                                >
+                                  تأكيد
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
+
                         {order.status !== ORDER_STATUS.PENDING && (
                           <Button
                             variant="outline"

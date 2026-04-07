@@ -389,8 +389,8 @@ export async function registerRoutes(
       const user = req.user as any;
       const id = parseInt(req.params.id);
 
-      if (user.role !== ROLES.SALES) {
-        return res.status(403).json({ message: "Only Sales can request external review" });
+      if (user.role !== ROLES.SALES && user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ message: "Only Sales or Admin can request external review" });
       }
 
       const existingOrder = await storage.getOrder(id);
@@ -398,7 +398,7 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Order not found" });
       }
 
-      if (existingOrder.salesId !== user.id) {
+      if (user.role === ROLES.SALES && existingOrder.salesId !== user.id) {
         return res.status(403).json({ message: "Cannot request external review for other sales orders" });
       }
 
