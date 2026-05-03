@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrders } from "@/hooks/use-orders";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -7,21 +7,23 @@ import { CreateOrderModal } from "@/components/CreateOrderModal";
 import { OrdersTable } from "@/components/OrdersTable";
 import { CreateUserModal } from "@/components/CreateUserModal";
 import { UsersList } from "@/components/UsersList";
+import { BoxRejectionReport } from "@/components/BoxRejectionReport";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, Users } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
+
+type AdminTab = "orders" | "reports";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const { orders, isLoading: ordersLoading } = useOrders();
   const [, setLocation] = useLocation();
+  const [adminTab, setAdminTab] = useState<AdminTab>("orders");
 
-  // Initialize WebSocket for real-time updates
   useWebSocket();
 
-  // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
       setLocation("/login");
@@ -36,14 +38,10 @@ export default function Dashboard() {
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   const handleExport = () => {
     if (!orders) return;
-    
-    // Transform data for Excel
     const data = orders.map(order => ({
       "رقم الطلب": order.id,
       "التاريخ": format(new Date(order.createdAt), "yyyy-MM-dd HH:mm"),
@@ -63,7 +61,6 @@ export default function Dashboard() {
       "الفني": order.techName || "",
       "وقت الرد": order.techResponseAt ? format(new Date(order.techResponseAt), "yyyy-MM-dd HH:mm") : "",
     }));
-
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الطلبات");
@@ -84,73 +81,118 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground">مرحباً بك، {user.username}</p>
             </div>
           </div>
-          
+
           <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive">
             <LogOut className="w-4 h-4 ml-2" />
             تسجيل خروج
           </Button>
         </div>
-      </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Actions Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-2">
-            {user.role === ROLES.SALES && <CreateOrderModal />}
-            {user.role === ROLES.ADMIN && (
-              <>
-                <CreateUserModal />
-                <UsersList />
-              </>
-            )}
-          </div>
-          
-          {user.role !== ROLES.EXTERNAL && (
-            <Button variant="outline" onClick={handleExport} className="bg-white">
-              <FileSpreadsheet className="w-4 h-4 ml-2 text-green-600" />
-              تصدير Excel
-            </Button>
-          )}
-        </div>
-
-        {/* Stats Cards */}
-        {user.role === ROLES.EXTERNAL ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <div className="bg-white p-6 rounded-xl border shadow-sm">
-              <div className="text-sm text-muted-foreground mb-1">الطلبات المحولة إليك</div>
-              <div className="text-2xl font-bold font-display text-yellow-600">{orders?.length || 0}</div>
-            </div>
-            <div className="bg-white p-6 rounded-xl border shadow-sm">
-              <div className="text-sm text-muted-foreground mb-1">بانتظار ردك</div>
-              <div className="text-2xl font-bold font-display text-orange-600">
-                {orders?.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL).length || 0}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div className="bg-white p-6 rounded-xl border shadow-sm">
-              <div className="text-sm text-muted-foreground mb-1">إجمالي الطلبات</div>
-              <div className="text-2xl font-bold font-display">{orders?.length || 0}</div>
-            </div>
-            <div className="bg-white p-6 rounded-xl border shadow-sm">
-              <div className="text-sm text-muted-foreground mb-1">يمكن التنفيذ</div>
-              <div className="text-2xl font-bold font-display text-green-600">
-                {orders?.filter(o => o.status === ORDER_STATUS.FEASIBLE).length || 0}
-              </div>
-            </div>
-            <div className="bg-white p-6 rounded-xl border shadow-sm">
-              <div className="text-sm text-muted-foreground mb-1">قيد الانتظار</div>
-              <div className="text-2xl font-bold font-display text-yellow-600">
-                {orders?.filter(o => o.status === ORDER_STATUS.PENDING).length || 0}
+        {/* Admin Tab Navigation */}
+        {user.role === ROLES.ADMIN && (
+          <div className="border-t bg-white">
+            <div className="container mx-auto px-4">
+              <div className="flex" dir="rtl">
+                <button
+                  onClick={() => setAdminTab("orders")}
+                  data-testid="tab-admin-orders"
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    adminTab === "orders"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  الطلبات
+                </button>
+                <button
+                  onClick={() => setAdminTab("reports")}
+                  data-testid="tab-admin-reports"
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    adminTab === "reports"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  التقارير
+                </button>
               </div>
             </div>
           </div>
         )}
+      </header>
 
-        {/* Data Table */}
-        <OrdersTable orders={orders || []} />
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-8">
+
+        {/* ── REPORTS TAB (Admin only) ── */}
+        {user.role === ROLES.ADMIN && adminTab === "reports" && (
+          <BoxRejectionReport orders={orders || []} />
+        )}
+
+        {/* ── ORDERS TAB (all roles) ── */}
+        {(user.role !== ROLES.ADMIN || adminTab === "orders") && (
+          <>
+            {/* Actions Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+              <div className="flex items-center gap-2">
+                {user.role === ROLES.SALES && <CreateOrderModal />}
+                {user.role === ROLES.ADMIN && (
+                  <>
+                    <CreateUserModal />
+                    <UsersList />
+                  </>
+                )}
+              </div>
+
+              {user.role !== ROLES.EXTERNAL && (
+                <Button variant="outline" onClick={handleExport} className="bg-white">
+                  <FileSpreadsheet className="w-4 h-4 ml-2 text-green-600" />
+                  تصدير Excel
+                </Button>
+              )}
+            </div>
+
+            {/* Stats Cards */}
+            {user.role === ROLES.EXTERNAL ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                  <div className="text-sm text-muted-foreground mb-1">الطلبات المحولة إليك</div>
+                  <div className="text-2xl font-bold font-display text-yellow-600">{orders?.length || 0}</div>
+                </div>
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                  <div className="text-sm text-muted-foreground mb-1">بانتظار ردك</div>
+                  <div className="text-2xl font-bold font-display text-orange-600">
+                    {orders?.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL).length || 0}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                  <div className="text-sm text-muted-foreground mb-1">إجمالي الطلبات</div>
+                  <div className="text-2xl font-bold font-display">{orders?.length || 0}</div>
+                </div>
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                  <div className="text-sm text-muted-foreground mb-1">يمكن التنفيذ</div>
+                  <div className="text-2xl font-bold font-display text-green-600">
+                    {orders?.filter(o => o.status === ORDER_STATUS.FEASIBLE).length || 0}
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                  <div className="text-sm text-muted-foreground mb-1">قيد الانتظار</div>
+                  <div className="text-2xl font-bold font-display text-yellow-600">
+                    {orders?.filter(o => o.status === ORDER_STATUS.PENDING).length || 0}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Data Table */}
+            <OrdersTable orders={orders || []} />
+          </>
+        )}
       </main>
     </div>
   );
