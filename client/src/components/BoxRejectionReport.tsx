@@ -132,6 +132,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
                 <TableHead className="text-right font-bold">الكابينة</TableHead>
                 <TableHead className="text-right font-bold">رقم البوكس</TableHead>
                 <TableHead className="text-right font-bold">عدد المتعذرات</TableHead>
+                <TableHead className="text-right font-bold">سبب التعذر</TableHead>
                 <TableHead className="text-right font-bold">التفاصيل</TableHead>
               </TableRow>
             </TableHeader>
@@ -159,6 +160,13 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
                       >
                         {val.count} متعذر
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        {Array.from(val.reasons).map((r) => (
+                          <span key={r} className="text-xs text-red-700">{r}</span>
+                        ))}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button
