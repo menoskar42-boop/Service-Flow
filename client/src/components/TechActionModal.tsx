@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { useOrders } from "@/hooks/use-orders";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { REJECTION_REASONS, CENTRAL_NAMES, type RejectionReason, type CentralName, type Order } from "@shared/schema";
+import { getCabins, getBoxes } from "@/lib/technical-data";
 
 interface TechActionModalProps {
   order: Order;
@@ -19,6 +21,7 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
   const { updateOrder, isUpdating } = useOrders();
   
   // State for feasible path
+  const [feasibleCentral, setFeasibleCentral] = useState<CentralName | "">("");
   const [cabinNumber, setCabinNumber] = useState("");
   const [boxNumber, setBoxNumber] = useState("");
 
@@ -44,6 +47,7 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
         updates: {
           isFeasible: true,
           rejectionReason: null,
+          centralName: feasibleCentral || null,
           cabinNumber: cabinNumber || null,
           boxNumber: boxNumber || null,
           nearestBoxDistance: null,
@@ -96,21 +100,48 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
           {isFeasible ? (
             <>
               <div className="space-y-2">
-                <Label htmlFor="cabin">رقم الكابينة (اختياري)</Label>
-                <Input
-                  id="cabin"
+                <Label>اسم السنترال (اختياري)</Label>
+                <Select
+                  value={feasibleCentral}
+                  onValueChange={(val) => {
+                    setFeasibleCentral(val as CentralName);
+                    setCabinNumber("");
+                    setBoxNumber("");
+                  }}
+                >
+                  <SelectTrigger className="text-right" dir="rtl">
+                    <SelectValue placeholder="اختر السنترال" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.values(CENTRAL_NAMES).map((c) => (
+                      <SelectItem key={c} value={c} className="text-right" dir="rtl">{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>رقم الكابينة (اختياري)</Label>
+                <SearchableCombobox
+                  options={feasibleCentral ? getCabins(feasibleCentral) : []}
                   value={cabinNumber}
-                  onChange={(e) => setCabinNumber(e.target.value)}
-                  className="text-right"
+                  onChange={(val) => {
+                    setCabinNumber(val);
+                    setBoxNumber("");
+                  }}
+                  placeholder="اختر الكابينة"
+                  searchPlaceholder="ابحث عن كابينة..."
+                  disabled={!feasibleCentral}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="box">رقم البوكس (اختياري)</Label>
-                <Input
-                  id="box"
+                <Label>رقم البوكس (اختياري)</Label>
+                <SearchableCombobox
+                  options={feasibleCentral && cabinNumber ? getBoxes(feasibleCentral, cabinNumber) : []}
                   value={boxNumber}
-                  onChange={(e) => setBoxNumber(e.target.value)}
-                  className="text-right"
+                  onChange={setBoxNumber}
+                  placeholder="اختر البوكس"
+                  searchPlaceholder="ابحث عن بوكس..."
+                  disabled={!feasibleCentral || !cabinNumber}
                 />
               </div>
             </>
@@ -134,7 +165,14 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
                 <>
                   <div className="space-y-2">
                     <Label>اسم السنترال *</Label>
-                    <Select value={centralName} onValueChange={(val) => setCentralName(val as CentralName)}>
+                    <Select
+                      value={centralName}
+                      onValueChange={(val) => {
+                        setCentralName(val as CentralName);
+                        setNotFeasibleCabin("");
+                        setNotFeasibleBox("");
+                      }}
+                    >
                       <SelectTrigger className="text-right" dir="rtl">
                         <SelectValue placeholder="اختر السنترال" />
                       </SelectTrigger>
@@ -147,20 +185,27 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
                   </div>
                   <div className="space-y-2">
                     <Label>رقم الكابينة *</Label>
-                    <Input
-                      required
+                    <SearchableCombobox
+                      options={centralName ? getCabins(centralName) : []}
                       value={notFeasibleCabin}
-                      onChange={(e) => setNotFeasibleCabin(e.target.value)}
-                      className="text-right"
+                      onChange={(val) => {
+                        setNotFeasibleCabin(val);
+                        setNotFeasibleBox("");
+                      }}
+                      placeholder="اختر الكابينة"
+                      searchPlaceholder="ابحث عن كابينة..."
+                      disabled={!centralName}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>رقم البوكس *</Label>
-                    <Input
-                      required
+                    <SearchableCombobox
+                      options={centralName && notFeasibleCabin ? getBoxes(centralName, notFeasibleCabin) : []}
                       value={notFeasibleBox}
-                      onChange={(e) => setNotFeasibleBox(e.target.value)}
-                      className="text-right"
+                      onChange={setNotFeasibleBox}
+                      placeholder="اختر البوكس"
+                      searchPlaceholder="ابحث عن بوكس..."
+                      disabled={!centralName || !notFeasibleCabin}
                     />
                   </div>
                 </>
