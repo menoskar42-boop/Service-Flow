@@ -16,14 +16,18 @@ import MemoryStore from "memorystore";
 
 // Load phone lines data from chunked seed files into memory once at startup
 let phoneLinesData: any[] = [];
-try {
-  for (let i = 1; i <= 8; i++) {
+for (let i = 1; i <= 8; i++) {
+  try {
     const raw = readFileSync(join(process.cwd(), `server/phone-lines-seed-${i}.json`), "utf-8");
     phoneLinesData = phoneLinesData.concat(JSON.parse(raw));
+  } catch {
+    // chunk file not present — skip
   }
+}
+if (phoneLinesData.length > 0) {
   console.log(`Loaded ${phoneLinesData.length} phone lines`);
-} catch {
-  console.warn("phone-lines-seed files not found, phone lines reports will be empty");
+} else {
+  console.warn("No phone-lines-seed files found, phone lines reports will be empty");
 }
 
 const scryptAsync = promisify(scrypt);
