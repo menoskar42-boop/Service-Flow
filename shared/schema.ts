@@ -52,16 +52,6 @@ export const CENTRAL_NAMES = {
 
 export type CentralName = typeof CENTRAL_NAMES[keyof typeof CENTRAL_NAMES];
 
-// Order Status Values
-export const ORDER_STATUS = {
-  PENDING: "pending",
-  FEASIBLE: "feasible",
-  NOT_FEASIBLE: "not_feasible",
-  NEEDS_EXTERNAL: "needs_external",
-  EXTERNAL_FEASIBLE: "external_feasible",
-  EXTERNAL_NOT_FEASIBLE: "external_not_feasible",
-} as const;
-
 // Users Table
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -154,7 +144,7 @@ export const updateOrderSchema = createInsertSchema(orders).pick({
   centralName: true,
 }).partial();
 
-export const updateExternalSchema = createInsertSchema(orders).pick({
+export const updateExternalResponseSchema = createInsertSchema(orders).pick({
   isFeasibleExternal: true,
   externalRejectionReason: true,
   externalCabinNumber: true,
@@ -170,7 +160,7 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type UpdateOrder = z.infer<typeof updateOrderSchema>;
-export type UpdateExternal = z.infer<typeof updateExternalSchema>;
+export type UpdateExternal = z.infer<typeof updateExternalResponseSchema>;
 
 // WebSocket Events
 export const WS_EVENTS = {
