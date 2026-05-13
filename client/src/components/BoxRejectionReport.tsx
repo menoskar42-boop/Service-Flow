@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -21,6 +22,7 @@ interface BoxRejectionReportProps {
 
 export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const rejectedOrders = orders.filter(
     (o) =>
@@ -45,6 +47,8 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
   }));
 
   const filtered = rows.filter((row) => {
+    const rowKey = `${row.centralName}||${row.cabinNumber}||${row.boxNumber}`;
+    if (selectedKey && rowKey !== selectedKey) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -128,13 +132,14 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
                 <TableHead className="text-right font-bold">الكابينة</TableHead>
                 <TableHead className="text-right font-bold">رقم البوكس</TableHead>
                 <TableHead className="text-right font-bold">عدد المتعذرات</TableHead>
+                <TableHead className="text-right font-bold">التفاصيل</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {Object.entries(boxSummary)
                 .sort((a, b) => b[1].count - a[1].count)
                 .map(([key, val], idx) => (
-                  <TableRow key={key} className="hover:bg-muted/30 transition-colors">
+                  <TableRow key={key} className={`hover:bg-muted/30 transition-colors ${selectedKey === key ? "bg-blue-50" : ""}`}>
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                     <TableCell className="whitespace-nowrap text-sm">{val.central}</TableCell>
                     <TableCell className="text-sm">{val.cabinNumber}</TableCell>
@@ -155,6 +160,16 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
                         {val.count} متعذر
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
+                        onClick={() => setSelectedKey(selectedKey === key ? null : key)}
+                      >
+                        {selectedKey === key ? "إلغاء" : "عرض التفاصيل"}
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
             </TableBody>
@@ -164,8 +179,15 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
 
       {/* Report Table */}
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
-        <div className="p-4 border-b flex items-center justify-between gap-4" dir="rtl">
-          <h3 className="font-semibold text-base">تقرير البوكسات المتعذرة</h3>
+        <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3" dir="rtl">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-base">تقرير البوكسات المتعذرة</h3>
+            {selectedKey && (
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                بوكس {boxSummary[selectedKey]?.boxNumber} — {boxSummary[selectedKey]?.central}
+              </span>
+            )}
+          </div>
           <div className="relative w-64">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
