@@ -58,6 +58,7 @@ export function SearchableCombobox({
         align="start"
         sideOffset={4}
         dir="rtl"
+        style={{ backgroundColor: 'white' }}
         className={cn(
           "z-50 w-[--radix-popover-trigger-width] rounded-md border bg-white p-0 text-popover-foreground shadow-md outline-none",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
