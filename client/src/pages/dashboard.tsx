@@ -8,6 +8,8 @@ import { OrdersTable } from "@/components/OrdersTable";
 import { CreateUserModal } from "@/components/CreateUserModal";
 import { UsersList } from "@/components/UsersList";
 import { BoxRejectionReport } from "@/components/BoxRejectionReport";
+import { PhoneLinesReport } from "@/components/PhoneLinesReport";
+import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList } from "lucide-react";
@@ -15,12 +17,14 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const { orders, isLoading: ordersLoading } = useOrders();
   const [, setLocation] = useLocation();
   const [adminTab, setAdminTab] = useState<AdminTab>("orders");
+  const [reportTab, setReportTab] = useState<ReportTab>("box-rejections");
 
   useWebSocket();
 
@@ -128,7 +132,33 @@ export default function Dashboard() {
 
         {/* ── REPORTS TAB (Admin only) ── */}
         {user.role === ROLES.ADMIN && adminTab === "reports" && (
-          <BoxRejectionReport orders={orders || []} />
+          <div className="space-y-4">
+            {/* Report sub-tabs */}
+            <div className="flex gap-1 bg-muted/50 p-1 rounded-lg w-fit" dir="rtl">
+              <button
+                onClick={() => setReportTab("box-rejections")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-rejections" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                البوكسات المتعذرة
+              </button>
+              <button
+                onClick={() => setReportTab("phone-lines")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "phone-lines" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                بيان التليفونات
+              </button>
+              <button
+                onClick={() => setReportTab("box-summary")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-summary" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                ملخص البكسيات
+              </button>
+            </div>
+
+            {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
+            {reportTab === "phone-lines" && <PhoneLinesReport />}
+            {reportTab === "box-summary" && <BoxLinesSummaryReport />}
+          </div>
         )}
 
         {/* ── ORDERS TAB (all roles) ── */}

@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { storage } from "./storage";
 import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
 import { api } from "@shared/routes";
@@ -11,6 +13,18 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import MemoryStore from "memorystore";
+
+// Load phone lines data from chunked seed files into memory once at startup
+let phoneLinesData: any[] = [];
+try {
+  for (let i = 1; i <= 8; i++) {
+    const raw = readFileSync(join(process.cwd(), `server/phone-lines-seed-${i}.json`), "utf-8");
+    phoneLinesData = phoneLinesData.concat(JSON.parse(raw));
+  }
+  console.log(`Loaded ${phoneLinesData.length} phone lines`);
+} catch {
+  console.warn("phone-lines-seed files not found, phone lines reports will be empty");
+}
 
 const scryptAsync = promisify(scrypt);
 const SessionStore = MemoryStore(session);
@@ -452,6 +466,63 @@ export async function registerRoutes(
         res.status(500).json({ message: "Error saving external response" });
       }
     }
+  });
+
+  // === Phone Lines Reports ===
+
+  // GET /api/phone-lines — paginated + searchable directory
+  app.get("/api/phone-lines", requireAuth, (req, res) => {
+    const { search = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(200, Math.max(1, parseInt(limit)));
+    const q = search.trim().toLowerCase();
+
+    const filtered = q
+      ? phoneLinesData.filter(r =>
+          r.fullPhone?.toLowerCase().includes(q) ||
+          r.telNo?.toLowerCase().includes(q) ||
+          r.central?.toLowerCase().includes(q) ||
+          r.cabinNumber?.toLowerCase().includes(q) ||
+          r.boxNumber?.toLowerCase().includes(q)
+        )
+      : phoneLinesData;
+
+    const total = filtered.length;
+    const data = filtered.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+    res.json({ data, total, page: pageNum, pageSize });
+  });
+
+  // GET /api/phone-lines/box-summary — count of lines per box
+  app.get("/api/phone-lines/box-summary", requireAuth, (req, res) => {
+    const { search = "" } = req.query as Record<string, string>;
+    const q = search.trim().toLowerCase();
+
+    const countMap = new Map<string, { central: string; cabinNumber: string; boxNumber: string; count: number }>();
+    for (const r of phoneLinesData) {
+      const key = `${r.central}||${r.cabinNumber}||${r.boxNumber}`;
+      if (!countMap.has(key)) {
+        countMap.set(key, { central: r.central, cabinNumber: r.cabinNumber || "", boxNumber: r.boxNumber || "", count: 0 });
+      }
+      countMap.get(key)!.count++;
+    }
+
+    let summary = Array.from(countMap.values()).sort((a, b) => {
+      const cc = a.central.localeCompare(b.central, "ar");
+      if (cc !== 0) return cc;
+      const cab = a.cabinNumber.localeCompare(b.cabinNumber, "ar");
+      if (cab !== 0) return cab;
+      return parseInt(a.boxNumber) - parseInt(b.boxNumber) || a.boxNumber.localeCompare(b.boxNumber);
+    });
+
+    if (q) {
+      summary = summary.filter(r =>
+        r.central.toLowerCase().includes(q) ||
+        r.cabinNumber.toLowerCase().includes(q) ||
+        r.boxNumber.toLowerCase().includes(q)
+      );
+    }
+
+    res.json(summary);
   });
 
   return httpServer;

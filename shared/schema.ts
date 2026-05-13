@@ -159,6 +159,31 @@ export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type UpdateOrder = z.infer<typeof updateOrderSchema>;
 export type UpdateExternalResponse = z.infer<typeof updateExternalResponseSchema>;
 
+// Phone Lines Table (imported from Excel directory data)
+export const phoneLines = pgTable("phone_lines", {
+  id: serial("id").primaryKey(),
+  telNo: text("tel_no").notNull(),
+  central: text("central").notNull(),
+  iduNo: text("idu_no"),
+  oduNo: text("odu_no"),
+  cabinNumber: text("cabin_number"),
+  primaryBlockNo: text("primary_block_no"),
+  cabinetIn: text("cabinet_in"),
+  secBlockNo: text("sec_block_no"),
+  cabinetOut: text("cabinet_out"),
+  boxNumber: text("box_number"),
+  dpTerminal: text("dp_terminal"),
+  port: text("port"),
+  len: text("len"),
+  fiberBlock: text("fiber_block"),
+  fiberOut: text("fiber_out"),
+  telNumTxt: text("tel_num_txt"),
+  fullPhone: text("full_phone"),
+});
+
+export type PhoneLine = typeof phoneLines.$inferSelect;
+export type InsertPhoneLine = typeof phoneLines.$inferInsert;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',
