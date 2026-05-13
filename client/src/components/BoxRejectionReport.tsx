@@ -23,6 +23,7 @@ interface BoxRejectionReportProps {
 export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"summary" | "detail">("summary");
 
   const rejectedOrders = orders.filter(
     (o) =>
@@ -63,7 +64,6 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
     );
   });
 
-  // Summary: count per (central + cabin + box) composite key
   const boxSummary: Record<string, { central: string; cabinNumber: string; boxNumber: string; count: number; reasons: Set<string> }> = {};
   rows.forEach((row) => {
     const key = `${row.centralName}||${row.cabinNumber}||${row.boxNumber}`;
@@ -117,8 +117,24 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
         </div>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex gap-1 bg-muted/50 p-1 rounded-lg w-fit" dir="rtl">
+        <button
+          onClick={() => setActiveTab("summary")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "summary" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          تقرير عدد المتعذرات لكل بوكس
+        </button>
+        <button
+          onClick={() => { setActiveTab("detail"); setSelectedKey(null); }}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === "detail" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          تفاصيل البوكسات المتعذرة
+        </button>
+      </div>
+
       {/* Grouped Summary Table */}
-      <Card className="overflow-hidden shadow-sm border-0 bg-white">
+      {activeTab === "summary" && <Card className="overflow-hidden shadow-sm border-0 bg-white">
         <div className="p-4 border-b" dir="rtl">
           <h3 className="font-semibold text-base">تقرير عدد المتعذرات لكل بوكس</h3>
           <p className="text-xs text-muted-foreground mt-0.5">مجمّع حسب السنترال + الكابينة + رقم البوكس</p>
@@ -173,7 +189,14 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
                         variant="outline"
                         size="sm"
                         className="text-xs border-blue-200 text-blue-700 hover:bg-blue-50"
-                        onClick={() => setSelectedKey(selectedKey === key ? null : key)}
+                        onClick={() => {
+                          if (selectedKey === key) {
+                            setSelectedKey(null);
+                          } else {
+                            setSelectedKey(key);
+                            setActiveTab("detail");
+                          }
+                        }}
                       >
                         {selectedKey === key ? "إلغاء" : "عرض التفاصيل"}
                       </Button>
@@ -183,10 +206,10 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
             </TableBody>
           </Table>
         </div>
-      </Card>
+      </Card>}
 
       {/* Report Table */}
-      <Card className="overflow-hidden shadow-sm border-0 bg-white">
+      {activeTab === "detail" && <Card className="overflow-hidden shadow-sm border-0 bg-white">
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3" dir="rtl">
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-base">تقرير البوكسات المتعذرة</h3>
@@ -275,7 +298,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
             </TableBody>
           </Table>
         </div>
-      </Card>
+      </Card>}
     </div>
   );
 }
