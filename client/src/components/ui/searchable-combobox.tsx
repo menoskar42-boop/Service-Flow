@@ -1,8 +1,8 @@
 import * as React from "react";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
   CommandEmpty,
@@ -36,8 +36,8 @@ export function SearchableCombobox({
   const [open, setOpen] = React.useState(false);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
         <Button
           variant="outline"
           role="combobox"
@@ -53,8 +53,20 @@ export function SearchableCombobox({
           <span className="truncate">{value || placeholder}</span>
           <ChevronsUpDown className="ms-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" dir="rtl">
+      </PopoverPrimitive.Trigger>
+      {/* Content without Portal — stays inside the Dialog DOM to avoid overlay re-animation */}
+      <PopoverPrimitive.Content
+        align="start"
+        sideOffset={4}
+        dir="rtl"
+        className={cn(
+          "z-50 w-[--radix-popover-trigger-width] rounded-md border bg-popover p-0 text-popover-foreground shadow-md outline-none",
+          "data-[state=open]:animate-in data-[state=closed]:animate-out",
+          "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+          "data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2"
+        )}
+      >
         <Command dir="rtl">
           <CommandInput placeholder={searchPlaceholder} className="text-right" />
           <CommandList className="max-h-[240px] overflow-y-scroll">
@@ -82,7 +94,7 @@ export function SearchableCombobox({
             </CommandGroup>
           </CommandList>
         </Command>
-      </PopoverContent>
-    </Popover>
+      </PopoverPrimitive.Content>
+    </PopoverPrimitive.Root>
   );
 }
