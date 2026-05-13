@@ -54,13 +54,12 @@ export function SearchableCombobox({
           <ChevronsUpDown className="ms-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverPrimitive.Trigger>
-      {/* Content without Portal — stays inside the Dialog DOM to avoid overlay re-animation */}
       <PopoverPrimitive.Content
         align="start"
         sideOffset={4}
         dir="rtl"
         className={cn(
-          "z-50 w-[--radix-popover-trigger-width] rounded-md border bg-popover p-0 text-popover-foreground shadow-md outline-none",
+          "z-50 w-[--radix-popover-trigger-width] rounded-md border bg-white p-0 text-popover-foreground shadow-md outline-none",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
