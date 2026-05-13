@@ -22,7 +22,6 @@ interface BoxRejectionReportProps {
 export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter only rejected orders (tech or external) that have a box number
   const rejectedOrders = orders.filter(
     (o) =>
       (o.status === ORDER_STATUS.NOT_FEASIBLE ||
@@ -30,7 +29,6 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
       o.boxNumber
   );
 
-  // Build rows: one row per order that has a box + rejection reason
   const rows = rejectedOrders.map((o) => ({
     orderId: o.id,
     date: o.createdAt,
@@ -61,15 +59,16 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
     );
   });
 
-  // Summary: count per box number
-  const boxSummary: Record<string, { count: number; reasons: Set<string> }> = {};
+  // Summary: count per (central + cabin + box) composite key
+  const boxSummary: Record<string, { central: string; cabinNumber: string; boxNumber: string; count: number; reasons: Set<string> }> = {};
   rows.forEach((row) => {
-    if (!boxSummary[row.boxNumber]) {
-      boxSummary[row.boxNumber] = { count: 0, reasons: new Set() };
+    const key = `${row.centralName}||${row.cabinNumber}||${row.boxNumber}`;
+    if (!boxSummary[key]) {
+      boxSummary[key] = { central: row.centralName, cabinNumber: row.cabinNumber, boxNumber: row.boxNumber, count: 0, reasons: new Set() };
     }
-    boxSummary[row.boxNumber].count++;
+    boxSummary[key].count++;
     if (row.rejectionReason !== "-") {
-      boxSummary[row.boxNumber].reasons.add(row.rejectionReason);
+      boxSummary[key].reasons.add(row.rejectionReason);
     }
   });
 
@@ -103,7 +102,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
             {topBoxes[0]?.[1].count || 0}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            أعلى تكرار — بوكس {topBoxes[0]?.[0] || "-"}
+            أعلى تكرار — بوكس {topBoxes[0]?.[1].boxNumber || "-"}
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border shadow-sm text-center">
@@ -113,6 +112,55 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
           <div className="text-xs text-muted-foreground mt-1">تعذر من الشئون الخارجية</div>
         </div>
       </div>
+
+      {/* Grouped Summary Table */}
+      <Card className="overflow-hidden shadow-sm border-0 bg-white">
+        <div className="p-4 border-b" dir="rtl">
+          <h3 className="font-semibold text-base">تقرير عدد المتعذرات لكل بوكس</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">مجمّع حسب السنترال + الكابينة + رقم البوكس</p>
+        </div>
+        <div className="overflow-x-auto">
+          <Table className="text-right text-sm" dir="rtl">
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead className="text-right font-bold w-12">#</TableHead>
+                <TableHead className="text-right font-bold">السنترال</TableHead>
+                <TableHead className="text-right font-bold">الكابينة</TableHead>
+                <TableHead className="text-right font-bold">رقم البوكس</TableHead>
+                <TableHead className="text-right font-bold">عدد المتعذرات</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Object.entries(boxSummary)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([key, val], idx) => (
+                  <TableRow key={key} className="hover:bg-muted/30 transition-colors">
+                    <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">{val.central}</TableCell>
+                    <TableCell className="text-sm">{val.cabinNumber}</TableCell>
+                    <TableCell>
+                      <span className="font-bold text-red-700 bg-red-50 px-2 py-1 rounded text-sm">{val.boxNumber}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={
+                          val.count >= 3
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : val.count >= 2
+                            ? "bg-orange-50 text-orange-700 border-orange-200"
+                            : "bg-yellow-50 text-yellow-700 border-yellow-200"
+                        }
+                      >
+                        {val.count} متعذر
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
 
       {/* Report Table */}
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
