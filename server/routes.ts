@@ -1,8 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { storage } from "./storage";
-import { insertOrderSchema, updateOrderSchema, ROLES, WS_EVENTS, CONTRACT_STATUS } from "@shared/schema";
+import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import session from "express-session";
@@ -11,6 +13,22 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import MemoryStore from "memorystore";
+
+// Load phone lines data from chunked seed files into memory once at startup
+let phoneLinesData: any[] = [];
+for (let i = 1; i <= 8; i++) {
+  try {
+    const raw = readFileSync(join(process.cwd(), `server/phone-lines-seed-${i}.json`), "utf-8");
+    phoneLinesData = phoneLinesData.concat(JSON.parse(raw));
+  } catch {
+    // chunk file not present — skip
+  }
+}
+if (phoneLinesData.length > 0) {
+  console.log(`Loaded ${phoneLinesData.length} phone lines`);
+} else {
+  console.warn("No phone-lines-seed files found, phone lines reports will be empty");
+}
 
 const scryptAsync = promisify(scrypt);
 const SessionStore = MemoryStore(session);
@@ -37,8 +55,6 @@ export async function registerRoutes(
   });
 
   // === Auth Setup ===
-  // Helper to hash passwords (simple for this demo)
-  // In production, use a proper salt and key length per user
   async function hashPassword(password: string) {
     const salt = randomBytes(16).toString("hex");
     const buf = (await scryptAsync(password, salt, 64)) as Buffer;
@@ -69,7 +85,6 @@ export async function registerRoutes(
       }
     }
   };
-  // Run seed
   seedUsers();
 
   app.use(
@@ -153,8 +168,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing required fields" });
       }
       
-      if (role !== ROLES.SALES && role !== ROLES.TECH) {
-        return res.status(400).json({ message: "Role must be sales or tech" });
+      const validRoles = [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ message: "Role must be sales, tech, or external" });
       }
 
       const existing = await storage.getUserByUsername(username);
@@ -244,13 +260,28 @@ export async function registerRoutes(
 
   app.get(api.orders.list.path, requireAuth, async (req, res) => {
     const user = req.user as any;
+
     if (user.role === ROLES.SALES) {
       const allOrders = await storage.getOrdersBySalesId(user.id);
-      // Sales only sees non-contracted orders
+      // Sales sees non-contracted orders only
       const filteredOrders = allOrders.filter(o => o.contractStatus === CONTRACT_STATUS.NOT_CONTRACTED);
       return res.json(filteredOrders);
     }
-    // Tech and Admin see all
+
+    if (user.role === ROLES.EXTERNAL) {
+      // External sees only orders in needs_external state
+      const externalOrders = await storage.getOrdersForExternal();
+      return res.json(externalOrders);
+    }
+
+    if (user.role === ROLES.TECH) {
+      // Tech sees all orders EXCEPT those in needs_external state
+      const allOrders = await storage.getOrders();
+      const techOrders = allOrders.filter(o => o.status !== ORDER_STATUS.NEEDS_EXTERNAL);
+      return res.json(techOrders);
+    }
+
+    // Admin sees all orders
     const orders = await storage.getOrders();
     res.json(orders);
   });
@@ -338,7 +369,6 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       const { contractStatus } = req.body;
 
-      // Validate contract status value
       if (contractStatus !== CONTRACT_STATUS.CONTRACTED && contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) {
         return res.status(400).json({ message: "Invalid contract status" });
       }
@@ -348,16 +378,13 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Order not found" });
       }
 
-      // Sales can only mark as contracted, Admin can do both
       if (user.role === ROLES.SALES) {
-        // Sales can only update their own orders and only to contracted
         if (existingOrder.salesId !== user.id) {
           return res.status(403).json({ message: "Cannot update orders of other sales" });
         }
         if (contractStatus !== CONTRACT_STATUS.CONTRACTED) {
           return res.status(403).json({ message: "Sales can only mark as contracted" });
         }
-        // Sales can only mark as contracted after tech response
         if (existingOrder.status === "pending") {
           return res.status(400).json({ message: "Cannot mark as contracted before tech response" });
         }
@@ -371,6 +398,181 @@ export async function registerRoutes(
     } catch (e) {
       res.status(500).json({ message: "Error updating contract status" });
     }
+  });
+
+  // === External Review Routes ===
+
+  app.post(api.orders.requestExternalReview.path, requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+
+      if (user.role !== ROLES.SALES && user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ message: "Only Sales or Admin can request external review" });
+      }
+
+      const existingOrder = await storage.getOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (user.role === ROLES.SALES && existingOrder.salesId !== user.id) {
+        return res.status(403).json({ message: "Cannot request external review for other sales orders" });
+      }
+
+      if (existingOrder.status !== ORDER_STATUS.NOT_FEASIBLE) {
+        return res.status(400).json({ message: "External review can only be requested for not_feasible orders" });
+      }
+
+      const order = await storage.requestExternalReview(id);
+      broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      res.json(order);
+    } catch (e) {
+      res.status(500).json({ message: "Error requesting external review" });
+    }
+  });
+
+  app.put(api.orders.externalResponse.path, requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+
+      if (user.role !== ROLES.EXTERNAL && user.role !== ROLES.ADMIN) {
+        return res.status(403).json({ message: "Only External Affairs can respond to orders" });
+      }
+
+      const existingOrder = await storage.getOrder(id);
+      if (!existingOrder) {
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      if (existingOrder.status !== ORDER_STATUS.NEEDS_EXTERNAL) {
+        return res.status(400).json({ message: "Order is not awaiting external review" });
+      }
+
+      const input = updateExternalResponseSchema.parse(req.body);
+      const newStatus = input.isFeasibleExternal ? ORDER_STATUS.EXTERNAL_FEASIBLE : ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
+
+      const order = await storage.updateExternalResponse(id, {
+        ...input,
+        externalId: user.id,
+        externalName: user.username,
+        externalResponseAt: new Date(),
+        status: newStatus,
+      });
+
+      broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      res.json(order);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        res.status(400).json(e.errors);
+      } else {
+        res.status(500).json({ message: "Error saving external response" });
+      }
+    }
+  });
+
+  // === Phone Lines Reports ===
+
+  // GET /api/phone-lines/filter-options — returns unique centrals, cabins per central, boxes per central+cabin
+  app.get("/api/phone-lines/filter-options", requireAuth, (req, res) => {
+    const centralSet = new Set<string>();
+    const cabinMap = new Map<string, Set<string>>();
+    const boxMap = new Map<string, Set<string>>();
+
+    for (const r of phoneLinesData) {
+      const central = r.central || "";
+      const cabin = r.cabinNumber || "";
+      const box = r.boxNumber || "";
+      if (central) centralSet.add(central);
+      if (central && cabin) {
+        if (!cabinMap.has(central)) cabinMap.set(central, new Set());
+        cabinMap.get(central)!.add(cabin);
+      }
+      if (central && cabin && box) {
+        const key = `${central}||${cabin}`;
+        if (!boxMap.has(key)) boxMap.set(key, new Set());
+        boxMap.get(key)!.add(box);
+      }
+    }
+
+    const centrals = Array.from(centralSet).sort((a, b) => a.localeCompare(b, "ar"));
+    const cabins: Record<string, string[]> = {};
+    for (const [central, set] of cabinMap) {
+      cabins[central] = Array.from(set).sort((a, b) => a.localeCompare(b, "ar"));
+    }
+    const boxes: Record<string, string[]> = {};
+    for (const [key, set] of boxMap) {
+      const sorted = Array.from(set).sort((a, b) => {
+        const na = parseInt(a), nb = parseInt(b);
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        if (!isNaN(na)) return -1;
+        if (!isNaN(nb)) return 1;
+        return a.localeCompare(b);
+      });
+      boxes[key] = sorted;
+    }
+
+    res.json({ centrals, cabins, boxes });
+  });
+
+  // GET /api/phone-lines — paginated, with optional central/cabin/box or text search filters
+  app.get("/api/phone-lines", requireAuth, (req, res) => {
+    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const q = search.trim().toLowerCase();
+
+    let filtered = phoneLinesData;
+    if (central) filtered = filtered.filter(r => r.central === central);
+    if (cabin) filtered = filtered.filter(r => r.cabinNumber === cabin);
+    if (box) filtered = filtered.filter(r => r.boxNumber === box);
+    if (q) {
+      filtered = filtered.filter(r =>
+        r.fullPhone?.toLowerCase().includes(q) ||
+        r.telNo?.toLowerCase().includes(q) ||
+        r.central?.toLowerCase().includes(q) ||
+        r.cabinNumber?.toLowerCase().includes(q) ||
+        r.boxNumber?.toLowerCase().includes(q)
+      );
+    }
+
+    const total = filtered.length;
+    const data = filtered.slice((pageNum - 1) * pageSize, pageNum * pageSize);
+    res.json({ data, total, page: pageNum, pageSize });
+  });
+
+  // GET /api/phone-lines/box-summary — count of lines per box
+  app.get("/api/phone-lines/box-summary", requireAuth, (req, res) => {
+    const { search = "" } = req.query as Record<string, string>;
+    const q = search.trim().toLowerCase();
+
+    const countMap = new Map<string, { central: string; cabinNumber: string; boxNumber: string; count: number }>();
+    for (const r of phoneLinesData) {
+      const key = `${r.central}||${r.cabinNumber}||${r.boxNumber}`;
+      if (!countMap.has(key)) {
+        countMap.set(key, { central: r.central, cabinNumber: r.cabinNumber || "", boxNumber: r.boxNumber || "", count: 0 });
+      }
+      countMap.get(key)!.count++;
+    }
+
+    let summary = Array.from(countMap.values()).sort((a, b) => {
+      const cc = a.central.localeCompare(b.central, "ar");
+      if (cc !== 0) return cc;
+      const cab = a.cabinNumber.localeCompare(b.cabinNumber, "ar");
+      if (cab !== 0) return cab;
+      return parseInt(a.boxNumber) - parseInt(b.boxNumber) || a.boxNumber.localeCompare(b.boxNumber);
+    });
+
+    if (q) {
+      summary = summary.filter(r =>
+        r.central.toLowerCase().includes(q) ||
+        r.cabinNumber.toLowerCase().includes(q) ||
+        r.boxNumber.toLowerCase().includes(q)
+      );
+    }
+
+    res.json(summary);
   });
 
   return httpServer;
