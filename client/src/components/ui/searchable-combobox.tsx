@@ -57,7 +57,7 @@ export function SearchableCombobox({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start" dir="rtl">
         <Command dir="rtl">
           <CommandInput placeholder={searchPlaceholder} className="text-right" />
-          <CommandList>
+          <CommandList className="max-h-[240px] overflow-y-scroll">
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
