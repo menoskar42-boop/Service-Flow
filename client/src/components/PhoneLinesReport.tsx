@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -11,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface PhoneLine {
@@ -34,35 +40,69 @@ interface PhoneLine {
   fullPhone: string;
 }
 
+interface FilterOptions {
+  centrals: string[];
+  cabins: Record<string, string[]>;
+  boxes: Record<string, string[]>;
+}
+
 const PAGE_SIZE = 50;
+const ALL = "__all__";
 
 export function PhoneLinesReport() {
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [central, setCentral] = useState("");
+  const [cabin, setCabin] = useState("");
+  const [box, setBox] = useState("");
   const [page, setPage] = useState(1);
-  const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearchChange = (val: string) => {
-    setSearch(val);
-    setPage(1);
-    if (searchTimer) clearTimeout(searchTimer);
-    const t = setTimeout(() => setDebouncedSearch(val), 400);
-    setSearchTimer(t);
-  };
+  const { data: filterOptions } = useQuery({
+    queryKey: ["/api/phone-lines/filter-options"],
+    queryFn: async () => {
+      const res = await fetch("/api/phone-lines/filter-options", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch filter options");
+      return res.json() as Promise<FilterOptions>;
+    },
+  });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines", debouncedSearch, page],
+    queryKey: ["/api/phone-lines", central, cabin, box, page],
     queryFn: async () => {
-      const params = new URLSearchParams({ search: debouncedSearch, page: String(page), limit: String(PAGE_SIZE) });
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (box) params.set("box", box);
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
     },
   });
 
-  // Export all matching records (fetch with high limit)
+  const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
+  const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
+
+  const handleCentralChange = (val: string) => {
+    setCentral(val === ALL ? "" : val);
+    setCabin("");
+    setBox("");
+    setPage(1);
+  };
+
+  const handleCabinChange = (val: string) => {
+    setCabin(val === ALL ? "" : val);
+    setBox("");
+    setPage(1);
+  };
+
+  const handleBoxChange = (val: string) => {
+    setBox(val === ALL ? "" : val);
+    setPage(1);
+  };
+
   const handleExport = async () => {
-    const params = new URLSearchParams({ search: debouncedSearch, page: "1", limit: "20000" });
+    const params = new URLSearchParams({ page: "1", limit: "20000" });
+    if (central) params.set("central", central);
+    if (cabin) params.set("cabin", cabin);
+    if (box) params.set("box", box);
     const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
@@ -103,17 +143,51 @@ export function PhoneLinesReport() {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="بحث برقم التليفون / السنترال / الكابينه / البكس..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pr-10 text-right text-sm"
-                dir="rtl"
-              />
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={central || ALL} onValueChange={handleCentralChange}>
+              <SelectTrigger className="w-44 text-right text-sm" dir="rtl">
+                <SelectValue placeholder="كل السنترالات" />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value={ALL}>كل السنترالات</SelectItem>
+                {filterOptions?.centrals.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={cabin || ALL}
+              onValueChange={handleCabinChange}
+              disabled={!central}
+            >
+              <SelectTrigger className="w-40 text-right text-sm" dir="rtl">
+                <SelectValue placeholder="كل الكابينات" />
+              </SelectTrigger>
+              <SelectContent dir="rtl" className="max-h-64 overflow-y-auto">
+                <SelectItem value={ALL}>كل الكابينات</SelectItem>
+                {cabins.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={box || ALL}
+              onValueChange={handleBoxChange}
+              disabled={!cabin}
+            >
+              <SelectTrigger className="w-36 text-right text-sm" dir="rtl">
+                <SelectValue placeholder="كل البكسيات" />
+              </SelectTrigger>
+              <SelectContent dir="rtl" className="max-h-64 overflow-y-auto">
+                <SelectItem value={ALL}>كل البكسيات</SelectItem>
+                {boxes.map((b) => (
+                  <SelectItem key={b} value={b}>{b}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
@@ -173,7 +247,6 @@ export function PhoneLinesReport() {
               </Table>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="p-4 border-t flex items-center justify-between">
                 <Button

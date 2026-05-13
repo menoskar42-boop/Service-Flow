@@ -474,22 +474,68 @@ export async function registerRoutes(
 
   // === Phone Lines Reports ===
 
-  // GET /api/phone-lines — paginated + searchable directory
+  // GET /api/phone-lines/filter-options — returns unique centrals, cabins per central, boxes per central+cabin
+  app.get("/api/phone-lines/filter-options", requireAuth, (req, res) => {
+    const centralSet = new Set<string>();
+    const cabinMap = new Map<string, Set<string>>();
+    const boxMap = new Map<string, Set<string>>();
+
+    for (const r of phoneLinesData) {
+      const central = r.central || "";
+      const cabin = r.cabinNumber || "";
+      const box = r.boxNumber || "";
+      if (central) centralSet.add(central);
+      if (central && cabin) {
+        if (!cabinMap.has(central)) cabinMap.set(central, new Set());
+        cabinMap.get(central)!.add(cabin);
+      }
+      if (central && cabin && box) {
+        const key = `${central}||${cabin}`;
+        if (!boxMap.has(key)) boxMap.set(key, new Set());
+        boxMap.get(key)!.add(box);
+      }
+    }
+
+    const centrals = Array.from(centralSet).sort((a, b) => a.localeCompare(b, "ar"));
+    const cabins: Record<string, string[]> = {};
+    for (const [central, set] of cabinMap) {
+      cabins[central] = Array.from(set).sort((a, b) => a.localeCompare(b, "ar"));
+    }
+    const boxes: Record<string, string[]> = {};
+    for (const [key, set] of boxMap) {
+      const sorted = Array.from(set).sort((a, b) => {
+        const na = parseInt(a), nb = parseInt(b);
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        if (!isNaN(na)) return -1;
+        if (!isNaN(nb)) return 1;
+        return a.localeCompare(b);
+      });
+      boxes[key] = sorted;
+    }
+
+    res.json({ centrals, cabins, boxes });
+  });
+
+  // GET /api/phone-lines — paginated, with optional central/cabin/box or text search filters
   app.get("/api/phone-lines", requireAuth, (req, res) => {
-    const { search = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(200, Math.max(1, parseInt(limit)));
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
 
-    const filtered = q
-      ? phoneLinesData.filter(r =>
-          r.fullPhone?.toLowerCase().includes(q) ||
-          r.telNo?.toLowerCase().includes(q) ||
-          r.central?.toLowerCase().includes(q) ||
-          r.cabinNumber?.toLowerCase().includes(q) ||
-          r.boxNumber?.toLowerCase().includes(q)
-        )
-      : phoneLinesData;
+    let filtered = phoneLinesData;
+    if (central) filtered = filtered.filter(r => r.central === central);
+    if (cabin) filtered = filtered.filter(r => r.cabinNumber === cabin);
+    if (box) filtered = filtered.filter(r => r.boxNumber === box);
+    if (q) {
+      filtered = filtered.filter(r =>
+        r.fullPhone?.toLowerCase().includes(q) ||
+        r.telNo?.toLowerCase().includes(q) ||
+        r.central?.toLowerCase().includes(q) ||
+        r.cabinNumber?.toLowerCase().includes(q) ||
+        r.boxNumber?.toLowerCase().includes(q)
+      );
+    }
 
     const total = filtered.length;
     const data = filtered.slice((pageNum - 1) * pageSize, pageNum * pageSize);
