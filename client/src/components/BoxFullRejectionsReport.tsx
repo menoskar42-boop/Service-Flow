@@ -41,7 +41,12 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
     },
   });
 
-  const norm = (s: string) => (s || "").replace(/\//g, "-").trim();
+  const norm = (s: string) =>
+    (s || "")
+      .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06F0))
+      .replace(/\//g, "-")
+      .trim();
 
   const workingMap = new Map<string, number>();
   boxSummaryData?.forEach((b) => {
