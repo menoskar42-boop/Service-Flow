@@ -54,6 +54,7 @@ export default function Dashboard() {
       "الهاتف": order.customerPhone,
       "العنوان": order.customerAddress,
       "الرقم القومي": order.nationalId || "",
+      "رقم المسلسل": order.serialNumber || "",
       "المندوب": order.salesName,
       "الحالة": order.status === "feasible" ? "يمكن التنفيذ" : order.status === "not_feasible" ? "لا يمكن" : "قيد الانتظار",
       "حالة التعاقد": order.contractStatus || "لم يتم التعاقد",
