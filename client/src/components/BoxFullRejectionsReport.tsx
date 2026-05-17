@@ -41,9 +41,11 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
     },
   });
 
+  const norm = (s: string) => (s || "").replace(/\//g, "-").trim();
+
   const workingMap = new Map<string, number>();
   boxSummaryData?.forEach((b) => {
-    const key = `${b.central}||${b.cabinNumber}||${b.boxNumber}`;
+    const key = `${b.central}||${norm(b.cabinNumber)}||${norm(b.boxNumber)}`;
     workingMap.set(key, b.count);
   });
 
@@ -55,7 +57,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
   );
 
   const rows = boxFullOrders.map((o) => {
-    const key = `${o.centralName}||${o.cabinNumber}||${o.boxNumber}`;
+    const key = `${o.centralName}||${norm(o.cabinNumber || "")}||${norm(o.boxNumber || "")}`;
     const workingCount = workingMap.has(key) ? workingMap.get(key)! : null;
     return {
       orderId: o.id,
