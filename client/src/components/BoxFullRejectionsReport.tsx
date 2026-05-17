@@ -86,6 +86,9 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
   });
   const topEntry = Object.values(boxRejectCount).sort((a, b) => b.count - a.count)[0];
 
+  const displayCabin = (row: typeof rows[number]) =>
+    row.centralName === "الغنايم-العزايزة" ? "sheltr" : row.cabinNumber;
+
   const filtered = rows.filter((row) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -108,7 +111,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
       "العميل": r.customerName,
       "العنوان": r.customerAddress,
       "السنترال": r.centralName,
-      "الكابينة": r.cabinNumber,
+      "الكابينة": displayCabin(r),
       "رقم البوكس": r.boxNumber,
       "بعد أقرب بوكس": r.nearestBoxDistance || "",
       "ملاحظات": r.additionalNotes || "",
@@ -211,7 +214,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
                     <div className="text-xs text-muted-foreground">{row.customerAddress}</div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{row.centralName}</TableCell>
-                  <TableCell>{row.cabinNumber}</TableCell>
+                  <TableCell>{displayCabin(row)}</TableCell>
                   <TableCell>
                     <span className="font-bold text-red-700 bg-red-50 px-2 py-1 rounded">{row.boxNumber}</span>
                   </TableCell>
