@@ -71,6 +71,7 @@ export const orders = pgTable("orders", {
   customerPhone: text("customer_phone").notNull(),
   customerAddress: text("customer_address").notNull(),
   nationalId: text("national_id"),
+  serialNumber: text("serial_number"),
   salesId: integer("sales_id").references(() => users.id).notNull(),
   salesName: text("sales_name").notNull(),
 

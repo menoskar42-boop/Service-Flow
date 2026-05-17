@@ -4,24 +4,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useOrders } from "@/hooks/use-orders";
+import { useToast } from "@/hooks/use-toast";
 import { Loader2, Plus } from "lucide-react";
 
 export function CreateOrderModal() {
   const [open, setOpen] = useState(false);
   const { createOrder, isCreating } = useOrders();
+  const { toast } = useToast();
+  const [warnedSerial, setWarnedSerial] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     customerName: "",
     customerPhone: "",
     customerAddress: "",
     nationalId: "",
+    serialNumber: "",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const serial = formData.serialNumber.trim();
+    if (serial && !/^\d+$/.test(serial) && warnedSerial !== serial) {
+      setWarnedSerial(serial);
+      toast({
+        variant: "destructive",
+        title: "تنبيه: رقم المسلسل",
+        description:
+          "رقم المسلسل يحتوي على حروف أو رموز. اضغط حفظ مرة أخرى لتأكيد الحفظ بنفس الشكل.",
+      });
+      return;
+    }
     createOrder(formData, {
       onSuccess: () => {
         setOpen(false);
-        setFormData({ customerName: "", customerPhone: "", customerAddress: "", nationalId: "" });
+        setWarnedSerial(null);
+        setFormData({ customerName: "", customerPhone: "", customerAddress: "", nationalId: "", serialNumber: "" });
       },
     });
   };
@@ -82,6 +98,22 @@ export function CreateOrderModal() {
               placeholder="الرقم القومي (14 رقم)"
               maxLength={14}
               data-testid="input-national-id"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="serialNumber">رقم المسلسل (إن وجد)</Label>
+            <Input
+              id="serialNumber"
+              inputMode="numeric"
+              value={formData.serialNumber}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (warnedSerial && v !== warnedSerial) setWarnedSerial(null);
+                setFormData({ ...formData, serialNumber: v });
+              }}
+              className="text-right"
+              placeholder="أرقام فقط"
+              data-testid="input-serial-number"
             />
           </div>
           <div className="pt-4 flex justify-end gap-2">
