@@ -12,3 +12,9 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
+
+// Idempotent runtime migrations: keep DB in sync with schema additions even
+// when `npm run db:push` is not executed (e.g. Replit deploy).
+export async function ensureSchema() {
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS serial_number text`);
+}
