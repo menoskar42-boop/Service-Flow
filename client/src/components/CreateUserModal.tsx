@@ -66,9 +66,10 @@ export function CreateUserModal() {
                 <SelectValue placeholder="اختر الدور" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ROLES.SALES} className="text-right">موظف مبيعات (Sales)</SelectItem>
-                <SelectItem value={ROLES.TECH} className="text-right">فني (Tech)</SelectItem>
-                <SelectItem value={ROLES.ADMIN} className="text-right">مدير (Admin)</SelectItem>
+                <SelectItem value={ROLES.SALES} className="text-right">موظف مبيعات</SelectItem>
+                <SelectItem value={ROLES.TECH} className="text-right">فني</SelectItem>
+                <SelectItem value={ROLES.EXTERNAL} className="text-right">مراقب الشئون الخارجية</SelectItem>
+                <SelectItem value={ROLES.ADMIN} className="text-right">مدير</SelectItem>
               </SelectContent>
             </Select>
           </div>

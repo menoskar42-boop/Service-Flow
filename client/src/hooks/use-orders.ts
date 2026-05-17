@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import { type InsertOrder, type UpdateOrder } from "@shared/schema";
+import { type InsertOrder, type UpdateOrder, type UpdateExternalResponse } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 export function useOrders() {
@@ -147,6 +147,58 @@ export function useOrders() {
     },
   });
 
+  const requestExternalReviewMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const url = buildUrl(api.orders.requestExternalReview.path, { id: orderId });
+      const res = await fetch(url, {
+        method: api.orders.requestExternalReview.method,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to request external review");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+      toast({
+        title: "تم طلب إعادة المعاينة",
+        description: "تم تحويل الطلب إلى مراقب الشئون الخارجية",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "خطأ", description: error.message });
+    },
+  });
+
+  const externalResponseMutation = useMutation({
+    mutationFn: async ({ orderId, data }: { orderId: number; data: UpdateExternalResponse }) => {
+      const url = buildUrl(api.orders.externalResponse.path, { id: orderId });
+      const res = await fetch(url, {
+        method: api.orders.externalResponse.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to save external response");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+      toast({
+        title: "تم حفظ الرد",
+        description: "تم تسجيل رد الشئون الخارجية بنجاح",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "خطأ", description: error.message });
+    },
+  });
+
   return {
     orders,
     isLoading,
@@ -159,5 +211,9 @@ export function useOrders() {
     isResetting: resetTechResponseMutation.isPending,
     updateContractStatus: updateContractStatusMutation.mutate,
     isUpdatingContract: updateContractStatusMutation.isPending,
+    requestExternalReview: requestExternalReviewMutation.mutate,
+    isRequestingExternal: requestExternalReviewMutation.isPending,
+    externalResponse: externalResponseMutation.mutate,
+    isSubmittingExternal: externalResponseMutation.isPending,
   };
 }
