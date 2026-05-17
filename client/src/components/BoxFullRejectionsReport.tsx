@@ -62,7 +62,9 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
   );
 
   const rows = boxFullOrders.map((o) => {
-    const key = `${o.centralName}||${norm(o.cabinNumber || "")}||${norm(o.boxNumber || "")}`;
+    const lookupCabin =
+      o.centralName === "الغنايم-العزايزة" ? "sheltr" : norm(o.cabinNumber || "");
+    const key = `${o.centralName}||${lookupCabin}||${norm(o.boxNumber || "")}`;
     const workingCount = workingMap.has(key) ? workingMap.get(key)! : null;
     return {
       orderId: o.id,
