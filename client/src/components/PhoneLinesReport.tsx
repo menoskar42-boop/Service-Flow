@@ -2,13 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table,
   TableBody,
@@ -47,7 +41,6 @@ interface FilterOptions {
 }
 
 const PAGE_SIZE = 50;
-const ALL = "__all__";
 
 export function PhoneLinesReport() {
   const [central, setCentral] = useState("");
@@ -79,24 +72,6 @@ export function PhoneLinesReport() {
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
-
-  const handleCentralChange = (val: string) => {
-    setCentral(val === ALL ? "" : val);
-    setCabin("");
-    setBox("");
-    setPage(1);
-  };
-
-  const handleCabinChange = (val: string) => {
-    setCabin(val === ALL ? "" : val);
-    setBox("");
-    setPage(1);
-  };
-
-  const handleBoxChange = (val: string) => {
-    setBox(val === ALL ? "" : val);
-    setPage(1);
-  };
 
   const handleExport = async () => {
     const params = new URLSearchParams({ page: "1", limit: "20000" });
@@ -144,49 +119,34 @@ export function PhoneLinesReport() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={central || ALL} onValueChange={handleCentralChange}>
-              <SelectTrigger className="w-44 text-right text-sm" dir="rtl">
-                <SelectValue placeholder="كل السنترالات" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value={ALL}>كل السنترالات</SelectItem>
-                {filterOptions?.centrals.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              options={filterOptions?.centrals ?? []}
+              value={central}
+              onChange={(v) => { setCentral(v); setCabin(""); setBox(""); setPage(1); }}
+              placeholder="كل السنترالات"
+              searchPlaceholder="ابحث في السنترالات..."
+              className="w-44 text-sm"
+            />
 
-            <Select
-              value={cabin || ALL}
-              onValueChange={handleCabinChange}
+            <SearchableCombobox
+              options={cabins}
+              value={cabin}
+              onChange={(v) => { setCabin(v); setBox(""); setPage(1); }}
+              placeholder="كل الكابينات"
+              searchPlaceholder="ابحث في الكابينات..."
               disabled={!central}
-            >
-              <SelectTrigger className="w-40 text-right text-sm" dir="rtl">
-                <SelectValue placeholder="كل الكابينات" />
-              </SelectTrigger>
-              <SelectContent dir="rtl" className="max-h-64 overflow-y-auto">
-                <SelectItem value={ALL}>كل الكابينات</SelectItem>
-                {cabins.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="w-40 text-sm"
+            />
 
-            <Select
-              value={box || ALL}
-              onValueChange={handleBoxChange}
+            <SearchableCombobox
+              options={boxes}
+              value={box}
+              onChange={(v) => { setBox(v); setPage(1); }}
+              placeholder="كل البكسيات"
+              searchPlaceholder="ابحث في البكسيات..."
               disabled={!cabin}
-            >
-              <SelectTrigger className="w-36 text-right text-sm" dir="rtl">
-                <SelectValue placeholder="كل البكسيات" />
-              </SelectTrigger>
-              <SelectContent dir="rtl" className="max-h-64 overflow-y-auto">
-                <SelectItem value={ALL}>كل البكسيات</SelectItem>
-                {boxes.map((b) => (
-                  <SelectItem key={b} value={b}>{b}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              className="w-36 text-sm"
+            />
 
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
