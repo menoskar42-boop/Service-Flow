@@ -63,7 +63,9 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
 
   const rows = boxFullOrders.map((o) => {
     const lookupCabin =
-      o.centralName === "الغنايم-العزايزة" ? "sheltr" : norm(o.cabinNumber || "");
+      o.centralName === "الغنايم-العزايزة" ? "sheltr" :
+      o.centralName === "الغنايم-نجع العمدة" ? "shlter" :
+      norm(o.cabinNumber || "");
     const key = `${o.centralName}||${lookupCabin}||${norm(o.boxNumber || "")}`;
     const workingCount = workingMap.has(key) ? workingMap.get(key)! : null;
     return {
@@ -94,7 +96,9 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
   const topEntry = Object.values(boxRejectCount).sort((a, b) => b.count - a.count)[0];
 
   const displayCabin = (row: typeof rows[number]) =>
-    row.centralName === "الغنايم-العزايزة" ? "sheltr" : row.cabinNumber;
+    row.centralName === "الغنايم-العزايزة" ? "sheltr" :
+    row.centralName === "الغنايم-نجع العمدة" ? "shlter" :
+    row.cabinNumber;
 
   const filtered = rows.filter((row) => {
     if (!searchQuery.trim()) return true;
