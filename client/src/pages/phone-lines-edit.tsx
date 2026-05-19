@@ -104,19 +104,31 @@ export default function PhoneLinesEditPage() {
     },
   });
 
-  // --- Field options for cascading edit dropdowns ---
+  // --- Field options: cabins + boxes + cabinetIns (keyed on central+cabin only, stable when box changes) ---
   const { data: fieldOptions } = useQuery({
-    queryKey: ["/api/phone-lines/field-options", editCentral, editCabin, editBox],
+    queryKey: ["/api/phone-lines/field-options", editCentral, editCabin],
     queryFn: async () => {
-      if (!editCentral) return { cabins: [] as string[], boxes: [] as string[], dpTerminals: [] as string[], cabinetIns: [] as string[] };
+      if (!editCentral) return { cabins: [] as string[], boxes: [] as string[], cabinetIns: [] as string[] };
       const params = new URLSearchParams({ central: editCentral });
       if (editCabin) params.set("cabin", editCabin);
-      if (editBox) params.set("box", editBox);
       const res = await fetch(`/api/phone-lines/field-options?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<{ cabins: string[]; boxes: string[]; dpTerminals: string[]; cabinetIns: string[] }>;
+      return res.json() as Promise<{ cabins: string[]; boxes: string[]; cabinetIns: string[] }>;
     },
     enabled: !!editCentral,
+  });
+
+  // --- DP Terminal options (separate query keyed on box, so box change triggers refetch independently) ---
+  const { data: dpOptions } = useQuery({
+    queryKey: ["/api/phone-lines/dp-options", editCentral, editCabin, editBox],
+    queryFn: async () => {
+      if (!editCentral || !editCabin || !editBox) return [] as string[];
+      const params = new URLSearchParams({ central: editCentral, cabin: editCabin, box: editBox });
+      const res = await fetch(`/api/phone-lines/dp-options?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<string[]>;
+    },
+    enabled: !!editCentral && !!editCabin && !!editBox,
   });
 
   // --- Mutations ---
@@ -319,7 +331,7 @@ export default function PhoneLinesEditPage() {
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">DP Terminal</label>
                           <SearchableCombobox
-                            options={fieldOptions?.dpTerminals || []}
+                            options={dpOptions || []}
                             value={editDp}
                             onChange={setEditDp}
                             placeholder="اختر DP Terminal"
@@ -425,7 +437,7 @@ export default function PhoneLinesEditPage() {
                                 <div className="space-y-1 w-36">
                                   <label className="text-xs text-muted-foreground">DP Terminal</label>
                                   <SearchableCombobox
-                                    options={fieldOptions?.dpTerminals || []}
+                                    options={dpOptions || []}
                                     value={editDp}
                                     onChange={setEditDp}
                                     placeholder="اختر DP Terminal"

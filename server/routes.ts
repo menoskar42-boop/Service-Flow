@@ -515,6 +515,17 @@ export async function registerRoutes(
     res.json({ centrals, cabins, boxes });
   });
 
+  // GET /api/phone-lines/dp-options — distinct dp_terminals for central+cabin+box
+  app.get("/api/phone-lines/dp-options", requireAuth, async (req, res) => {
+    const { central = "", cabin = "", box = "" } = req.query as Record<string, string>;
+    if (!central || !cabin || !box) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT DISTINCT dp_terminal FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND box_number = $3 AND dp_terminal IS NOT NULL ORDER BY dp_terminal`,
+      [central, cabin, box]
+    );
+    res.json(rows.map((r: any) => r.dp_terminal));
+  });
+
   // GET /api/phone-lines/field-options — cascading options for edit form (cabins → boxes → dpTerminals)
   app.get("/api/phone-lines/field-options", requireAuth, async (req, res) => {
     const { central = "", cabin = "", box = "" } = req.query as Record<string, string>;
