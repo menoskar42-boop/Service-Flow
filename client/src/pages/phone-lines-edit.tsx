@@ -141,7 +141,7 @@ export default function PhoneLinesEditPage() {
       toast({ title: "تم حفظ التعديل بنجاح" });
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/phone-lines/edits"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/phone-lines", searchLine] });
+      queryClient.invalidateQueries({ queryKey: ["/api/phone-lines"] });
       queryClient.invalidateQueries({ queryKey: ["/api/phone-lines/box-summary"] });
     },
     onError: (err: any) => {
