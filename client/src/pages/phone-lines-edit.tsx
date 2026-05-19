@@ -120,12 +120,8 @@ export default function PhoneLinesEditPage() {
 
   // DP Terminal validation: numeric 1-100
   const isDpValid = (v: string) => /^\d+$/.test(v) && parseInt(v) >= 1 && parseInt(v) <= 100;
-  const handleDpChange = (raw: string) => {
-    const v = raw.replace(/\D/g, "");
-    if (v === "") { setEditDp(""); return; }
-    const n = parseInt(v);
-    if (n >= 1 && n <= 100) setEditDp(v);
-  };
+  const dpError = (v: string) => v && !isDpValid(v) ? "يجب أن يكون رقماً من 1 إلى 100" : "";
+  const handleDpChange = (raw: string) => setEditDp(raw.replace(/\D/g, ""));
 
   // --- Mutations ---
   const editMutation = useMutation({
@@ -332,9 +328,10 @@ export default function PhoneLinesEditPage() {
                             value={editDp}
                             onChange={(e) => handleDpChange(e.target.value)}
                             placeholder="رقم من 1 إلى 100"
-                            className="h-9 text-sm"
+                            className={`h-9 text-sm ${dpError(editDp) ? "border-destructive focus-visible:ring-destructive" : ""}`}
                             disabled={!editBox}
                           />
+                          {dpError(editDp) && <p className="text-xs text-destructive">{dpError(editDp)}</p>}
                         </div>
                         <div className="flex gap-2 pt-1">
                           <Button
@@ -439,9 +436,10 @@ export default function PhoneLinesEditPage() {
                                     value={editDp}
                                     onChange={(e) => handleDpChange(e.target.value)}
                                     placeholder="1-100"
-                                    className="h-9 text-sm"
+                                    className={`h-9 text-sm ${dpError(editDp) ? "border-destructive focus-visible:ring-destructive" : ""}`}
                                     disabled={!editBox}
                                   />
+                                  {dpError(editDp) && <p className="text-xs text-destructive mt-1">{dpError(editDp)}</p>}
                                 </div>
                                 <Button
                                   size="sm"
