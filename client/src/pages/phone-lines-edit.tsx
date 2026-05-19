@@ -106,8 +106,13 @@ export default function PhoneLinesEditPage() {
         credentials: "include",
         body: JSON.stringify({ cabinNumber: cabin, boxNumber: box, dpTerminal: dp }),
       });
-      const data = await res.json();
-      if (!res.ok) throw Object.assign(new Error(data.message || "فشل التعديل"), { data });
+      const text = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(text); } catch { /* non-JSON response */ }
+      if (!res.ok) {
+        const err = Object.assign(new Error(data.message || `خطأ ${res.status}`), { data, status: res.status });
+        throw err;
+      }
       return data;
     },
     onSuccess: () => {
@@ -118,13 +123,19 @@ export default function PhoneLinesEditPage() {
     },
     onError: (err: any) => {
       const conflict = err.data?.conflictLine;
-      toast({
-        variant: "destructive",
-        title: "تعارض في البيانات",
-        description: conflict
-          ? `هذه البيانات مستخدمة مع الخط: ${conflict.fullPhone}`
-          : err.message,
-      });
+      if (conflict) {
+        toast({
+          variant: "destructive",
+          title: "تعارض في البيانات",
+          description: `هذه البيانات مستخدمة مع الخط: ${conflict.fullPhone}`,
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "فشل حفظ التعديل",
+          description: err.message,
+        });
+      }
     },
   });
 
