@@ -106,6 +106,28 @@ export const orders = pgTable("orders", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Phone Lines Table (migrated from in-memory JSON seed)
+export const phoneLines = pgTable("phone_lines", {
+  id: serial("id").primaryKey(),
+  telNo: text("tel_no").notNull(),
+  central: text("central").notNull(),
+  iduNo: text("idu_no"),
+  oduNo: text("odu_no"),
+  cabinNumber: text("cabin_number"),
+  primaryBlockNo: text("primary_block_no"),
+  cabinetIn: text("cabinet_in"),
+  secBlockNo: text("sec_block_no"),
+  cabinetOut: text("cabinet_out"),
+  boxNumber: text("box_number"),
+  dpTerminal: text("dp_terminal"),
+  port: text("port"),
+  len: text("len"),
+  fiberBlock: text("fiber_block"),
+  fiberOut: text("fiber_out"),
+  telNumTxt: text("tel_num_txt"),
+  fullPhone: text("full_phone").notNull().unique(),
+});
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users);
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -162,6 +184,7 @@ export type Order = typeof orders.$inferSelect;
 export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type UpdateOrder = z.infer<typeof updateOrderSchema>;
 export type UpdateExternal = z.infer<typeof updateExternalResponseSchema>;
+export type PhoneLine = typeof phoneLines.$inferSelect;
 
 // WebSocket Events
 export const WS_EVENTS = {

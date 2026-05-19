@@ -1,9 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { storage } from "./storage";
+import { pool } from "./db";
 import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -13,22 +12,6 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import MemoryStore from "memorystore";
-
-// Load phone lines data from chunked seed files into memory once at startup
-let phoneLinesData: any[] = [];
-for (let i = 1; i <= 8; i++) {
-  try {
-    const raw = readFileSync(join(process.cwd(), `server/phone-lines-seed-${i}.json`), "utf-8");
-    phoneLinesData = phoneLinesData.concat(JSON.parse(raw));
-  } catch {
-    // chunk file not present — skip
-  }
-}
-if (phoneLinesData.length > 0) {
-  console.log(`Loaded ${phoneLinesData.length} phone lines`);
-} else {
-  console.warn("No phone-lines-seed files found, phone lines reports will be empty");
-}
 
 const scryptAsync = promisify(scrypt);
 const SessionStore = MemoryStore(session);
@@ -475,15 +458,21 @@ export async function registerRoutes(
   // === Phone Lines Reports ===
 
   // GET /api/phone-lines/filter-options — returns unique centrals, cabins per central, boxes per central+cabin
-  app.get("/api/phone-lines/filter-options", requireAuth, (req, res) => {
+  app.get("/api/phone-lines/filter-options", requireAuth, async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT central, cabin_number, box_number
+      FROM phone_lines
+      WHERE central IS NOT NULL AND central <> ''
+    `);
+
     const centralSet = new Set<string>();
     const cabinMap = new Map<string, Set<string>>();
     const boxMap = new Map<string, Set<string>>();
 
-    for (const r of phoneLinesData) {
+    for (const r of rows) {
       const central = r.central || "";
-      const cabin = r.cabinNumber || "";
-      const box = r.boxNumber || "";
+      const cabin = r.cabin_number || "";
+      const box = r.box_number || "";
       if (central) centralSet.add(central);
       if (central && cabin) {
         if (!cabinMap.has(central)) cabinMap.set(central, new Set());
@@ -517,46 +506,60 @@ export async function registerRoutes(
   });
 
   // GET /api/phone-lines — paginated, with optional central/cabin/box or text search filters
-  app.get("/api/phone-lines", requireAuth, (req, res) => {
+  app.get("/api/phone-lines", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
 
-    let filtered = phoneLinesData;
-    if (central) filtered = filtered.filter(r => r.central === central);
-    if (cabin) filtered = filtered.filter(r => r.cabinNumber === cabin);
-    if (box) filtered = filtered.filter(r => r.boxNumber === box);
+    const conds: string[] = [];
+    const params: any[] = [];
+    if (central) { params.push(central); conds.push(`central = $${params.length}`); }
+    if (cabin) { params.push(cabin); conds.push(`cabin_number = $${params.length}`); }
+    if (box) { params.push(box); conds.push(`box_number = $${params.length}`); }
     if (q) {
-      filtered = filtered.filter(r =>
-        r.fullPhone?.toLowerCase().includes(q) ||
-        r.telNo?.toLowerCase().includes(q) ||
-        r.central?.toLowerCase().includes(q) ||
-        r.cabinNumber?.toLowerCase().includes(q) ||
-        r.boxNumber?.toLowerCase().includes(q)
-      );
+      params.push(`%${q}%`);
+      const p = `$${params.length}`;
+      conds.push(`(LOWER(full_phone) LIKE ${p} OR LOWER(tel_no) LIKE ${p} OR LOWER(central) LIKE ${p} OR LOWER(cabin_number) LIKE ${p} OR LOWER(box_number) LIKE ${p})`);
     }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
-    const total = filtered.length;
-    const data = filtered.slice((pageNum - 1) * pageSize, pageNum * pageSize);
-    res.json({ data, total, page: pageNum, pageSize });
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c FROM phone_lines ${where}`, params);
+    const total = totalRes.rows[0].c as number;
+
+    const offset = (pageNum - 1) * pageSize;
+    params.push(pageSize); params.push(offset);
+    const dataRes = await pool.query(
+      `SELECT id, tel_no AS "telNo", central, idu_no AS "iduNo", odu_no AS "oduNo",
+              cabin_number AS "cabinNumber", primary_block_no AS "primaryBlockNo",
+              cabinet_in AS "cabinetIn", sec_block_no AS "secBlockNo", cabinet_out AS "cabinetOut",
+              box_number AS "boxNumber", dp_terminal AS "dpTerminal", port, len,
+              fiber_block AS "fiberBlock", fiber_out AS "fiberOut",
+              tel_num_txt AS "telNumTxt", full_phone AS "fullPhone"
+       FROM phone_lines ${where}
+       ORDER BY id
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
   });
 
   // GET /api/phone-lines/box-summary — count of lines per box
-  app.get("/api/phone-lines/box-summary", requireAuth, (req, res) => {
+  app.get("/api/phone-lines/box-summary", requireAuth, async (req, res) => {
     const { search = "" } = req.query as Record<string, string>;
     const q = search.trim().toLowerCase();
 
-    const countMap = new Map<string, { central: string; cabinNumber: string; boxNumber: string; count: number }>();
-    for (const r of phoneLinesData) {
-      const key = `${r.central}||${r.cabinNumber}||${r.boxNumber}`;
-      if (!countMap.has(key)) {
-        countMap.set(key, { central: r.central, cabinNumber: r.cabinNumber || "", boxNumber: r.boxNumber || "", count: 0 });
-      }
-      countMap.get(key)!.count++;
-    }
+    const { rows } = await pool.query(`
+      SELECT central,
+             COALESCE(cabin_number, '') AS "cabinNumber",
+             COALESCE(box_number, '') AS "boxNumber",
+             COUNT(*)::int AS count
+      FROM phone_lines
+      GROUP BY central, cabin_number, box_number
+    `);
 
-    let summary = Array.from(countMap.values()).sort((a, b) => {
+    let summary = rows.sort((a: any, b: any) => {
       const cc = a.central.localeCompare(b.central, "ar");
       if (cc !== 0) return cc;
       const cab = a.cabinNumber.localeCompare(b.cabinNumber, "ar");
@@ -565,10 +568,10 @@ export async function registerRoutes(
     });
 
     if (q) {
-      summary = summary.filter(r =>
+      summary = summary.filter((r: any) =>
         r.central.toLowerCase().includes(q) ||
         r.cabinNumber.toLowerCase().includes(q) ||
-        r.boxNumber.toLowerCase().includes(q)
+        r.boxNumber.toLowerCase().includes(q),
       );
     }
 
