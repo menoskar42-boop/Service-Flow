@@ -518,7 +518,7 @@ export async function registerRoutes(
   // GET /api/phone-lines/field-options — cascading options for edit form (cabins → boxes → dpTerminals)
   app.get("/api/phone-lines/field-options", requireAuth, async (req, res) => {
     const { central = "", cabin = "", box = "" } = req.query as Record<string, string>;
-    const result: { cabins: string[]; boxes: string[]; dpTerminals: string[] } = { cabins: [], boxes: [], dpTerminals: [] };
+    const result: { cabins: string[]; boxes: string[]; dpTerminals: string[]; cabinetIns: string[] } = { cabins: [], boxes: [], dpTerminals: [], cabinetIns: [] };
     if (!central) return res.json(result);
     const { rows: cabinRows } = await pool.query(
       `SELECT DISTINCT cabin_number FROM phone_lines WHERE central = $1 AND cabin_number IS NOT NULL ORDER BY cabin_number`,
@@ -531,6 +531,11 @@ export async function registerRoutes(
         [central, cabin]
       );
       result.boxes = boxRows.map((r: any) => r.box_number);
+      const { rows: cabinInRows } = await pool.query(
+        `SELECT DISTINCT cabinet_in FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND cabinet_in IS NOT NULL ORDER BY cabinet_in`,
+        [central, cabin]
+      );
+      result.cabinetIns = cabinInRows.map((r: any) => r.cabinet_in);
       if (box) {
         const { rows: dpRows } = await pool.query(
           `SELECT DISTINCT dp_terminal FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND box_number = $3 AND dp_terminal IS NOT NULL ORDER BY dp_terminal`,
@@ -621,7 +626,7 @@ export async function registerRoutes(
   app.put("/api/phone-lines/:id", requireAuth, requireTechOrAdmin, async (req, res) => {
     const id = parseInt(req.params.id);
     const user = req.user as any;
-    const { cabinNumber, boxNumber, dpTerminal } = req.body;
+    const { cabinNumber, boxNumber, dpTerminal, cabinetIn } = req.body;
 
     if (!cabinNumber || !boxNumber || !dpTerminal) {
       return res.status(400).json({ message: "cabinNumber و boxNumber و dpTerminal مطلوبة" });
@@ -640,6 +645,11 @@ export async function registerRoutes(
       return res.status(200).json({ message: "لا يوجد تغيير في البيانات" });
     }
 
+    const cabinChanged = line.cabin_number !== cabinNumber;
+    if (cabinChanged && !cabinetIn) {
+      return res.status(400).json({ message: "عند تغيير الكابينة يجب تحديد قيمة الدخل (cabinet_in)" });
+    }
+
     // Uniqueness check: same (central, cabinNumber, boxNumber, dpTerminal) in another record
     const conflict = await pool.query(
       `SELECT id, full_phone FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND box_number = $3 AND dp_terminal = $4 AND id <> $5 LIMIT 1`,
@@ -652,11 +662,18 @@ export async function registerRoutes(
       });
     }
 
-    // Update phone_lines
-    await pool.query(
-      `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3 WHERE id = $4`,
-      [cabinNumber, boxNumber, dpTerminal, id],
-    );
+    // Update phone_lines (also update cabinet_in when cabin changes)
+    if (cabinChanged) {
+      await pool.query(
+        `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3, cabinet_in = $4 WHERE id = $5`,
+        [cabinNumber, boxNumber, dpTerminal, cabinetIn, id],
+      );
+    } else {
+      await pool.query(
+        `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3 WHERE id = $4`,
+        [cabinNumber, boxNumber, dpTerminal, id],
+      );
+    }
 
     // Insert audit record
     await pool.query(

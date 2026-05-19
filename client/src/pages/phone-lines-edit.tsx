@@ -65,9 +65,11 @@ export default function PhoneLinesEditPage() {
   // Inline edit state
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editCentral, setEditCentral] = useState("");
+  const [originalCabin, setOriginalCabin] = useState("");
   const [editCabin, setEditCabin] = useState("");
   const [editBox, setEditBox] = useState("");
   const [editDp, setEditDp] = useState("");
+  const [editCabinetIn, setEditCabinetIn] = useState("");
 
   const canEdit = user?.role === ROLES.TECH || user?.role === ROLES.ADMIN;
   const canRollback = user?.role === ROLES.TECH || user?.role === ROLES.ADMIN;
@@ -106,25 +108,25 @@ export default function PhoneLinesEditPage() {
   const { data: fieldOptions } = useQuery({
     queryKey: ["/api/phone-lines/field-options", editCentral, editCabin, editBox],
     queryFn: async () => {
-      if (!editCentral) return { cabins: [] as string[], boxes: [] as string[], dpTerminals: [] as string[] };
+      if (!editCentral) return { cabins: [] as string[], boxes: [] as string[], dpTerminals: [] as string[], cabinetIns: [] as string[] };
       const params = new URLSearchParams({ central: editCentral });
       if (editCabin) params.set("cabin", editCabin);
       if (editBox) params.set("box", editBox);
       const res = await fetch(`/api/phone-lines/field-options?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<{ cabins: string[]; boxes: string[]; dpTerminals: string[] }>;
+      return res.json() as Promise<{ cabins: string[]; boxes: string[]; dpTerminals: string[]; cabinetIns: string[] }>;
     },
     enabled: !!editCentral,
   });
 
   // --- Mutations ---
   const editMutation = useMutation({
-    mutationFn: async ({ id, cabin, box, dp }: { id: number; cabin: string; box: string; dp: string }) => {
+    mutationFn: async ({ id, cabin, box, dp, cabinetIn }: { id: number; cabin: string; box: string; dp: string; cabinetIn?: string }) => {
       const res = await fetch(`/api/phone-lines/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ cabinNumber: cabin, boxNumber: box, dpTerminal: dp }),
+        body: JSON.stringify({ cabinNumber: cabin, boxNumber: box, dpTerminal: dp, cabinetIn }),
       });
       const text = await res.text();
       let data: any = {};
@@ -140,6 +142,7 @@ export default function PhoneLinesEditPage() {
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/phone-lines/edits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/phone-lines", searchLine] });
+      queryClient.invalidateQueries({ queryKey: ["/api/phone-lines/box-summary"] });
     },
     onError: (err: any) => {
       const conflict = err.data?.conflictLine;
@@ -197,9 +200,11 @@ export default function PhoneLinesEditPage() {
   const startEdit = (line: PhoneLine) => {
     setEditingId(line.id);
     setEditCentral(line.central);
+    setOriginalCabin(line.cabinNumber || "");
     setEditCabin(line.cabinNumber || "");
     setEditBox(line.boxNumber || "");
     setEditDp(line.dpTerminal || "");
+    setEditCabinetIn("");
   };
 
   const statusBadge = (s: EditStatus) => {
@@ -283,11 +288,23 @@ export default function PhoneLinesEditPage() {
                           <SearchableCombobox
                             options={fieldOptions?.cabins || []}
                             value={editCabin}
-                            onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); }}
+                            onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); setEditCabinetIn(""); }}
                             placeholder="اختر الكابينة"
                             searchPlaceholder="ابحث..."
                           />
                         </div>
+                        {editCabin && editCabin !== originalCabin && (
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-orange-700">قيمة الدخل (cabinet_in) *</label>
+                            <SearchableCombobox
+                              options={fieldOptions?.cabinetIns || []}
+                              value={editCabinetIn}
+                              onChange={setEditCabinetIn}
+                              placeholder="اختر قيمة الدخل"
+                              searchPlaceholder="ابحث..."
+                            />
+                          </div>
+                        )}
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">البكس</label>
                           <SearchableCombobox
@@ -313,8 +330,8 @@ export default function PhoneLinesEditPage() {
                         <div className="flex gap-2 pt-1">
                           <Button
                             size="sm"
-                            disabled={editMutation.isPending}
-                            onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp })}
+                            disabled={editMutation.isPending || (editCabin !== originalCabin && !editCabinetIn)}
+                            onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp, cabinetIn: editCabinetIn || undefined })}
                             className="flex-1 h-9"
                           >
                             {editMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "حفظ"}
@@ -377,11 +394,23 @@ export default function PhoneLinesEditPage() {
                                   <SearchableCombobox
                                     options={fieldOptions?.cabins || []}
                                     value={editCabin}
-                                    onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); }}
+                                    onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); setEditCabinetIn(""); }}
                                     placeholder="اختر الكابينة"
                                     searchPlaceholder="ابحث..."
                                   />
                                 </div>
+                                {editCabin && editCabin !== originalCabin && (
+                                  <div className="space-y-1 w-40">
+                                    <label className="text-xs font-medium text-orange-700">قيمة الدخل *</label>
+                                    <SearchableCombobox
+                                      options={fieldOptions?.cabinetIns || []}
+                                      value={editCabinetIn}
+                                      onChange={setEditCabinetIn}
+                                      placeholder="اختر قيمة الدخل"
+                                      searchPlaceholder="ابحث..."
+                                    />
+                                  </div>
+                                )}
                                 <div className="space-y-1 w-36">
                                   <label className="text-xs text-muted-foreground">البكس</label>
                                   <SearchableCombobox
@@ -406,8 +435,8 @@ export default function PhoneLinesEditPage() {
                                 </div>
                                 <Button
                                   size="sm"
-                                  disabled={editMutation.isPending}
-                                  onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp })}
+                                  disabled={editMutation.isPending || (editCabin !== originalCabin && !editCabinetIn)}
+                                  onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp, cabinetIn: editCabinetIn || undefined })}
                                   className="h-9"
                                 >
                                   {editMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "حفظ"}
