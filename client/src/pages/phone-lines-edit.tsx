@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowRight, RotateCcw, CheckCircle2, Pencil, X } from "lucide-react";
+import { Loader2, ArrowRight, RotateCcw, CheckCircle2, Pencil, X, LogOut } from "lucide-react";
 import { format } from "date-fns";
 
 type EditStatus = "pending" | "completed" | "rolled_back";
@@ -51,7 +51,7 @@ interface PhoneLine {
 type ReportTab = "pending" | "completed" | "all";
 
 export default function PhoneLinesEditPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const isMobile = useIsMobile();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -201,14 +201,22 @@ export default function PhoneLinesEditPage() {
 
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
-      <header className="bg-white border-b px-6 py-3 flex items-center gap-3">
-        {user?.role !== ROLES.DATA_MANAGER && (
-          <Button variant="ghost" size="sm" onClick={() => setLocation("/")}>
-            <ArrowRight className="w-4 h-4 ml-1" />
-            رجوع
+      <header className="bg-white border-b px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {user?.role !== ROLES.DATA_MANAGER && (
+            <Button variant="ghost" size="sm" onClick={() => setLocation("/")}>
+              <ArrowRight className="w-4 h-4 ml-1" />
+              رجوع
+            </Button>
+          )}
+          <h1 className="font-bold text-base">إدارة البيانات الفنية للخطوط</h1>
+        </div>
+        {user?.role === ROLES.DATA_MANAGER && (
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => logout()}>
+            <LogOut className="w-4 h-4 ml-1" />
+            تسجيل خروج
           </Button>
         )}
-        <h1 className="font-bold text-base">إدارة البيانات الفنية للخطوط</h1>
       </header>
 
       <main className="max-w-6xl mx-auto p-4 space-y-6">
