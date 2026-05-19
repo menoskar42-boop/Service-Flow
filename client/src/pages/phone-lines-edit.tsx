@@ -118,18 +118,14 @@ export default function PhoneLinesEditPage() {
     enabled: !!editCentral,
   });
 
-  // --- DP Terminal options (separate query keyed on box, so box change triggers refetch independently) ---
-  const { data: dpOptions } = useQuery({
-    queryKey: ["/api/phone-lines/dp-options", editCentral, editCabin, editBox],
-    queryFn: async () => {
-      if (!editCentral || !editCabin || !editBox) return [] as string[];
-      const params = new URLSearchParams({ central: editCentral, cabin: editCabin, box: editBox });
-      const res = await fetch(`/api/phone-lines/dp-options?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<string[]>;
-    },
-    enabled: !!editCentral && !!editCabin && !!editBox,
-  });
+  // DP Terminal validation: numeric 1-100
+  const isDpValid = (v: string) => /^\d+$/.test(v) && parseInt(v) >= 1 && parseInt(v) <= 100;
+  const handleDpChange = (raw: string) => {
+    const v = raw.replace(/\D/g, "");
+    if (v === "") { setEditDp(""); return; }
+    const n = parseInt(v);
+    if (n >= 1 && n <= 100) setEditDp(v);
+  };
 
   // --- Mutations ---
   const editMutation = useMutation({
@@ -329,20 +325,21 @@ export default function PhoneLinesEditPage() {
                           />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">DP Terminal</label>
-                          <SearchableCombobox
-                            options={dpOptions || []}
+                          <label className="text-xs text-muted-foreground">DP Terminal (1-100)</label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
                             value={editDp}
-                            onChange={setEditDp}
-                            placeholder="اختر DP Terminal"
-                            searchPlaceholder="ابحث..."
+                            onChange={(e) => handleDpChange(e.target.value)}
+                            placeholder="رقم من 1 إلى 100"
+                            className="h-9 text-sm"
                             disabled={!editBox}
                           />
                         </div>
                         <div className="flex gap-2 pt-1">
                           <Button
                             size="sm"
-                            disabled={editMutation.isPending || (editCabin !== originalCabin && !editCabinetIn)}
+                            disabled={editMutation.isPending || !isDpValid(editDp) || (editCabin !== originalCabin && !editCabinetIn)}
                             onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp, cabinetIn: editCabinetIn || undefined })}
                             className="flex-1 h-9"
                           >
@@ -435,19 +432,20 @@ export default function PhoneLinesEditPage() {
                                   />
                                 </div>
                                 <div className="space-y-1 w-36">
-                                  <label className="text-xs text-muted-foreground">DP Terminal</label>
-                                  <SearchableCombobox
-                                    options={dpOptions || []}
+                                  <label className="text-xs text-muted-foreground">DP Terminal (1-100)</label>
+                                  <Input
+                                    type="text"
+                                    inputMode="numeric"
                                     value={editDp}
-                                    onChange={setEditDp}
-                                    placeholder="اختر DP Terminal"
-                                    searchPlaceholder="ابحث..."
+                                    onChange={(e) => handleDpChange(e.target.value)}
+                                    placeholder="1-100"
+                                    className="h-9 text-sm"
                                     disabled={!editBox}
                                   />
                                 </div>
                                 <Button
                                   size="sm"
-                                  disabled={editMutation.isPending || (editCabin !== originalCabin && !editCabinetIn)}
+                                  disabled={editMutation.isPending || !isDpValid(editDp) || (editCabin !== originalCabin && !editCabinetIn)}
                                   onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp, cabinetIn: editCabinetIn || undefined })}
                                   className="h-9"
                                 >
