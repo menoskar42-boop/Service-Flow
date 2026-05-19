@@ -69,7 +69,11 @@ export async function ensureSchema() {
   `);
 
   const { rows } = await pool.query("SELECT COUNT(*)::int AS c FROM phone_lines");
-  if (rows[0].c === 0) {
+  const EXPECTED_MIN = 10000;
+  if (rows[0].c < EXPECTED_MIN) {
+    if (rows[0].c > 0) {
+      console.log(`phone_lines has ${rows[0].c} rows (< ${EXPECTED_MIN}); topping up from seed files`);
+    }
     let allLines: any[] = [];
     for (let i = 1; i <= 8; i++) {
       try {
@@ -121,6 +125,7 @@ export async function ensureSchema() {
         values,
       );
     }
-    console.log(`Seeded ${allLines.length} phone lines into DB`);
+    const { rows: after } = await pool.query("SELECT COUNT(*)::int AS c FROM phone_lines");
+    console.log(`Phone lines: was ${rows[0].c}, now ${after[0].c} (seed had ${allLines.length})`);
   }
 }

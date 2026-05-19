@@ -105,7 +105,7 @@ export default function PhoneLinesEditPage() {
   });
 
   // --- Field options: cabins + boxes + cabinetIns (keyed on central+cabin only, stable when box changes) ---
-  const { data: fieldOptions } = useQuery({
+  const { data: fieldOptions, isFetching: optsFetching } = useQuery({
     queryKey: ["/api/phone-lines/field-options", editCentral, editCabin],
     queryFn: async () => {
       if (!editCentral) return { cabins: [] as string[], boxes: [] as string[], cabinetIns: [] as string[] };
@@ -310,15 +310,18 @@ export default function PhoneLinesEditPage() {
                           </div>
                         )}
                         <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">البكس</label>
+                          <label className="text-xs text-muted-foreground">البكس {optsFetching && "(جارٍ التحميل...)"}</label>
                           <SearchableCombobox
                             options={fieldOptions?.boxes || []}
                             value={editBox}
                             onChange={(val) => { setEditBox(val); setEditDp(""); }}
-                            placeholder="اختر البكس"
+                            placeholder={optsFetching ? "جارٍ التحميل..." : "اختر البكس"}
                             searchPlaceholder="ابحث..."
-                            disabled={!editCabin}
+                            disabled={!editCabin || optsFetching}
                           />
+                          {!optsFetching && editCabin && (fieldOptions?.boxes?.length || 0) === 0 && (
+                            <p className="text-xs text-amber-600">⚠️ لا توجد بكسيات لهذه الكابينة في قاعدة البيانات</p>
+                          )}
                         </div>
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">DP Terminal (1-100)</label>
@@ -418,15 +421,18 @@ export default function PhoneLinesEditPage() {
                                   </div>
                                 )}
                                 <div className="space-y-1 w-36">
-                                  <label className="text-xs text-muted-foreground">البكس</label>
+                                  <label className="text-xs text-muted-foreground">البكس {optsFetching && "..."}</label>
                                   <SearchableCombobox
                                     options={fieldOptions?.boxes || []}
                                     value={editBox}
                                     onChange={(val) => { setEditBox(val); setEditDp(""); }}
-                                    placeholder="اختر البكس"
+                                    placeholder={optsFetching ? "جارٍ التحميل..." : "اختر البكس"}
                                     searchPlaceholder="ابحث..."
-                                    disabled={!editCabin}
+                                    disabled={!editCabin || optsFetching}
                                   />
+                                  {!optsFetching && editCabin && (fieldOptions?.boxes?.length || 0) === 0 && (
+                                    <p className="text-xs text-amber-600">⚠️ لا توجد بكسيات</p>
+                                  )}
                                 </div>
                                 <div className="space-y-1 w-36">
                                   <label className="text-xs text-muted-foreground">DP Terminal (1-100)</label>
