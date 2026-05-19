@@ -246,7 +246,7 @@ export default function PhoneLinesEditPage() {
                     <div className="grid grid-cols-3 gap-2 text-xs">
                       <div><span className="text-muted-foreground">كابينة:</span> <span className="font-medium">{line.cabinNumber || "—"}</span></div>
                       <div><span className="text-muted-foreground">بكس:</span> <span className="font-medium">{line.boxNumber || "—"}</span></div>
-                      <div><span className="text-muted-foreground">DP:</span> <span className="font-medium">{line.dpTerminal || "—"}</span></div>
+                      <div><span className="text-muted-foreground">DP Terminal:</span> <span className="font-medium">{line.dpTerminal || "—"}</span></div>
                     </div>
                     {editingId === line.id && (
                       <div className="space-y-2 pt-2 border-t bg-blue-50 -mx-3 px-3 pb-3 mt-2 rounded-b-lg">
@@ -409,13 +409,13 @@ export default function PhoneLinesEditPage() {
                       <div className="text-muted-foreground font-medium mb-1">القديم</div>
                       <div>كابينة: {edit.oldCabinNumber || "—"}</div>
                       <div>بكس: {edit.oldBoxNumber || "—"}</div>
-                      <div>DP: {edit.oldDpTerminal || "—"}</div>
+                      <div>DP Terminal: {edit.oldDpTerminal || "—"}</div>
                     </div>
                     <div className="space-y-0.5 bg-blue-50 p-2 rounded">
                       <div className="text-muted-foreground font-medium mb-1">الجديد</div>
                       <div className="font-medium">كابينة: {edit.newCabinNumber || "—"}</div>
                       <div className="font-medium">بكس: {edit.newBoxNumber || "—"}</div>
-                      <div className="font-medium">DP: {edit.newDpTerminal || "—"}</div>
+                      <div className="font-medium">DP Terminal: {edit.newDpTerminal || "—"}</div>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground flex items-center justify-between pt-1 border-t">
@@ -480,14 +480,14 @@ export default function PhoneLinesEditPage() {
                         <div className="text-xs space-y-0.5 text-muted-foreground">
                           <div>كابينة: {edit.oldCabinNumber || "—"}</div>
                           <div>بكس: {edit.oldBoxNumber || "—"}</div>
-                          <div>DP: {edit.oldDpTerminal || "—"}</div>
+                          <div>DP Terminal: {edit.oldDpTerminal || "—"}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-xs space-y-0.5 font-medium">
                           <div>كابينة: {edit.newCabinNumber || "—"}</div>
                           <div>بكس: {edit.newBoxNumber || "—"}</div>
-                          <div>DP: {edit.newDpTerminal || "—"}</div>
+                          <div>DP Terminal: {edit.newDpTerminal || "—"}</div>
                         </div>
                       </TableCell>
                       <TableCell>{statusBadge(edit.status)}</TableCell>
