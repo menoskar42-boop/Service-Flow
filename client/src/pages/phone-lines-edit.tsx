@@ -516,15 +516,15 @@ export default function PhoneLinesEditPage() {
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                     <div className="space-y-0.5 bg-gray-50 p-2 rounded">
                       <div className="text-muted-foreground font-medium mb-1">القديم</div>
-                      <div>كابينة: {edit.oldCabinNumber || "—"}</div>
-                      <div>بكس: {edit.oldBoxNumber || "—"}</div>
-                      <div>DP Terminal: {edit.oldDpTerminal || "—"}</div>
+                      <div>كابينة: <span dir="ltr" className="inline-block">{edit.oldCabinNumber || "—"}</span></div>
+                      <div>بكس: <span dir="ltr" className="inline-block">{edit.oldBoxNumber || "—"}</span></div>
+                      <div>DP Terminal: <span dir="ltr" className="inline-block">{edit.oldDpTerminal || "—"}</span></div>
                     </div>
                     <div className="space-y-0.5 bg-blue-50 p-2 rounded">
                       <div className="text-muted-foreground font-medium mb-1">الجديد</div>
-                      <div className="font-medium">كابينة: {edit.newCabinNumber || "—"}</div>
-                      <div className="font-medium">بكس: {edit.newBoxNumber || "—"}</div>
-                      <div className="font-medium">DP Terminal: {edit.newDpTerminal || "—"}</div>
+                      <div className="font-medium">كابينة: <span dir="ltr" className="inline-block">{edit.newCabinNumber || "—"}</span></div>
+                      <div className="font-medium">بكس: <span dir="ltr" className="inline-block">{edit.newBoxNumber || "—"}</span></div>
+                      <div className="font-medium">DP Terminal: <span dir="ltr" className="inline-block">{edit.newDpTerminal || "—"}</span></div>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground flex items-center justify-between pt-1 border-t">
@@ -587,16 +587,16 @@ export default function PhoneLinesEditPage() {
                       <TableCell className="whitespace-nowrap">{edit.central}</TableCell>
                       <TableCell>
                         <div className="text-xs space-y-0.5 text-muted-foreground">
-                          <div>كابينة: {edit.oldCabinNumber || "—"}</div>
-                          <div>بكس: {edit.oldBoxNumber || "—"}</div>
-                          <div>DP Terminal: {edit.oldDpTerminal || "—"}</div>
+                          <div>كابينة: <span dir="ltr" className="inline-block">{edit.oldCabinNumber || "—"}</span></div>
+                          <div>بكس: <span dir="ltr" className="inline-block">{edit.oldBoxNumber || "—"}</span></div>
+                          <div>DP Terminal: <span dir="ltr" className="inline-block">{edit.oldDpTerminal || "—"}</span></div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-xs space-y-0.5 font-medium">
-                          <div>كابينة: {edit.newCabinNumber || "—"}</div>
-                          <div>بكس: {edit.newBoxNumber || "—"}</div>
-                          <div>DP Terminal: {edit.newDpTerminal || "—"}</div>
+                          <div>كابينة: <span dir="ltr" className="inline-block">{edit.newCabinNumber || "—"}</span></div>
+                          <div>بكس: <span dir="ltr" className="inline-block">{edit.newBoxNumber || "—"}</span></div>
+                          <div>DP Terminal: <span dir="ltr" className="inline-block">{edit.newDpTerminal || "—"}</span></div>
                         </div>
                       </TableCell>
                       <TableCell>{statusBadge(edit.status)}</TableCell>
