@@ -202,10 +202,12 @@ export default function PhoneLinesEditPage() {
   return (
     <div className="min-h-screen bg-gray-50" dir="rtl">
       <header className="bg-white border-b px-6 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => setLocation("/")}>
-          <ArrowRight className="w-4 h-4 ml-1" />
-          رجوع
-        </Button>
+        {user?.role !== ROLES.DATA_MANAGER && (
+          <Button variant="ghost" size="sm" onClick={() => setLocation("/")}>
+            <ArrowRight className="w-4 h-4 ml-1" />
+            رجوع
+          </Button>
+        )}
         <h1 className="font-bold text-base">إدارة البيانات الفنية للخطوط</h1>
       </header>
 
