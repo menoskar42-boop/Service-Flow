@@ -89,7 +89,7 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
           )}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] max-h-[95vh] overflow-y-auto w-[95vw] sm:w-full">
         <DialogHeader>
           <DialogTitle className="text-xl font-display text-right">
             {isFeasible ? "تأكيد إمكانية التنفيذ" : "تسجيل عدم إمكانية التنفيذ"}

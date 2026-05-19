@@ -79,26 +79,27 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50/50" dir="rtl">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-30">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-              <LayoutDashboard className="w-6 h-6" />
+        <div className="container mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+              <LayoutDashboard className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h1 className="font-bold text-lg font-display leading-tight">لوحة التحكم</h1>
-              <p className="text-xs text-muted-foreground">مرحباً بك، {user.username}</p>
+            <div className="min-w-0">
+              <h1 className="font-bold text-sm sm:text-lg font-display leading-tight truncate">لوحة التحكم</h1>
+              <p className="text-[10px] sm:text-xs text-muted-foreground truncate">مرحباً، {user.username}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN) && (
-              <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-sm">
-                إدارة البيانات الفنية
+              <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">
+                <span className="hidden sm:inline">إدارة البيانات الفنية</span>
+                <span className="sm:hidden">البيانات</span>
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive">
-              <LogOut className="w-4 h-4 ml-2" />
-              تسجيل خروج
+            <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive h-8 sm:h-9 px-2 sm:px-3">
+              <LogOut className="w-4 h-4 sm:ml-2" />
+              <span className="hidden sm:inline">تسجيل خروج</span>
             </Button>
           </div>
         </div>

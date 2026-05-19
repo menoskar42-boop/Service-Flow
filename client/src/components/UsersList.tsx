@@ -48,6 +48,8 @@ export function UsersList() {
         return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">مبيعات</Badge>;
       case ROLES.EXTERNAL:
         return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">شئون خارجية</Badge>;
+      case ROLES.DATA_MANAGER:
+        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">مسئول البيانات</Badge>;
       default:
         return <Badge variant="outline">{role}</Badge>;
     }

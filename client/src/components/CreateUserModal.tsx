@@ -69,6 +69,7 @@ export function CreateUserModal() {
                 <SelectItem value={ROLES.SALES} className="text-right">موظف مبيعات</SelectItem>
                 <SelectItem value={ROLES.TECH} className="text-right">فني</SelectItem>
                 <SelectItem value={ROLES.EXTERNAL} className="text-right">مراقب الشئون الخارجية</SelectItem>
+                <SelectItem value={ROLES.DATA_MANAGER} className="text-right">مسئول البيانات</SelectItem>
                 <SelectItem value={ROLES.ADMIN} className="text-right">مدير</SelectItem>
               </SelectContent>
             </Select>

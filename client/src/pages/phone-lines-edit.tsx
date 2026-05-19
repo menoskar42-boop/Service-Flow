@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { ROLES } from "@shared/schema";
@@ -28,6 +29,7 @@ interface PhoneLineEdit {
   oldDpTerminal: string | null;
   newDpTerminal: string | null;
   status: EditStatus;
+  editedById: number;
   editedByName: string;
   editedAt: string;
   confirmedByName: string | null;
@@ -50,6 +52,7 @@ type ReportTab = "pending" | "completed" | "all";
 
 export default function PhoneLinesEditPage() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -223,7 +226,67 @@ export default function PhoneLinesEditPage() {
                 <Loader2 className="w-4 h-4 animate-spin" /> جاري البحث...
               </div>
             )}
-            {linesData && linesData.data.length > 0 && (
+            {linesData && linesData.data.length > 0 && isMobile && (
+              <div className="space-y-2">
+                {linesData.data.map((line) => (
+                  <div key={line.id} className="border rounded-lg p-3 space-y-2 bg-white">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-mono font-semibold text-sm">{line.fullPhone}</div>
+                      {editingId === line.id ? (
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditingId(null)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" className="h-7" onClick={() => startEdit(line)}>
+                          <Pencil className="w-3 h-3 ml-1" /> تعديل
+                        </Button>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{line.central}</div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div><span className="text-muted-foreground">كابينة:</span> <span className="font-medium">{line.cabinNumber || "—"}</span></div>
+                      <div><span className="text-muted-foreground">بكس:</span> <span className="font-medium">{line.boxNumber || "—"}</span></div>
+                      <div><span className="text-muted-foreground">DP:</span> <span className="font-medium">{line.dpTerminal || "—"}</span></div>
+                    </div>
+                    {editingId === line.id && (
+                      <div className="space-y-2 pt-2 border-t bg-blue-50 -mx-3 px-3 pb-3 mt-2 rounded-b-lg">
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">الكابينة</label>
+                          <Input value={editCabin} onChange={(e) => setEditCabin(e.target.value)} className="h-9 text-sm" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-xs text-muted-foreground">البكس</label>
+                            <Input value={editBox} onChange={(e) => setEditBox(e.target.value)} className="h-9 text-sm" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs text-muted-foreground">DP Terminal</label>
+                            <Input value={editDp} onChange={(e) => setEditDp(e.target.value)} className="h-9 text-sm" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            disabled={editMutation.isPending}
+                            onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp })}
+                            className="flex-1 h-9"
+                          >
+                            {editMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "حفظ"}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-9" onClick={() => setEditingId(null)}>
+                            إلغاء
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {linesData.total > 30 && (
+                  <p className="text-xs text-muted-foreground mt-2 px-1">يظهر أول 30 نتيجة من {linesData.total.toLocaleString("ar-EG")} — دقق في البحث</p>
+                )}
+              </div>
+            )}
+            {linesData && linesData.data.length > 0 && !isMobile && (
               <div className="overflow-x-auto">
                 <Table className="text-sm text-right">
                   <TableHeader className="bg-muted/40">
@@ -332,6 +395,65 @@ export default function PhoneLinesEditPage() {
             </div>
           ) : !edits || edits.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-12">لا توجد بيانات</p>
+          ) : isMobile ? (
+            <div className="p-3 space-y-3">
+              {edits.map((edit, idx) => (
+                <div key={edit.id} className="border rounded-lg p-3 bg-white space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-mono font-semibold text-sm">{edit.fullPhone}</div>
+                    {statusBadge(edit.status)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{edit.central}</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div className="space-y-0.5 bg-gray-50 p-2 rounded">
+                      <div className="text-muted-foreground font-medium mb-1">القديم</div>
+                      <div>كابينة: {edit.oldCabinNumber || "—"}</div>
+                      <div>بكس: {edit.oldBoxNumber || "—"}</div>
+                      <div>DP: {edit.oldDpTerminal || "—"}</div>
+                    </div>
+                    <div className="space-y-0.5 bg-blue-50 p-2 rounded">
+                      <div className="text-muted-foreground font-medium mb-1">الجديد</div>
+                      <div className="font-medium">كابينة: {edit.newCabinNumber || "—"}</div>
+                      <div className="font-medium">بكس: {edit.newBoxNumber || "—"}</div>
+                      <div className="font-medium">DP: {edit.newDpTerminal || "—"}</div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground flex items-center justify-between pt-1 border-t">
+                    <span>{edit.editedByName}</span>
+                    <span>{format(new Date(edit.editedAt), "yyyy-MM-dd HH:mm")}</span>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    {canRollback && edit.status === "pending" && (user?.role === ROLES.ADMIN || edit.editedById === user?.id) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 border-red-200 hover:bg-red-50 h-8 text-xs flex-1"
+                        disabled={rollbackMutation.isPending}
+                        onClick={() => rollbackMutation.mutate(edit.id)}
+                      >
+                        <RotateCcw className="w-3 h-3 ml-1" /> تراجع
+                      </Button>
+                    )}
+                    {canConfirm && edit.status === "pending" && (
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 h-8 text-xs flex-1"
+                        disabled={confirmMutation.isPending}
+                        onClick={() => confirmMutation.mutate(edit.id)}
+                      >
+                        <CheckCircle2 className="w-3 h-3 ml-1" /> تأكيد الانتهاء
+                      </Button>
+                    )}
+                    {edit.status === "completed" && (
+                      <span className="text-xs text-green-700">✓ تم التأكيد بواسطة {edit.confirmedByName}</span>
+                    )}
+                    {edit.status === "rolled_back" && (
+                      <span className="text-xs text-gray-500">↩ تم التراجع بواسطة {edit.rolledBackByName}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table className="text-sm text-right">
@@ -375,7 +497,7 @@ export default function PhoneLinesEditPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          {canRollback && edit.status === "pending" && (
+                          {canRollback && edit.status === "pending" && (user?.role === ROLES.ADMIN || edit.editedById === user?.id) && (
                             <Button
                               variant="outline"
                               size="sm"
