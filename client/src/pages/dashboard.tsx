@@ -32,6 +32,8 @@ export default function Dashboard() {
   useEffect(() => {
     if (!authLoading && !user) {
       setLocation("/login");
+    } else if (!authLoading && user?.role === ROLES.DATA_MANAGER) {
+      setLocation("/phone-lines");
     }
   }, [authLoading, user, setLocation]);
 
@@ -88,10 +90,17 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive">
-            <LogOut className="w-4 h-4 ml-2" />
-            تسجيل خروج
-          </Button>
+          <div className="flex items-center gap-2">
+            {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN) && (
+              <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-sm">
+                إدارة البيانات الفنية
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive">
+              <LogOut className="w-4 h-4 ml-2" />
+              تسجيل خروج
+            </Button>
+          </div>
         </div>
 
         {/* Admin Tab Navigation */}

@@ -136,6 +136,16 @@ export async function registerRoutes(
     res.status(403).json({ message: "Admin access required" });
   };
 
+  const requireTechOrAdmin = (req: any, res: any, next: any) => {
+    if (req.isAuthenticated() && (req.user.role === ROLES.TECH || req.user.role === ROLES.ADMIN)) return next();
+    res.status(403).json({ message: "Tech or Admin access required" });
+  };
+
+  const requireDataManager = (req: any, res: any, next: any) => {
+    if (req.isAuthenticated() && req.user.role === ROLES.DATA_MANAGER) return next();
+    res.status(403).json({ message: "Data Manager access required" });
+  };
+
   // === User Management Routes ===
   app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
     const userList = await storage.getUsers();
@@ -151,9 +161,9 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing required fields" });
       }
       
-      const validRoles = [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL];
+      const validRoles = [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER];
       if (!validRoles.includes(role)) {
-        return res.status(400).json({ message: "Role must be sales, tech, or external" });
+        return res.status(400).json({ message: "Role must be sales, tech, external, or data_manager" });
       }
 
       const existing = await storage.getUserByUsername(username);
@@ -576,6 +586,149 @@ export async function registerRoutes(
     }
 
     res.json(summary);
+  });
+
+  // === Phone Line Edits ===
+
+  // PUT /api/phone-lines/:id — edit cabin/box/dpTerminal + create audit record
+  app.put("/api/phone-lines/:id", requireAuth, requireTechOrAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const user = req.user as any;
+    const { cabinNumber, boxNumber, dpTerminal } = req.body;
+
+    if (!cabinNumber || !boxNumber || !dpTerminal) {
+      return res.status(400).json({ message: "cabinNumber و boxNumber و dpTerminal مطلوبة" });
+    }
+
+    // Load current line
+    const lineRes = await pool.query(
+      `SELECT id, central, cabin_number, box_number, dp_terminal, full_phone FROM phone_lines WHERE id = $1`,
+      [id],
+    );
+    if (lineRes.rows.length === 0) return res.status(404).json({ message: "الخط غير موجود" });
+    const line = lineRes.rows[0];
+
+    // Skip if nothing changed
+    if (line.cabin_number === cabinNumber && line.box_number === boxNumber && line.dp_terminal === dpTerminal) {
+      return res.status(200).json({ message: "لا يوجد تغيير في البيانات" });
+    }
+
+    // Uniqueness check: same (central, cabinNumber, boxNumber, dpTerminal) in another record
+    const conflict = await pool.query(
+      `SELECT id, full_phone FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND box_number = $3 AND dp_terminal = $4 AND id <> $5 LIMIT 1`,
+      [line.central, cabinNumber, boxNumber, dpTerminal, id],
+    );
+    if (conflict.rows.length > 0) {
+      return res.status(409).json({
+        message: "هذه البيانات مستخدمة بالفعل مع خط آخر",
+        conflictLine: { fullPhone: conflict.rows[0].full_phone, id: conflict.rows[0].id },
+      });
+    }
+
+    // Update phone_lines
+    await pool.query(
+      `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3 WHERE id = $4`,
+      [cabinNumber, boxNumber, dpTerminal, id],
+    );
+
+    // Insert audit record
+    await pool.query(
+      `INSERT INTO phone_line_edits
+         (phone_line_id, full_phone, central, old_cabin_number, new_cabin_number, old_box_number, new_box_number, old_dp_terminal, new_dp_terminal, edited_by_id, edited_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [id, line.full_phone, line.central, line.cabin_number, cabinNumber, line.box_number, boxNumber, line.dp_terminal, dpTerminal, user.id, user.username],
+    );
+
+    res.json({ success: true });
+  });
+
+  // POST /api/phone-lines/edits/:id/rollback — admin: any pending; tech: only their own
+  app.post("/api/phone-lines/edits/:id/rollback", requireAuth, requireTechOrAdmin, async (req, res) => {
+    const editId = parseInt(req.params.id);
+    const user = req.user as any;
+
+    const editRes = await pool.query(
+      `SELECT * FROM phone_line_edits WHERE id = $1`,
+      [editId],
+    );
+    if (editRes.rows.length === 0) return res.status(404).json({ message: "السجل غير موجود" });
+    const edit = editRes.rows[0];
+
+    if (edit.status !== "pending") {
+      return res.status(400).json({ message: "لا يمكن التراجع — السجل ليس تحت التنفيذ" });
+    }
+
+    // Tech can only rollback their own edits
+    if (user.role === ROLES.TECH && edit.edited_by_id !== user.id) {
+      return res.status(403).json({ message: "يمكنك فقط التراجع عن تعديلاتك الشخصية" });
+    }
+
+    // Revert phone_lines to old values
+    await pool.query(
+      `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3 WHERE id = $4`,
+      [edit.old_cabin_number, edit.old_box_number, edit.old_dp_terminal, edit.phone_line_id],
+    );
+
+    // Mark edit as rolled_back
+    await pool.query(
+      `UPDATE phone_line_edits SET status = 'rolled_back', rolled_back_by_id = $1, rolled_back_by_name = $2, rolled_back_at = now() WHERE id = $3`,
+      [user.id, user.username, editId],
+    );
+
+    res.json({ success: true });
+  });
+
+  // POST /api/phone-lines/edits/:id/confirm — data_manager only
+  app.post("/api/phone-lines/edits/:id/confirm", requireAuth, requireDataManager, async (req, res) => {
+    const editId = parseInt(req.params.id);
+    const user = req.user as any;
+
+    const editRes = await pool.query(
+      `SELECT status FROM phone_line_edits WHERE id = $1`,
+      [editId],
+    );
+    if (editRes.rows.length === 0) return res.status(404).json({ message: "السجل غير موجود" });
+    if (editRes.rows[0].status !== "pending") {
+      return res.status(400).json({ message: "السجل ليس تحت التنفيذ" });
+    }
+
+    await pool.query(
+      `UPDATE phone_line_edits SET status = 'completed', confirmed_by_id = $1, confirmed_by_name = $2, confirmed_at = now() WHERE id = $3`,
+      [user.id, user.username, editId],
+    );
+
+    res.json({ success: true });
+  });
+
+  // GET /api/phone-lines/edits — list edits, optional ?status=pending|completed|rolled_back&search=<phone>
+  app.get("/api/phone-lines/edits", requireAuth, async (req, res) => {
+    const user = req.user as any;
+    const allowed = [ROLES.ADMIN, ROLES.TECH, ROLES.DATA_MANAGER];
+    if (!allowed.includes(user.role)) return res.status(403).json({ message: "Forbidden" });
+
+    const { status = "", search = "" } = req.query as Record<string, string>;
+    const conds: string[] = [];
+    const params: any[] = [];
+
+    if (status) { params.push(status); conds.push(`status = $${params.length}`); }
+    if (search.trim()) { params.push(`%${search.trim()}%`); conds.push(`full_phone ILIKE $${params.length}`); }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+
+    const { rows } = await pool.query(
+      `SELECT id, phone_line_id AS "phoneLineId", full_phone AS "fullPhone", central,
+              old_cabin_number AS "oldCabinNumber", new_cabin_number AS "newCabinNumber",
+              old_box_number AS "oldBoxNumber", new_box_number AS "newBoxNumber",
+              old_dp_terminal AS "oldDpTerminal", new_dp_terminal AS "newDpTerminal",
+              status,
+              edited_by_id AS "editedById", edited_by_name AS "editedByName", edited_at AS "editedAt",
+              confirmed_by_name AS "confirmedByName", confirmed_at AS "confirmedAt",
+              rolled_back_by_name AS "rolledBackByName", rolled_back_at AS "rolledBackAt"
+       FROM phone_line_edits ${where}
+       ORDER BY edited_at DESC`,
+      params,
+    );
+
+    res.json(rows);
   });
 
   return httpServer;

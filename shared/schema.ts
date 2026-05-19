@@ -8,6 +8,7 @@ export const ROLES = {
   TECH: "tech",
   ADMIN: "admin",
   EXTERNAL: "external",
+  DATA_MANAGER: "data_manager",
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
@@ -127,6 +128,33 @@ export const phoneLines = pgTable("phone_lines", {
   telNumTxt: text("tel_num_txt"),
   fullPhone: text("full_phone").notNull().unique(),
 });
+
+// Phone Line Edits Audit Table
+export const phoneLineEdits = pgTable("phone_line_edits", {
+  id: serial("id").primaryKey(),
+  phoneLineId: integer("phone_line_id").references(() => phoneLines.id).notNull(),
+  fullPhone: text("full_phone").notNull(),
+  central: text("central").notNull(),
+  oldCabinNumber: text("old_cabin_number"),
+  newCabinNumber: text("new_cabin_number"),
+  oldBoxNumber: text("old_box_number"),
+  newBoxNumber: text("new_box_number"),
+  oldDpTerminal: text("old_dp_terminal"),
+  newDpTerminal: text("new_dp_terminal"),
+  // pending → completed | rolled_back
+  status: text("status").default("pending").notNull(),
+  editedById: integer("edited_by_id").references(() => users.id).notNull(),
+  editedByName: text("edited_by_name").notNull(),
+  editedAt: timestamp("edited_at").defaultNow().notNull(),
+  confirmedById: integer("confirmed_by_id").references(() => users.id),
+  confirmedByName: text("confirmed_by_name"),
+  confirmedAt: timestamp("confirmed_at"),
+  rolledBackById: integer("rolled_back_by_id").references(() => users.id),
+  rolledBackByName: text("rolled_back_by_name"),
+  rolledBackAt: timestamp("rolled_back_at"),
+});
+
+export type PhoneLineEdit = typeof phoneLineEdits.$inferSelect;
 
 // Schemas
 export const insertUserSchema = createInsertSchema(users);

@@ -43,6 +43,31 @@ export async function ensureSchema() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS phone_line_edits (
+      id serial PRIMARY KEY,
+      phone_line_id integer NOT NULL REFERENCES phone_lines(id),
+      full_phone text NOT NULL,
+      central text NOT NULL,
+      old_cabin_number text,
+      new_cabin_number text,
+      old_box_number text,
+      new_box_number text,
+      old_dp_terminal text,
+      new_dp_terminal text,
+      status text NOT NULL DEFAULT 'pending',
+      edited_by_id integer NOT NULL REFERENCES users(id),
+      edited_by_name text NOT NULL,
+      edited_at timestamptz NOT NULL DEFAULT now(),
+      confirmed_by_id integer REFERENCES users(id),
+      confirmed_by_name text,
+      confirmed_at timestamptz,
+      rolled_back_by_id integer REFERENCES users(id),
+      rolled_back_by_name text,
+      rolled_back_at timestamptz
+    )
+  `);
+
   const { rows } = await pool.query("SELECT COUNT(*)::int AS c FROM phone_lines");
   if (rows[0].c === 0) {
     let allLines: any[] = [];
