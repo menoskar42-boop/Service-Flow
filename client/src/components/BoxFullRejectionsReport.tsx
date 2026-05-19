@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { type Order, ORDER_STATUS, REJECTION_REASONS } from "@shared/schema";
 import { Search } from "lucide-react";
 import { format } from "date-fns";
@@ -31,6 +32,10 @@ interface BoxFullRejectionsReportProps {
 
 export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterCentral, setFilterCentral] = useState("");
+  const [filterCabin, setFilterCabin] = useState("");
+  const [filterBox, setFilterBox] = useState("");
+  const [maxWorking, setMaxWorking] = useState("");
 
   const { data: boxSummaryData } = useQuery({
     queryKey: ["/api/phone-lines/box-summary"],
@@ -100,7 +105,24 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
     row.centralName === "الغنايم-نجع العمدة" ? "shlter" :
     row.cabinNumber;
 
+  // Dropdown options derived from all rows
+  const centralOptions = useMemo(() => [...new Set(rows.map(r => r.centralName))].sort(), [rows]);
+  const cabinOptions = useMemo(() =>
+    filterCentral ? [...new Set(rows.filter(r => r.centralName === filterCentral).map(r => displayCabin(r)))].sort() : [],
+    [rows, filterCentral]);
+  const boxOptions = useMemo(() =>
+    filterCentral && filterCabin ? [...new Set(rows.filter(r => r.centralName === filterCentral && displayCabin(r) === filterCabin).map(r => r.boxNumber))].sort((a, b) => (+a || 0) - (+b || 0) || a.localeCompare(b)) : [],
+    [rows, filterCentral, filterCabin]);
+
+  const maxWorkingNum = maxWorking.trim() !== "" ? Number(maxWorking) : null;
+
   const filtered = rows.filter((row) => {
+    if (filterCentral && row.centralName !== filterCentral) return false;
+    if (filterCabin && displayCabin(row) !== filterCabin) return false;
+    if (filterBox && row.boxNumber !== filterBox) return false;
+    if (maxWorkingNum !== null) {
+      if (row.workingCount === null || row.workingCount > maxWorkingNum) return false;
+    }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const workingText = row.workingCount !== null ? String(row.workingCount) : "لا يوجد في بيان التليفونات";
@@ -171,29 +193,69 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
 
       {/* Main Table */}
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
-        <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3" dir="rtl">
-          <div>
-            <h3 className="font-semibold text-base">متعذرات بوكس مليان</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{rows.length} حالة</p>
+        <div className="p-4 border-b space-y-3" dir="rtl">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-base">متعذرات بوكس مليان</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} من {rows.length} حالة</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
+              تصدير Excel
+            </Button>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
+          {/* Filters row */}
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchableCombobox
+              options={centralOptions}
+              value={filterCentral}
+              onChange={(v) => { setFilterCentral(v); setFilterCabin(""); setFilterBox(""); }}
+              placeholder="كل السنترالات"
+              searchPlaceholder="ابحث في السنترالات..."
+              className="w-44 text-sm"
+            />
+            <SearchableCombobox
+              options={cabinOptions}
+              value={filterCabin}
+              onChange={(v) => { setFilterCabin(v); setFilterBox(""); }}
+              placeholder="كل الكابينات"
+              searchPlaceholder="ابحث في الكابينات..."
+              disabled={!filterCentral}
+              className="w-36 text-sm"
+            />
+            <SearchableCombobox
+              options={boxOptions}
+              value={filterBox}
+              onChange={(v) => setFilterBox(v)}
+              placeholder="كل البكسيات"
+              searchPlaceholder="ابحث في البكسيات..."
+              disabled={!filterCabin}
+              className="w-32 text-sm"
+            />
+            <div className="relative w-36">
+              <Input
+                type="number"
+                min={0}
+                placeholder="عدد الشغال ≤"
+                value={maxWorking}
+                onChange={(e) => setMaxWorking(e.target.value)}
+                className="text-right text-sm"
+                dir="rtl"
+              />
+            </div>
+            <div className="relative w-48">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="بحث..."
+                placeholder="بحث نصي..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pr-10 text-right text-sm"
                 dir="rtl"
               />
             </div>
-            <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
-              تصدير Excel
-            </Button>
           </div>
         </div>
 
-        {searchQuery && (
+        {(searchQuery || filterCentral || filterCabin || filterBox || maxWorking) && (
           <div className="px-4 pb-2 text-sm text-muted-foreground" dir="rtl">
             النتائج: {filtered.length} من {rows.length}
           </div>

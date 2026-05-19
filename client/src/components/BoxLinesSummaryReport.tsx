@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table,
   TableBody,
@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Search, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 interface BoxSummary {
@@ -22,29 +22,37 @@ interface BoxSummary {
 }
 
 export function BoxLinesSummaryReport() {
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [searchTimer, setSearchTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [central, setCentral] = useState("");
+  const [cabin, setCabin] = useState("");
+  const [box, setBox] = useState("");
 
-  const handleSearchChange = (val: string) => {
-    setSearch(val);
-    if (searchTimer) clearTimeout(searchTimer);
-    const t = setTimeout(() => setDebouncedSearch(val), 400);
-    setSearchTimer(t);
-  };
-
-  const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/box-summary", debouncedSearch],
+  const { data: allData, isLoading } = useQuery({
+    queryKey: ["/api/phone-lines/box-summary"],
     queryFn: async () => {
-      const params = new URLSearchParams({ search: debouncedSearch });
-      const res = await fetch(`/api/phone-lines/box-summary?${params}`, { credentials: "include" });
+      const res = await fetch(`/api/phone-lines/box-summary?search=`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<BoxSummary[]>;
     },
   });
 
+  const centrals = useMemo(() =>
+    [...new Set((allData ?? []).map(r => r.central))].sort(), [allData]);
+  const cabins = useMemo(() =>
+    central ? [...new Set((allData ?? []).filter(r => r.central === central).map(r => r.cabinNumber))].sort() : [], [allData, central]);
+  const boxes = useMemo(() =>
+    central && cabin ? [...new Set((allData ?? []).filter(r => r.central === central && r.cabinNumber === cabin).map(r => r.boxNumber))].sort((a, b) => (+a || 0) - (+b || 0) || a.localeCompare(b)) : [], [allData, central, cabin]);
+
+  const data = useMemo(() => {
+    if (!allData) return [];
+    return allData.filter(r =>
+      (!central || r.central === central) &&
+      (!cabin || r.cabinNumber === cabin) &&
+      (!box || r.boxNumber === box)
+    );
+  }, [allData, central, cabin, box]);
+
   const handleExport = () => {
-    if (!data) return;
+    if (!data.length) return;
     const rows = data.map((r) => ({
       "السنترال": r.central,
       "رقم الكابينه": r.cabinNumber,
@@ -57,7 +65,7 @@ export function BoxLinesSummaryReport() {
     XLSX.writeFile(wb, "box-lines-summary.xlsx");
   };
 
-  const maxCount = data ? Math.max(...data.map((r) => r.count), 1) : 1;
+  const maxCount = data.length ? Math.max(...data.map((r) => r.count), 1) : 1;
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -65,23 +73,39 @@ export function BoxLinesSummaryReport() {
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="font-semibold text-base">ملخص عدد الخطوط لكل بكس</h3>
-            {data && (
+            {allData && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {data.length.toLocaleString("ar-EG")} بكس — إجمالي {data.reduce((s, r) => s + r.count, 0).toLocaleString("ar-EG")} خط
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="بحث بالسنترال / الكابينه / البكس..."
-                value={search}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="pr-10 text-right text-sm"
-                dir="rtl"
-              />
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchableCombobox
+              options={centrals}
+              value={central}
+              onChange={(v) => { setCentral(v); setCabin(""); setBox(""); }}
+              placeholder="كل السنترالات"
+              searchPlaceholder="ابحث في السنترالات..."
+              className="w-44 text-sm"
+            />
+            <SearchableCombobox
+              options={cabins}
+              value={cabin}
+              onChange={(v) => { setCabin(v); setBox(""); }}
+              placeholder="كل الكابينات"
+              searchPlaceholder="ابحث في الكابينات..."
+              disabled={!central}
+              className="w-36 text-sm"
+            />
+            <SearchableCombobox
+              options={boxes}
+              value={box}
+              onChange={(v) => setBox(v)}
+              placeholder="كل البكسيات"
+              searchPlaceholder="ابحث في البكسيات..."
+              disabled={!cabin}
+              className="w-32 text-sm"
+            />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
@@ -106,7 +130,7 @@ export function BoxLinesSummaryReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data?.map((r, idx) => {
+                {data.map((r, idx) => {
                   const pct = Math.round((r.count / maxCount) * 100);
                   const color = r.count >= 10 ? "bg-red-500" : r.count >= 5 ? "bg-orange-400" : "bg-green-500";
                   return (
