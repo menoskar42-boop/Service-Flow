@@ -13,6 +13,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowRight, RotateCcw, CheckCircle2, Pencil, X, LogOut } from "lucide-react";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { format } from "date-fns";
 
 type EditStatus = "pending" | "completed" | "rolled_back";
@@ -63,6 +64,7 @@ export default function PhoneLinesEditPage() {
 
   // Inline edit state
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [editCentral, setEditCentral] = useState("");
   const [editCabin, setEditCabin] = useState("");
   const [editBox, setEditBox] = useState("");
   const [editDp, setEditDp] = useState("");
@@ -98,6 +100,21 @@ export default function PhoneLinesEditPage() {
       if (!res.ok) throw new Error("Failed to fetch edits");
       return res.json() as Promise<PhoneLineEdit[]>;
     },
+  });
+
+  // --- Field options for cascading edit dropdowns ---
+  const { data: fieldOptions } = useQuery({
+    queryKey: ["/api/phone-lines/field-options", editCentral, editCabin, editBox],
+    queryFn: async () => {
+      if (!editCentral) return { cabins: [] as string[], boxes: [] as string[], dpTerminals: [] as string[] };
+      const params = new URLSearchParams({ central: editCentral });
+      if (editCabin) params.set("cabin", editCabin);
+      if (editBox) params.set("box", editBox);
+      const res = await fetch(`/api/phone-lines/field-options?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<{ cabins: string[]; boxes: string[]; dpTerminals: string[] }>;
+    },
+    enabled: !!editCentral,
   });
 
   // --- Mutations ---
@@ -179,6 +196,7 @@ export default function PhoneLinesEditPage() {
 
   const startEdit = (line: PhoneLine) => {
     setEditingId(line.id);
+    setEditCentral(line.central);
     setEditCabin(line.cabinNumber || "");
     setEditBox(line.boxNumber || "");
     setEditDp(line.dpTerminal || "");
@@ -262,17 +280,35 @@ export default function PhoneLinesEditPage() {
                       <div className="space-y-2 pt-2 border-t bg-blue-50 -mx-3 px-3 pb-3 mt-2 rounded-b-lg">
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">الكابينة</label>
-                          <Input value={editCabin} onChange={(e) => setEditCabin(e.target.value)} className="h-9 text-sm" />
+                          <SearchableCombobox
+                            options={fieldOptions?.cabins || []}
+                            value={editCabin}
+                            onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); }}
+                            placeholder="اختر الكابينة"
+                            searchPlaceholder="ابحث..."
+                          />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">البكس</label>
-                            <Input value={editBox} onChange={(e) => setEditBox(e.target.value)} className="h-9 text-sm" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-xs text-muted-foreground">DP Terminal</label>
-                            <Input value={editDp} onChange={(e) => setEditDp(e.target.value)} className="h-9 text-sm" />
-                          </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">البكس</label>
+                          <SearchableCombobox
+                            options={fieldOptions?.boxes || []}
+                            value={editBox}
+                            onChange={(val) => { setEditBox(val); setEditDp(""); }}
+                            placeholder="اختر البكس"
+                            searchPlaceholder="ابحث..."
+                            disabled={!editCabin}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">DP Terminal</label>
+                          <SearchableCombobox
+                            options={fieldOptions?.dpTerminals || []}
+                            value={editDp}
+                            onChange={setEditDp}
+                            placeholder="اختر DP Terminal"
+                            searchPlaceholder="ابحث..."
+                            disabled={!editBox}
+                          />
                         </div>
                         <div className="flex gap-2 pt-1">
                           <Button
@@ -335,28 +371,48 @@ export default function PhoneLinesEditPage() {
                         {editingId === line.id && (
                           <TableRow key={`edit-${line.id}`} className="bg-blue-50">
                             <TableCell colSpan={6}>
-                              <div className="flex flex-wrap gap-3 items-end py-1">
-                                <div className="space-y-1">
+                              <div className="flex flex-wrap gap-3 items-end py-2">
+                                <div className="space-y-1 w-40">
                                   <label className="text-xs text-muted-foreground">الكابينة</label>
-                                  <Input value={editCabin} onChange={(e) => setEditCabin(e.target.value)} className="w-28 h-8 text-sm" />
+                                  <SearchableCombobox
+                                    options={fieldOptions?.cabins || []}
+                                    value={editCabin}
+                                    onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); }}
+                                    placeholder="اختر الكابينة"
+                                    searchPlaceholder="ابحث..."
+                                  />
                                 </div>
-                                <div className="space-y-1">
+                                <div className="space-y-1 w-36">
                                   <label className="text-xs text-muted-foreground">البكس</label>
-                                  <Input value={editBox} onChange={(e) => setEditBox(e.target.value)} className="w-24 h-8 text-sm" />
+                                  <SearchableCombobox
+                                    options={fieldOptions?.boxes || []}
+                                    value={editBox}
+                                    onChange={(val) => { setEditBox(val); setEditDp(""); }}
+                                    placeholder="اختر البكس"
+                                    searchPlaceholder="ابحث..."
+                                    disabled={!editCabin}
+                                  />
                                 </div>
-                                <div className="space-y-1">
+                                <div className="space-y-1 w-36">
                                   <label className="text-xs text-muted-foreground">DP Terminal</label>
-                                  <Input value={editDp} onChange={(e) => setEditDp(e.target.value)} className="w-24 h-8 text-sm" />
+                                  <SearchableCombobox
+                                    options={fieldOptions?.dpTerminals || []}
+                                    value={editDp}
+                                    onChange={setEditDp}
+                                    placeholder="اختر DP Terminal"
+                                    searchPlaceholder="ابحث..."
+                                    disabled={!editBox}
+                                  />
                                 </div>
                                 <Button
                                   size="sm"
                                   disabled={editMutation.isPending}
                                   onClick={() => editMutation.mutate({ id: line.id, cabin: editCabin, box: editBox, dp: editDp })}
-                                  className="h-8"
+                                  className="h-9"
                                 >
                                   {editMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "حفظ"}
                                 </Button>
-                                <Button variant="ghost" size="sm" className="h-8" onClick={() => setEditingId(null)}>
+                                <Button variant="ghost" size="sm" className="h-9" onClick={() => setEditingId(null)}>
                                   إلغاء
                                 </Button>
                               </div>

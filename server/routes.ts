@@ -515,6 +515,33 @@ export async function registerRoutes(
     res.json({ centrals, cabins, boxes });
   });
 
+  // GET /api/phone-lines/field-options — cascading options for edit form (cabins → boxes → dpTerminals)
+  app.get("/api/phone-lines/field-options", requireAuth, async (req, res) => {
+    const { central = "", cabin = "", box = "" } = req.query as Record<string, string>;
+    const result: { cabins: string[]; boxes: string[]; dpTerminals: string[] } = { cabins: [], boxes: [], dpTerminals: [] };
+    if (!central) return res.json(result);
+    const { rows: cabinRows } = await pool.query(
+      `SELECT DISTINCT cabin_number FROM phone_lines WHERE central = $1 AND cabin_number IS NOT NULL ORDER BY cabin_number`,
+      [central]
+    );
+    result.cabins = cabinRows.map((r: any) => r.cabin_number);
+    if (cabin) {
+      const { rows: boxRows } = await pool.query(
+        `SELECT DISTINCT box_number FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND box_number IS NOT NULL ORDER BY box_number`,
+        [central, cabin]
+      );
+      result.boxes = boxRows.map((r: any) => r.box_number);
+      if (box) {
+        const { rows: dpRows } = await pool.query(
+          `SELECT DISTINCT dp_terminal FROM phone_lines WHERE central = $1 AND cabin_number = $2 AND box_number = $3 AND dp_terminal IS NOT NULL ORDER BY dp_terminal`,
+          [central, cabin, box]
+        );
+        result.dpTerminals = dpRows.map((r: any) => r.dp_terminal);
+      }
+    }
+    res.json(result);
+  });
+
   // GET /api/phone-lines — paginated, with optional central/cabin/box or text search filters
   app.get("/api/phone-lines", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
