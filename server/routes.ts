@@ -673,11 +673,21 @@ export async function registerRoutes(
       });
     }
 
-    // Update phone_lines (also update cabinet_in when cabin changes)
+    // Update phone_lines (also update cabinet_in + idu_no/odu_no when cabin changes)
     if (cabinChanged) {
+      // Derive canonical idu/odu from the new (central, cabin) pair
+      const iduOduRes = await pool.query(
+        `SELECT idu_no, odu_no FROM phone_lines
+         WHERE central = $1 AND cabin_number = $2 AND idu_no IS NOT NULL
+         LIMIT 1`,
+        [line.central, cabinNumber],
+      );
+      const newIduNo = iduOduRes.rows[0]?.idu_no ?? null;
+      const newOduNo = iduOduRes.rows[0]?.odu_no ?? null;
+
       await pool.query(
-        `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3, cabinet_in = $4 WHERE id = $5`,
-        [cabinNumber, boxNumber, dpTerminal, cabinetIn, id],
+        `UPDATE phone_lines SET cabin_number = $1, box_number = $2, dp_terminal = $3, cabinet_in = $4, idu_no = $5, odu_no = $6 WHERE id = $7`,
+        [cabinNumber, boxNumber, dpTerminal, cabinetIn, newIduNo, newOduNo, id],
       );
     } else {
       await pool.query(
