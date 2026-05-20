@@ -128,4 +128,21 @@ export async function ensureSchema() {
     const { rows: after } = await pool.query("SELECT COUNT(*)::int AS c FROM phone_lines");
     console.log(`Phone lines: was ${rows[0].c}, now ${after[0].c} (seed had ${allLines.length})`);
   }
+
+  // Normalize idu_no/odu_no: any line whose values don't match the canonical
+  // (central, cabin_number) pair gets corrected automatically.
+  // Canonical = earliest seeded row (lowest id) per cabin that has a non-null idu_no.
+  await pool.query(`
+    UPDATE phone_lines target
+    SET idu_no = src.idu_no, odu_no = src.odu_no
+    FROM (
+      SELECT DISTINCT ON (central, cabin_number) central, cabin_number, idu_no, odu_no
+      FROM phone_lines
+      WHERE idu_no IS NOT NULL
+      ORDER BY central, cabin_number, id ASC
+    ) src
+    WHERE target.central = src.central
+      AND target.cabin_number = src.cabin_number
+      AND (target.idu_no IS DISTINCT FROM src.idu_no OR target.odu_no IS DISTINCT FROM src.odu_no)
+  `);
 }
