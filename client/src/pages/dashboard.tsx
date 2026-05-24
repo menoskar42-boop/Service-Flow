@@ -51,6 +51,16 @@ export default function Dashboard() {
 
   const handleExport = () => {
     if (!orders) return;
+    const statusLabel = (status: string) => {
+      switch (status) {
+        case "feasible": return "يمكن التنفيذ";
+        case "not_feasible": return "لا يمكن";
+        case "needs_external": return "يحتاج رد الشئون الخارجية";
+        case "external_feasible": return "يمكن التنفيذ (شئون خارجية)";
+        case "external_not_feasible": return "لا يمكن (شئون خارجية)";
+        default: return "قيد الانتظار";
+      }
+    };
     const data = orders.map(order => ({
       "رقم الطلب": order.id,
       "التاريخ": format(new Date(order.createdAt), "yyyy-MM-dd HH:mm"),
@@ -60,7 +70,7 @@ export default function Dashboard() {
       "الرقم القومي": order.nationalId || "",
       "رقم المسلسل": order.serialNumber || "",
       "المندوب": order.salesName,
-      "الحالة": order.status === "feasible" ? "يمكن التنفيذ" : order.status === "not_feasible" ? "لا يمكن" : "قيد الانتظار",
+      "الحالة": statusLabel(order.status),
       "حالة التعاقد": order.contractStatus || "لم يتم التعاقد",
       "سبب الرفض": order.rejectionReason || "",
       "السنترال": order.centralName || "",
@@ -70,6 +80,10 @@ export default function Dashboard() {
       "ملاحظات": order.additionalNotes || "",
       "الفني": order.techName || "",
       "وقت الرد": order.techResponseAt ? format(new Date(order.techResponseAt), "yyyy-MM-dd HH:mm") : "",
+      "موظف الشئون الخارجية": order.externalName || "",
+      "رد الشئون الخارجية": order.isFeasibleExternal === true ? "يمكن التنفيذ" : order.isFeasibleExternal === false ? "لا يمكن التنفيذ" : "",
+      "سبب رفض الشئون الخارجية": order.externalRejectionReason || "",
+      "وقت رد الشئون الخارجية": order.externalResponseAt ? format(new Date(order.externalResponseAt), "yyyy-MM-dd HH:mm") : "",
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
