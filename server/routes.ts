@@ -37,6 +37,28 @@ export async function registerRoutes(
     ws.on('error', console.error);
   });
 
+  // Notify the sales rep who created the order + all admins when an order
+  // becomes feasible (by tech or external affairs).
+  const notifyOrderFeasible = async (order: any, source: "tech" | "external") => {
+    const sourceLabel = source === "external" ? "الشئون الخارجية" : "القسم الفني";
+    const recipientIds = new Set<number>();
+    if (order.salesId) recipientIds.add(order.salesId);
+    const admins = (await storage.getUsers()).filter((u) => u.role === ROLES.ADMIN);
+    admins.forEach((a) => recipientIds.add(a.id));
+
+    await Promise.all(
+      Array.from(recipientIds).map((userId) =>
+        storage.createNotification({
+          userId,
+          orderId: order.id,
+          type: "order_feasible",
+          message: `طلب العميل ${order.customerName} أصبح قابلاً للتنفيذ (${sourceLabel})`,
+        }),
+      ),
+    );
+    broadcast({ type: WS_EVENTS.NOTIFICATION });
+  };
+
   // === Auth Setup ===
   async function hashPassword(password: string) {
     const salt = randomBytes(16).toString("hex");
@@ -329,6 +351,9 @@ export async function registerRoutes(
       });
 
       broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      if (status === "feasible") {
+        await notifyOrderFeasible(order, "tech");
+      }
       res.json(order);
     } catch (e) {
       if (e instanceof z.ZodError) {
@@ -455,6 +480,9 @@ export async function registerRoutes(
       });
 
       broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      if (newStatus === ORDER_STATUS.EXTERNAL_FEASIBLE) {
+        await notifyOrderFeasible(order, "external");
+      }
       res.json(order);
     } catch (e) {
       if (e instanceof z.ZodError) {
@@ -463,6 +491,28 @@ export async function registerRoutes(
         res.status(500).json({ message: "Error saving external response" });
       }
     }
+  });
+
+  // === Notifications ===
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    const user = req.user as any;
+    const [items, unread] = await Promise.all([
+      storage.getNotificationsByUser(user.id),
+      storage.getUnreadCount(user.id),
+    ]);
+    res.json({ items, unread });
+  });
+
+  app.post("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    const user = req.user as any;
+    await storage.markNotificationRead(parseInt(req.params.id), user.id);
+    res.json({ success: true });
+  });
+
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    const user = req.user as any;
+    await storage.markAllNotificationsRead(user.id);
+    res.json({ success: true });
   });
 
   // === Phone Lines Reports ===
