@@ -28,17 +28,21 @@ export function useWebSocket() {
           if (message.type === WS_EVENTS.ORDER_CREATE || message.type === WS_EVENTS.ORDER_UPDATE) {
             // Invalidate the orders query to trigger a refetch
             queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
-            
+
             // Show toast notification
-            const title = message.type === WS_EVENTS.ORDER_CREATE 
-              ? "طلب جديد" 
+            const title = message.type === WS_EVENTS.ORDER_CREATE
+              ? "طلب جديد"
               : "تحديث طلب";
-              
+
             toast({
               title: title,
               description: `الطلب #${message.payload.id} تم تحديثه`,
               duration: 3000,
             });
+          }
+
+          if (message.type === WS_EVENTS.NOTIFICATION) {
+            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
           }
         } catch (error) {
           console.error("Failed to parse WebSocket message", error);

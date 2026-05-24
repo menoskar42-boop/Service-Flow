@@ -12,6 +12,7 @@ import { PhoneLinesReport } from "@/components/PhoneLinesReport";
 import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
+import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList } from "lucide-react";
@@ -92,6 +93,7 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {(user.role === ROLES.SALES || user.role === ROLES.ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN) && (
               <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">
                 <span className="hidden sm:inline">إدارة البيانات الفنية</span>
