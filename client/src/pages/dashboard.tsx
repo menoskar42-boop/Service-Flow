@@ -11,6 +11,7 @@ import { BoxRejectionReport } from "@/components/BoxRejectionReport";
 import { PhoneLinesReport } from "@/components/PhoneLinesReport";
 import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
+import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList } from "lucide-react";
@@ -18,7 +19,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -171,12 +172,19 @@ export default function Dashboard() {
               >
                 متعذرات بوكس مليان
               </button>
+              <button
+                onClick={() => setReportTab("box-broken")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-broken" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                متعذرات بوكس معطل
+              </button>
             </div>
 
             {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
             {reportTab === "phone-lines" && <PhoneLinesReport />}
             {reportTab === "box-summary" && <BoxLinesSummaryReport />}
             {reportTab === "box-full" && <BoxFullRejectionsReport orders={orders || []} />}
+            {reportTab === "box-broken" && <BoxBrokenRejectionsReport orders={orders || []} />}
           </div>
         )}
 
