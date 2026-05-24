@@ -68,6 +68,18 @@ export async function ensureSchema() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id),
+      order_id integer REFERENCES orders(id),
+      type text NOT NULL,
+      message text NOT NULL,
+      is_read boolean NOT NULL DEFAULT false,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   const { rows } = await pool.query("SELECT COUNT(*)::int AS c FROM phone_lines");
   const EXPECTED_MIN = 10000;
   if (rows[0].c < EXPECTED_MIN) {

@@ -156,6 +156,19 @@ export const phoneLineEdits = pgTable("phone_line_edits", {
 
 export type PhoneLineEdit = typeof phoneLineEdits.$inferSelect;
 
+// Notifications Table — alerts targeted at a specific recipient user
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id).notNull(),
+  orderId: integer("order_id").references(() => orders.id),
+  type: text("type").notNull(),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users);
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -218,4 +231,5 @@ export type PhoneLine = typeof phoneLines.$inferSelect;
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',
   ORDER_CREATE: 'ORDER_CREATE',
+  NOTIFICATION: 'NOTIFICATION',
 } as const;

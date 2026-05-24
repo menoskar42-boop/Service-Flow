@@ -145,7 +145,6 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
       "السنترال": r.centralName,
       "الكابينة": displayCabin(r),
       "رقم البوكس": r.boxNumber,
-      "بعد أقرب بوكس": r.nearestBoxDistance || "",
       "ملاحظات": r.additionalNotes || "",
       "عدد الشغال على البكس": r.workingCount !== null ? r.workingCount : "لا يوجد في بيان التليفونات",
       "الفني": r.techName,
@@ -269,7 +268,6 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
                 <TableHead className="text-right font-bold">السنترال</TableHead>
                 <TableHead className="text-right font-bold">الكابينة</TableHead>
                 <TableHead className="text-right font-bold">رقم البوكس</TableHead>
-                <TableHead className="text-right font-bold">بعد أقرب بوكس</TableHead>
                 <TableHead className="text-right font-bold">ملاحظات</TableHead>
                 <TableHead className="text-right font-bold">عدد الشغال على البكس</TableHead>
                 <TableHead className="text-right font-bold">الفني</TableHead>
@@ -289,9 +287,6 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
                   <TableCell>{displayCabin(row)}</TableCell>
                   <TableCell>
                     <span className="font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded">{row.boxNumber}</span>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {row.nearestBoxDistance ? `${row.nearestBoxDistance} م` : "-"}
                   </TableCell>
                   <TableCell className="text-muted-foreground max-w-32 truncate">
                     {row.additionalNotes || "-"}
