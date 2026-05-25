@@ -905,5 +905,71 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // === Public API: Box Summary (Bearer Token Auth) ===
+  // GET /api/box-summary?page=1&limit=100&q=<search>
+  app.get("/api/box-summary", async (req, res) => {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token || token !== process.env.SF_API_TOKEN) {
+      return res.status(401).json({ ok: false, message: "Unauthorized" });
+    }
+
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const limit = Math.min(500, Math.max(1, parseInt((req.query.limit as string) || "100", 10)));
+    const q = ((req.query.q as string) || "").trim();
+    const offset = (page - 1) * limit;
+
+    const params: any[] = [];
+    const conds: string[] = ["status = 'not_feasible'"];
+
+    if (q) {
+      params.push(`%${q}%`);
+      conds.push(`(
+        customer_name ILIKE $${params.length} OR
+        central_name ILIKE $${params.length} OR
+        cabin_number ILIKE $${params.length} OR
+        box_number ILIKE $${params.length}
+      )`);
+    }
+
+    const where = `WHERE ${conds.join(" AND ")}`;
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*) AS total FROM orders ${where}`,
+      params,
+    );
+    const total = parseInt(countRes.rows[0].total, 10);
+
+    params.push(limit);
+    params.push(offset);
+    const dataRes = await pool.query(
+      `SELECT
+         id,
+         customer_name   AS "customerName",
+         customer_phone  AS "customerPhone",
+         central_name    AS "centralName",
+         cabin_number    AS "cabinNumber",
+         box_number      AS "boxNumber",
+         nearest_box_distance AS "nearestBoxDistance",
+         rejection_reason AS "rejectionReason",
+         tech_name       AS "techName",
+         tech_response_at AS "techResponseAt",
+         sales_name      AS "salesName",
+         created_at      AS "createdAt"
+       FROM orders ${where}
+       ORDER BY created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    res.json({
+      ok: true,
+      data: dataRes.rows,
+      total,
+      page,
+      limit,
+    });
+  });
+
   return httpServer;
 }
