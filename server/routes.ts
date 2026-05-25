@@ -681,6 +681,65 @@ export async function registerRoutes(
     res.json(summary);
   });
 
+  // === External API (token-protected, for other sites) ===
+  // Requires header: Authorization: Bearer <SF_API_TOKEN>
+  const requireApiToken = (req: any, res: any, next: any) => {
+    const configured = process.env.SF_API_TOKEN;
+    if (!configured) {
+      return res.status(503).json({ ok: false, error: "API token not configured" });
+    }
+    const h = req.headers["authorization"] || "";
+    const t = h.startsWith("Bearer ") ? h.slice(7).trim() : "";
+    if (!t || t !== configured) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+    next();
+  };
+
+  // GET /api/box-summary — paginated box summary for external consumers
+  app.get("/api/box-summary", requireApiToken, async (req, res) => {
+    try {
+      const { page = "1", limit = "100", q } = req.query as Record<string, string>;
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const pageSize = Math.min(1000, Math.max(1, parseInt(limit) || 100));
+      const offset = (pageNum - 1) * pageSize;
+
+      const params: any[] = [];
+      let where = "";
+      if (q && q.trim()) {
+        params.push(`%${q.trim().toLowerCase()}%`);
+        const p = `$${params.length}`;
+        where = `WHERE (LOWER(central) LIKE ${p} OR LOWER(cabin_number) LIKE ${p} OR LOWER(box_number) LIKE ${p})`;
+      }
+
+      const totalRes = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM (
+           SELECT 1 FROM phone_lines ${where}
+           GROUP BY central, cabin_number, box_number
+         ) sub`,
+        params,
+      );
+      const total = totalRes.rows[0].c as number;
+
+      params.push(pageSize, offset);
+      const { rows } = await pool.query(
+        `SELECT central,
+                COALESCE(cabin_number, '') AS "cabinNumber",
+                COALESCE(box_number, '') AS "boxNumber",
+                COUNT(*)::int AS count
+         FROM phone_lines ${where}
+         GROUP BY central, cabin_number, box_number
+         ORDER BY central, cabin_number, box_number
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+
+      res.json({ ok: true, data: rows, total, page: pageNum, limit: pageSize });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "Server error" });
+    }
+  });
+
   // === Phone Line Edits ===
 
   // PUT /api/phone-lines/:id — edit cabin/box/dpTerminal + create audit record
