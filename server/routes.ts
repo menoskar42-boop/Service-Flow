@@ -906,8 +906,20 @@ export async function registerRoutes(
   });
 
   // === Public API: Box Summary (Bearer Token Auth) ===
+  // OPTIONS preflight for cross-origin requests
+  app.options("/api/box-summary", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.status(204).end();
+  });
+
   // GET /api/box-summary?page=1&limit=100&q=<search>
   app.get("/api/box-summary", async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     if (!token || token !== process.env.SF_API_TOKEN) {
