@@ -169,6 +169,23 @@ export const notifications = pgTable("notifications", {
 
 export type Notification = typeof notifications.$inferSelect;
 
+// Work Orders Table — uploaded from تركيبات Excel by admin
+export const workOrders = pgTable("work_orders", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name").notNull(),
+  workOrderId: bigint("work_order_id", { mode: "number" }).notNull().unique(),
+  phoneNumber: text("phone_number").notNull(),
+  serviceType: text("service_type").notNull(),
+  closeDate: timestamp("close_date").notNull(),
+  itemName: text("item_name"),
+  cableQuantity: text("cable_quantity"),
+  techName: text("tech_name").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type WorkOrder = typeof workOrders.$inferSelect;
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users);
 export const insertOrderSchema = createInsertSchema(orders).omit({

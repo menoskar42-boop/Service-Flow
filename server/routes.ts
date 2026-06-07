@@ -6,6 +6,8 @@ import { pool } from "./db";
 import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import multer from "multer";
+import * as XLSX from "xlsx";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
@@ -679,6 +681,84 @@ export async function registerRoutes(
     }
 
     res.json(summary);
+  });
+
+  // === Work Orders (تركيبات) ===
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+  // POST /api/work-orders/import — admin uploads تركيبات xlsx
+  app.post("/api/work-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    if (!req.file) return res.status(400).json({ message: "لم يتم إرسال ملف" });
+    try {
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (rows.length < 2) return res.status(400).json({ message: "الملف فارغ" });
+
+      const dataRows = rows.slice(1).filter((r) => r[1]); // skip header, skip empty
+      let inserted = 0;
+      let skipped = 0;
+
+      for (const r of dataRows) {
+        const centralName = String(r[0] || "").trim();
+        const workOrderId = parseInt(String(r[1]));
+        const phoneNumber = String(r[2] || "").replace(/^'/, "").trim();
+        const serviceType = String(r[3] || "").trim();
+        const rawDate = r[4];
+        const itemName = String(r[5] || "").trim();
+        const cableQuantity = String(r[6] || "").trim();
+        const techName = String(r[7] || "").trim();
+
+        if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
+
+        let closeDate: Date;
+        if (rawDate instanceof Date) {
+          closeDate = rawDate;
+        } else if (typeof rawDate === "number") {
+          closeDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+        } else {
+          closeDate = new Date(rawDate);
+        }
+        if (isNaN(closeDate.getTime())) { skipped++; continue; }
+
+        await pool.query(
+          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, uploaded_by_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT (work_order_id) DO UPDATE
+             SET central_name=$1, phone_number=$3, service_type=$4, close_date=$5,
+                 item_name=$6, cable_quantity=$7, tech_name=$8, uploaded_at=now(), uploaded_by_id=$9`,
+          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, (req.user as any).id],
+        );
+        inserted++;
+      }
+
+      res.json({ ok: true, inserted, skipped, total: dataRows.length });
+    } catch (e: any) {
+      console.error("work-orders import error:", e);
+      res.status(500).json({ message: "خطأ أثناء معالجة الملف", detail: e.message });
+    }
+  });
+
+  // GET /api/work-orders — list with date range filter
+  app.get("/api/work-orders", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+
+    if (dateFrom) { params.push(dateFrom); conds.push(`close_date >= $${params.length}::date`); }
+    if (dateTo) { params.push(dateTo); conds.push(`close_date < ($${params.length}::date + interval '1 day')`); }
+
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const { rows } = await pool.query(
+      `SELECT id, central_name AS "centralName", work_order_id AS "workOrderId",
+              phone_number AS "phoneNumber", service_type AS "serviceType",
+              close_date AS "closeDate", item_name AS "itemName",
+              cable_quantity AS "cableQuantity", tech_name AS "techName"
+       FROM work_orders ${where}
+       ORDER BY close_date ASC`,
+      params,
+    );
+    res.json(rows);
   });
 
   // === External API (token-protected, for other sites) ===

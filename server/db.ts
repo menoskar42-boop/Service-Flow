@@ -69,6 +69,22 @@ export async function ensureSchema() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS work_orders (
+      id serial PRIMARY KEY,
+      central_name text NOT NULL,
+      work_order_id bigint NOT NULL UNIQUE,
+      phone_number text NOT NULL,
+      service_type text NOT NULL,
+      close_date timestamptz NOT NULL,
+      item_name text,
+      cable_quantity text,
+      tech_name text NOT NULL,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS notifications (
       id serial PRIMARY KEY,
       user_id integer NOT NULL REFERENCES users(id),
