@@ -732,7 +732,7 @@ export async function registerRoutes(
         const phoneNumber  = String(g(r, iPhone, 7)).replace(/^'/, "").trim();
         const serviceType  = String(g(r, iService, 5)).trim();
         const rawDate      = g(r, iDate, 12);
-        const itemName     = String(opt(r, iItem)).trim();
+        const itemName     = "سلك واحد جوز"; // اسم الصنف ثابت دائماً
         const cableQuantity = ""; // كميه السلك تُترك فارغة عمداً (لا تؤخذ من الملف)
         const techName     = String(g(r, iTech, 15)).trim();
 
