@@ -140,10 +140,12 @@ export function WorkOrdersReport() {
         body { font-family: Arial, "Segoe UI", sans-serif; font-size: 11px; direction: rtl; margin: 0; background: #f1f5f9; }
         h2 { text-align: center; font-size: 15px; margin: 0 0 4px; }
         .pageno { text-align: center; font-size: 10px; color: #64748b; margin-bottom: 8px; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         table { width: 100%; border-collapse: collapse; }
-        th { background: #1e50a0; color: #fff; padding: 6px 4px; border: 1px solid #1e50a0; }
-        td { border: 1px solid #ccc; padding: 5px 4px; text-align: right; }
-        tbody tr:nth-child(even) { background: #f5f7fc; }
+        th { background: #1e50a0 !important; color: #ffffff !important; padding: 7px 4px;
+          border: 1px solid #15407f; font-weight: bold; font-size: 12px; }
+        td { border: 1px solid #ccc; padding: 5px 4px; text-align: right; color: #111; }
+        tbody tr:nth-child(even) { background: #eef2fb !important; }
         .page { background: #fff; padding: 14px; margin: 12px auto; max-width: 1000px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
         .toolbar { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e2e8f0;
           padding: 10px 14px; display: flex; gap: 10px; align-items: center; z-index: 10; }
