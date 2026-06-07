@@ -733,7 +733,7 @@ export async function registerRoutes(
         const serviceType  = String(g(r, iService, 5)).trim();
         const rawDate      = g(r, iDate, 12);
         const itemName     = String(opt(r, iItem)).trim();
-        const cableQuantity = String(g(r, iCable, 17)).trim();
+        const cableQuantity = ""; // كميه السلك تُترك فارغة عمداً (لا تؤخذ من الملف)
         const techName     = String(g(r, iTech, 15)).trim();
 
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
