@@ -730,7 +730,9 @@ export async function registerRoutes(
         const centralName  = String(g(r, iCentral, 0)).trim();
         const workOrderId  = parseInt(String(g(r, iWorkOrder, 1)));
         const phoneNumber  = String(g(r, iPhone, 7)).replace(/^'/, "").trim();
-        const serviceType  = String(g(r, iService, 5)).trim();
+        // IIf([Work Order Type]="Fixed Voice Installation MSAN";"تركيب جديد";"نقل")
+        const rawServiceType = String(g(r, iService, 5)).trim();
+        const serviceType  = rawServiceType === "Fixed Voice Installation MSAN" ? "تركيب جديد" : "نقل";
         const rawDate      = g(r, iDate, 12);
         const itemName     = "سلك واحد جوز"; // اسم الصنف ثابت دائماً
         const cableQuantity = ""; // كميه السلك تُترك فارغة عمداً (لا تؤخذ من الملف)
