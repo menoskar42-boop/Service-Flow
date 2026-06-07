@@ -737,6 +737,7 @@ export async function registerRoutes(
 
       const iCentral   = findCol("سنترال", "central");
       const iOrg       = findCol("organization", "كود السنترال", "المنظمه");
+      const iCloseCat  = findCol("close category", "success", "حاله الاغلاق", "نتيجه الاغلاق");
       const iWorkOrder = findCol("work order id", "امر الشغل", "رقم الامر", "تذكرة");
       const iPhone     = findCol("service no", "التليفون", "تليفون", "هاتف", "phone");
       const iService   = findCol("work order type", "نوع الخدمه", "نوع الخدمة", "service type");
@@ -761,6 +762,9 @@ export async function registerRoutes(
       let skipped = 0;
 
       for (const r of dataRows) {
+        // لا تُحمَّل إلا أوامر الشغل المغلقة بنجاح (Close Category = Success).
+        const closeCategory = String(g(r, iCloseCat, 10)).trim().toLowerCase();
+        if (closeCategory !== "success") { skipped++; continue; }
         // اسم السنترال يُستخرج من كود Organization ويُقارن بأكواد الملف المرفق.
         // أي كود غير موجود ضمن السنترالات المسموحة (الغنايم وفروعها) يُتخطّى.
         const orgCode = String(g(r, iOrg, 4)).trim().toUpperCase();
