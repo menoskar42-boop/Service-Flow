@@ -12,6 +12,7 @@ import { PhoneLinesReport } from "@/components/PhoneLinesReport";
 import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
+import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
@@ -20,7 +21,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -194,6 +195,12 @@ export default function Dashboard() {
               >
                 متعذرات بوكس معطل
               </button>
+              <button
+                onClick={() => setReportTab("work-orders")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "work-orders" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                أوامر الشغل
+              </button>
             </div>
 
             {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
@@ -201,6 +208,7 @@ export default function Dashboard() {
             {reportTab === "box-summary" && <BoxLinesSummaryReport />}
             {reportTab === "box-full" && <BoxFullRejectionsReport orders={orders || []} />}
             {reportTab === "box-broken" && <BoxBrokenRejectionsReport orders={orders || []} />}
+            {reportTab === "work-orders" && <WorkOrdersReport />}
           </div>
         )}
 
