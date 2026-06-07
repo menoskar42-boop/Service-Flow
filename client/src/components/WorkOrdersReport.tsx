@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import "jspdf-autotable";
 import { Upload, FileDown, FileText, Loader2 } from "lucide-react";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
@@ -136,7 +136,7 @@ export function WorkOrdersReport() {
       doc.setFontSize(9);
       doc.text(`صفحة ${pageNum} من ${totalPages}`, doc.internal.pageSize.width - 10, 12, { align: "right" });
 
-      autoTable(doc, {
+      (doc as any).autoTable({
         head,
         body: chunk,
         startY: 18,
