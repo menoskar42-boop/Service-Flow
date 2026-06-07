@@ -695,23 +695,28 @@ export async function registerRoutes(
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
       if (rows.length < 2) return res.status(400).json({ message: "الملف فارغ" });
 
-      // Detect column indices from header row by partial Arabic match
-      const header = rows[0].map((h: any) => String(h ?? "").trim());
+      // Detect column indices from header row by partial (case-insensitive)
+      // match — supports the WFM "Voice Installation Raw Data" English layout
+      // as well as the older Arabic تركيبات layout.
+      const header = rows[0].map((h: any) => String(h ?? "").trim().toLowerCase());
       const findCol = (...keywords: string[]) =>
-        header.findIndex((h) => keywords.some((k) => h.includes(k)));
+        header.findIndex((h) => h !== "" && keywords.some((k) => h.includes(k.toLowerCase())));
 
-      const iCentral  = findCol("سنترال", "central");
-      const iWorkOrder = findCol("امر الشغل", "رقم الامر", "order", "تذكرة");
-      const iPhone    = findCol("التليفون", "تليفون", "هاتف", "phone");
-      const iService  = findCol("الخدمه", "خدمه", "service");
-      const iDate     = findCol("الاغلاق", "تاريخ", "date");
-      const iItem     = findCol("الصنف", "صنف", "item");
-      const iCable    = findCol("السلك", "سلك", "cable");
-      const iTech     = findCol("الفنى", "فني", "tech");
+      const iCentral   = findCol("سنترال", "central");
+      const iWorkOrder = findCol("work order id", "امر الشغل", "رقم الامر", "تذكرة");
+      const iPhone     = findCol("service no", "التليفون", "تليفون", "هاتف", "phone");
+      const iService   = findCol("work order type", "نوع الخدمه", "نوع الخدمة", "service type");
+      const iDate      = findCol("close date", "تاريخ الاغلاق", "تاريخ الإغلاق", "الاغلاق");
+      const iItem      = findCol("اسم الصنف", "الصنف", "item name");
+      const iCable     = findCol("consumed cables", "كميه السلك", "كمية السلك", "السلك", "cable");
+      const iTech      = findCol("tech name", "اسم الفنى", "اسم الفني", "الفنى");
 
-      // Fallback to positional if no header match found
+      // central header is blank in the WFM export → fall back to first column
       const g = (row: any[], detected: number, fallback: number) =>
         row[detected >= 0 ? detected : fallback] ?? "";
+      // optional fields: blank when the column is absent (no positional guess)
+      const opt = (row: any[], detected: number) =>
+        detected >= 0 ? (row[detected] ?? "") : "";
 
       const dataRows = rows.slice(1).filter((r) => {
         const id = g(r, iWorkOrder, 1);
@@ -724,12 +729,12 @@ export async function registerRoutes(
       for (const r of dataRows) {
         const centralName  = String(g(r, iCentral, 0)).trim();
         const workOrderId  = parseInt(String(g(r, iWorkOrder, 1)));
-        const phoneNumber  = String(g(r, iPhone, 2)).replace(/^'/, "").trim();
-        const serviceType  = String(g(r, iService, 3)).trim();
-        const rawDate      = g(r, iDate, 4);
-        const itemName     = String(g(r, iItem, 5)).trim();
-        const cableQuantity = String(g(r, iCable, 6)).trim();
-        const techName     = String(g(r, iTech, 7)).trim();
+        const phoneNumber  = String(g(r, iPhone, 7)).replace(/^'/, "").trim();
+        const serviceType  = String(g(r, iService, 5)).trim();
+        const rawDate      = g(r, iDate, 12);
+        const itemName     = String(opt(r, iItem)).trim();
+        const cableQuantity = String(g(r, iCable, 17)).trim();
+        const techName     = String(g(r, iTech, 15)).trim();
 
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
 
