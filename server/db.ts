@@ -72,7 +72,7 @@ export async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS work_orders (
       id serial PRIMARY KEY,
       central_name text NOT NULL,
-      work_order_id bigint NOT NULL UNIQUE,
+      work_order_id bigint NOT NULL,
       phone_number text NOT NULL,
       service_type text NOT NULL,
       close_date timestamptz NOT NULL,
@@ -80,8 +80,25 @@ export async function ensureSchema() {
       cable_quantity text,
       tech_name text NOT NULL,
       uploaded_at timestamptz NOT NULL DEFAULT now(),
-      uploaded_by_id integer REFERENCES users(id)
+      uploaded_by_id integer REFERENCES users(id),
+      CONSTRAINT work_orders_central_wo_uniq UNIQUE (central_name, work_order_id)
     )
+  `);
+
+  // Migrate uniqueness from work_order_id alone → (central_name, work_order_id).
+  // The legacy global-unique constraint means we haven't migrated yet: wipe the
+  // table once (old rows used wrong central names) so re-upload rebuilds cleanly.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_orders_work_order_id_key') THEN
+        DELETE FROM work_orders;
+        ALTER TABLE work_orders DROP CONSTRAINT work_orders_work_order_id_key;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'work_orders_central_wo_uniq') THEN
+        ALTER TABLE work_orders ADD CONSTRAINT work_orders_central_wo_uniq UNIQUE (central_name, work_order_id);
+      END IF;
+    END $$;
   `);
 
   await pool.query(`

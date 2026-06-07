@@ -788,15 +788,14 @@ export async function registerRoutes(
         }
         if (isNaN(closeDate.getTime())) { skipped++; continue; }
 
-        await pool.query(
+        // المقارنة على (اسم السنترال + رقم امر الشغل): لو موجود يُتخطّى، لو جديد يُضاف.
+        const ins = await pool.query(
           `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, uploaded_by_id)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-           ON CONFLICT (work_order_id) DO UPDATE
-             SET central_name=$1, phone_number=$3, service_type=$4, close_date=$5,
-                 item_name=$6, cable_quantity=$7, tech_name=$8, uploaded_at=now(), uploaded_by_id=$9`,
+           ON CONFLICT (central_name, work_order_id) DO NOTHING`,
           [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, (req.user as any).id],
         );
-        inserted++;
+        if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
       }
 
       // Purge any previously-stored work orders for non-allowed centrals,
