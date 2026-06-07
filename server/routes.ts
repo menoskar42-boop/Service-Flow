@@ -18,6 +18,29 @@ import MemoryStore from "memorystore";
 const scryptAsync = promisify(scrypt);
 const SessionStore = MemoryStore(session);
 
+// Work-order reports are restricted to these centrals (الغنايم وفروعها).
+// Matching is tolerant of differences in dashes, spaces, hamza, ة/ه, ى/ي.
+const normalizeCentral = (s: any): string =>
+  String(s ?? "")
+    .replace(/[ً-ْٰ]/g, "")   // tashkeel/diacritics
+    .replace(/ـ/g, "")                    // tatweel ـ
+    .replace(/[إأآٱ]/g, "ا")                    // alef variants → ا
+    .replace(/ى/g, "ي")                         // alef maksura → ي
+    .replace(/ة/g, "ه")                         // taa marbuta → ه
+    .replace(/[ؤئء]/g, "")                       // hamza forms removed
+    .replace(/[\s_]/g, "")                       // spaces/underscore
+    .replace(/[-‐-―−]/g, "")      // all dash types
+    .trim();
+
+const ALLOWED_WORK_ORDER_CENTRALS = new Set(
+  ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"].map(
+    normalizeCentral,
+  ),
+);
+
+const isAllowedCentral = (name: any): boolean =>
+  ALLOWED_WORK_ORDER_CENTRALS.has(normalizeCentral(name));
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -728,6 +751,8 @@ export async function registerRoutes(
 
       for (const r of dataRows) {
         const centralName  = String(g(r, iCentral, 0)).trim();
+        // قصر التقرير على السنترالات المسموحة فقط (الغنايم وفروعها)
+        if (!isAllowedCentral(centralName)) { skipped++; continue; }
         const workOrderId  = parseInt(String(g(r, iWorkOrder, 1)));
         const phoneNumber  = String(g(r, iPhone, 7)).replace(/^'/, "").trim();
         // IIf([Work Order Type]="Fixed Voice Installation MSAN";"تركيب جديد";"نقل")
@@ -761,8 +786,25 @@ export async function registerRoutes(
         inserted++;
       }
 
-      console.log(`work-orders import: headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}`);
-      res.json({ ok: true, inserted, skipped, total: dataRows.length });
+      // Purge any previously-stored work orders for non-allowed centrals,
+      // so the report stays restricted to الغنايم وفروعها even after older uploads.
+      const { rows: existingCentrals } = await pool.query(
+        "SELECT DISTINCT central_name FROM work_orders",
+      );
+      const centralsToDrop = existingCentrals
+        .map((c: any) => c.central_name)
+        .filter((c: string) => !isAllowedCentral(c));
+      let purged = 0;
+      if (centralsToDrop.length > 0) {
+        const del = await pool.query(
+          "DELETE FROM work_orders WHERE central_name = ANY($1)",
+          [centralsToDrop],
+        );
+        purged = del.rowCount ?? 0;
+      }
+
+      console.log(`work-orders import: purged=${purged}, headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}`);
+      res.json({ ok: true, inserted, skipped, purged, total: dataRows.length });
     } catch (e: any) {
       console.error("work-orders import error:", e);
       res.status(500).json({ message: "خطأ أثناء معالجة الملف", detail: e.message });
