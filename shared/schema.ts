@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, bigint } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -173,7 +173,7 @@ export type Notification = typeof notifications.$inferSelect;
 export const workOrders = pgTable("work_orders", {
   id: serial("id").primaryKey(),
   centralName: text("central_name").notNull(),
-  workOrderId: bigint("work_order_id", { mode: "number" }).notNull().unique(),
+  workOrderId: bigint("work_order_id", { mode: "number" }).notNull(),
   phoneNumber: text("phone_number").notNull(),
   serviceType: text("service_type").notNull(),
   closeDate: timestamp("close_date").notNull(),
@@ -182,7 +182,10 @@ export const workOrders = pgTable("work_orders", {
   techName: text("tech_name").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
-});
+}, (table) => ({
+  // التفرّد على (اسم السنترال + رقم امر الشغل) بدل رقم الأمر وحده
+  centralWoUniq: unique("work_orders_central_wo_uniq").on(table.centralName, table.workOrderId),
+}));
 
 export type WorkOrder = typeof workOrders.$inferSelect;
 
