@@ -173,4 +173,16 @@ export async function ensureSchema() {
       AND target.cabin_number = src.cabin_number
       AND (target.idu_no IS DISTINCT FROM src.idu_no OR target.odu_no IS DISTINCT FROM src.odu_no)
   `);
+
+  // Normalize work order service_type to the two Arabic labels.
+  // "Fixed Voice Installation MSAN" → "تركيب جديد"، أي قيمة أخرى → "نقل".
+  // WHERE clause keeps it idempotent (already-normalized rows untouched).
+  await pool.query(`
+    UPDATE work_orders
+    SET service_type = CASE
+      WHEN service_type = 'Fixed Voice Installation MSAN' THEN 'تركيب جديد'
+      ELSE 'نقل'
+    END
+    WHERE service_type NOT IN ('تركيب جديد', 'نقل')
+  `);
 }
