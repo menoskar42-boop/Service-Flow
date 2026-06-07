@@ -41,6 +41,16 @@ const ALLOWED_WORK_ORDER_CENTRALS = new Set(
 const isAllowedCentral = (name: any): boolean =>
   ALLOWED_WORK_ORDER_CENTRALS.has(normalizeCentral(name));
 
+// Central code (Organization / Field3 in the attached sheet) → Arabic name.
+// The work-orders import derives the central from this code, so sub-centrals
+// that share the same generic name in the file are still separated correctly.
+const CENTRAL_CODE_TO_NAME: Record<string, string> = {
+  GHNAT: "الغنايم",
+  AMZAT: "الغنايم-العزايزة",
+  DRGAT: "الغنايم-دير الجنادله",
+  NGOAT: "الغنايم-نجع العمدة",
+};
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -726,6 +736,7 @@ export async function registerRoutes(
         header.findIndex((h) => h !== "" && keywords.some((k) => h.includes(k.toLowerCase())));
 
       const iCentral   = findCol("سنترال", "central");
+      const iOrg       = findCol("organization", "كود السنترال", "المنظمه");
       const iWorkOrder = findCol("work order id", "امر الشغل", "رقم الامر", "تذكرة");
       const iPhone     = findCol("service no", "التليفون", "تليفون", "هاتف", "phone");
       const iService   = findCol("work order type", "نوع الخدمه", "نوع الخدمة", "service type");
@@ -750,9 +761,11 @@ export async function registerRoutes(
       let skipped = 0;
 
       for (const r of dataRows) {
-        const centralName  = String(g(r, iCentral, 0)).trim();
-        // قصر التقرير على السنترالات المسموحة فقط (الغنايم وفروعها)
-        if (!isAllowedCentral(centralName)) { skipped++; continue; }
+        // اسم السنترال يُستخرج من كود Organization ويُقارن بأكواد الملف المرفق.
+        // أي كود غير موجود ضمن السنترالات المسموحة (الغنايم وفروعها) يُتخطّى.
+        const orgCode = String(g(r, iOrg, 4)).trim().toUpperCase();
+        const centralName = CENTRAL_CODE_TO_NAME[orgCode];
+        if (!centralName) { skipped++; continue; }
         const workOrderId  = parseInt(String(g(r, iWorkOrder, 1)));
         const phoneNumber  = String(g(r, iPhone, 7)).replace(/^'/, "").trim();
         // IIf([Work Order Type]="Fixed Voice Installation MSAN";"تركيب جديد";"نقل")
