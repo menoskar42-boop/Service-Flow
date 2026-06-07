@@ -695,19 +695,41 @@ export async function registerRoutes(
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
       if (rows.length < 2) return res.status(400).json({ message: "الملف فارغ" });
 
-      const dataRows = rows.slice(1).filter((r) => r[1]); // skip header, skip empty
+      // Detect column indices from header row by partial Arabic match
+      const header = rows[0].map((h: any) => String(h ?? "").trim());
+      const findCol = (...keywords: string[]) =>
+        header.findIndex((h) => keywords.some((k) => h.includes(k)));
+
+      const iCentral  = findCol("سنترال", "central");
+      const iWorkOrder = findCol("امر الشغل", "رقم الامر", "order", "تذكرة");
+      const iPhone    = findCol("التليفون", "تليفون", "هاتف", "phone");
+      const iService  = findCol("الخدمه", "خدمه", "service");
+      const iDate     = findCol("الاغلاق", "تاريخ", "date");
+      const iItem     = findCol("الصنف", "صنف", "item");
+      const iCable    = findCol("السلك", "سلك", "cable");
+      const iTech     = findCol("الفنى", "فني", "tech");
+
+      // Fallback to positional if no header match found
+      const g = (row: any[], detected: number, fallback: number) =>
+        row[detected >= 0 ? detected : fallback] ?? "";
+
+      const dataRows = rows.slice(1).filter((r) => {
+        const id = g(r, iWorkOrder, 1);
+        return id !== "" && id !== null && id !== undefined;
+      });
+
       let inserted = 0;
       let skipped = 0;
 
       for (const r of dataRows) {
-        const centralName = String(r[0] || "").trim();
-        const workOrderId = parseInt(String(r[1]));
-        const phoneNumber = String(r[2] || "").replace(/^'/, "").trim();
-        const serviceType = String(r[3] || "").trim();
-        const rawDate = r[4];
-        const itemName = String(r[5] || "").trim();
-        const cableQuantity = String(r[6] || "").trim();
-        const techName = String(r[7] || "").trim();
+        const centralName  = String(g(r, iCentral, 0)).trim();
+        const workOrderId  = parseInt(String(g(r, iWorkOrder, 1)));
+        const phoneNumber  = String(g(r, iPhone, 2)).replace(/^'/, "").trim();
+        const serviceType  = String(g(r, iService, 3)).trim();
+        const rawDate      = g(r, iDate, 4);
+        const itemName     = String(g(r, iItem, 5)).trim();
+        const cableQuantity = String(g(r, iCable, 6)).trim();
+        const techName     = String(g(r, iTech, 7)).trim();
 
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
 
@@ -732,6 +754,7 @@ export async function registerRoutes(
         inserted++;
       }
 
+      console.log(`work-orders import: headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}`);
       res.json({ ok: true, inserted, skipped, total: dataRows.length });
     } catch (e: any) {
       console.error("work-orders import error:", e);
