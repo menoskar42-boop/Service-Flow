@@ -10,8 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
 import { Upload, FileDown, FileText, Loader2 } from "lucide-react";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
@@ -27,8 +25,6 @@ interface WorkOrder {
   cableQuantity: string | null;
   techName: string;
 }
-
-const ROWS_PER_PDF_PAGE = 11;
 
 export function WorkOrdersReport() {
   const { user } = useAuth();
@@ -102,53 +98,41 @@ export function WorkOrdersReport() {
     XLSX.writeFile(wb, `work-orders-${dateFrom || "all"}-${dateTo || "all"}.xlsx`);
   };
 
-  // ── PDF export — 11 rows per page ──
+  // ── PDF export — browser print ──
   const handleExportPDF = () => {
-    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-
-    // Arabic font fallback — use built-in latin + data is Arabic so we just
-    // set RTL direction via column order reversal trick
-    const pageTitle = `تقرير أوامر الشغل${dateFrom ? "  من " + dateFrom : ""}${dateTo ? "  إلى " + dateTo : ""}`;
-
-    const head = [["#", "اسم السنترال", "رقم امر الشغل", "رقم التليفون", "نوع الخدمه", "تاريخ الاغلاق", "اسم الصنف", "كميه السلك", "اسم الفنى"]];
-
-    const body = orders.map((o, i) => [
-      String(i + 1),
-      o.centralName,
-      String(o.workOrderId),
-      o.phoneNumber,
-      o.serviceType,
-      formatDate(o.closeDate),
-      o.itemName || "",
-      o.cableQuantity || "",
-      o.techName,
-    ]);
-
-    // Chunk into pages of 11 rows each
-    for (let start = 0; start < body.length; start += ROWS_PER_PDF_PAGE) {
-      if (start > 0) doc.addPage();
-      const chunk = body.slice(start, start + ROWS_PER_PDF_PAGE);
-      const pageNum = Math.floor(start / ROWS_PER_PDF_PAGE) + 1;
-      const totalPages = Math.ceil(body.length / ROWS_PER_PDF_PAGE);
-
-      doc.setFontSize(13);
-      doc.text(pageTitle, doc.internal.pageSize.width / 2, 12, { align: "center" });
-      doc.setFontSize(9);
-      doc.text(`صفحة ${pageNum} من ${totalPages}`, doc.internal.pageSize.width - 10, 12, { align: "right" });
-
-      (doc as any).autoTable({
-        head,
-        body: chunk,
-        startY: 18,
-        styles: { font: "helvetica", fontSize: 8, halign: "right", cellPadding: 2 },
-        headStyles: { fillColor: [30, 80, 160], textColor: 255, fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [245, 247, 252] },
-        margin: { left: 8, right: 8 },
-        tableWidth: "auto",
-      });
-    }
-
-    doc.save(`work-orders-${dateFrom || "all"}-${dateTo || "all"}.pdf`);
+    const title = `تقرير أوامر الشغل${dateFrom ? " من " + dateFrom : ""}${dateTo ? " إلى " + dateTo : ""}`;
+    const rows = orders.map((o, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${o.centralName}</td>
+        <td>${o.workOrderId}</td>
+        <td>${o.phoneNumber}</td>
+        <td>${o.serviceType}</td>
+        <td>${formatDate(o.closeDate)}</td>
+        <td>${o.itemName || ""}</td>
+        <td>${o.cableQuantity || ""}</td>
+        <td>${o.techName}</td>
+      </tr>`).join("");
+    const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
+      <title>${title}</title>
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 11px; direction: rtl; }
+        h2 { text-align: center; font-size: 14px; margin-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #1e50a0; color: #fff; padding: 5px 4px; }
+        td { border: 1px solid #ccc; padding: 4px; text-align: right; }
+        tr:nth-child(even) { background: #f5f7fc; }
+        @media print { @page { size: A4 landscape; margin: 10mm; } }
+      </style></head><body>
+      <h2>${title}</h2>
+      <table><thead><tr>
+        <th>#</th><th>اسم السنترال</th><th>رقم امر الشغل</th><th>رقم التليفون</th>
+        <th>نوع الخدمه</th><th>تاريخ الاغلاق</th><th>اسم الصنف</th><th>كميه السلك</th><th>اسم الفنى</th>
+      </tr></thead><tbody>${rows}</tbody></table>
+      <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+      </body></html>`;
+    const w = window.open("", "_blank");
+    if (w) { w.document.write(html); w.document.close(); }
   };
 
   return (
