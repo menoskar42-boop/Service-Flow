@@ -98,38 +98,71 @@ export function WorkOrdersReport() {
     XLSX.writeFile(wb, `work-orders-${dateFrom || "all"}-${dateTo || "all"}.xlsx`);
   };
 
-  // ── PDF export — browser print ──
+  // ── PDF export — browser print, 11 rows per A4 landscape page ──
+  const ROWS_PER_PAGE = 11;
   const handleExportPDF = () => {
     const title = `تقرير أوامر الشغل${dateFrom ? " من " + dateFrom : ""}${dateTo ? " إلى " + dateTo : ""}`;
-    const rows = orders.map((o, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${o.centralName}</td>
-        <td>${o.workOrderId}</td>
-        <td>${o.phoneNumber}</td>
-        <td>${o.serviceType}</td>
-        <td>${formatDate(o.closeDate)}</td>
-        <td>${o.itemName || ""}</td>
-        <td>${o.cableQuantity || ""}</td>
-        <td>${o.techName}</td>
-      </tr>`).join("");
-    const html = `<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8">
-      <title>${title}</title>
+    const esc = (v: any) =>
+      String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    const headRow = `<tr>
+      <th>#</th><th>اسم السنترال</th><th>رقم امر الشغل</th><th>رقم التليفون</th>
+      <th>نوع الخدمه</th><th>تاريخ الاغلاق</th><th>اسم الصنف</th><th>كميه السلك</th><th>اسم الفنى</th>
+    </tr>`;
+
+    const totalPages = Math.max(1, Math.ceil(orders.length / ROWS_PER_PAGE));
+    let pages = "";
+    for (let p = 0; p < totalPages; p++) {
+      const chunk = orders.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE);
+      const body = chunk.map((o, ci) => `
+        <tr>
+          <td>${p * ROWS_PER_PAGE + ci + 1}</td>
+          <td>${esc(o.centralName)}</td>
+          <td>${esc(o.workOrderId)}</td>
+          <td>${esc(o.phoneNumber)}</td>
+          <td>${esc(o.serviceType)}</td>
+          <td>${esc(formatDate(o.closeDate))}</td>
+          <td>${esc(o.itemName || "")}</td>
+          <td>${esc(o.cableQuantity || "")}</td>
+          <td>${esc(o.techName)}</td>
+        </tr>`).join("");
+      pages += `
+        <section class="page">
+          <h2>${esc(title)}</h2>
+          <div class="pageno">صفحة ${p + 1} من ${totalPages}</div>
+          <table><thead>${headRow}</thead><tbody>${body}</tbody></table>
+        </section>`;
+    }
+
+    const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
+      <title>${esc(title)}</title>
       <style>
-        body { font-family: Arial, sans-serif; font-size: 11px; direction: rtl; }
-        h2 { text-align: center; font-size: 14px; margin-bottom: 10px; }
+        body { font-family: Arial, "Segoe UI", sans-serif; font-size: 11px; direction: rtl; margin: 0; background: #f1f5f9; }
+        h2 { text-align: center; font-size: 15px; margin: 0 0 4px; }
+        .pageno { text-align: center; font-size: 10px; color: #64748b; margin-bottom: 8px; }
         table { width: 100%; border-collapse: collapse; }
-        th { background: #1e50a0; color: #fff; padding: 5px 4px; }
-        td { border: 1px solid #ccc; padding: 4px; text-align: right; }
-        tr:nth-child(even) { background: #f5f7fc; }
-        @media print { @page { size: A4 landscape; margin: 10mm; } }
+        th { background: #1e50a0; color: #fff; padding: 6px 4px; border: 1px solid #1e50a0; }
+        td { border: 1px solid #ccc; padding: 5px 4px; text-align: right; }
+        tbody tr:nth-child(even) { background: #f5f7fc; }
+        .page { background: #fff; padding: 14px; margin: 12px auto; max-width: 1000px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+        .toolbar { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e2e8f0;
+          padding: 10px 14px; display: flex; gap: 10px; align-items: center; z-index: 10; }
+        .toolbar button { background: #dc2626; color: #fff; border: 0; border-radius: 6px;
+          padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
+        .toolbar span { color: #475569; font-size: 12px; }
+        @media print {
+          body { background: #fff; }
+          .toolbar { display: none; }
+          .page { box-shadow: none; margin: 0; padding: 0; max-width: none; page-break-after: always; }
+          .page:last-child { page-break-after: auto; }
+          @page { size: A4 landscape; margin: 10mm; }
+        }
       </style></head><body>
-      <h2>${title}</h2>
-      <table><thead><tr>
-        <th>#</th><th>اسم السنترال</th><th>رقم امر الشغل</th><th>رقم التليفون</th>
-        <th>نوع الخدمه</th><th>تاريخ الاغلاق</th><th>اسم الصنف</th><th>كميه السلك</th><th>اسم الفنى</th>
-      </tr></thead><tbody>${rows}</tbody></table>
-      <script>window.onload=()=>{window.print();window.onafterprint=()=>window.close();}</script>
+      <div class="toolbar">
+        <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+        <span>في نافذة الطباعة اختر &quot;حفظ بصيغة PDF&quot; (Save as PDF) كوجهة الطباعة.</span>
+      </div>
+      ${pages}
       </body></html>`;
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
