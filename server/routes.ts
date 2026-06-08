@@ -912,7 +912,7 @@ export async function registerRoutes(
   app.get("/api/phone-report", requireApiToken, async (req, res) => {
     try {
       const pageNum  = Math.max(1, parseInt(String(req.query.page  || "1"))  || 1);
-      const pageSize = Math.min(1000, Math.max(1, parseInt(String(req.query.limit || "100")) || 100));
+      const pageSize = Math.min(12000, Math.max(1, parseInt(String(req.query.limit || "100")) || 100));
       const offset   = (pageNum - 1) * pageSize;
       const q        = String(req.query.q        || "").trim();
       const exchange = String(req.query.exchange || "").trim();
