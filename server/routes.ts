@@ -908,6 +908,66 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/phone-report — token-protected, returns phone_lines rows with filters
+  app.get("/api/phone-report", requireApiToken, async (req, res) => {
+    try {
+      const pageNum  = Math.max(1, parseInt(String(req.query.page  || "1"))  || 1);
+      const pageSize = Math.min(1000, Math.max(1, parseInt(String(req.query.limit || "100")) || 100));
+      const offset   = (pageNum - 1) * pageSize;
+      const q        = String(req.query.q        || "").trim();
+      const exchange = String(req.query.exchange || "").trim();
+      const cabinet  = String(req.query.cabinet  || "").trim();
+      const box      = String(req.query.box      || "").trim();
+
+      const params: any[] = [];
+      const conds: string[] = [];
+
+      if (exchange) { params.push(`%${exchange}%`); conds.push(`central ILIKE $${params.length}`); }
+      if (cabinet)  { params.push(`%${cabinet}%`);  conds.push(`cabin_number ILIKE $${params.length}`); }
+      if (box)      { params.push(`%${box}%`);      conds.push(`box_number ILIKE $${params.length}`); }
+      if (q) {
+        params.push(`%${q}%`);
+        const p = `$${params.length}`;
+        conds.push(`(full_phone ILIKE ${p} OR tel_no ILIKE ${p} OR central ILIKE ${p} OR cabin_number ILIKE ${p} OR box_number ILIKE ${p})`);
+      }
+
+      const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+
+      const countRes = await pool.query(`SELECT COUNT(*)::int AS c FROM phone_lines ${where}`, params);
+      const total = countRes.rows[0].c as number;
+
+      params.push(pageSize, offset);
+      const { rows } = await pool.query(
+        `SELECT id,
+                tel_no AS "telNo",
+                central,
+                idu_no AS "iduNo",
+                odu_no AS "oduNo",
+                cabin_number AS "cabinNumber",
+                primary_block_no AS "primaryBlockNo",
+                cabinet_in AS "cabinetIn",
+                sec_block_no AS "secBlockNo",
+                cabinet_out AS "cabinetOut",
+                box_number AS "boxNumber",
+                dp_terminal AS "dpTerminal",
+                port,
+                len,
+                fiber_block AS "fiberBlock",
+                fiber_out AS "fiberOut",
+                tel_num_txt AS "telNumTxt",
+                full_phone AS "fullPhone"
+         FROM phone_lines ${where}
+         ORDER BY id
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+
+      res.json({ ok: true, data: rows, total, page: pageNum, limit: pageSize });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: "Server error" });
+    }
+  });
+
   // === Phone Line Edits ===
 
   // PUT /api/phone-lines/:id — edit cabin/box/dpTerminal + create audit record
