@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -153,6 +153,20 @@ interface PhonePort {
   operator: string | null;
 }
 
+interface CabinetTechnician {
+  id: number;
+  centralName: string | null;
+  cabinNumber: string | null;
+  workerCode: string | null;
+  hayaKarima: string | null;
+  regionName: string | null;
+  active: string | null;
+  centralFinish: string | null;
+  villageCode: string | null;
+  cabinCode: string | null;
+  idu: string | null;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (d: string | null) =>
@@ -265,7 +279,7 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports" | "orders">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports" | "orders" | "cabinTech">("maintenance");
   const [orderBucket, setOrderBucket] = useState<"historical" | "current" | "archive">("historical");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -384,6 +398,17 @@ export function FileUploadSection() {
     },
   });
 
+  const { data: cabinTech = [], isFetching: fetchCT } = useQuery<CabinetTechnician[]>({
+    queryKey: ["/api/cabinet-technicians", searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (searchQ) p.set("q", searchQ);
+      const res = await fetch(`/api/cabinet-technicians?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
   const isFetching =
     tab === "maintenance" ? fetchM :
     tab === "tickets" ? fetchT :
@@ -392,7 +417,8 @@ export function FileUploadSection() {
     tab === "remaining" ? fetchR :
     tab === "ftth" ? fetchF :
     tab === "case138" ? fetchC :
-    tab === "ports" ? fetchP : fetchO;
+    tab === "ports" ? fetchP :
+    tab === "cabinTech" ? fetchCT : fetchO;
 
   // bucket selector applies to tabs that keep 3 snapshots
   const showBucket = tab === "maintenance" || tab === "tickets" || tab === "ticketsFtth";
@@ -459,6 +485,13 @@ export function FileUploadSection() {
           queryKey="/api/ftth-orders"
           color="border-emerald-200 bg-emerald-50/50"
         />
+        <UploadCard
+          label="الفنيين بأرقام الكباين — يستبدل القديم"
+          icon={Users}
+          endpoint="/api/cabinet-technicians/import"
+          queryKey="/api/cabinet-technicians"
+          color="border-lime-200 bg-lime-50/50"
+        />
       </Card>
 
       {/* Date filter + Tabs */}
@@ -519,6 +552,12 @@ export function FileUploadSection() {
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "orders" ? "bg-emerald-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
               طلبات FTTH ({orders.length})
+            </button>
+            <button
+              onClick={() => setTab("cabinTech")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "cabinTech" ? "bg-lime-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              فنيين الكباين ({cabinTech.length})
             </button>
           </div>
 
@@ -587,7 +626,7 @@ export function FileUploadSection() {
         <span>
           إجمالي:{" "}
           <strong className="text-foreground">
-            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : tab === "ports" ? ports.length : orders.length}
+            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : tab === "ports" ? ports.length : tab === "cabinTech" ? cabinTech.length : orders.length}
           </strong>{" "}
           سجل
         </span>
@@ -956,6 +995,60 @@ export function FileUploadSection() {
                       <TableCell className="text-xs">{p.voiceStatus || "-"}</TableCell>
                       <TableCell className="text-xs">{p.dataStatus || "-"}</TableCell>
                       <TableCell className="text-xs">{p.operator || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "cabinTech" && (
+        <>
+          <div className="px-1">
+            <Input
+              placeholder="بحث بالسنترال / الكابينة / كود العامل / المنطقة / IDU"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-lime-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    <TableHead className="text-right font-bold">السنترال</TableHead>
+                    <TableHead className="text-right font-bold">رقم الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">كود العامل</TableHead>
+                    <TableHead className="text-right font-bold">حياة كريمة</TableHead>
+                    <TableHead className="text-right font-bold">المنطقة</TableHead>
+                    <TableHead className="text-right font-bold">الشغال</TableHead>
+                    <TableHead className="text-right font-bold">كود القرية</TableHead>
+                    <TableHead className="text-right font-bold">كود الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">IDU</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cabinTech.length === 0 ? (
+                    <TableRow><TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
+                      {fetchCT ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف الفنيين بأرقام الكباين"}
+                    </TableCell></TableRow>
+                  ) : cabinTech.map((c, i) => (
+                    <TableRow key={c.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="text-xs">{c.centralName || "-"}</TableCell>
+                      <TableCell className="text-xs">{c.cabinNumber || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left font-mono text-xs">{c.workerCode || "-"}</TableCell>
+                      <TableCell className="text-xs">{c.hayaKarima || "-"}</TableCell>
+                      <TableCell className="text-xs">{c.regionName || "-"}</TableCell>
+                      <TableCell className="text-xs">{c.active || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{c.villageCode || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{c.cabinCode || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{c.idu || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

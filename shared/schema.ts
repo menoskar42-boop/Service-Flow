@@ -387,6 +387,25 @@ export const case138 = pgTable("case_138", {
 
 export type Case138 = typeof case138.$inferSelect;
 
+// الفنيين بأرقام الكباين — full replace each upload
+export const cabinetTechnicians = pgTable("cabinet_technicians", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name"),
+  cabinNumber: text("cabin_number"),
+  workerCode: text("worker_code"),
+  hayaKarima: text("haya_karima"),
+  regionName: text("region_name"),
+  active: text("active"),
+  centralFinish: text("central_finish"),
+  villageCode: text("village_code"),
+  cabinCode: text("cabin_code"),
+  idu: text("idu"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type CabinetTechnician = typeof cabinetTechnicians.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',

@@ -502,4 +502,23 @@ export async function ensureSchema() {
       uploaded_by_id integer REFERENCES users(id)
     )
   `);
+
+  // cabinet_technicians — الفنيين بأرقام الكباين (full replace each upload)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cabinet_technicians (
+      id serial PRIMARY KEY,
+      central_name text,
+      cabin_number text,
+      worker_code text,
+      haya_karima text,
+      region_name text,
+      active text,
+      central_finish text,
+      village_code text,
+      cabin_code text,
+      idu text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
 }

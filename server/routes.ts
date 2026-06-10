@@ -1641,6 +1641,92 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // POST /api/cabinet-technicians/import — الفنيين بأرقام الكباين (full replace each upload)
+  app.post("/api/cabinet-technicians/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const { find, dataRows } = smartSheet(rows, ["رقم الكابينة", "رقم الكابينه", "كود العامل"]);
+      const iCentral  = find("اسم السنترال");
+      const iCabin    = find("رقم الكابينة", "رقم الكابينه");
+      const iWorker   = find("كود العامل", "كود الفنى", "كود الفني");
+      const iHaya     = find("حياة كريمة", "حياه كريمه");
+      const iRegion   = find("اسم المنطقة", "اسم المنطقه");
+      const iActive   = find("الشغال");
+      const iFinish   = find("finish");
+      const iVillage  = find("كود القريه", "كود القرية");
+      const iCabCode  = find("كود الكابينه", "كود الكابينة");
+      const iIdu      = find("idu");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+      const inserts: any[][] = [];
+      for (const r of dataRows) {
+        const central = String(g(r, iCentral)).trim();
+        const cabin = String(g(r, iCabin)).trim();
+        if (!central && !cabin) continue;
+        inserts.push([
+          central || null,
+          cabin || null,
+          String(g(r, iWorker)) || null,
+          String(g(r, iHaya)) || null,
+          String(g(r, iRegion)) || null,
+          String(g(r, iActive)) || null,
+          String(g(r, iFinish)) || null,
+          String(g(r, iVillage)) || null,
+          String(g(r, iCabCode)) || null,
+          String(g(r, iIdu)) || null,
+        ]);
+      }
+
+      await pool.query("DELETE FROM cabinet_technicians");
+      let inserted = 0;
+      const BATCH = 200;
+      for (let s = 0; s < inserts.length; s += BATCH) {
+        const chunk = inserts.slice(s, s + BATCH);
+        const ph = chunk.map((_, ci) => {
+          const o = ci * 10;
+          return "(" + Array.from({ length: 10 }, (_, k) => `$${o+k+1}`).join(",") + ")";
+        }).join(",");
+        const r = await pool.query(
+          `INSERT INTO cabinet_technicians
+             (central_name, cabin_number, worker_code, haya_karima, region_name,
+              active, central_finish, village_code, cabin_code, idu)
+           VALUES ${ph}`,
+          chunk.flat(),
+        );
+        inserted += r.rowCount ?? 0;
+      }
+      res.json({ inserted, total: inserts.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/cabinet-technicians — list with search
+  app.get("/api/cabinet-technicians", requireAuth, async (req, res) => {
+    const { q } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      where = `WHERE (central_name ILIKE ${p} OR cabin_number ILIKE ${p} OR worker_code ILIKE ${p} OR region_name ILIKE ${p} OR cabin_code ILIKE ${p} OR idu ILIKE ${p})`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, central_name AS "centralName", cabin_number AS "cabinNumber",
+              worker_code AS "workerCode", haya_karima AS "hayaKarima",
+              region_name AS "regionName", active, central_finish AS "centralFinish",
+              village_code AS "villageCode", cabin_code AS "cabinCode", idu
+       FROM cabinet_technicians ${where}
+       ORDER BY central_name, cabin_number
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // POST /api/phone-ports/import — upsert by phone_number (update existing, insert new)
   app.post("/api/phone-ports/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
