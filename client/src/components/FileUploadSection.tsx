@@ -470,7 +470,7 @@ export function FileUploadSection() {
           color="border-fuchsia-200 bg-fuchsia-50/50"
         />
         <UploadCard
-          label="تفاصيل الأعطال (430D_Trial) — التفاصيل تتراكم / المتبقى يُستبدل"
+          label="تفاصيل الأعطال (430D_Trial) — التفاصيل والمتبقى يتراكمان (تسجيل تاريخي)"
           icon={FileSearch}
           endpoint="/api/complaint-details/import"
           queryKey="/api/complaint-details"
