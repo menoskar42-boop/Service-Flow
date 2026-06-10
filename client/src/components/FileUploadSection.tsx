@@ -169,11 +169,16 @@ function UploadCard({
       return json;
     },
     onSuccess: (d) => {
-      const desc =
-        d.details || d.remaining
-          ? `تفاصيل: ${d.details?.inserted ?? 0} جديد — متبقى: ${d.remaining?.inserted ?? 0}`
-          : `${d.inserted} سجل جديد — تخطى ${d.skipped ?? 0}`;
-      toast({ title: "تم الاستيراد", description: desc, duration: 4000 });
+      let desc: string;
+      if (d.details || d.remaining) {
+        desc = `تفاصيل: ${d.details?.inserted ?? 0} جديد — متبقى: ${d.remaining?.inserted ?? 0}`;
+      } else if (d.current !== undefined) {
+        const sod = d.startOfDay >= 0 ? `بداية اليوم: ${d.startOfDay} (تم التحديث)` : "بداية اليوم: لم تتغير";
+        desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current} — ${sod}`;
+      } else {
+        desc = `${d.inserted} سجل جديد — تخطى ${d.skipped ?? 0}`;
+      }
+      toast({ title: "تم الاستيراد", description: desc, duration: 4500 });
       [queryKey, ...extraKeys].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     },
     onError: (e: Error) => {
@@ -218,17 +223,20 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets" | "details" | "remaining" | "ftth" | "case138">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138">("maintenance");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [searchQ, setSearchQ] = useState("");
+  // bucket for tables that keep 3 snapshots: تاريخي / بداية اليوم / حالي
+  const [bucket, setBucket] = useState<"historical" | "sod" | "current">("historical");
 
   const { data: maintenance = [], isFetching: fetchM } = useQuery<MaintenanceOrder[]>({
-    queryKey: ["/api/maintenance-orders", dateFrom, dateTo],
+    queryKey: ["/api/maintenance-orders", dateFrom, dateTo, bucket],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo)   p.set("dateTo", dateTo);
+      p.set("bucket", bucket);
       const res = await fetch(`/api/maintenance-orders?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("failed");
       return res.json();
@@ -236,12 +244,26 @@ export function FileUploadSection() {
   });
 
   const { data: tickets = [], isFetching: fetchT } = useQuery<TicketRow[]>({
-    queryKey: ["/api/ticket-queue", dateFrom, dateTo],
+    queryKey: ["/api/tickets", "dsl", dateFrom, dateTo, searchQ, bucket],
     queryFn: async () => {
-      const p = new URLSearchParams();
+      const p = new URLSearchParams({ type: "dsl", bucket });
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo)   p.set("dateTo", dateTo);
-      const res = await fetch(`/api/ticket-queue?${p}`, { credentials: "include" });
+      if (searchQ)  p.set("q", searchQ);
+      const res = await fetch(`/api/tickets?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
+  const { data: ticketsFtth = [], isFetching: fetchTF } = useQuery<TicketRow[]>({
+    queryKey: ["/api/tickets", "ftth", dateFrom, dateTo, searchQ, bucket],
+    queryFn: async () => {
+      const p = new URLSearchParams({ type: "ftth", bucket });
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo)   p.set("dateTo", dateTo);
+      if (searchQ)  p.set("q", searchQ);
+      const res = await fetch(`/api/tickets?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("failed");
       return res.json();
     },
@@ -300,9 +322,13 @@ export function FileUploadSection() {
   const isFetching =
     tab === "maintenance" ? fetchM :
     tab === "tickets" ? fetchT :
+    tab === "ticketsFtth" ? fetchTF :
     tab === "details" ? fetchD :
     tab === "remaining" ? fetchR :
     tab === "ftth" ? fetchF : fetchC;
+
+  // bucket selector applies to tabs that keep 3 snapshots
+  const showBucket = tab === "maintenance" || tab === "tickets" || tab === "ticketsFtth";
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -317,11 +343,18 @@ export function FileUploadSection() {
           color="border-orange-200 bg-orange-50/50"
         />
         <UploadCard
-          label="قائمة الشكاوى (TicketQueue)"
+          label="شكاوى DSL/نحاس (TicketQueue)"
           icon={PhoneCall}
           endpoint="/api/ticket-queue/import"
-          queryKey="/api/ticket-queue"
+          queryKey="/api/tickets"
           color="border-purple-200 bg-purple-50/50"
+        />
+        <UploadCard
+          label="شكاوى FTTH (TicketQueue FTTH)"
+          icon={PhoneCall}
+          endpoint="/api/ticket-queue-ftth/import"
+          queryKey="/api/tickets"
+          color="border-fuchsia-200 bg-fuchsia-50/50"
         />
         <UploadCard
           label="تفاصيل الأعطال (430D_Trial) — التفاصيل تتراكم / المتبقى يُستبدل"
@@ -362,7 +395,13 @@ export function FileUploadSection() {
               onClick={() => setTab("tickets")}
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "tickets" ? "bg-purple-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
-              الشكاوى ({tickets.length})
+              شكاوى DSL ({tickets.length})
+            </button>
+            <button
+              onClick={() => setTab("ticketsFtth")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "ticketsFtth" ? "bg-fuchsia-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              شكاوى FTTH ({ticketsFtth.length})
             </button>
             <button
               onClick={() => setTab("details")}
@@ -407,6 +446,26 @@ export function FileUploadSection() {
             )}
           </div>
         </div>
+
+        {/* Bucket selector — only for tables with 3 snapshots */}
+        {showBucket && (
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+            <span className="text-xs text-muted-foreground">العرض:</span>
+            {([
+              ["historical", "تاريخي"],
+              ["sod", "بداية اليوم"],
+              ["current", "حالي"],
+            ] as const).map(([val, lbl]) => (
+              <button
+                key={val}
+                onClick={() => setBucket(val)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${bucket === val ? "bg-slate-800 text-white" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* Summary */}
@@ -415,7 +474,7 @@ export function FileUploadSection() {
         <span>
           إجمالي:{" "}
           <strong className="text-foreground">
-            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : case138.length}
+            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : case138.length}
           </strong>{" "}
           سجل
         </span>
@@ -704,6 +763,51 @@ export function FileUploadSection() {
                     {fetchT ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف TicketQueue"}
                   </TableCell></TableRow>
                 ) : tickets.map((t, i) => (
+                  <TableRow key={t.id} className="hover:bg-muted/30">
+                    <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                    <TableCell><span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{t.ticketId}</span></TableCell>
+                    <TableCell className="whitespace-nowrap">{t.centralName}</TableCell>
+                    <TableCell dir="ltr" className="text-left">{t.phoneNumber || "-"}</TableCell>
+                    <TableCell>{t.cabinetNo || "-"}</TableCell>
+                    <TableCell className="text-xs">{t.techCode || "-"}</TableCell>
+                    <TableCell className="text-xs">{t.lineTypeCode || "-"}</TableCell>
+                    <TableCell>{priorityBadge(t.priorityCode)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate">{t.complainTypeName || "-"}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(t.complaintTime)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(t.closeDate)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
+
+      {tab === "ticketsFtth" && (
+        <Card className="overflow-hidden shadow-sm border-0 bg-white">
+          <div className="overflow-x-auto">
+            <Table className="text-right text-sm" dir="rtl">
+              <TableHeader className="bg-fuchsia-50">
+                <TableRow>
+                  <TableHead className="text-right font-bold w-8">#</TableHead>
+                  <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
+                  <TableHead className="text-right font-bold">السنترال</TableHead>
+                  <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                  <TableHead className="text-right font-bold">الكابينة</TableHead>
+                  <TableHead className="text-right font-bold">الفنى</TableHead>
+                  <TableHead className="text-right font-bold">نوع الخط</TableHead>
+                  <TableHead className="text-right font-bold">الأولوية</TableHead>
+                  <TableHead className="text-right font-bold">نوع العطل</TableHead>
+                  <TableHead className="text-right font-bold">وقت الشكوى</TableHead>
+                  <TableHead className="text-right font-bold">تاريخ الإغلاق</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ticketsFtth.length === 0 ? (
+                  <TableRow><TableCell colSpan={11} className="text-center py-16 text-muted-foreground">
+                    {fetchTF ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف TicketQueue FTTH"}
+                  </TableCell></TableRow>
+                ) : ticketsFtth.map((t, i) => (
                   <TableRow key={t.id} className="hover:bg-muted/30">
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell><span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{t.ticketId}</span></TableCell>

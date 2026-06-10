@@ -89,6 +89,135 @@ function toDate(v: any): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+// Ticket column order shared by all ticket destination tables (DSL & FTTH).
+const TICKET_COLS = [
+  "ticket_id", "central_code", "central_name", "phone_number", "complaint_time",
+  "tech_code", "line_type_code", "cabinet_no", "priority_code", "close_date",
+  "operation_type", "complain_type_name", "status_code",
+];
+// Work-order column order shared by all wfm destination tables.
+const WFM_COLS = [
+  "central_name", "work_order_id", "phone_number", "work_order_type", "stage",
+  "status", "priority", "current_workspec", "notes", "description", "creation_date",
+];
+
+// Parse a TicketQueue sheet (Arabic OR English headers) into value arrays
+// matching TICKET_COLS. Stores ALL centrals (name falls back to the code).
+// Deduplicated by (ticket_id, status_code) for the historical unique key.
+function parseTicketFile(buffer: Buffer): any[][] {
+  const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain no"]);
+  const iTicket   = find("رقم الشكوي", "رقم الشكوى", "complain no");
+  const iStatus   = find("status code");
+  const iOrg      = find("كود السنترال", "exch code", "exchange code", "exch");
+  const iTime     = find("وقت الشكوي", "وقت الشكوى", "complain time");
+  const iTech     = find("كود الفنى", "كود الفني", "repman code", "repman");
+  const iLineType = find("line type");
+  const iPhone    = find("رقم التلفون", "رقم التليفون", "tel no");
+  const iCabinet  = find("cabinet no", "رقم الكابينة", "رقم الكابينه");
+  const iPriority = find("كود الأولوية", "كود الاولويه", "priority", "customer segment");
+  const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق", "close date");
+  const iOperation = find("نوع العملية", "نوع العمليه", "process type");
+  const iType     = find("complaintypename", "نوع العطل", "complain type");
+  const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+  const out: any[][] = [];
+  const seen = new Set<string>();
+  for (const r of dataRows) {
+    const ticketId = String(g(r, iTicket)).trim();
+    if (!ticketId) continue;
+    const status = String(g(r, iStatus)).trim();
+    const key = ticketId + "|" + status;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const code = String(g(r, iOrg)).trim().toUpperCase();
+    const name = CENTRAL_CODE_TO_NAME[code] || code;
+    out.push([
+      ticketId, code, name,
+      String(g(r, iPhone))    || null,
+      toDate(g(r, iTime)),
+      String(g(r, iTech))     || null,
+      String(g(r, iLineType)) || null,
+      String(g(r, iCabinet))  || null,
+      String(g(r, iPriority)) || null,
+      toDate(g(r, iCloseDate)),
+      String(g(r, iOperation)) || null,
+      String(g(r, iType))     || null,
+      status || null,
+    ]);
+  }
+  return out;
+}
+
+// First upload "today" (Africa/Cairo) for the given table? Empty table = yes.
+async function isFirstUploadToday(table: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT (MAX(uploaded_at) AT TIME ZONE 'Africa/Cairo')::date
+            = (now() AT TIME ZONE 'Africa/Cairo')::date AS today FROM ${table}`,
+  );
+  return rows[0]?.today !== true;
+}
+
+// Full-replace a table with the given value rows (+ uploaded_by_id appended).
+async function replaceTable(table: string, cols: string[], rows: any[][], userId: number): Promise<number> {
+  await pool.query(`DELETE FROM ${table}`);
+  if (!rows.length) return 0;
+  const allCols = [...cols, "uploaded_by_id"];
+  const n = allCols.length;
+  let inserted = 0;
+  const BATCH = 200;
+  for (let s = 0; s < rows.length; s += BATCH) {
+    const chunk = rows.slice(s, s + BATCH);
+    const ph = chunk.map((_, ci) => {
+      const o = ci * n;
+      return "(" + Array.from({ length: n }, (_, k) => `$${o + k + 1}`).join(",") + ")";
+    }).join(",");
+    const vals = chunk.flatMap((r) => [...r, userId]);
+    const res = await pool.query(`INSERT INTO ${table} (${allCols.join(",")}) VALUES ${ph}`, vals);
+    inserted += res.rowCount ?? 0;
+  }
+  return inserted;
+}
+
+// Accumulate into a historical table (dedup via ON CONFLICT DO NOTHING).
+async function accumulateTable(table: string, cols: string[], conflict: string, rows: any[][], userId: number): Promise<number> {
+  if (!rows.length) return 0;
+  const allCols = [...cols, "uploaded_by_id"];
+  const n = allCols.length;
+  let inserted = 0;
+  const BATCH = 200;
+  for (let s = 0; s < rows.length; s += BATCH) {
+    const chunk = rows.slice(s, s + BATCH);
+    const ph = chunk.map((_, ci) => {
+      const o = ci * n;
+      return "(" + Array.from({ length: n }, (_, k) => `$${o + k + 1}`).join(",") + ")";
+    }).join(",");
+    const vals = chunk.flatMap((r) => [...r, userId]);
+    const res = await pool.query(
+      `INSERT INTO ${table} (${allCols.join(",")}) VALUES ${ph} ON CONFLICT (${conflict}) DO NOTHING`,
+      vals,
+    );
+    inserted += res.rowCount ?? 0;
+  }
+  return inserted;
+}
+
+// Write the same rows to the 3 destinations: historical (accumulate),
+// current (replace every time), start-of-day (replace only first upload of day).
+async function writeThreeDestinations(opts: {
+  histTable: string; sodTable: string; curTable: string;
+  cols: string[]; conflict: string; rows: any[][]; userId: number;
+}) {
+  const firstToday = await isFirstUploadToday(opts.sodTable);
+  const hist = await accumulateTable(opts.histTable, opts.cols, opts.conflict, opts.rows, opts.userId);
+  const current = await replaceTable(opts.curTable, opts.cols, opts.rows, opts.userId);
+  let startOfDay = -1; // -1 ⇒ not replaced (not the day's first upload)
+  if (firstToday) startOfDay = await replaceTable(opts.sodTable, opts.cols, opts.rows, opts.userId);
+  return { hist, current, startOfDay, total: opts.rows.length };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -889,14 +1018,14 @@ export async function registerRoutes(
 
   // === Multi-file upload section ===
 
-  // POST /api/maintenance-orders/import — admin uploads Work_Orders Excel
+  // POST /api/maintenance-orders/import — Work_Orders / wfm (3 destinations)
   app.post("/api/maintenance-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-      if (rows.length < 2) return res.json({ inserted: 0, skipped: 0 });
+      if (rows.length < 2) return res.json({ inserted: 0 });
 
       // smart header detection (tolerant of column reorder / leading title rows)
       const { find, dataRows } = smartSheet(rows, ["رقم أمر الشغل", "رقم امر الشغل", "work order"]);
@@ -911,122 +1040,82 @@ export async function registerRoutes(
       const iWorkspec = find("currentworkspec", "workspec");
       const iNotes    = find("notes", "ملاحظات");
       const iDesc     = find("الوصف", "description");
-
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
-      let inserted = 0, skipped = 0;
-
+      // build value rows (store ALL centrals; name falls back to the code)
+      const wfmRows: any[][] = [];
+      const seen = new Set<string>();
       for (const r of dataRows) {
-        const orgCode = String(g(r, iOrg)).trim().toUpperCase();
-        const centralName = CENTRAL_CODE_TO_NAME[orgCode];
-        if (!centralName) { skipped++; continue; }
-
         const workOrderId = parseInt(String(g(r, iWorkOrder)));
-        if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
-
-        const rawPhone = String(g(r, iPhone)).replace(/^88[-‐]?/, "").trim();
-        const creationDate = toDate(g(r, iDate));
-
-        const ins = await pool.query(
-          `INSERT INTO maintenance_orders
-             (central_name, work_order_id, phone_number, work_order_type, stage, status, priority,
-              current_workspec, notes, description, creation_date, uploaded_by_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-           ON CONFLICT (central_name, work_order_id) DO NOTHING`,
-          [
-            centralName, workOrderId, rawPhone,
-            String(g(r, iType))     || null,
-            String(g(r, iStage))    || null,
-            String(g(r, iStatus))   || null,
-            String(g(r, iPriority)) || null,
-            String(g(r, iWorkspec)) || null,
-            String(g(r, iNotes))    || null,
-            String(g(r, iDesc))     || null,
-            creationDate,
-            (req.user as any).id,
-          ],
-        );
-        if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
+        if (!workOrderId || isNaN(workOrderId)) continue;
+        const orgCode = String(g(r, iOrg)).trim().toUpperCase();
+        const centralName = CENTRAL_CODE_TO_NAME[orgCode] || orgCode || "—";
+        const key = centralName + "|" + workOrderId;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        wfmRows.push([
+          centralName, workOrderId,
+          String(g(r, iPhone)).replace(/^88[-‐]?/, "").trim(),
+          String(g(r, iType))     || null,
+          String(g(r, iStage))    || null,
+          String(g(r, iStatus))   || null,
+          String(g(r, iPriority)) || null,
+          String(g(r, iWorkspec)) || null,
+          String(g(r, iNotes))    || null,
+          String(g(r, iDesc))     || null,
+          toDate(g(r, iDate)),
+        ]);
       }
 
-      res.json({ inserted, skipped });
+      const r = await writeThreeDestinations({
+        histTable: "maintenance_orders", sodTable: "wfm_sod", curTable: "wfm_current",
+        cols: WFM_COLS, conflict: "central_name, work_order_id", rows: wfmRows, userId: (req.user as any).id,
+      });
+      res.json({ inserted: r.hist, ...r });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
   });
 
-  // POST /api/ticket-queue/import — admin uploads TicketQueue Excel
+  // POST /api/ticket-queue/import — DSL/copper TicketQueue (3 destinations)
   app.post("/api/ticket-queue/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
-      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-      if (rows.length < 2) return res.json({ inserted: 0, skipped: 0 });
-
-      // smart header detection
-      const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain no"]);
-      const iTicket   = find("رقم الشكوي", "رقم الشكوى", "complain no");
-      const iStatus   = find("status code");
-      const iOrg      = find("كود السنترال", "exchange name", "exchange");
-      const iTime     = find("وقت الشكوي", "وقت الشكوى", "complain time");
-      const iTech     = find("كود الفنى", "كود الفني", "tech");
-      const iLineType = find("line type");
-      const iPhone    = find("رقم التلفون", "رقم التليفون", "tel no");
-      const iCabinet  = find("cabinet no", "رقم الكابينة", "رقم الكابينه");
-      const iPriority = find("كود الأولوية", "كود الاولويه", "priority");
-      const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق", "close date");
-      const iOperation = find("نوع العملية", "نوع العمليه", "operation");
-      const iComplainType = find("complaintypename", "نوع العطل", "complain type");
-
-      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
-
-      let inserted = 0, skipped = 0;
-
-      for (const r of dataRows) {
-        const orgCode = String(g(r, iOrg)).trim().toUpperCase();
-        const centralName = CENTRAL_CODE_TO_NAME[orgCode];
-        if (!centralName) { skipped++; continue; }
-
-        const ticketId = String(g(r, iTicket)).trim();
-        if (!ticketId) { skipped++; continue; }
-
-        const ins = await pool.query(
-          `INSERT INTO ticket_queue
-             (ticket_id, central_code, central_name, phone_number, complaint_time, tech_code,
-              line_type_code, cabinet_no, priority_code, close_date, operation_type,
-              complain_type_name, status_code, uploaded_by_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-           ON CONFLICT (ticket_id, status_code) DO NOTHING`,
-          [
-            ticketId, orgCode, centralName,
-            String(g(r, iPhone))    || null,
-            toDate(g(r, iTime)),
-            String(g(r, iTech))     || null,
-            String(g(r, iLineType)) || null,
-            String(g(r, iCabinet))  || null,
-            String(g(r, iPriority)) || null,
-            toDate(g(r, iCloseDate)),
-            String(g(r, iOperation)) || null,
-            String(g(r, iComplainType)) || null,
-            String(g(r, iStatus))   || null,
-            (req.user as any).id,
-          ],
-        );
-        if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
-      }
-
-      res.json({ inserted, skipped });
+      const rows = parseTicketFile(req.file.buffer);
+      const r = await writeThreeDestinations({
+        histTable: "ticket_queue", sodTable: "ticket_dsl_sod", curTable: "ticket_dsl_current",
+        cols: TICKET_COLS, conflict: "ticket_id, status_code", rows, userId: (req.user as any).id,
+      });
+      res.json({ inserted: r.hist, ...r });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
   });
 
-  // GET /api/maintenance-orders — list with date filter
+  // POST /api/ticket-queue-ftth/import — FTTH TicketQueue (3 destinations)
+  app.post("/api/ticket-queue-ftth/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const rows = parseTicketFile(req.file.buffer);
+      const r = await writeThreeDestinations({
+        histTable: "ticket_ftth", sodTable: "ticket_ftth_sod", curTable: "ticket_ftth_current",
+        cols: TICKET_COLS, conflict: "ticket_id, status_code", rows, userId: (req.user as any).id,
+      });
+      res.json({ inserted: r.hist, ...r });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/maintenance-orders — list. ?bucket=historical|sod|current
   app.get("/api/maintenance-orders", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, bucket, all } = req.query as Record<string, string>;
+    const table = bucket === "sod" ? "wfm_sod" : bucket === "current" ? "wfm_current" : "maintenance_orders";
     const params: any[] = [];
     const conds: string[] = [];
+    if (all !== "true") {
+      conds.push(`(central_name = 'الغنايم' OR central_name = 'الغنايم-العزايزة' OR central_name = 'الغنايم-دير الجنادله' OR central_name = 'الغنايم-نجع العمدة')`);
+    }
     if (dateFrom) { params.push(dateFrom); conds.push(`creation_date >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`creation_date <= $${params.length}`); }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
@@ -1035,20 +1124,34 @@ export async function registerRoutes(
               phone_number AS "phoneNumber", work_order_type AS "workOrderType",
               stage, status, priority, current_workspec AS "currentWorkspec",
               notes, description, creation_date AS "creationDate"
-       FROM maintenance_orders ${where}
+       FROM ${table} ${where}
        ORDER BY creation_date DESC NULLS LAST`,
       params,
     );
     res.json(rows);
   });
 
-  // GET /api/ticket-queue — list with date filter
-  app.get("/api/ticket-queue", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo } = req.query as Record<string, string>;
+  // GET /api/tickets — ?type=dsl|ftth & ?bucket=historical|sod|current
+  app.get("/api/tickets", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo, q, all, type, bucket } = req.query as Record<string, string>;
+    const TICKET_TABLES: Record<string, Record<string, string>> = {
+      dsl:  { historical: "ticket_queue",  sod: "ticket_dsl_sod",  current: "ticket_dsl_current" },
+      ftth: { historical: "ticket_ftth",   sod: "ticket_ftth_sod", current: "ticket_ftth_current" },
+    };
+    const t = TICKET_TABLES[type === "ftth" ? "ftth" : "dsl"];
+    const table = t[bucket === "sod" ? "sod" : bucket === "current" ? "current" : "historical"];
     const params: any[] = [];
     const conds: string[] = [];
+    if (all !== "true") {
+      conds.push(`central_code IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
+    }
     if (dateFrom) { params.push(dateFrom); conds.push(`complaint_time >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complaint_time <= $${params.length}`); }
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      conds.push(`(ticket_id ILIKE ${p} OR phone_number ILIKE ${p} OR central_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+    }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const { rows } = await pool.query(
       `SELECT id, ticket_id AS "ticketId", central_code AS "centralCode",
@@ -1058,8 +1161,9 @@ export async function registerRoutes(
               priority_code AS "priorityCode", close_date AS "closeDate",
               operation_type AS "operationType", complain_type_name AS "complainTypeName",
               status_code AS "statusCode"
-       FROM ticket_queue ${where}
-       ORDER BY complaint_time DESC NULLS LAST`,
+       FROM ${table} ${where}
+       ORDER BY complaint_time DESC NULLS LAST
+       LIMIT 5000`,
       params,
     );
     res.json(rows);

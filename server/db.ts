@@ -339,6 +339,55 @@ export async function ensureSchema() {
     )
   `);
 
+  // Ticket snapshot/FTTH tables (start-of-day + current, per type).
+  // Columns mirror ticket_queue. ticket_ftth is the FTTH historical table.
+  const ticketTables = ["ticket_dsl_sod", "ticket_dsl_current", "ticket_ftth", "ticket_ftth_sod", "ticket_ftth_current"];
+  for (const t of ticketTables) {
+    const uniq = t === "ticket_ftth" ? `,\n      CONSTRAINT ${t}_uniq UNIQUE (ticket_id, status_code)` : "";
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ${t} (
+        id serial PRIMARY KEY,
+        ticket_id text NOT NULL,
+        central_code text,
+        central_name text,
+        phone_number text,
+        complaint_time timestamptz,
+        tech_code text,
+        line_type_code text,
+        cabinet_no text,
+        priority_code text,
+        close_date timestamptz,
+        operation_type text,
+        complain_type_name text,
+        status_code text,
+        uploaded_at timestamptz NOT NULL DEFAULT now(),
+        uploaded_by_id integer REFERENCES users(id)${uniq}
+      )
+    `);
+  }
+
+  // WFM work-order snapshot tables (start-of-day + current). Mirror maintenance_orders.
+  for (const t of ["wfm_sod", "wfm_current"]) {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ${t} (
+        id serial PRIMARY KEY,
+        central_name text NOT NULL,
+        work_order_id bigint NOT NULL,
+        phone_number text NOT NULL,
+        work_order_type text,
+        stage text,
+        status text,
+        priority text,
+        current_workspec text,
+        notes text,
+        description text,
+        creation_date timestamptz,
+        uploaded_at timestamptz NOT NULL DEFAULT now(),
+        uploaded_by_id integer REFERENCES users(id)
+      )
+    `);
+  }
+
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS case_138 (
