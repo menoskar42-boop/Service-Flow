@@ -2297,6 +2297,7 @@ export async function registerRoutes(
       const { central = "", q = "" } = req.query as Record<string, string>;
       const params: any[] = [];
       const conds: string[] = [
+        `t.close_date IS NULL`,
         `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
         `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
       ];
