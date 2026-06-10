@@ -13,6 +13,7 @@ import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
 import { WorkOrdersReport } from "@/components/WorkOrdersReport";
+import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
@@ -22,7 +23,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -214,6 +215,12 @@ export default function Dashboard() {
               >
                 أوامر الشغل
               </button>
+              <button
+                onClick={() => setReportTab("current-faults")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "current-faults" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                الأعطال الحالية
+              </button>
             </div>
 
             {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
@@ -222,6 +229,7 @@ export default function Dashboard() {
             {reportTab === "box-full" && <BoxFullRejectionsReport orders={orders || []} />}
             {reportTab === "box-broken" && <BoxBrokenRejectionsReport orders={orders || []} />}
             {reportTab === "work-orders" && <WorkOrdersReport />}
+            {reportTab === "current-faults" && <CurrentFaultsReport />}
           </div>
         )}
 

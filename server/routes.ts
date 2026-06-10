@@ -2286,5 +2286,80 @@ export async function registerRoutes(
     });
   });
 
+  // GET /api/reports/current-faults — الأعطال الحالية (status 160,173,122,73,72,60)
+  // Joins case_138 ← phone_ports ← cabinet_technicians
+  app.get("/api/reports/current-faults", requireAuth, async (req, res) => {
+    try {
+      const { central = "", q = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [
+        `(c.status_code LIKE '160%' OR c.status_code LIKE '173%' OR c.status_code LIKE '122%' OR c.status_code LIKE '73 %' OR c.status_code LIKE '72 %' OR c.status_code LIKE '60 %' OR c.status_code = '73' OR c.status_code = '72' OR c.status_code = '60')`,
+        `(c.central_name = 'الغنايم' OR c.central_name = 'الغنايم-العزايزة' OR c.central_name = 'الغنايم-دير الجنادله' OR c.central_name = 'الغنايم-نجع العمدة')`,
+      ];
+      if (central) { params.push(central); conds.push(`c.central_name = $${params.length}`); }
+      if (q.trim()) {
+        params.push(`%${q.trim()}%`);
+        const p = `$${params.length}`;
+        conds.push(`(c.phone_short ILIKE ${p} OR c.full_phone ILIKE ${p} OR c.cabinet_no ILIKE ${p} OR c.box_no ILIKE ${p} OR c.status_code ILIKE ${p})`);
+      }
+      const where = "WHERE " + conds.join(" AND ");
+
+      const { rows } = await pool.query(
+        `SELECT
+           c.central_name          AS "centralName",
+           c.phone_short           AS "phoneShort",
+           CASE WHEN (SELECT COUNT(*) FROM case_138 c2 WHERE c2.phone_short = c.phone_short
+                        AND (c2.status_code LIKE '160%' OR c2.status_code LIKE '173%' OR c2.status_code LIKE '122%'
+                          OR c2.status_code LIKE '73 %' OR c2.status_code LIKE '72 %' OR c2.status_code LIKE '60 %'
+                          OR c2.status_code = '73' OR c2.status_code = '72' OR c2.status_code = '60')) > 1
+                THEN 'مكرر' ELSE '' END AS "repeatStatus",
+           c.status_code           AS "statusCode",
+           ct.cabin_code           AS "msanCode",
+           pp.frame                AS "frame",
+           pp.slot                 AS "masht",
+           pp.port_number          AS "terminal",
+           c.cabinet_no            AS "cabinetNo",
+           c.box_no                AS "boxNo",
+           c.complain_time         AS "complainTime",
+           c.complain_type_name    AS "complainTypeName",
+           c.customer_name         AS "customerName",
+           CASE
+             WHEN c.complain_time IS NULL THEN NULL
+             WHEN (now() - c.complain_time) < interval '24 hours' THEN 'اعطال 24 ساعه'
+             WHEN (now() - c.complain_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
+             ELSE 'المتبقيات'
+           END                     AS "faultClass",
+           c.tech_code             AS "techCode",
+           c.close_date            AS "closeDate",
+           c.onu                   AS "onu",
+           ct.worker_code          AS "workerCode",
+           ct.haya_karima          AS "hayaKarima",
+           c.fault_type            AS "faultType",
+           pp.voice_status         AS "voiceStatus",
+           pp.data_status          AS "dataStatus",
+           pp.shelf                AS "shelf",
+           pp.slot                 AS "slot",
+           pp.port_number          AS "portNumber",
+           CASE c.central_name
+             WHEN 'الغنايم'              THEN 'GHNAT'
+             WHEN 'الغنايم-العزايزة'    THEN 'AMZAT'
+             WHEN 'الغنايم-دير الجنادله' THEN 'DRGAT'
+             WHEN 'الغنايم-نجع العمدة'  THEN 'NGOAT'
+             ELSE c.central_name
+           END                     AS "centralCode",
+           ct.cabin_code           AS "cabinCode"
+         FROM case_138 c
+         LEFT JOIN phone_ports pp ON pp.phone_number = c.full_phone
+         LEFT JOIN cabinet_technicians ct ON ct.central_name = c.central_name AND ct.cabin_number = c.cabinet_no
+         ${where}
+         ORDER BY c.complain_time DESC NULLS LAST`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   return httpServer;
 }
