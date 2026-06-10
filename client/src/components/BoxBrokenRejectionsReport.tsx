@@ -18,6 +18,7 @@ import { Search } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
+import { printTablePDF } from "@/lib/print-pdf";
 
 interface BoxSummary {
   central: string;
@@ -157,6 +158,17 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
     XLSX.writeFile(wb, "box-broken-rejections.xlsx");
   };
 
+  const handleExportPDF = () => {
+    printTablePDF({
+      title: "تقرير متعذرات بوكس معطل",
+      columns: ["#", "العميل", "السنترال", "الكابينة", "رقم البوكس",
+        "عدد الشغال على البكس", "الفني", "التاريخ", "المصدر"],
+      rows: filtered.map((r, i) => [i + 1, r.customerName, r.centralName, displayCabin(r),
+        r.boxNumber, r.workingCount !== null ? r.workingCount : "لا يوجد في بيان التليفونات",
+        r.techName, format(new Date(r.date), "yyyy/MM/dd"), r.isExternal ? "شئون خارجية" : "فني"]),
+    });
+  };
+
   if (boxBrokenOrders.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground bg-white rounded-xl border border-dashed">
@@ -197,9 +209,14 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
               <h3 className="font-semibold text-base">متعذرات بوكس معطل</h3>
               <p className="text-xs text-muted-foreground mt-0.5">{filtered.length} من {rows.length} حالة</p>
             </div>
-            <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
-              تصدير Excel
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
+                تصدير Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!filtered.length} className="text-red-700 border-red-200">
+                تصدير PDF
+              </Button>
+            </div>
           </div>
           {/* Filters row */}
           <div className="flex flex-wrap items-center gap-2">

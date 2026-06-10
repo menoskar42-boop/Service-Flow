@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { printTablePDF } from "@/lib/print-pdf";
 
 interface PhoneLine {
   telNo: string;
@@ -104,6 +105,23 @@ export function PhoneLinesReport() {
     XLSX.writeFile(wb, "phone-lines-report.xlsx");
   };
 
+  const handleExportPDF = async () => {
+    const params = new URLSearchParams({ page: "1", limit: "20000" });
+    if (central) params.set("central", central);
+    if (cabin) params.set("cabin", cabin);
+    if (box) params.set("box", box);
+    const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
+    const json = await res.json();
+    const all = json.data as PhoneLine[];
+    printTablePDF({
+      title: "تقرير بيان أرقام التليفونات",
+      columns: ["#", "التليفون الكامل", "السنترال", "الكابينه", "البكس", "التليفون",
+        "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN"],
+      rows: all.map((r, i) => [i + 1, r.fullPhone, r.central, r.cabinNumber, r.boxNumber,
+        r.telNo, r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len]),
+    });
+  };
+
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 1;
 
   return (
@@ -150,6 +168,9 @@ export function PhoneLinesReport() {
 
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-red-700 border-red-200">
+              تصدير PDF
             </Button>
           </div>
         </div>

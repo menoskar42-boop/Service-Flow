@@ -21,6 +21,8 @@ import { type Order, ORDER_STATUS } from "@shared/schema";
 import { Search, BoxSelect } from "lucide-react";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
+import * as XLSX from "xlsx";
+import { printTablePDF } from "@/lib/print-pdf";
 
 interface BoxRejectionReportProps {
   orders: Order[];
@@ -86,6 +88,31 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 5);
 
+  const summarySorted = Object.values(boxSummary).sort((a, b) => b.count - a.count);
+
+  const handleExportExcel = () => {
+    const exportRows = summarySorted.map((v, i) => ({
+      "#": i + 1,
+      "السنترال": v.central,
+      "الكابينة": v.cabinNumber,
+      "رقم البوكس": v.boxNumber,
+      "عدد المتعذرات": v.count,
+      "أسباب التعذر": [...v.reasons].join(" / "),
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "المتعذرات لكل بوكس");
+    XLSX.writeFile(wb, "box-rejections.xlsx");
+  };
+
+  const handleExportPDF = () => {
+    printTablePDF({
+      title: "تقرير عدد المتعذرات لكل بوكس",
+      columns: ["#", "السنترال", "الكابينة", "رقم البوكس", "عدد المتعذرات", "أسباب التعذر"],
+      rows: summarySorted.map((v, i) => [i + 1, v.central, v.cabinNumber, v.boxNumber, v.count, [...v.reasons].join(" / ")]),
+    });
+  };
+
   if (rejectedOrders.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground bg-white rounded-xl border border-dashed">
@@ -117,9 +144,19 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
       </div>
 
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
-        <div className="p-4 border-b" dir="rtl">
-          <h3 className="font-semibold text-base">تقرير عدد المتعذرات لكل بوكس</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">مجمّع حسب السنترال + الكابينة + رقم البوكس</p>
+        <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3" dir="rtl">
+          <div>
+            <h3 className="font-semibold text-base">تقرير عدد المتعذرات لكل بوكس</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">مجمّع حسب السنترال + الكابينة + رقم البوكس</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200">
+              تصدير Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-red-700 border-red-200">
+              تصدير PDF
+            </Button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <Table className="text-right text-sm" dir="rtl">

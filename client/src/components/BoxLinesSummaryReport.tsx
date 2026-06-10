@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
+import { printTablePDF } from "@/lib/print-pdf";
 
 interface BoxSummary {
   central: string;
@@ -65,6 +66,14 @@ export function BoxLinesSummaryReport() {
     XLSX.writeFile(wb, "box-lines-summary.xlsx");
   };
 
+  const handleExportPDF = () => {
+    printTablePDF({
+      title: "تقرير ملخص عدد الخطوط لكل بكس",
+      columns: ["#", "السنترال", "رقم الكابينه", "رقم البكس", "عدد الخطوط"],
+      rows: data.map((r, i) => [i + 1, r.central, r.cabinNumber, r.boxNumber, r.count]),
+    });
+  };
+
   const maxCount = data.length ? Math.max(...data.map((r) => r.count), 1) : 1;
 
   return (
@@ -108,6 +117,9 @@ export function BoxLinesSummaryReport() {
             />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!data.length} className="text-red-700 border-red-200">
+              تصدير PDF
             </Button>
           </div>
         </div>
