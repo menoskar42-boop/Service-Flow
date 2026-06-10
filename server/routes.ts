@@ -1284,16 +1284,14 @@ export async function registerRoutes(
           ]);
         }
         detailsTotal = inserts.length;
-        const r1 = await writeThreeDestinations({
-          histTable: "complaint_details",
-          sodTable: "complaint_details_sod",
-          curTable: "complaint_details_current",
-          cols: COMPLAINT_DETAILS_COLS,
-          conflict: "complain_no",
-          rows: inserts,
-          userId,
-        });
-        detailsInserted = r1.hist;
+        // All 3 destinations accumulate — no full replace — so uploading multiple
+        // parts of the national 430D file combines them instead of overwriting.
+        const r1hist = await accumulateTable("complaint_details", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId);
+        await accumulateTable("complaint_details_current", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId);
+        const firstToday1 = await isFirstUploadToday("complaint_details_sod");
+        if (firstToday1) await pool.query("DELETE FROM complaint_details_sod");
+        await accumulateTable("complaint_details_sod", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId);
+        detailsInserted = r1hist;
       }
 
       // ── Sheet: تفاصيل متبقى (full replace) ──
@@ -1348,16 +1346,12 @@ export async function registerRoutes(
           ]);
         }
         remainingTotal = inserts.length;
-        const r2 = await writeThreeDestinations({
-          histTable: "remaining_complaints",
-          sodTable: "remaining_complaints_sod",
-          curTable: "remaining_complaints_current",
-          cols: REMAINING_COMPLAINTS_COLS,
-          conflict: "complain_no",
-          rows: inserts,
-          userId,
-        });
-        remainingInserted = r2.hist;
+        const r2hist = await accumulateTable("remaining_complaints", REMAINING_COMPLAINTS_COLS, "complain_no", inserts, userId);
+        await accumulateTable("remaining_complaints_current", REMAINING_COMPLAINTS_COLS, "complain_no", inserts, userId);
+        const firstToday2 = await isFirstUploadToday("remaining_complaints_sod");
+        if (firstToday2) await pool.query("DELETE FROM remaining_complaints_sod");
+        await accumulateTable("remaining_complaints_sod", REMAINING_COMPLAINTS_COLS, "complain_no", inserts, userId);
+        remainingInserted = r2hist;
       }
 
       res.json({
