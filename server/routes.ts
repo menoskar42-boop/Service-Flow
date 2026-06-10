@@ -1729,6 +1729,66 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // POST /api/technician-names/import — أسماء الفنيين (full replace each upload)
+  app.post("/api/technician-names/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const { find, dataRows } = smartSheet(rows, ["Field1", "Field2"]);
+      const iName = find("Field1");
+      const iCode = find("Field2");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+      const inserts: [string, string][] = [];
+      for (const r of dataRows) {
+        const workerCode = String(g(r, iCode)).trim();
+        const techName   = String(g(r, iName)).trim();
+        if (!workerCode || !techName) continue;
+        inserts.push([workerCode, techName]);
+      }
+
+      await pool.query("DELETE FROM technician_names");
+      let inserted = 0;
+      const BATCH = 200;
+      for (let s = 0; s < inserts.length; s += BATCH) {
+        const chunk = inserts.slice(s, s + BATCH);
+        const uidPos = chunk.length * 2 + 1;
+        const ph = chunk.map((_, ci) => `($${ci * 2 + 1},$${ci * 2 + 2},$${uidPos})`).join(",");
+        const vals: any[] = chunk.flatMap(([code, name]) => [code, name]);
+        vals.push(req.user.id);
+        const r = await pool.query(
+          `INSERT INTO technician_names (worker_code, tech_name, uploaded_by_id) VALUES ${ph}`,
+          vals,
+        );
+        inserted += r.rowCount ?? 0;
+      }
+      res.json({ inserted, skipped: inserts.length - inserted });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/technician-names — list with search
+  app.get("/api/technician-names", requireAuth, async (req, res) => {
+    const { q } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      where = `WHERE (worker_code ILIKE $1 OR tech_name ILIKE $1)`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, worker_code AS "workerCode", tech_name AS "techName"
+       FROM technician_names ${where}
+       ORDER BY worker_code
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // POST /api/phone-ports/import — upsert by phone_number (update existing, insert new)
   app.post("/api/phone-ports/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
@@ -2344,10 +2404,10 @@ export async function registerRoutes(
                WHEN (now() - t.complaint_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
                ELSE 'المتبقيات'
              END                     AS "faultClass",
-             t.tech_code             AS "techCode",
              t.close_date            AS "closeDate",
              t.onu                   AS "onu",
              ct.worker_code          AS "workerCode",
+             tn.tech_name            AS "techName",
              ct.haya_karima          AS "hayaKarima",
              NULL                    AS "faultType",
              pp.voice_status         AS "voiceStatus",
@@ -2355,12 +2415,12 @@ export async function registerRoutes(
              pp.shelf                AS "shelf",
              pp.slot                 AS "slot",
              pp.port_number          AS "portNumber",
-             t.central_code          AS "centralCode",
-             ct.cabin_code           AS "cabinCode"
+             t.central_code          AS "centralCode"
            FROM ticket_dsl_current t
            LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
            LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
            LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
+           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x

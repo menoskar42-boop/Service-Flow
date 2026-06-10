@@ -25,10 +25,10 @@ interface CurrentFault {
   complainTypeName: string | null;
   customerName: string | null;
   faultClass: string | null;
-  techCode: string | null;
   closeDate: string | null;
   onu: string | null;
   workerCode: string | null;
+  techName: string | null;
   hayaKarima: string | null;
   faultType: string | null;
   voiceStatus: string | null;
@@ -37,7 +37,6 @@ interface CurrentFault {
   slot: string | null;
   portNumber: string | null;
   centralCode: string | null;
-  cabinCode: string | null;
 }
 
 const fmtDt = (d: string | null) =>
@@ -90,10 +89,10 @@ export function CurrentFaultsReport() {
       "ComplainTypeName": f.complainTypeName,
       "Field5": f.customerName,
       "تصنيف الاعطال": f.faultClass,
-      "كود الفنى": f.techCode,
       "تاريخ الإغلاق": fmtDt(f.closeDate),
       "Onu": f.onu,
       "كود العامل": f.workerCode,
+      "اسم الفنى": f.techName,
       "حياة كريمة ام لا": f.hayaKarima,
       "نوع العطل": f.faultType,
       "LastOfVoice Status": f.voiceStatus,
@@ -102,7 +101,6 @@ export function CurrentFaultsReport() {
       "LastOfSlot": f.slot,
       "LastOfPort number": f.portNumber,
       "كود السنترال": f.centralCode,
-      "كود الكابينه": f.cabinCode,
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -120,7 +118,7 @@ export function CurrentFaultsReport() {
       <th>#</th><th>السنترال</th><th>التليفون</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th><th>مشط</th><th>ترمنال</th>
       <th>الكابينة</th><th>البكس</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
-      <th>تصنيف</th><th>كود الفنى</th><th>نوع العطل</th><th>Voice</th><th>Data</th>
+      <th>تصنيف</th><th>كود العامل</th><th>اسم الفنى</th><th>نوع العطل</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -141,7 +139,8 @@ export function CurrentFaultsReport() {
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
           <td>${esc(f.faultClass)}</td>
-          <td>${esc(f.techCode)}</td>
+          <td>${esc(f.workerCode)}</td>
+          <td>${esc(f.techName)}</td>
           <td>${esc(f.faultType)}</td>
           <td>${esc(f.voiceStatus)}</td>
           <td>${esc(f.dataStatus)}</td>
@@ -254,10 +253,10 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">العميل</TableHead>
                 <TableHead className="text-right font-bold text-white">تصنيف</TableHead>
-                <TableHead className="text-right font-bold text-white">كود الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ الإغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
+                <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">حياة كريمة</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع العطل</TableHead>
                 <TableHead className="text-right font-bold text-white">Voice</TableHead>
@@ -266,13 +265,12 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">Slot</TableHead>
                 <TableHead className="text-right font-bold text-white">Port</TableHead>
                 <TableHead className="text-right font-bold text-white">كود السنترال</TableHead>
-                <TableHead className="text-right font-bold text-white">كود الكابينة</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {faults.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={28} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={27} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أعطال حالية — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
@@ -302,10 +300,10 @@ export function CurrentFaultsReport() {
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell className="max-w-[100px] truncate">{f.customerName || "-"}</TableCell>
                     <TableCell>{faultBadge(f.faultClass)}</TableCell>
-                    <TableCell>{f.techCode || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.closeDate)}</TableCell>
                     <TableCell>{f.onu || "-"}</TableCell>
                     <TableCell>{f.workerCode || "-"}</TableCell>
+                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell className="max-w-[100px] truncate">{f.hayaKarima || "-"}</TableCell>
                     <TableCell>{f.faultType || "-"}</TableCell>
                     <TableCell className="text-xs">{f.voiceStatus || "-"}</TableCell>
@@ -314,7 +312,6 @@ export function CurrentFaultsReport() {
                     <TableCell>{f.slot || "-"}</TableCell>
                     <TableCell>{f.portNumber || "-"}</TableCell>
                     <TableCell>{f.centralCode || "-"}</TableCell>
-                    <TableCell dir="ltr" className="text-left">{f.cabinCode || "-"}</TableCell>
                   </TableRow>
                 );
               })}

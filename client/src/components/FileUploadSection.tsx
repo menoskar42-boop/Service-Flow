@@ -167,6 +167,12 @@ interface CabinetTechnician {
   idu: string | null;
 }
 
+interface TechnicianName {
+  id: number;
+  workerCode: string;
+  techName: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmt = (d: string | null) =>
@@ -279,7 +285,7 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports" | "orders" | "cabinTech">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports" | "orders" | "cabinTech" | "techNames">("maintenance");
   const [orderBucket, setOrderBucket] = useState<"historical" | "current" | "archive">("historical");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -409,6 +415,17 @@ export function FileUploadSection() {
     },
   });
 
+  const { data: techNames = [], isFetching: fetchTN } = useQuery<TechnicianName[]>({
+    queryKey: ["/api/technician-names", searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (searchQ) p.set("q", searchQ);
+      const res = await fetch(`/api/technician-names?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
   const isFetching =
     tab === "maintenance" ? fetchM :
     tab === "tickets" ? fetchT :
@@ -418,7 +435,8 @@ export function FileUploadSection() {
     tab === "ftth" ? fetchF :
     tab === "case138" ? fetchC :
     tab === "ports" ? fetchP :
-    tab === "cabinTech" ? fetchCT : fetchO;
+    tab === "cabinTech" ? fetchCT :
+    tab === "techNames" ? fetchTN : fetchO;
 
   // bucket selector applies to tabs that keep 3 snapshots
   const showBucket = tab === "maintenance" || tab === "tickets" || tab === "ticketsFtth";
@@ -492,6 +510,13 @@ export function FileUploadSection() {
           queryKey="/api/cabinet-technicians"
           color="border-lime-200 bg-lime-50/50"
         />
+        <UploadCard
+          label="أسماء الفنيين (كود العامل + الاسم) — يستبدل القديم"
+          icon={Users}
+          endpoint="/api/technician-names/import"
+          queryKey="/api/technician-names"
+          color="border-violet-200 bg-violet-50/50"
+        />
       </Card>
 
       {/* Date filter + Tabs */}
@@ -558,6 +583,12 @@ export function FileUploadSection() {
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "cabinTech" ? "bg-lime-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
               فنيين الكباين ({cabinTech.length})
+            </button>
+            <button
+              onClick={() => setTab("techNames")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "techNames" ? "bg-violet-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              أسماء الفنيين ({techNames.length})
             </button>
           </div>
 
@@ -626,7 +657,7 @@ export function FileUploadSection() {
         <span>
           إجمالي:{" "}
           <strong className="text-foreground">
-            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : tab === "ports" ? ports.length : tab === "cabinTech" ? cabinTech.length : orders.length}
+            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : tab === "ports" ? ports.length : tab === "cabinTech" ? cabinTech.length : tab === "techNames" ? techNames.length : orders.length}
           </strong>{" "}
           سجل
         </span>
@@ -1049,6 +1080,46 @@ export function FileUploadSection() {
                       <TableCell dir="ltr" className="text-left text-xs">{c.villageCode || "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs">{c.cabinCode || "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs">{c.idu || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "techNames" && (
+        <>
+          <div className="px-1">
+            <Input
+              placeholder="بحث بكود العامل / اسم الفنى"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-violet-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    <TableHead className="text-right font-bold">كود العامل</TableHead>
+                    <TableHead className="text-right font-bold">اسم الفنى</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {techNames.length === 0 ? (
+                    <TableRow><TableCell colSpan={3} className="text-center py-16 text-muted-foreground">
+                      {fetchTN ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف أسماء الفنيين"}
+                    </TableCell></TableRow>
+                  ) : techNames.map((t, i) => (
+                    <TableRow key={t.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell dir="ltr" className="text-left font-mono text-xs">{t.workerCode}</TableCell>
+                      <TableCell className="font-medium">{t.techName}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -526,4 +526,15 @@ export async function ensureSchema() {
       uploaded_by_id integer REFERENCES users(id)
     )
   `);
+
+  // technician_names — أسماء الفنيين بأكواد العمال (full replace each upload)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS technician_names (
+      id serial PRIMARY KEY,
+      worker_code text NOT NULL,
+      tech_name text NOT NULL,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
 }
