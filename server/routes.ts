@@ -1346,12 +1346,18 @@ export async function registerRoutes(
           ]);
         }
         remainingTotal = inserts.length;
-        const r2hist = await accumulateTable("remaining_complaints", REMAINING_COMPLAINTS_COLS, "complain_no", inserts, userId);
-        await accumulateTable("remaining_complaints_current", REMAINING_COMPLAINTS_COLS, "complain_no", inserts, userId);
-        const firstToday2 = await isFirstUploadToday("remaining_complaints_sod");
-        if (firstToday2) await pool.query("DELETE FROM remaining_complaints_sod");
-        await accumulateTable("remaining_complaints_sod", REMAINING_COMPLAINTS_COLS, "complain_no", inserts, userId);
-        remainingInserted = r2hist;
+        // المتبقى snapshot: current is fully replaced each upload (fresh open-faults
+        // snapshot), while the historical table keeps accumulating.
+        const r2 = await writeThreeDestinations({
+          histTable: "remaining_complaints",
+          sodTable: "remaining_complaints_sod",
+          curTable: "remaining_complaints_current",
+          cols: REMAINING_COMPLAINTS_COLS,
+          conflict: "complain_no",
+          rows: inserts,
+          userId,
+        });
+        remainingInserted = r2.hist;
       }
 
       res.json({
