@@ -9,6 +9,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users } from "lucide-react";
+import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -195,8 +196,69 @@ const priorityBadge = (p: string | null) => {
 
 // ─── Sub-component: Upload Card ───────────────────────────────────────────────
 
+// Staged FTTH/ADSL import: parse the Excel file in the browser (no server RAM /
+// file-size limits) and send normalized rows to the server in JSON batches.
+async function importFtthStaged(file: File): Promise<{ inserted: number; skipped: number }> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: false });
+  const ws = wb.Sheets["FTTH-Subscibers"] || wb.Sheets[wb.SheetNames[0]];
+  const all: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+
+  const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+  const hIdx = all.findIndex((r) =>
+    r.some((c) => norm(c).includes("fcc code") || norm(c).includes("msan/gpon") || norm(c) === "msan"),
+  );
+  if (hIdx < 0) throw new Error("لم يتم العثور على صف العناوين (FCC Code / MSAN) في الملف");
+  const header = all[hIdx].map(norm);
+  const find = (...names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
+  const iSector = find("sector");
+  const iRegion = find("regoin", "region");
+  const iMainEx = find("main ex");
+  const iSubEx  = find("sub ex");
+  const iFcc    = find("fcc code", "fcc");
+  const iType   = find("type");
+  const iMsan   = find("msan/gpon", "msan", "gpon code");
+  const iFbb    = find("fbb subs", "fbb");
+  const iFv     = find("fv subs", "fv");
+  const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+  const data: any[][] = [];
+  for (let i = hIdx + 1; i < all.length; i++) {
+    const r = all[i];
+    const fcc = String(g(r, iFcc)).trim();
+    const msan = String(g(r, iMsan)).trim();
+    if (!fcc && !msan) continue;
+    data.push([
+      String(g(r, iSector)), String(g(r, iRegion)), String(g(r, iMainEx)), String(g(r, iSubEx)),
+      fcc, String(g(r, iType)), msan, g(r, iFbb), g(r, iFv),
+    ]);
+  }
+  if (data.length === 0) throw new Error("لا توجد صفوف بيانات في الملف");
+
+  let inserted = 0;
+  const STEP = 2000;
+  for (let s = 0; s < data.length; s += STEP) {
+    const res = await fetch("/api/ftth-subscribers/import-rows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ rows: data.slice(s, s + STEP), mode: s === 0 ? "replace" : "append" }),
+    });
+    const text = await res.text();
+    let json: any;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error("الخادم غير محدّث — أعد نشر التطبيق (Republish) ثم سجّل الدخول من جديد");
+    }
+    if (!res.ok) throw new Error(json.message || "خطأ");
+    inserted += json.inserted ?? 0;
+  }
+  return { inserted, skipped: data.length - inserted };
+}
+
 function UploadCard({
-  label, icon: Icon, endpoint, queryKey, color, extraKeys = [],
+  label, icon: Icon, endpoint, queryKey, color, extraKeys = [], staged,
 }: {
   label: string;
   icon: any;
@@ -204,6 +266,7 @@ function UploadCard({
   queryKey: string;
   color: string;
   extraKeys?: string[];
+  staged?: "ftth";
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -211,6 +274,7 @@ function UploadCard({
 
   const mut = useMutation({
     mutationFn: async (file: File) => {
+      if (staged === "ftth") return importFtthStaged(file);
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch(endpoint, { method: "POST", body: fd, credentials: "include" });
@@ -490,11 +554,12 @@ export function FileUploadSection() {
           color="border-teal-200 bg-teal-50/50"
         />
         <UploadCard
-          label="مشتركين FTTH / ADSL — يستبدل القديم"
+          label="مشتركين FTTH / ADSL — يستبدل القديم (رفع على مراحل)"
           icon={Wifi}
           endpoint="/api/ftth-subscribers/import"
           queryKey="/api/ftth-subscribers"
           color="border-indigo-200 bg-indigo-50/50"
+          staged="ftth"
         />
         <UploadCard
           label="حاله 138 (أعطال DSL) — يستبدل القديم"

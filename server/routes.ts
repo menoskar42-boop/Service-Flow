@@ -1522,6 +1522,47 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/ftth-subscribers/import-rows — staged import: client parses Excel
+  // in the browser and sends normalized rows in JSON batches. First batch uses
+  // mode="replace" (wipes old data), the rest use mode="append".
+  app.post("/api/ftth-subscribers/import-rows", requireAuth, requireAdmin, async (req: any, res) => {
+    try {
+      const { rows, mode } = req.body as { rows: any[][]; mode: "replace" | "append" };
+      if (!Array.isArray(rows)) return res.status(400).json({ message: "لا توجد بيانات" });
+      if (mode === "replace") await pool.query("DELETE FROM ftth_subscribers");
+      const toInt = (v: any) => { const n = parseInt(String(v)); return isNaN(n) ? null : n; };
+      let inserted = 0;
+      const BATCH = 300;
+      for (let s = 0; s < rows.length; s += BATCH) {
+        const chunk = rows.slice(s, s + BATCH).map((r) => [
+          String(r[0] ?? "") || null,
+          String(r[1] ?? "") || null,
+          String(r[2] ?? "") || null,
+          String(r[3] ?? "") || null,
+          String(r[4] ?? "") || null,
+          String(r[5] ?? "") || null,
+          String(r[6] ?? "") || null,
+          toInt(r[7]),
+          toInt(r[8]),
+        ]);
+        const ph = chunk.map((_, ci) => {
+          const o = ci * 9;
+          return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9})`;
+        }).join(",");
+        const r2 = await pool.query(
+          `INSERT INTO ftth_subscribers
+             (sector, region, main_ex, sub_ex, fcc_code, type, msan_gpon_code, fbb_subs, fv_subs)
+           VALUES ${ph}`,
+          chunk.flat(),
+        );
+        inserted += r2.rowCount ?? 0;
+      }
+      res.json({ inserted });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
   // GET /api/ftth-subscribers — list with search (summary report, all centrals)
   app.get("/api/ftth-subscribers", requireAuth, async (req, res) => {
     const { q } = req.query as Record<string, string>;
