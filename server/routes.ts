@@ -218,6 +218,37 @@ async function writeThreeDestinations(opts: {
   return { hist, current, startOfDay, total: opts.rows.length };
 }
 
+// FTTH-order data columns (shared by historical / current / archive tables).
+const FTTH_ORDER_COLS = [
+  "service_order_id", "customer_order_id", "product", "service_number", "customer_name",
+  "order_status", "order_create_time", "exchange_name", "service_type", "msan_code",
+  "area_code", "customer_mobile", "current_activity", "error_name", "governorate",
+  "line_type", "fcc_exchange", "raw",
+];
+
+// Archive a historical table into its archive table when the year (Africa/Cairo)
+// has rolled over since the last upload. Returns the archived year or null.
+async function archiveIfNewYear(histTable: string, archiveTable: string, cols: string[]): Promise<number | null> {
+  const { rows } = await pool.query(
+    `SELECT EXTRACT(YEAR FROM MAX(uploaded_at) AT TIME ZONE 'Africa/Cairo')::int AS y FROM ${histTable}`,
+  );
+  const lastYear = rows[0]?.y;
+  if (lastYear == null) return null; // empty → nothing to archive
+  const { rows: cur } = await pool.query(
+    `SELECT EXTRACT(YEAR FROM now() AT TIME ZONE 'Africa/Cairo')::int AS y`,
+  );
+  const curYear = cur[0].y as number;
+  if (lastYear >= curYear) return null;
+  const colList = cols.join(", ");
+  await pool.query(
+    `INSERT INTO ${archiveTable} (archived_year, ${colList}, uploaded_at, uploaded_by_id)
+     SELECT $1, ${colList}, uploaded_at, uploaded_by_id FROM ${histTable}`,
+    [lastYear],
+  );
+  await pool.query(`DELETE FROM ${histTable}`);
+  return lastYear;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1677,6 +1708,109 @@ export async function registerRoutes(
               data_status AS "dataStatus", operator
        FROM phone_ports ${where}
        ORDER BY phone_number
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // POST /api/ftth-orders/import — historical (accumulate + yearly archive) + current (replace)
+  app.post("/api/ftth-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets["Order"] || wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const { find, findExact, dataRows, headerRowIdx } = smartSheet(rows, ["service order id", "service number"]);
+      const origHeaders = (rows[headerRowIdx] || []).map((h) => String(h ?? "").trim());
+
+      const iSO = find("service order id");
+      const iCO = find("customer order id");
+      const iProduct = findExact("product");
+      const iServiceNo = find("service number");
+      const iCustomer = findExact("customer name");
+      const iStatus = findExact("order status");
+      const iCreate = find("order create time");
+      const iExch = findExact("exchange name");
+      const iSvcType = findExact("service type");
+      const iMsan = find("msan code");
+      const iArea = findExact("area code");
+      const iMobile = find("customer mobile number", "customer mobile");
+      const iActivity = findExact("current activity");
+      const iError = find("error name");
+      const iGov = find("governorate");
+      const iLineType = findExact("line type");
+      const iFcc = find("fcc exchange");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+      const byId = new Map<string, any[]>();
+      for (const r of dataRows) {
+        const soId = String(g(r, iSO)).trim();
+        if (!soId) continue;
+        const raw: Record<string, any> = {};
+        origHeaders.forEach((h, idx) => { if (h) raw[h] = r[idx] ?? null; });
+        byId.set(soId, [
+          soId,
+          String(g(r, iCO)) || null,
+          String(g(r, iProduct)) || null,
+          String(g(r, iServiceNo)) || null,
+          String(g(r, iCustomer)) || null,
+          String(g(r, iStatus)) || null,
+          toDate(g(r, iCreate)),
+          String(g(r, iExch)) || null,
+          String(g(r, iSvcType)) || null,
+          String(g(r, iMsan)) || null,
+          String(g(r, iArea)) || null,
+          String(g(r, iMobile)) || null,
+          String(g(r, iActivity)) || null,
+          String(g(r, iError)) || null,
+          String(g(r, iGov)) || null,
+          String(g(r, iLineType)) || null,
+          String(g(r, iFcc)) || null,
+          JSON.stringify(raw),
+        ]);
+      }
+      const all = Array.from(byId.values());
+      const userId = (req.user as any).id;
+
+      // archive last year's historical data if the year rolled over
+      const archivedYear = await archiveIfNewYear("ftth_orders", "ftth_orders_archive", FTTH_ORDER_COLS);
+      const hist = await accumulateTable("ftth_orders", FTTH_ORDER_COLS, "service_order_id", all, userId);
+      const current = await replaceTable("ftth_orders_current", FTTH_ORDER_COLS, all, userId);
+
+      res.json({ inserted: hist, hist, current, archivedYear, total: all.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/ftth-orders — ?bucket=historical|current|archive & ?year= & ?q= (الغنايم only by default)
+  app.get("/api/ftth-orders", requireAuth, async (req, res) => {
+    const { q, all, bucket, year } = req.query as Record<string, string>;
+    const table = bucket === "current" ? "ftth_orders_current" : bucket === "archive" ? "ftth_orders_archive" : "ftth_orders";
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (all !== "true") {
+      conds.push(`fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
+    }
+    if (bucket === "archive" && year) { params.push(parseInt(year)); conds.push(`archived_year = $${params.length}`); }
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      conds.push(`(service_order_id ILIKE ${p} OR service_number ILIKE ${p} OR customer_name ILIKE ${p} OR msan_code ILIKE ${p} OR fcc_exchange ILIKE ${p})`);
+    }
+    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    const yearCol = bucket === "archive" ? `archived_year AS "archivedYear",` : "";
+    const { rows } = await pool.query(
+      `SELECT id, ${yearCol} service_order_id AS "serviceOrderId", customer_order_id AS "customerOrderId",
+              product, service_number AS "serviceNumber", customer_name AS "customerName",
+              order_status AS "orderStatus", order_create_time AS "orderCreateTime",
+              exchange_name AS "exchangeName", service_type AS "serviceType", msan_code AS "msanCode",
+              area_code AS "areaCode", customer_mobile AS "customerMobile",
+              current_activity AS "currentActivity", error_name AS "errorName",
+              governorate, line_type AS "lineType", fcc_exchange AS "fccExchange"
+       FROM ${table} ${where}
+       ORDER BY order_create_time DESC NULLS LAST
        LIMIT 5000`,
       params,
     );

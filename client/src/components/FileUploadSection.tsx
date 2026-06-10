@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,6 +116,28 @@ interface Case138 {
   faultType: string | null;
 }
 
+interface FtthOrder {
+  id: number;
+  serviceOrderId: string;
+  customerOrderId: string | null;
+  product: string | null;
+  serviceNumber: string | null;
+  customerName: string | null;
+  orderStatus: string | null;
+  orderCreateTime: string | null;
+  exchangeName: string | null;
+  serviceType: string | null;
+  msanCode: string | null;
+  areaCode: string | null;
+  customerMobile: string | null;
+  currentActivity: string | null;
+  errorName: string | null;
+  governorate: string | null;
+  lineType: string | null;
+  fccExchange: string | null;
+  archivedYear?: number | null;
+}
+
 interface PhonePort {
   id: number;
   phoneNumber: string;
@@ -187,6 +209,9 @@ function UploadCard({
       let desc: string;
       if (d.details || d.remaining) {
         desc = `تفاصيل: ${d.details?.inserted ?? 0} جديد — متبقى: ${d.remaining?.inserted ?? 0}`;
+      } else if (d.archivedYear !== undefined) {
+        const arch = d.archivedYear ? ` — تمت أرشفة سنة ${d.archivedYear}` : "";
+        desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current}${arch}`;
       } else if (d.current !== undefined) {
         const sod = d.startOfDay >= 0 ? `بداية اليوم: ${d.startOfDay} (تم التحديث)` : "بداية اليوم: لم تتغير";
         desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current} — ${sod}`;
@@ -238,7 +263,8 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports" | "orders">("maintenance");
+  const [orderBucket, setOrderBucket] = useState<"historical" | "current" | "archive">("historical");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [searchQ, setSearchQ] = useState("");
@@ -345,6 +371,17 @@ export function FileUploadSection() {
     },
   });
 
+  const { data: orders = [], isFetching: fetchO } = useQuery<FtthOrder[]>({
+    queryKey: ["/api/ftth-orders", orderBucket, searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams({ bucket: orderBucket });
+      if (searchQ) p.set("q", searchQ);
+      const res = await fetch(`/api/ftth-orders?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
   const isFetching =
     tab === "maintenance" ? fetchM :
     tab === "tickets" ? fetchT :
@@ -352,7 +389,8 @@ export function FileUploadSection() {
     tab === "details" ? fetchD :
     tab === "remaining" ? fetchR :
     tab === "ftth" ? fetchF :
-    tab === "case138" ? fetchC : fetchP;
+    tab === "case138" ? fetchC :
+    tab === "ports" ? fetchP : fetchO;
 
   // bucket selector applies to tabs that keep 3 snapshots
   const showBucket = tab === "maintenance" || tab === "tickets" || tab === "ticketsFtth";
@@ -412,6 +450,13 @@ export function FileUploadSection() {
           queryKey="/api/phone-ports"
           color="border-cyan-200 bg-cyan-50/50"
         />
+        <UploadCard
+          label="طلبات FTTH (Order) — تاريخي + حالي + أرشيف سنوي"
+          icon={ClipboardList}
+          endpoint="/api/ftth-orders/import"
+          queryKey="/api/ftth-orders"
+          color="border-emerald-200 bg-emerald-50/50"
+        />
       </Card>
 
       {/* Date filter + Tabs */}
@@ -467,6 +512,12 @@ export function FileUploadSection() {
             >
               منافذ MSAN ({ports.length})
             </button>
+            <button
+              onClick={() => setTab("orders")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "orders" ? "bg-emerald-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              طلبات FTTH ({orders.length})
+            </button>
           </div>
 
           <div className="flex-1" />
@@ -506,6 +557,26 @@ export function FileUploadSection() {
             ))}
           </div>
         )}
+
+        {/* Order bucket selector — historical / current / yearly archive */}
+        {tab === "orders" && (
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+            <span className="text-xs text-muted-foreground">العرض:</span>
+            {([
+              ["historical", "تاريخي (السنة الحالية)"],
+              ["current", "حالي"],
+              ["archive", "الأرشيف"],
+            ] as const).map(([val, lbl]) => (
+              <button
+                key={val}
+                onClick={() => setOrderBucket(val)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${orderBucket === val ? "bg-emerald-700 text-white" : "bg-muted text-muted-foreground hover:bg-muted/70"}`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* Summary */}
@@ -514,7 +585,7 @@ export function FileUploadSection() {
         <span>
           إجمالي:{" "}
           <strong className="text-foreground">
-            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : ports.length}
+            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : tab === "ports" ? ports.length : orders.length}
           </strong>{" "}
           سجل
         </span>
@@ -769,6 +840,64 @@ export function FileUploadSection() {
                       <TableCell className="text-center">{c.maxSpeed || "-"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{c.complainTypeName || c.faultType || "-"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(c.complainTime)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "orders" && (
+        <>
+          <div className="px-1">
+            <Input
+              placeholder="بحث برقم الطلب / رقم الخدمة / العميل / MSAN / السنترال"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-emerald-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    {orderBucket === "archive" && <TableHead className="text-right font-bold">السنة</TableHead>}
+                    <TableHead className="text-right font-bold">رقم الطلب</TableHead>
+                    <TableHead className="text-right font-bold">رقم الخدمة</TableHead>
+                    <TableHead className="text-right font-bold">العميل</TableHead>
+                    <TableHead className="text-right font-bold">المنتج</TableHead>
+                    <TableHead className="text-right font-bold">الحالة</TableHead>
+                    <TableHead className="text-right font-bold">السنترال</TableHead>
+                    <TableHead className="text-right font-bold">MSAN</TableHead>
+                    <TableHead className="text-right font-bold">النشاط الحالي</TableHead>
+                    <TableHead className="text-right font-bold">الخطأ</TableHead>
+                    <TableHead className="text-right font-bold">تاريخ الإنشاء</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {orders.length === 0 ? (
+                    <TableRow><TableCell colSpan={orderBucket === "archive" ? 12 : 11} className="text-center py-16 text-muted-foreground">
+                      {fetchO ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف طلبات FTTH"}
+                    </TableCell></TableRow>
+                  ) : orders.map((o, i) => (
+                    <TableRow key={o.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      {orderBucket === "archive" && <TableCell className="text-xs font-medium">{o.archivedYear ?? "-"}</TableCell>}
+                      <TableCell dir="ltr" className="text-left font-mono text-xs">{o.serviceOrderId}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{o.serviceNumber || "-"}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap max-w-[160px] truncate">{o.customerName || "-"}</TableCell>
+                      <TableCell className="text-xs">{o.product || "-"}</TableCell>
+                      <TableCell className="text-xs">{o.orderStatus || "-"}</TableCell>
+                      <TableCell className="text-xs">{o.fccExchange || o.exchangeName || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{o.msanCode || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate">{o.currentActivity || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate">{o.errorName || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(o.orderCreateTime)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
