@@ -1611,14 +1611,11 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/case-138 — list with date filter + search (الغنايم only by default)
+  // GET /api/case-138 — list with date filter + search (all centrals)
   app.get("/api/case-138", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo, q, all } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, q } = req.query as Record<string, string>;
     const params: any[] = [];
     const conds: string[] = [];
-    if (all !== "true") {
-      conds.push(`(central_name = 'الغنايم' OR central_name = 'الغنايم-العزايزة' OR central_name = 'الغنايم-دير الجنادله' OR central_name = 'الغنايم-نجع العمدة')`);
-    }
     if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
     if (q?.trim()) {
@@ -1636,8 +1633,7 @@ export async function registerRoutes(
               customer_name AS "customerName", dispatch_time AS "dispatchTime",
               tech_code AS "techCode", close_date AS "closeDate", onu, fault_type AS "faultType"
        FROM case_138 ${where}
-       ORDER BY complain_time DESC NULLS LAST
-       LIMIT 5000`,
+       ORDER BY complain_time DESC NULLS LAST`,
       params,
     );
     res.json(rows);
@@ -1876,8 +1872,7 @@ export async function registerRoutes(
               port_type AS "portType", voice_status AS "voiceStatus",
               data_status AS "dataStatus", operator
        FROM phone_ports ${where}
-       ORDER BY phone_number
-       LIMIT 5000`,
+       ORDER BY phone_number`,
       params,
     );
     res.json(rows);
