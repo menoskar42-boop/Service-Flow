@@ -14,6 +14,7 @@ import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
 import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
+import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
@@ -23,7 +24,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -221,6 +222,12 @@ export default function Dashboard() {
               >
                 الأعطال الحالية
               </button>
+              <button
+                onClick={() => setReportTab("regularized-faults")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "regularized-faults" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                الأعطال المنتظمة اليوم
+              </button>
             </div>
 
             {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
@@ -230,6 +237,7 @@ export default function Dashboard() {
             {reportTab === "box-broken" && <BoxBrokenRejectionsReport orders={orders || []} />}
             {reportTab === "work-orders" && <WorkOrdersReport />}
             {reportTab === "current-faults" && <CurrentFaultsReport />}
+            {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
           </div>
         )}
 
