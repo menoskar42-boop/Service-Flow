@@ -113,6 +113,11 @@ export async function ensureSchema() {
     )
   `);
 
+  // Seed + normalize phone_lines / work_orders. Wrapped in try/catch so a failure
+  // here (e.g. missing seed files) can NEVER abort ensureSchema — every CREATE
+  // TABLE below must still run so the whole schema is always rebuilt, exactly the
+  // way work_orders already is (it survives because it is created before this).
+  try {
   const { rows } = await pool.query("SELECT COUNT(*)::int AS c FROM phone_lines");
   const EXPECTED_MIN = 10000;
   if (rows[0].c < EXPECTED_MIN) {
@@ -204,6 +209,9 @@ export async function ensureSchema() {
     END
     WHERE service_type NOT IN ('تركيب جديد', 'نقل')
   `);
+  } catch (e) {
+    console.warn("phone_lines seeding/normalization skipped (schema creation continues):", e);
+  }
 
   // maintenance_orders — أوامر شغل الأعطال (Work_Orders Excel)
   await pool.query(`
