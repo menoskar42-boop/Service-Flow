@@ -937,7 +937,7 @@ export async function registerRoutes(
   });
 
   // === Work Orders (تركيبات) ===
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
   // POST /api/work-orders/import — admin uploads تركيبات xlsx
   app.post("/api/work-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
