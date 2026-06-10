@@ -337,12 +337,23 @@ export function FileUploadSection() {
     queryFn: async () => {
       const p = new URLSearchParams();
       p.set("all", "true");
+      p.set("limit", "5000");
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo)   p.set("dateTo", dateTo);
       if (searchQ)  p.set("q", searchQ);
       const res = await fetch(`/api/complaint-details?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("failed");
       return res.json();
+    },
+  });
+
+  const { data: detailsCount = 0 } = useQuery<number>({
+    queryKey: ["/api/complaint-details/counts"],
+    queryFn: async () => {
+      const res = await fetch("/api/complaint-details/counts", { credentials: "include" });
+      if (!res.ok) return 0;
+      const j = await res.json();
+      return j.complaint_details ?? 0;
     },
   });
 
@@ -548,7 +559,7 @@ export function FileUploadSection() {
               onClick={() => setTab("details")}
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "details" ? "bg-teal-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
-              تفاصيل الأعطال ({details.length})
+              تفاصيل الأعطال ({detailsCount || details.length})
             </button>
             <button
               onClick={() => setTab("remaining")}

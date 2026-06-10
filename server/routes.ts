@@ -1391,7 +1391,8 @@ export async function registerRoutes(
   // GET /api/complaint-details — list with date filter + search (Ghanaim centrals only by default)
   // ?bucket=historical (default) | sod | current
   app.get("/api/complaint-details", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo, q, all, bucket } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, q, all, bucket, limit: limitParam } = req.query as Record<string, string>;
+    const rowLimit = parseInt(limitParam || "0") || 10000;
     const tbl = bucket === "current" ? "complaint_details_current"
               : bucket === "sod"     ? "complaint_details_sod"
               :                        "complaint_details";
@@ -1417,8 +1418,9 @@ export async function registerRoutes(
               close_code AS "closeCode", complain_side_name AS "complainSideName",
               complain_type_name AS "complainTypeName", close_by AS "closeBy"
        FROM ${tbl} ${where}
-       ORDER BY complain_time DESC NULLS LAST`,
-      params,
+       ORDER BY complain_time DESC NULLS LAST
+       LIMIT $${params.length + 1}`,
+      [...params, rowLimit],
     );
     res.json(rows);
   });
