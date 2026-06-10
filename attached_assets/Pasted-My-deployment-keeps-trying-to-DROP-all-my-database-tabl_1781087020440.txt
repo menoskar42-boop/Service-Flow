@@ -1,0 +1,44 @@
+My deployment keeps trying to DROP all my database tables every time I publish, 
+which permanently deletes my production data. I need help understanding WHY and 
+how to stop it.
+
+## The Problem
+On the "Publishing" screen, under "Development database changes detected → 
+Generated migrations to apply to production database", Replit generates a 
+migration full of destructive statements like:
+
+  DROP TABLE "ticket_queue" CASCADE;
+  DROP TABLE "complaint_details" CASCADE;
+  DROP TABLE "phone_ports" CASCADE;
+  DROP TABLE "maintenance_orders" CASCADE;
+  ... (drops ~20 tables, each "with N items")
+
+This wipes all my uploaded data. After approving it once, my app broke with 
+"relation \"ticket_queue\" does not exist".
+
+## Key Context
+1. My app does NOT rely on Drizzle migrations for these tables. They are ALL 
+   created at runtime via an idempotent `ensureSchema()` function in 
+   `server/db.ts` that runs `CREATE TABLE IF NOT EXISTS ...` on every server 
+   startup (called from `server/index.ts`).
+2. ALL of these tables ARE now defined in `shared/schema.ts` too, and my Git 
+   tab shows "Up to date with remote" — yet the migration STILL wants to drop 
+   them. So the generated migration does NOT seem to reflect my current 
+   `shared/schema.ts`.
+3. My `drizzle.config.ts` points schema to `./shared/schema.ts`, out to 
+   `./migrations`, dialect postgresql.
+
+## My Questions
+1. Why does the publish step generate DROP TABLE statements for tables that ARE 
+   present in `shared/schema.ts`? Is the migration generated from the 
+   development database snapshot rather than from `shared/schema.ts`?
+2. How do I completely DISABLE the automatic database schema migration during 
+   publish, so deploying only ships my code and NEVER alters the production 
+   database schema? (My `ensureSchema()` already handles all schema creation 
+   safely at runtime.)
+3. If it can't be fully disabled, how do I make the generated migration a no-op 
+   (zero DROP statements) so publishing is safe?
+4. How do I recover/recreate the production tables that were already dropped 
+   (without losing my development database)?
+
+Please give me exact, step-by-step instructions in the Replit UI.
