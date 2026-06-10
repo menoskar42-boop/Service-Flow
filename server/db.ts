@@ -241,11 +241,13 @@ export async function ensureSchema() {
       operation_type text,
       complain_type_name text,
       status_code text,
+      onu text,
       uploaded_at timestamptz NOT NULL DEFAULT now(),
       uploaded_by_id integer REFERENCES users(id),
       CONSTRAINT ticket_queue_ticket_status_uniq UNIQUE (ticket_id, status_code)
     )
   `);
+  await pool.query(`ALTER TABLE ticket_queue ADD COLUMN IF NOT EXISTS onu text`);
 
   // complaint_details — شيت التفاصيل (430D_Trial Excel)
   await pool.query(`
@@ -364,10 +366,13 @@ export async function ensureSchema() {
         operation_type text,
         complain_type_name text,
         status_code text,
+        onu text,
         uploaded_at timestamptz NOT NULL DEFAULT now(),
         uploaded_by_id integer REFERENCES users(id)${uniq}
       )
     `);
+    // idempotent: tables created before onu existed
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS onu text`);
   }
 
   // WFM work-order snapshot tables (start-of-day + current). Mirror maintenance_orders.

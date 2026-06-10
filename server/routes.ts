@@ -93,7 +93,7 @@ function toDate(v: any): Date | null {
 const TICKET_COLS = [
   "ticket_id", "central_code", "central_name", "phone_number", "complaint_time",
   "tech_code", "line_type_code", "cabinet_no", "priority_code", "close_date",
-  "operation_type", "complain_type_name", "status_code",
+  "operation_type", "complain_type_name", "status_code", "onu",
 ];
 // Work-order column order shared by all wfm destination tables.
 const WFM_COLS = [
@@ -121,6 +121,7 @@ function parseTicketFile(buffer: Buffer): any[][] {
   const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق", "close date");
   const iOperation = find("نوع العملية", "نوع العمليه", "process type");
   const iType     = find("complaintypename", "نوع العطل", "complain type");
+  const iOnu      = find("onu");
   const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
   const out: any[][] = [];
@@ -146,6 +147,7 @@ function parseTicketFile(buffer: Buffer): any[][] {
       String(g(r, iOperation)) || null,
       String(g(r, iType))     || null,
       status || null,
+      String(g(r, iOnu))      || null,
     ]);
   }
   return out;
@@ -2288,79 +2290,80 @@ export async function registerRoutes(
 
   // GET /api/reports/current-faults — الأعطال الحالية (status 160,173,122,73,72,60)
   // Joins case_138 ← phone_ports ← cabinet_technicians
+  // البيان معتمد على ملف شكاوى DSL الحالى (ticket_dsl_current) — وليس حاله 138.
+  // الأكواد المطلوبة: 160/173/122 (Status Code) و 73/72/60 (ComplainTypeName).
   app.get("/api/reports/current-faults", requireAuth, async (req, res) => {
     try {
       const { central = "", q = "" } = req.query as Record<string, string>;
       const params: any[] = [];
       const conds: string[] = [
-        `(c.status_code LIKE '160%' OR c.status_code LIKE '173%' OR c.status_code LIKE '122%' OR c.status_code LIKE '73 %' OR c.status_code LIKE '72 %' OR c.status_code LIKE '60 %' OR c.status_code = '73' OR c.status_code = '72' OR c.status_code = '60')`,
-        `(c.central_name = 'الغنايم' OR c.central_name = 'الغنايم-العزايزة' OR c.central_name = 'الغنايم-دير الجنادله' OR c.central_name = 'الغنايم-نجع العمدة')`,
+        `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
+        `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
       ];
-      if (central) { params.push(central); conds.push(`c.central_name = $${params.length}`); }
+      if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
       if (q.trim()) {
         params.push(`%${q.trim()}%`);
         const p = `$${params.length}`;
-        conds.push(`(c.phone_short ILIKE ${p} OR c.full_phone ILIKE ${p} OR c.cabinet_no ILIKE ${p} OR c.box_no ILIKE ${p} OR c.status_code ILIKE ${p})`);
+        conds.push(`(t.phone_number ILIKE ${p} OR t.cabinet_no ILIKE ${p} OR t.status_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
       }
       const where = "WHERE " + conds.join(" AND ");
 
+      // DISTINCT ON (ticket_id) — آخر حالة لكل شكوى (أعلى id)، ثم ترتيب بوقت الشكوى.
       const { rows } = await pool.query(
-        `SELECT
-           c.central_name          AS "centralName",
-           c.phone_short           AS "phoneShort",
-           -- مكرر: الرقم موجود في شيت التفاصيل (430D) وتاريخ الإغلاق (Close Time)
-           -- هناك يقع في نفس شهر/سنة الشكوى الحالية، بتاريخ (يوم) مختلف.
-           -- (المقارنة بتاريخ الإغلاق لأن شكوى التفاصيل قد تبدأ آخر الشهر السابق
-           --  وتُغلق في نفس شهر الشكوى الحالية — وتُعتبر تكراراً.)
-           CASE WHEN c.phone_short IS NOT NULL AND c.phone_short <> '' AND c.complain_time IS NOT NULL
-                     AND EXISTS (
-                       SELECT 1 FROM complaint_details cd
-                       WHERE cd.close_time IS NOT NULL
-                         AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || c.phone_short
-                         AND date_trunc('month', cd.close_time) = date_trunc('month', c.complain_time)
-                         AND (cd.complain_time IS NULL OR cd.complain_time::date <> c.complain_time::date)
-                     )
-                THEN 'مكرر' ELSE '' END AS "repeatStatus",
-           c.status_code           AS "statusCode",
-           ct.cabin_code           AS "msanCode",
-           pp.frame                AS "frame",
-           pp.slot                 AS "masht",
-           pp.port_number          AS "terminal",
-           c.cabinet_no            AS "cabinetNo",
-           c.box_no                AS "boxNo",
-           c.complain_time         AS "complainTime",
-           c.complain_type_name    AS "complainTypeName",
-           c.customer_name         AS "customerName",
-           CASE
-             WHEN c.complain_time IS NULL THEN NULL
-             WHEN (now() - c.complain_time) < interval '24 hours' THEN 'اعطال 24 ساعه'
-             WHEN (now() - c.complain_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
-             ELSE 'المتبقيات'
-           END                     AS "faultClass",
-           c.tech_code             AS "techCode",
-           c.close_date            AS "closeDate",
-           c.onu                   AS "onu",
-           ct.worker_code          AS "workerCode",
-           ct.haya_karima          AS "hayaKarima",
-           c.fault_type            AS "faultType",
-           pp.voice_status         AS "voiceStatus",
-           pp.data_status          AS "dataStatus",
-           pp.shelf                AS "shelf",
-           pp.slot                 AS "slot",
-           pp.port_number          AS "portNumber",
-           CASE c.central_name
-             WHEN 'الغنايم'              THEN 'GHNAT'
-             WHEN 'الغنايم-العزايزة'    THEN 'AMZAT'
-             WHEN 'الغنايم-دير الجنادله' THEN 'DRGAT'
-             WHEN 'الغنايم-نجع العمدة'  THEN 'NGOAT'
-             ELSE c.central_name
-           END                     AS "centralCode",
-           ct.cabin_code           AS "cabinCode"
-         FROM case_138 c
-         LEFT JOIN phone_ports pp ON pp.phone_number = c.full_phone
-         LEFT JOIN cabinet_technicians ct ON ct.central_name = c.central_name AND ct.cabin_number = c.cabinet_no
-         ${where}
-         ORDER BY c.complain_time DESC NULLS LAST`,
+        `SELECT * FROM (
+           SELECT DISTINCT ON (t.ticket_id)
+             t.central_name          AS "centralName",
+             t.phone_number          AS "phoneShort",
+             -- مكرر: الرقم موجود في شيت التفاصيل (430D) وتاريخ الإغلاق (Close Time)
+             -- هناك يقع في نفس شهر/سنة الشكوى الحالية، بتاريخ (يوم) مختلف.
+             -- (المقارنة بتاريخ الإغلاق لأن شكوى التفاصيل قد تبدأ آخر الشهر السابق
+             --  وتُغلق في نفس شهر الشكوى الحالية — وتُعتبر تكراراً.)
+             CASE WHEN t.phone_number IS NOT NULL AND t.phone_number <> '' AND t.complaint_time IS NOT NULL
+                       AND EXISTS (
+                         SELECT 1 FROM complaint_details cd
+                         WHERE cd.close_time IS NOT NULL
+                           AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
+                           AND date_trunc('month', cd.close_time) = date_trunc('month', t.complaint_time)
+                           AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
+                       )
+                  THEN 'مكرر' ELSE '' END AS "repeatStatus",
+             t.status_code           AS "statusCode",
+             ct.cabin_code           AS "msanCode",
+             pp.frame                AS "frame",
+             pp.slot                 AS "masht",
+             pp.port_number          AS "terminal",
+             t.cabinet_no            AS "cabinetNo",
+             pl.box_number           AS "boxNo",
+             t.complaint_time        AS "complainTime",
+             t.complain_type_name    AS "complainTypeName",
+             NULL                    AS "customerName",
+             CASE
+               WHEN t.complaint_time IS NULL THEN NULL
+               WHEN (now() - t.complaint_time) < interval '24 hours' THEN 'اعطال 24 ساعه'
+               WHEN (now() - t.complaint_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
+               ELSE 'المتبقيات'
+             END                     AS "faultClass",
+             t.tech_code             AS "techCode",
+             t.close_date            AS "closeDate",
+             t.onu                   AS "onu",
+             ct.worker_code          AS "workerCode",
+             ct.haya_karima          AS "hayaKarima",
+             NULL                    AS "faultType",
+             pp.voice_status         AS "voiceStatus",
+             pp.data_status          AS "dataStatus",
+             pp.shelf                AS "shelf",
+             pp.slot                 AS "slot",
+             pp.port_number          AS "portNumber",
+             t.central_code          AS "centralCode",
+             ct.cabin_code           AS "cabinCode"
+           FROM ticket_dsl_current t
+           LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
+           LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
+           LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
+           ${where}
+           ORDER BY t.ticket_id, t.id DESC
+         ) x
+         ORDER BY x."complainTime" DESC NULLS LAST`,
         params,
       );
       res.json(rows);

@@ -273,7 +273,7 @@ export function CurrentFaultsReport() {
               {faults.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={28} className="text-center py-16 text-muted-foreground">
-                    {isFetching ? "جاري التحميل..." : "لا توجد أعطال حالية — تأكد من رفع ملف حاله 138"}
+                    {isFetching ? "جاري التحميل..." : "لا توجد أعطال حالية — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
               ) : faults.map((f, i) => {
