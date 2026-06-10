@@ -309,7 +309,7 @@ export async function ensureSchema() {
     END $$;
   `);
 
-  // remaining_complaints — شيت تفاصيل متبقى (snapshot, replaced each upload)
+  // remaining_complaints — شيت تفاصيل متبقى (hist + sod + current)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS remaining_complaints (
       id serial PRIMARY KEY,
@@ -328,6 +328,54 @@ export async function ensureSchema() {
       status_code text,
       cabinet_no text,
       complain_type text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS remaining_complaints_sod (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      sector text, region text, exchange_name text, phone_number text,
+      complain_time timestamptz, dispatch_time timestamptz, dispatch_user text,
+      msan_id text, close_time timestamptz, close_code text, close_by text,
+      status_code text, cabinet_no text, complain_type text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS remaining_complaints_current (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      sector text, region text, exchange_name text, phone_number text,
+      complain_time timestamptz, dispatch_time timestamptz, dispatch_user text,
+      msan_id text, close_time timestamptz, close_code text, close_by text,
+      status_code text, cabinet_no text, complain_type text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+
+  // complaint_details sod + current companion tables
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS complaint_details_sod (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      sector text, region text, exchange_name text, phone_number text,
+      msan_id text, cabinet_no text, complain_time timestamptz, close_time timestamptz,
+      close_code text, complain_side_name text, complain_type_name text, close_by text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS complaint_details_current (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      sector text, region text, exchange_name text, phone_number text,
+      msan_id text, cabinet_no text, complain_time timestamptz, close_time timestamptz,
+      close_code text, complain_side_name text, complain_type_name text, close_by text,
       uploaded_at timestamptz NOT NULL DEFAULT now(),
       uploaded_by_id integer REFERENCES users(id)
     )

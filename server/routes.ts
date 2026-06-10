@@ -235,6 +235,17 @@ const FTTH_ORDER_COLS = [
   "line_type", "fcc_exchange", "raw",
 ];
 
+const COMPLAINT_DETAILS_COLS = [
+  "complain_no","sector","region","exchange_name","phone_number","msan_id","cabinet_no",
+  "complain_time","close_time","close_code","complain_side_name","complain_type_name","close_by",
+];
+
+const REMAINING_COMPLAINTS_COLS = [
+  "complain_no","sector","region","exchange_name","phone_number","complain_time",
+  "dispatch_time","dispatch_user","msan_id","close_time","close_code","close_by",
+  "status_code","cabinet_no","complain_type",
+];
+
 // Archive a historical table into its archive table when the year (Africa/Cairo)
 // has rolled over since the last upload. Returns the archived year or null.
 async function archiveIfNewYear(histTable: string, archiveTable: string, cols: string[]): Promise<number | null> {
@@ -1219,12 +1230,13 @@ export async function registerRoutes(
   });
 
   // POST /api/complaint-details/import — smart import of 430D file
-  //  • شيت "التفاصيل"  → جدول complaint_details: تراكمي، رقم الشكوى لا يتكرر (لا يُحذف القديم)
-  //  • شيت "تفاصيل متبقى" → جدول remaining_complaints: يُستبدل بالكامل في كل رفع
+  //  • شيت "التفاصيل"    → hist: complaint_details | sod: complaint_details_sod | cur: complaint_details_current
+  //  • شيت "تفاصيل متبقى" → hist: remaining_complaints | sod: remaining_complaints_sod | cur: remaining_complaints_current
   app.post("/api/complaint-details/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const userId: number = (req as any).user.id;
 
       let detailsInserted = 0, detailsTotal = 0;
       let remainingInserted = 0, remainingTotal = 0;
@@ -1272,23 +1284,16 @@ export async function registerRoutes(
           ]);
         }
         detailsTotal = inserts.length;
-        const BATCH = 200;
-        for (let s = 0; s < inserts.length; s += BATCH) {
-          const chunk = inserts.slice(s, s + BATCH);
-          const ph = chunk.map((_, ci) => {
-            const o = ci * 13;
-            return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13})`;
-          }).join(",");
-          const r = await pool.query(
-            `INSERT INTO complaint_details
-               (complain_no, sector, region, exchange_name, phone_number, msan_id, cabinet_no,
-                complain_time, close_time, close_code, complain_side_name, complain_type_name, close_by)
-             VALUES ${ph}
-             ON CONFLICT (complain_no) DO NOTHING`,
-            chunk.flat(),
-          );
-          detailsInserted += r.rowCount ?? 0;
-        }
+        const r1 = await writeThreeDestinations({
+          histTable: "complaint_details",
+          sodTable: "complaint_details_sod",
+          curTable: "complaint_details_current",
+          cols: COMPLAINT_DETAILS_COLS,
+          conflict: "complain_no",
+          rows: inserts,
+          userId,
+        });
+        detailsInserted = r1.hist;
       }
 
       // ── Sheet: تفاصيل متبقى (full replace) ──
@@ -1343,27 +1348,16 @@ export async function registerRoutes(
           ]);
         }
         remainingTotal = inserts.length;
-
-        // REPLACE: clear then insert fresh snapshot
-        await pool.query("DELETE FROM remaining_complaints");
-        const BATCH = 200;
-        for (let s = 0; s < inserts.length; s += BATCH) {
-          const chunk = inserts.slice(s, s + BATCH);
-          const ph = chunk.map((_, ci) => {
-            const o = ci * 15;
-            return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13},$${o+14},$${o+15})`;
-          }).join(",");
-          const r = await pool.query(
-            `INSERT INTO remaining_complaints
-               (complain_no, sector, region, exchange_name, phone_number, complain_time,
-                dispatch_time, dispatch_user, msan_id, close_time, close_code, close_by,
-                status_code, cabinet_no, complain_type)
-             VALUES ${ph}
-             ON CONFLICT (complain_no) DO NOTHING`,
-            chunk.flat(),
-          );
-          remainingInserted += r.rowCount ?? 0;
-        }
+        const r2 = await writeThreeDestinations({
+          histTable: "remaining_complaints",
+          sodTable: "remaining_complaints_sod",
+          curTable: "remaining_complaints_current",
+          cols: REMAINING_COMPLAINTS_COLS,
+          conflict: "complain_no",
+          rows: inserts,
+          userId,
+        });
+        remainingInserted = r2.hist;
       }
 
       res.json({
@@ -1377,8 +1371,12 @@ export async function registerRoutes(
   });
 
   // GET /api/complaint-details — list with date filter + search (Ghanaim centrals only by default)
+  // ?bucket=historical (default) | sod | current
   app.get("/api/complaint-details", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo, q, all } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, q, all, bucket } = req.query as Record<string, string>;
+    const tbl = bucket === "current" ? "complaint_details_current"
+              : bucket === "sod"     ? "complaint_details_sod"
+              :                        "complaint_details";
     const params: any[] = [];
     const conds: string[] = [];
     // Show only الغنايم branches unless all=true
@@ -1400,17 +1398,20 @@ export async function registerRoutes(
               complain_time AS "complainTime", close_time AS "closeTime",
               close_code AS "closeCode", complain_side_name AS "complainSideName",
               complain_type_name AS "complainTypeName", close_by AS "closeBy"
-       FROM complaint_details ${where}
-       ORDER BY complain_time DESC NULLS LAST
-       LIMIT 5000`,
+       FROM ${tbl} ${where}
+       ORDER BY complain_time DESC NULLS LAST`,
       params,
     );
     res.json(rows);
   });
 
   // GET /api/remaining-complaints — list with date filter + search (Ghanaim only by default)
+  // ?bucket=current (default) | sod | historical
   app.get("/api/remaining-complaints", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo, q, all } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, q, all, bucket } = req.query as Record<string, string>;
+    const tbl = bucket === "historical" ? "remaining_complaints"
+              : bucket === "sod"        ? "remaining_complaints_sod"
+              :                           "remaining_complaints_current";
     const params: any[] = [];
     const conds: string[] = [];
     if (all !== "true") {
@@ -1432,7 +1433,7 @@ export async function registerRoutes(
               close_time AS "closeTime", close_code AS "closeCode",
               close_by AS "closeBy", status_code AS "statusCode",
               cabinet_no AS "cabinetNo", complain_type AS "complainType"
-       FROM remaining_complaints ${where}
+       FROM ${tbl} ${where}
        ORDER BY complain_time DESC NULLS LAST`,
       params,
     );
