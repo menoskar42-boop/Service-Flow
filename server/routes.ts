@@ -1370,6 +1370,24 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/complaint-details/counts — diagnostic: row counts of all 6 tables
+  app.get("/api/complaint-details/counts", requireAuth, async (_req, res) => {
+    const tables = [
+      "complaint_details", "complaint_details_sod", "complaint_details_current",
+      "remaining_complaints", "remaining_complaints_sod", "remaining_complaints_current",
+    ];
+    const out: Record<string, number> = {};
+    for (const t of tables) {
+      try {
+        const { rows } = await pool.query(`SELECT COUNT(*)::int AS c FROM ${t}`);
+        out[t] = rows[0]?.c ?? 0;
+      } catch (e: any) {
+        out[t] = -1; // table missing / error
+      }
+    }
+    res.json(out);
+  });
+
   // GET /api/complaint-details — list with date filter + search (Ghanaim centrals only by default)
   // ?bucket=historical (default) | sod | current
   app.get("/api/complaint-details", requireAuth, async (req, res) => {
