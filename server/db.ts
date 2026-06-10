@@ -269,4 +269,55 @@ export async function ensureSchema() {
       uploaded_by_id integer REFERENCES users(id)
     )
   `);
+
+  // Reconcile ticket_queue unique constraint → composite (ticket_id, status_code).
+  // Needed when the table was created earlier with a single-column unique.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_queue_ticket_id_key') THEN
+        ALTER TABLE ticket_queue DROP CONSTRAINT ticket_queue_ticket_id_key;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_queue_ticket_status_uniq') THEN
+        ALTER TABLE ticket_queue ADD CONSTRAINT ticket_queue_ticket_status_uniq UNIQUE (ticket_id, status_code);
+      END IF;
+    END $$;
+  `);
+
+  // Reconcile maintenance_orders unique → composite (central_name, work_order_id).
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'maintenance_orders_work_order_id_key') THEN
+        ALTER TABLE maintenance_orders DROP CONSTRAINT maintenance_orders_work_order_id_key;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'maintenance_orders_central_wo_uniq') THEN
+        ALTER TABLE maintenance_orders ADD CONSTRAINT maintenance_orders_central_wo_uniq UNIQUE (central_name, work_order_id);
+      END IF;
+    END $$;
+  `);
+
+  // remaining_complaints — شيت تفاصيل متبقى (snapshot, replaced each upload)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS remaining_complaints (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      sector text,
+      region text,
+      exchange_name text,
+      phone_number text,
+      complain_time timestamptz,
+      dispatch_time timestamptz,
+      dispatch_user text,
+      msan_id text,
+      close_time timestamptz,
+      close_code text,
+      close_by text,
+      status_code text,
+      cabinet_no text,
+      complain_type text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
 }

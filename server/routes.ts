@@ -51,6 +51,44 @@ const CENTRAL_CODE_TO_NAME: Record<string, string> = {
   NGOAT: "الغنايم-نجع العمدة",
 };
 
+// Smart sheet reader: scans the first `scanRows` rows to locate the header row
+// (the one containing any of the anchor keywords), then exposes a name-based
+// column finder. This makes imports tolerant of reordered columns and of files
+// that prepend report-title rows above the real header (e.g. 430D exports).
+function smartSheet(rows: any[][], anchors: string[], scanRows = 25) {
+  let headerRowIdx = 0;
+  for (let i = 0; i < Math.min(scanRows, rows.length); i++) {
+    const cells = (rows[i] || []).map((c) => String(c ?? "").trim().toLowerCase());
+    if (anchors.some((a) => cells.some((c) => c.includes(a.toLowerCase())))) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  const header = (rows[headerRowIdx] || []).map((c) => String(c ?? "").trim().toLowerCase());
+  // exact-match finder (avoids "complain type" matching "complain type code")
+  const findExact = (...names: string[]) =>
+    header.findIndex((h) => h !== "" && names.some((n) => h === n.toLowerCase()));
+  // partial-match finder
+  const find = (...keywords: string[]) =>
+    header.findIndex((h) => h !== "" && keywords.some((k) => h.includes(k.toLowerCase())));
+  const dataRows = rows.slice(headerRowIdx + 1);
+  return { headerRowIdx, header, find, findExact, dataRows };
+}
+
+// Excel serial date (or string) → JS Date | null
+function toDate(v: any): Date | null {
+  if (v == null || v === "") return null;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === "number" && v > 1) {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (!d) return null;
+    return new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
+  }
+  const s = String(v).trim().replace(" ", "T").replace(/\.0$/, "");
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -860,27 +898,34 @@ export async function registerRoutes(
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
       if (rows.length < 2) return res.json({ inserted: 0, skipped: 0 });
 
-      const dataRows = rows.slice(1); // row 0 = headers
+      // smart header detection (tolerant of column reorder / leading title rows)
+      const { find, dataRows } = smartSheet(rows, ["رقم أمر الشغل", "رقم امر الشغل", "work order"]);
+      const iDate     = find("تاريخ الانشاء", "تاريخ الإنشاء", "creation");
+      const iWorkOrder = find("رقم أمر الشغل", "رقم امر الشغل", "work order id", "work order no");
+      const iOrg      = find("المؤسسة", "المنظمه", "organization");
+      const iPhone    = find("رقم الخدمة", "رقم الخدمه", "service no", "التليفون", "tel no");
+      const iType     = find("نوع أمر الشغل", "نوع امر الشغل", "work order type");
+      const iStage    = find("المرحلة", "stage");
+      const iStatus   = find("الحالة", "status");
+      const iPriority = find("الأهمية", "الاهميه", "priority");
+      const iWorkspec = find("currentworkspec", "workspec");
+      const iNotes    = find("notes", "ملاحظات");
+      const iDesc     = find("الوصف", "description");
+
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
       let inserted = 0, skipped = 0;
 
       for (const r of dataRows) {
-        const orgCode = String(r[2] ?? "").trim().toUpperCase();
+        const orgCode = String(g(r, iOrg)).trim().toUpperCase();
         const centralName = CENTRAL_CODE_TO_NAME[orgCode];
         if (!centralName) { skipped++; continue; }
 
-        const workOrderId = parseInt(String(r[1] ?? ""));
+        const workOrderId = parseInt(String(g(r, iWorkOrder)));
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
 
-        // phone: strip leading '88-' or '88'
-        const rawPhone = String(r[7] ?? "").replace(/^88[-‐]?/, "").trim();
-
-        // creation date — Excel serial number
-        let creationDate: Date | null = null;
-        const rawDate = r[0];
-        if (typeof rawDate === "number" && rawDate > 1) {
-          const d = XLSX.SSF.parse_date_code(rawDate);
-          creationDate = new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
-        }
+        const rawPhone = String(g(r, iPhone)).replace(/^88[-‐]?/, "").trim();
+        const creationDate = toDate(g(r, iDate));
 
         const ins = await pool.query(
           `INSERT INTO maintenance_orders
@@ -890,13 +935,13 @@ export async function registerRoutes(
            ON CONFLICT (central_name, work_order_id) DO NOTHING`,
           [
             centralName, workOrderId, rawPhone,
-            String(r[13] ?? "") || null,
-            String(r[16] ?? "") || null,
-            String(r[17] ?? "") || null,
-            String(r[18] ?? "") || null,
-            String(r[20] ?? "") || null,
-            String(r[21] ?? "") || null,
-            String(r[22] ?? "") || null,
+            String(g(r, iType))     || null,
+            String(g(r, iStage))    || null,
+            String(g(r, iStatus))   || null,
+            String(g(r, iPriority)) || null,
+            String(g(r, iWorkspec)) || null,
+            String(g(r, iNotes))    || null,
+            String(g(r, iDesc))     || null,
             creationDate,
             (req.user as any).id,
           ],
@@ -919,23 +964,31 @@ export async function registerRoutes(
       const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
       if (rows.length < 2) return res.json({ inserted: 0, skipped: 0 });
 
-      const dataRows = rows.slice(1); // row 0 = headers
+      // smart header detection
+      const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain no"]);
+      const iTicket   = find("رقم الشكوي", "رقم الشكوى", "complain no");
+      const iStatus   = find("status code");
+      const iOrg      = find("كود السنترال", "exchange name", "exchange");
+      const iTime     = find("وقت الشكوي", "وقت الشكوى", "complain time");
+      const iTech     = find("كود الفنى", "كود الفني", "tech");
+      const iLineType = find("line type");
+      const iPhone    = find("رقم التلفون", "رقم التليفون", "tel no");
+      const iCabinet  = find("cabinet no", "رقم الكابينة", "رقم الكابينه");
+      const iPriority = find("كود الأولوية", "كود الاولويه", "priority");
+      const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق", "close date");
+      const iOperation = find("نوع العملية", "نوع العمليه", "operation");
+      const iComplainType = find("complaintypename", "نوع العطل", "complain type");
+
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
       let inserted = 0, skipped = 0;
 
-      const parseTs = (v: any): Date | null => {
-        if (!v) return null;
-        const s = String(v).trim();
-        if (!s) return null;
-        const d = new Date(s.replace(" ", "T").replace(/\.0$/, ""));
-        return isNaN(d.getTime()) ? null : d;
-      };
-
       for (const r of dataRows) {
-        const orgCode = String(r[3] ?? "").trim().toUpperCase();
+        const orgCode = String(g(r, iOrg)).trim().toUpperCase();
         const centralName = CENTRAL_CODE_TO_NAME[orgCode];
         if (!centralName) { skipped++; continue; }
 
-        const ticketId = String(r[1] ?? "").trim();
+        const ticketId = String(g(r, iTicket)).trim();
         if (!ticketId) { skipped++; continue; }
 
         const ins = await pool.query(
@@ -947,16 +1000,16 @@ export async function registerRoutes(
            ON CONFLICT (ticket_id, status_code) DO NOTHING`,
           [
             ticketId, orgCode, centralName,
-            String(r[10] ?? "") || null,
-            parseTs(r[4]),
-            String(r[6]  ?? "") || null,
-            String(r[7]  ?? "") || null,
-            String(r[15] ?? "") || null,
-            String(r[20] ?? "") || null,
-            parseTs(r[22]),
-            String(r[24] ?? "") || null,
-            String(r[27] ?? "") || null,
-            String(r[2]  ?? "") || null,
+            String(g(r, iPhone))    || null,
+            toDate(g(r, iTime)),
+            String(g(r, iTech))     || null,
+            String(g(r, iLineType)) || null,
+            String(g(r, iCabinet))  || null,
+            String(g(r, iPriority)) || null,
+            toDate(g(r, iCloseDate)),
+            String(g(r, iOperation)) || null,
+            String(g(r, iComplainType)) || null,
+            String(g(r, iStatus))   || null,
             (req.user as any).id,
           ],
         );
@@ -1012,99 +1065,159 @@ export async function registerRoutes(
     res.json(rows);
   });
 
-  // POST /api/complaint-details/import — REPLACE all data from التفاصيل + تفاصيل متبقى sheets
+  // POST /api/complaint-details/import — smart import of 430D file
+  //  • شيت "التفاصيل"  → جدول complaint_details: تراكمي، رقم الشكوى لا يتكرر (لا يُحذف القديم)
+  //  • شيت "تفاصيل متبقى" → جدول remaining_complaints: يُستبدل بالكامل في كل رفع
   app.post("/api/complaint-details/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
 
-      const parseExcelDate = (v: any): Date | null => {
-        if (typeof v === "number" && v > 1) {
-          const d = XLSX.SSF.parse_date_code(v);
-          return new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
-        }
-        return null;
-      };
+      let detailsInserted = 0, detailsTotal = 0;
+      let remainingInserted = 0, remainingTotal = 0;
 
-      // collect rows from both sheets
-      const allInserts: any[][] = [];
-
-      // Sheet 1: التفاصيل — headers at row[1], data from row[2]
+      // ── Sheet: التفاصيل (accumulating, dedup by complain_no) ──
       const ws1 = wb.Sheets["التفاصيل"];
       if (ws1) {
         const rows1: any[][] = XLSX.utils.sheet_to_json(ws1, { header: 1, defval: "" }) as any[][];
-        for (let i = 2; i < rows1.length; i++) {
-          const r = rows1[i];
-          const complainNo = String(r[6] ?? "").trim();
-          if (!complainNo || complainNo === "0") continue;
-          allInserts.push([
-            complainNo,
-            String(r[1] ?? "") || null, // sector
-            String(r[2] ?? "") || null, // region
-            String(r[3] ?? "") || null, // exchange_name
-            String(r[5] ?? "") || null, // phone_number
-            String(r[7] ?? "") || null, // msan_id
-            String(r[8] ?? "") || null, // cabinet_no
-            parseExcelDate(r[12]),      // complain_time
-            parseExcelDate(r[13]),      // close_time
-            String(r[11] ?? "") || null, // close_code
-            String(r[14] ?? "") || null, // complain_side_name
-            String(r[15] ?? "") || null, // complain_type_name
-            String(r[16] ?? "") || null, // close_by
+        const { find, dataRows } = smartSheet(rows1, ["complain no"]);
+        const iNo = find("complain no");
+        const iSector = find("sector");
+        const iRegion = find("region");
+        const iExchange = find("exchange name", "exchange");
+        const iPhone = find("التليفون", "tel no");
+        const iMsan = find("msan id", "msan");
+        const iCabinet = find("cabinet no");
+        const iCloseCode = find("close code");
+        const iComplainTime = find("compalin time", "complain time");
+        const iCloseTime = find("close time");
+        const iSide = find("complain side name", "side name");
+        const iType = find("complain type name", "complain type");
+        const iCloseBy = find("close by");
+        const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+        const inserts: any[][] = [];
+        const seen = new Set<string>();
+        for (const r of dataRows) {
+          const no = String(g(r, iNo)).trim();
+          if (!no || no === "0" || seen.has(no)) continue;
+          seen.add(no);
+          inserts.push([
+            no,
+            String(g(r, iSector)) || null,
+            String(g(r, iRegion)) || null,
+            String(g(r, iExchange)) || null,
+            String(g(r, iPhone)) || null,
+            String(g(r, iMsan)) || null,
+            String(g(r, iCabinet)) || null,
+            toDate(g(r, iComplainTime)),
+            toDate(g(r, iCloseTime)),
+            String(g(r, iCloseCode)) || null,
+            String(g(r, iSide)) || null,
+            String(g(r, iType)) || null,
+            String(g(r, iCloseBy)) || null,
           ]);
+        }
+        detailsTotal = inserts.length;
+        const BATCH = 200;
+        for (let s = 0; s < inserts.length; s += BATCH) {
+          const chunk = inserts.slice(s, s + BATCH);
+          const ph = chunk.map((_, ci) => {
+            const o = ci * 13;
+            return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13})`;
+          }).join(",");
+          const r = await pool.query(
+            `INSERT INTO complaint_details
+               (complain_no, sector, region, exchange_name, phone_number, msan_id, cabinet_no,
+                complain_time, close_time, close_code, complain_side_name, complain_type_name, close_by)
+             VALUES ${ph}
+             ON CONFLICT (complain_no) DO NOTHING`,
+            chunk.flat(),
+          );
+          detailsInserted += r.rowCount ?? 0;
         }
       }
 
-      // Sheet 2: تفاصيل متبقى — headers at row[0], data from row[1]
+      // ── Sheet: تفاصيل متبقى (full replace) ──
       const ws2 = wb.Sheets["تفاصيل متبقى"];
       if (ws2) {
         const rows2: any[][] = XLSX.utils.sheet_to_json(ws2, { header: 1, defval: "" }) as any[][];
-        for (let i = 1; i < rows2.length; i++) {
-          const r = rows2[i];
-          const complainNo = String(r[4] ?? "").trim();
-          if (!complainNo || complainNo === "0") continue;
-          allInserts.push([
-            complainNo,
-            String(r[1] ?? "") || null, // sector
-            String(r[2] ?? "") || null, // region
-            String(r[3] ?? "") || null, // exchange_name
-            String(r[5] ?? "") || null, // phone_number (Tel No)
-            String(r[10] ?? "") || null, // msan_id
-            String(r[16] ?? "") || null, // cabinet_no
-            parseExcelDate(r[6]),        // complain_time
-            parseExcelDate(r[11]),       // close_time
-            String(r[12] ?? "") || null, // close_code
-            null,                        // complain_side_name (not in this sheet)
-            String(r[18] ?? "") || null, // complain_type_name
-            String(r[13] ?? "") || null, // close_by
+        const { find, dataRows } = smartSheet(rows2, ["complain no"]);
+        const iNo = find("complain no");
+        const iSector = find("sector");
+        const iRegion = find("region");
+        const iExchange = find("exchange name", "exchange");
+        const iPhone = find("tel no", "التليفون");
+        const iComplainTime = find("complain time");
+        const iDispatchTime = find("dispatch time");
+        const iDispatchUser = find("dispatch user");
+        const iMsan = find("msan id", "msan");
+        const iCloseTime = find("close time");
+        const iCloseCode = find("close code");
+        const iCloseBy = find("close by");
+        const iStatus = find("status code");
+        const iCabinet = find("cabinet no");
+        // "Complain Type" (not "Complain Type Code")
+        const iType = (() => {
+          const exact = find("complain type");
+          // prefer the column whose header is exactly "complain type"
+          return exact;
+        })();
+        const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+        const inserts: any[][] = [];
+        const seen = new Set<string>();
+        for (const r of dataRows) {
+          const no = String(g(r, iNo)).trim();
+          if (!no || no === "0" || seen.has(no)) continue;
+          seen.add(no);
+          inserts.push([
+            no,
+            String(g(r, iSector)) || null,
+            String(g(r, iRegion)) || null,
+            String(g(r, iExchange)) || null,
+            String(g(r, iPhone)) || null,
+            toDate(g(r, iComplainTime)),
+            toDate(g(r, iDispatchTime)),
+            String(g(r, iDispatchUser)) || null,
+            String(g(r, iMsan)) || null,
+            toDate(g(r, iCloseTime)),
+            String(g(r, iCloseCode)) || null,
+            String(g(r, iCloseBy)) || null,
+            String(g(r, iStatus)) || null,
+            String(g(r, iCabinet)) || null,
+            String(g(r, iType)) || null,
           ]);
+        }
+        remainingTotal = inserts.length;
+
+        // REPLACE: clear then insert fresh snapshot
+        await pool.query("DELETE FROM remaining_complaints");
+        const BATCH = 200;
+        for (let s = 0; s < inserts.length; s += BATCH) {
+          const chunk = inserts.slice(s, s + BATCH);
+          const ph = chunk.map((_, ci) => {
+            const o = ci * 15;
+            return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13},$${o+14},$${o+15})`;
+          }).join(",");
+          const r = await pool.query(
+            `INSERT INTO remaining_complaints
+               (complain_no, sector, region, exchange_name, phone_number, complain_time,
+                dispatch_time, dispatch_user, msan_id, close_time, close_code, close_by,
+                status_code, cabinet_no, complain_type)
+             VALUES ${ph}
+             ON CONFLICT (complain_no) DO NOTHING`,
+            chunk.flat(),
+          );
+          remainingInserted += r.rowCount ?? 0;
         }
       }
 
-      // REPLACE: delete all existing rows then insert fresh
-      await pool.query("DELETE FROM complaint_details");
-
-      let inserted = 0;
-      const BATCH = 200;
-      for (let s = 0; s < allInserts.length; s += BATCH) {
-        const chunk = allInserts.slice(s, s + BATCH);
-        const placeholders = chunk.map((_, ci) => {
-          const o = ci * 13;
-          return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13})`;
-        }).join(",");
-        const values = chunk.flat();
-        const r = await pool.query(
-          `INSERT INTO complaint_details
-             (complain_no, sector, region, exchange_name, phone_number, msan_id, cabinet_no,
-              complain_time, close_time, close_code, complain_side_name, complain_type_name, close_by)
-           VALUES ${placeholders}
-           ON CONFLICT (complain_no) DO NOTHING`,
-          values,
-        );
-        inserted += r.rowCount ?? 0;
-      }
-
-      res.json({ inserted, total: allInserts.length });
+      res.json({
+        inserted: detailsInserted + remainingInserted,
+        details: { inserted: detailsInserted, total: detailsTotal },
+        remaining: { inserted: remainingInserted, total: remainingTotal },
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
@@ -1135,6 +1248,38 @@ export async function registerRoutes(
               close_code AS "closeCode", complain_side_name AS "complainSideName",
               complain_type_name AS "complainTypeName", close_by AS "closeBy"
        FROM complaint_details ${where}
+       ORDER BY complain_time DESC NULLS LAST
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // GET /api/remaining-complaints — list with date filter + search (Ghanaim only by default)
+  app.get("/api/remaining-complaints", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo, q, all } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (all !== "true") {
+      conds.push(`(exchange_name = 'الغنايم' OR exchange_name = 'الغنايم-العزايزة' OR exchange_name = 'الغنايم-دير الجنادله' OR exchange_name = 'الغنايم-نجع العمدة')`);
+    }
+    if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
+    if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      conds.push(`(complain_no ILIKE ${p} OR phone_number ILIKE ${p} OR exchange_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+    }
+    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    const { rows } = await pool.query(
+      `SELECT id, complain_no AS "complainNo", sector, region,
+              exchange_name AS "exchangeName", phone_number AS "phoneNumber",
+              complain_time AS "complainTime", dispatch_time AS "dispatchTime",
+              dispatch_user AS "dispatchUser", msan_id AS "msanId",
+              close_time AS "closeTime", close_code AS "closeCode",
+              close_by AS "closeBy", status_code AS "statusCode",
+              cabinet_no AS "cabinetNo", complain_type AS "complainType"
+       FROM remaining_complaints ${where}
        ORDER BY complain_time DESC NULLS LAST
        LIMIT 5000`,
       params,
