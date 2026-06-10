@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## MANDATORY CODING CONSTRAINTS — Must be followed in every task
+
+1. **Never rewrite entire existing files** — always edit in place.
+2. **Always use str_replace (Edit tool) for edits to existing files** — never Write-overwrite a file that already exists.
+3. **Add new features one at a time** — implement, commit, push; then move to the next feature.
+4. **For files over 200 lines: insert/replace code sections only** — never a full file replacement.
+5. **If a task is complex, break it into steps and confirm after each step** before continuing.
+6. **Always push to `origin/main`** after every commit.
+
+## Domain Context
+- Expert full-stack engineer (40+ years experience).
+- Expert telecom engineer specializing in fixed-line (PSTN/ADSL/MSAN) fault diagnosis and network data (50+ years experience).
+- Application domain: fixed-line telephone network management (كابينات، بكسيات، DP terminals، خطوط تليفون ثابت).
+
 ## Commands
 
 ```bash
