@@ -228,7 +228,7 @@ function UploadCard({
     onSuccess: (d) => {
       let desc: string;
       if (d.details || d.remaining) {
-        desc = `تفاصيل: ${d.details?.inserted ?? 0} جديد — متبقى: ${d.remaining?.inserted ?? 0}`;
+        desc = `تفاصيل: ${d.details?.inserted ?? 0} جديد (${d.details?.total ?? 0} في الملف) — متبقى: ${d.remaining?.inserted ?? 0} جديد (${d.remaining?.total ?? 0} في الملف)`;
       } else if (d.archivedYear !== undefined) {
         const arch = d.archivedYear ? ` — تمت أرشفة سنة ${d.archivedYear}` : "";
         desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current}${arch}`;
