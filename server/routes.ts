@@ -2308,15 +2308,17 @@ export async function registerRoutes(
         `SELECT
            c.central_name          AS "centralName",
            c.phone_short           AS "phoneShort",
-           -- مكرر: الرقم موجود في شيت التفاصيل (430D) بنفس شهر/سنة الشكوى الحالية
-           -- لكن بتاريخ (يوم) مختلف.
+           -- مكرر: الرقم موجود في شيت التفاصيل (430D) وتاريخ الإغلاق (Close Time)
+           -- هناك يقع في نفس شهر/سنة الشكوى الحالية، بتاريخ (يوم) مختلف.
+           -- (المقارنة بتاريخ الإغلاق لأن شكوى التفاصيل قد تبدأ آخر الشهر السابق
+           --  وتُغلق في نفس شهر الشكوى الحالية — وتُعتبر تكراراً.)
            CASE WHEN c.phone_short IS NOT NULL AND c.phone_short <> '' AND c.complain_time IS NOT NULL
                      AND EXISTS (
                        SELECT 1 FROM complaint_details cd
-                       WHERE cd.complain_time IS NOT NULL
+                       WHERE cd.close_time IS NOT NULL
                          AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || c.phone_short
-                         AND date_trunc('month', cd.complain_time) = date_trunc('month', c.complain_time)
-                         AND cd.complain_time::date <> c.complain_time::date
+                         AND date_trunc('month', cd.close_time) = date_trunc('month', c.complain_time)
+                         AND (cd.complain_time IS NULL OR cd.complain_time::date <> c.complain_time::date)
                      )
                 THEN 'مكرر' ELSE '' END AS "repeatStatus",
            c.status_code           AS "statusCode",
