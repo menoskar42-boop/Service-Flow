@@ -247,6 +247,52 @@ export type UpdateOrder = z.infer<typeof updateOrderSchema>;
 export type UpdateExternal = z.infer<typeof updateExternalResponseSchema>;
 export type PhoneLine = typeof phoneLines.$inferSelect;
 
+// Maintenance Work Orders Table — from Work_Orders Excel (أوامر شغل الأعطال)
+export const maintenanceOrders = pgTable("maintenance_orders", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name").notNull(),
+  workOrderId: bigint("work_order_id", { mode: "number" }).notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  workOrderType: text("work_order_type"),
+  stage: text("stage"),
+  status: text("status"),
+  priority: text("priority"),
+  currentWorkspec: text("current_workspec"),
+  notes: text("notes"),
+  description: text("description"),
+  creationDate: timestamp("creation_date"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+}, (t) => ({
+  uniq: unique("maintenance_orders_central_wo_uniq").on(t.centralName, t.workOrderId),
+}));
+
+export type MaintenanceOrder = typeof maintenanceOrders.$inferSelect;
+
+// Ticket Queue Table — from TicketQueue Excel (شكاوى)
+export const ticketQueue = pgTable("ticket_queue", {
+  id: serial("id").primaryKey(),
+  ticketId: text("ticket_id").notNull(),
+  centralCode: text("central_code").notNull(),
+  centralName: text("central_name").notNull(),
+  phoneNumber: text("phone_number"),
+  complaintTime: timestamp("complaint_time"),
+  techCode: text("tech_code"),
+  lineTypeCode: text("line_type_code"),
+  cabinetNo: text("cabinet_no"),
+  priorityCode: text("priority_code"),
+  closeDate: timestamp("close_date"),
+  operationType: text("operation_type"),
+  complainTypeName: text("complain_type_name"),
+  statusCode: text("status_code"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+}, (t) => ({
+  uniq: unique("ticket_queue_ticket_status_uniq").on(t.ticketId, t.statusCode),
+}));
+
+export type TicketQueueRow = typeof ticketQueue.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',

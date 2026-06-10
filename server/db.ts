@@ -202,4 +202,48 @@ export async function ensureSchema() {
     END
     WHERE service_type NOT IN ('تركيب جديد', 'نقل')
   `);
+
+  // maintenance_orders — أوامر شغل الأعطال (Work_Orders Excel)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS maintenance_orders (
+      id serial PRIMARY KEY,
+      central_name text NOT NULL,
+      work_order_id bigint NOT NULL,
+      phone_number text NOT NULL,
+      work_order_type text,
+      stage text,
+      status text,
+      priority text,
+      current_workspec text,
+      notes text,
+      description text,
+      creation_date timestamptz,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id),
+      CONSTRAINT maintenance_orders_central_wo_uniq UNIQUE (central_name, work_order_id)
+    )
+  `);
+
+  // ticket_queue — شكاوى (TicketQueue Excel)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ticket_queue (
+      id serial PRIMARY KEY,
+      ticket_id text NOT NULL,
+      central_code text NOT NULL,
+      central_name text NOT NULL,
+      phone_number text,
+      complaint_time timestamptz,
+      tech_code text,
+      line_type_code text,
+      cabinet_no text,
+      priority_code text,
+      close_date timestamptz,
+      operation_type text,
+      complain_type_name text,
+      status_code text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id),
+      CONSTRAINT ticket_queue_ticket_status_uniq UNIQUE (ticket_id, status_code)
+    )
+  `);
 }

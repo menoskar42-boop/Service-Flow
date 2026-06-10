@@ -849,6 +849,169 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // === Multi-file upload section ===
+
+  // POST /api/maintenance-orders/import — admin uploads Work_Orders Excel
+  app.post("/api/maintenance-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      if (rows.length < 2) return res.json({ inserted: 0, skipped: 0 });
+
+      const dataRows = rows.slice(1); // row 0 = headers
+      let inserted = 0, skipped = 0;
+
+      for (const r of dataRows) {
+        const orgCode = String(r[2] ?? "").trim().toUpperCase();
+        const centralName = CENTRAL_CODE_TO_NAME[orgCode];
+        if (!centralName) { skipped++; continue; }
+
+        const workOrderId = parseInt(String(r[1] ?? ""));
+        if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
+
+        // phone: strip leading '88-' or '88'
+        const rawPhone = String(r[7] ?? "").replace(/^88[-‐]?/, "").trim();
+
+        // creation date — Excel serial number
+        let creationDate: Date | null = null;
+        const rawDate = r[0];
+        if (typeof rawDate === "number" && rawDate > 1) {
+          const d = XLSX.SSF.parse_date_code(rawDate);
+          creationDate = new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
+        }
+
+        const ins = await pool.query(
+          `INSERT INTO maintenance_orders
+             (central_name, work_order_id, phone_number, work_order_type, stage, status, priority,
+              current_workspec, notes, description, creation_date, uploaded_by_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           ON CONFLICT (central_name, work_order_id) DO NOTHING`,
+          [
+            centralName, workOrderId, rawPhone,
+            String(r[13] ?? "") || null,
+            String(r[16] ?? "") || null,
+            String(r[17] ?? "") || null,
+            String(r[18] ?? "") || null,
+            String(r[20] ?? "") || null,
+            String(r[21] ?? "") || null,
+            String(r[22] ?? "") || null,
+            creationDate,
+            (req.user as any).id,
+          ],
+        );
+        if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
+      }
+
+      res.json({ inserted, skipped });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // POST /api/ticket-queue/import — admin uploads TicketQueue Excel
+  app.post("/api/ticket-queue/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      if (rows.length < 2) return res.json({ inserted: 0, skipped: 0 });
+
+      const dataRows = rows.slice(1); // row 0 = headers
+      let inserted = 0, skipped = 0;
+
+      const parseTs = (v: any): Date | null => {
+        if (!v) return null;
+        const s = String(v).trim();
+        if (!s) return null;
+        const d = new Date(s.replace(" ", "T").replace(/\.0$/, ""));
+        return isNaN(d.getTime()) ? null : d;
+      };
+
+      for (const r of dataRows) {
+        const orgCode = String(r[3] ?? "").trim().toUpperCase();
+        const centralName = CENTRAL_CODE_TO_NAME[orgCode];
+        if (!centralName) { skipped++; continue; }
+
+        const ticketId = String(r[1] ?? "").trim();
+        if (!ticketId) { skipped++; continue; }
+
+        const ins = await pool.query(
+          `INSERT INTO ticket_queue
+             (ticket_id, central_code, central_name, phone_number, complaint_time, tech_code,
+              line_type_code, cabinet_no, priority_code, close_date, operation_type,
+              complain_type_name, status_code, uploaded_by_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (ticket_id, status_code) DO NOTHING`,
+          [
+            ticketId, orgCode, centralName,
+            String(r[10] ?? "") || null,
+            parseTs(r[4]),
+            String(r[6]  ?? "") || null,
+            String(r[7]  ?? "") || null,
+            String(r[15] ?? "") || null,
+            String(r[20] ?? "") || null,
+            parseTs(r[22]),
+            String(r[24] ?? "") || null,
+            String(r[27] ?? "") || null,
+            String(r[2]  ?? "") || null,
+            (req.user as any).id,
+          ],
+        );
+        if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
+      }
+
+      res.json({ inserted, skipped });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/maintenance-orders — list with date filter
+  app.get("/api/maintenance-orders", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (dateFrom) { params.push(dateFrom); conds.push(`creation_date >= $${params.length}`); }
+    if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`creation_date <= $${params.length}`); }
+    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    const { rows } = await pool.query(
+      `SELECT id, central_name AS "centralName", work_order_id AS "workOrderId",
+              phone_number AS "phoneNumber", work_order_type AS "workOrderType",
+              stage, status, priority, current_workspec AS "currentWorkspec",
+              notes, description, creation_date AS "creationDate"
+       FROM maintenance_orders ${where}
+       ORDER BY creation_date DESC NULLS LAST`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // GET /api/ticket-queue — list with date filter
+  app.get("/api/ticket-queue", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (dateFrom) { params.push(dateFrom); conds.push(`complaint_time >= $${params.length}`); }
+    if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complaint_time <= $${params.length}`); }
+    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    const { rows } = await pool.query(
+      `SELECT id, ticket_id AS "ticketId", central_code AS "centralCode",
+              central_name AS "centralName", phone_number AS "phoneNumber",
+              complaint_time AS "complaintTime", tech_code AS "techCode",
+              line_type_code AS "lineTypeCode", cabinet_no AS "cabinetNo",
+              priority_code AS "priorityCode", close_date AS "closeDate",
+              operation_type AS "operationType", complain_type_name AS "complainTypeName",
+              status_code AS "statusCode"
+       FROM ticket_queue ${where}
+       ORDER BY complaint_time DESC NULLS LAST`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // === External API (token-protected, for other sites) ===
   // Requires header: Authorization: Bearer <SF_API_TOKEN>
   const requireApiToken = (req: any, res: any, next: any) => {
