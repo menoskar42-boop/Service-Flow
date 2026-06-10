@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -285,6 +285,7 @@ export const ticketQueue = pgTable("ticket_queue", {
   operationType: text("operation_type"),
   complainTypeName: text("complain_type_name"),
   statusCode: text("status_code"),
+  onu: text("onu"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 }, (t) => ({
@@ -405,6 +406,129 @@ export const cabinetTechnicians = pgTable("cabinet_technicians", {
 });
 
 export type CabinetTechnician = typeof cabinetTechnicians.$inferSelect;
+
+// أسماء الفنيين (كود العامل + الاسم) — full replace each upload
+export const technicianNames = pgTable("technician_names", {
+  id: serial("id").primaryKey(),
+  workerCode: text("worker_code").notNull(),
+  techName: text("tech_name").notNull(),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type TechnicianName = typeof technicianNames.$inferSelect;
+
+// منافذ MSAN (phone_ports) — مفتاحها رقم التليفون (upsert على كل رفعة)
+export const phonePorts = pgTable("phone_ports", {
+  id: serial("id").primaryKey(),
+  phoneNumber: text("phone_number").notNull().unique(),
+  areaCode: text("area_code"),
+  msanCode: text("msan_code"),
+  frame: text("frame"),
+  shelf: text("shelf"),
+  slot: text("slot"),
+  portNumber: text("port_number"),
+  portType: text("port_type"),
+  voiceStatus: text("voice_status"),
+  dataStatus: text("data_status"),
+  operator: text("operator"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type PhonePort = typeof phonePorts.$inferSelect;
+
+// ─── Ticket snapshot tables (mirror ticket_queue + onu) ─────────────────────
+// Defined here so drizzle-kit treats them as managed and never drops them on
+// publish. Column types mirror the raw SQL in server/db.ts (timestamptz).
+const ticketCols = () => ({
+  id: serial("id").primaryKey(),
+  ticketId: text("ticket_id").notNull(),
+  centralCode: text("central_code"),
+  centralName: text("central_name"),
+  phoneNumber: text("phone_number"),
+  complaintTime: timestamp("complaint_time", { withTimezone: true }),
+  techCode: text("tech_code"),
+  lineTypeCode: text("line_type_code"),
+  cabinetNo: text("cabinet_no"),
+  priorityCode: text("priority_code"),
+  closeDate: timestamp("close_date", { withTimezone: true }),
+  operationType: text("operation_type"),
+  complainTypeName: text("complain_type_name"),
+  statusCode: text("status_code"),
+  onu: text("onu"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export const ticketDslSod = pgTable("ticket_dsl_sod", ticketCols(), (t) => ({
+  uniq: unique("ticket_dsl_sod_uniq").on(t.ticketId, t.statusCode),
+}));
+export const ticketDslCurrent = pgTable("ticket_dsl_current", ticketCols());
+export const ticketFtth = pgTable("ticket_ftth", ticketCols(), (t) => ({
+  uniq: unique("ticket_ftth_uniq").on(t.ticketId, t.statusCode),
+}));
+export const ticketFtthSod = pgTable("ticket_ftth_sod", ticketCols(), (t) => ({
+  uniq: unique("ticket_ftth_sod_uniq").on(t.ticketId, t.statusCode),
+}));
+export const ticketFtthCurrent = pgTable("ticket_ftth_current", ticketCols());
+
+// ─── WFM work-order snapshot tables (mirror maintenance_orders) ─────────────
+const wfmCols = () => ({
+  id: serial("id").primaryKey(),
+  centralName: text("central_name").notNull(),
+  workOrderId: bigint("work_order_id", { mode: "number" }).notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  workOrderType: text("work_order_type"),
+  stage: text("stage"),
+  status: text("status"),
+  priority: text("priority"),
+  currentWorkspec: text("current_workspec"),
+  notes: text("notes"),
+  description: text("description"),
+  creationDate: timestamp("creation_date", { withTimezone: true }),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export const wfmSod = pgTable("wfm_sod", wfmCols(), (t) => ({
+  uniq: unique("wfm_sod_central_wo_uniq").on(t.centralName, t.workOrderId),
+}));
+export const wfmCurrent = pgTable("wfm_current", wfmCols());
+
+// ─── FTTH provisioning orders (ملف Order): تاريخي + حالي + أرشيف سنوي ────────
+const ftthOrderCols = () => ({
+  id: serial("id").primaryKey(),
+  serviceOrderId: text("service_order_id").notNull(),
+  customerOrderId: text("customer_order_id"),
+  product: text("product"),
+  serviceNumber: text("service_number"),
+  customerName: text("customer_name"),
+  orderStatus: text("order_status"),
+  orderCreateTime: timestamp("order_create_time", { withTimezone: true }),
+  exchangeName: text("exchange_name"),
+  serviceType: text("service_type"),
+  msanCode: text("msan_code"),
+  areaCode: text("area_code"),
+  customerMobile: text("customer_mobile"),
+  currentActivity: text("current_activity"),
+  errorName: text("error_name"),
+  governorate: text("governorate"),
+  lineType: text("line_type"),
+  fccExchange: text("fcc_exchange"),
+  raw: jsonb("raw"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export const ftthOrders = pgTable("ftth_orders", ftthOrderCols(), (t) => ({
+  uniq: unique("ftth_orders_uniq").on(t.serviceOrderId),
+}));
+export const ftthOrdersCurrent = pgTable("ftth_orders_current", ftthOrderCols());
+export const ftthOrdersArchive = pgTable("ftth_orders_archive", {
+  archivedYear: integer("archived_year"),
+  ...ftthOrderCols(),
+});
 
 // WebSocket Events
 export const WS_EVENTS = {
