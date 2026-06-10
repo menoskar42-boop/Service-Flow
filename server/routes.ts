@@ -1193,16 +1193,23 @@ export async function registerRoutes(
       conds.push(`(ticket_id ILIKE ${p} OR phone_number ILIKE ${p} OR central_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    // A ticket can hold several status_code rows. Show only the LAST status per
+    // ticket: DISTINCT ON (ticket_id) keeping the highest id (latest inserted),
+    // then sort the result by complaint time.
     const { rows } = await pool.query(
-      `SELECT id, ticket_id AS "ticketId", central_code AS "centralCode",
-              central_name AS "centralName", phone_number AS "phoneNumber",
-              complaint_time AS "complaintTime", tech_code AS "techCode",
-              line_type_code AS "lineTypeCode", cabinet_no AS "cabinetNo",
-              priority_code AS "priorityCode", close_date AS "closeDate",
-              operation_type AS "operationType", complain_type_name AS "complainTypeName",
-              status_code AS "statusCode"
-       FROM ${table} ${where}
-       ORDER BY complaint_time DESC NULLS LAST
+      `SELECT * FROM (
+         SELECT DISTINCT ON (ticket_id)
+                id, ticket_id AS "ticketId", central_code AS "centralCode",
+                central_name AS "centralName", phone_number AS "phoneNumber",
+                complaint_time AS "complaintTime", tech_code AS "techCode",
+                line_type_code AS "lineTypeCode", cabinet_no AS "cabinetNo",
+                priority_code AS "priorityCode", close_date AS "closeDate",
+                operation_type AS "operationType", complain_type_name AS "complainTypeName",
+                status_code AS "statusCode"
+         FROM ${table} ${where}
+         ORDER BY ticket_id, id DESC
+       ) t
+       ORDER BY "complaintTime" DESC NULLS LAST
        LIMIT 5000`,
       params,
     );
