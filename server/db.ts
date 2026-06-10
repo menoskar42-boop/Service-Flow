@@ -132,8 +132,10 @@ export async function ensureSchema() {
       }
     }
     if (allLines.length === 0) {
+      // Don't abort ensureSchema here — the remaining CREATE TABLE statements
+      // (ticket_queue, complaint_details, …) MUST still run even when the seed
+      // files are absent, otherwise a dropped/empty DB never gets rebuilt.
       console.warn("No phone-lines-seed files found; phone_lines table left empty");
-      return;
     }
     const BATCH = 500;
     for (let start = 0; start < allLines.length; start += BATCH) {
