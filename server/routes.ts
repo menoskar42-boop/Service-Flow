@@ -2308,10 +2308,16 @@ export async function registerRoutes(
         `SELECT
            c.central_name          AS "centralName",
            c.phone_short           AS "phoneShort",
-           CASE WHEN (SELECT COUNT(*) FROM case_138 c2 WHERE c2.phone_short = c.phone_short
-                        AND (c2.status_code LIKE '160%' OR c2.status_code LIKE '173%' OR c2.status_code LIKE '122%'
-                          OR c2.status_code LIKE '73 %' OR c2.status_code LIKE '72 %' OR c2.status_code LIKE '60 %'
-                          OR c2.status_code = '73' OR c2.status_code = '72' OR c2.status_code = '60')) > 1
+           -- مكرر: الرقم موجود في شيت التفاصيل (430D) بنفس شهر/سنة الشكوى الحالية
+           -- لكن بتاريخ (يوم) مختلف.
+           CASE WHEN c.phone_short IS NOT NULL AND c.phone_short <> '' AND c.complain_time IS NOT NULL
+                     AND EXISTS (
+                       SELECT 1 FROM complaint_details cd
+                       WHERE cd.complain_time IS NOT NULL
+                         AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || c.phone_short
+                         AND date_trunc('month', cd.complain_time) = date_trunc('month', c.complain_time)
+                         AND cd.complain_time::date <> c.complain_time::date
+                     )
                 THEN 'مكرر' ELSE '' END AS "repeatStatus",
            c.status_code           AS "statusCode",
            ct.cabin_code           AS "msanCode",
