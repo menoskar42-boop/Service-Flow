@@ -204,8 +204,12 @@ async function accumulateTable(table: string, cols: string[], conflict: string, 
   return inserted;
 }
 
-// Write the same rows to the 3 destinations: historical (accumulate),
-// current (replace every time), start-of-day (replace only first upload of day).
+// Write the same rows to the 3 destinations:
+//  - historical (accumulate — add new only, never delete)
+//  - current (full replace every upload)
+//  - start-of-day: first upload of a NEW day → fresh snapshot (clear + insert);
+//    subsequent uploads the SAME day → accumulate new faults only (don't delete
+//    previous) — exactly like the historical table within the day.
 async function writeThreeDestinations(opts: {
   histTable: string; sodTable: string; curTable: string;
   cols: string[]; conflict: string; rows: any[][]; userId: number;
@@ -213,9 +217,12 @@ async function writeThreeDestinations(opts: {
   const firstToday = await isFirstUploadToday(opts.sodTable);
   const hist = await accumulateTable(opts.histTable, opts.cols, opts.conflict, opts.rows, opts.userId);
   const current = await replaceTable(opts.curTable, opts.cols, opts.rows, opts.userId);
-  let startOfDay = -1; // -1 ⇒ not replaced (not the day's first upload)
-  if (firstToday) startOfDay = await replaceTable(opts.sodTable, opts.cols, opts.rows, opts.userId);
-  return { hist, current, startOfDay, total: opts.rows.length };
+  // first upload of a new day clears the previous day's snapshot first; then both
+  // the fresh-day and same-day paths accumulate (ON CONFLICT DO NOTHING),
+  // tolerating duplicate keys inside the file.
+  if (firstToday) await pool.query(`DELETE FROM ${opts.sodTable}`);
+  const startOfDay = await accumulateTable(opts.sodTable, opts.cols, opts.conflict, opts.rows, opts.userId);
+  return { hist, current, startOfDay, sodReplaced: firstToday, total: opts.rows.length };
 }
 
 // FTTH-order data columns (shared by historical / current / archive tables).

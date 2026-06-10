@@ -342,8 +342,12 @@ export async function ensureSchema() {
   // Ticket snapshot/FTTH tables (start-of-day + current, per type).
   // Columns mirror ticket_queue. ticket_ftth is the FTTH historical table.
   const ticketTables = ["ticket_dsl_sod", "ticket_dsl_current", "ticket_ftth", "ticket_ftth_sod", "ticket_ftth_current"];
+  // SOD + FTTH-historical tables accumulate (ON CONFLICT DO NOTHING) → need the
+  // composite unique key. The *_current tables are always full-replaced (plain
+  // INSERT) so they must NOT carry the constraint (the file may hold dup keys).
+  const ticketNeedUniq = new Set(["ticket_ftth", "ticket_dsl_sod", "ticket_ftth_sod"]);
   for (const t of ticketTables) {
-    const uniq = t === "ticket_ftth" ? `,\n      CONSTRAINT ${t}_uniq UNIQUE (ticket_id, status_code)` : "";
+    const uniq = ticketNeedUniq.has(t) ? `,\n      CONSTRAINT ${t}_uniq UNIQUE (ticket_id, status_code)` : "";
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ${t} (
         id serial PRIMARY KEY,
@@ -367,7 +371,10 @@ export async function ensureSchema() {
   }
 
   // WFM work-order snapshot tables (start-of-day + current). Mirror maintenance_orders.
+  // wfm_sod accumulates same-day uploads (ON CONFLICT DO NOTHING) → needs the
+  // composite unique key. wfm_current is full-replaced so it stays unconstrained.
   for (const t of ["wfm_sod", "wfm_current"]) {
+    const uniq = t === "wfm_sod" ? `,\n        CONSTRAINT ${t}_central_wo_uniq UNIQUE (central_name, work_order_id)` : "";
     await pool.query(`
       CREATE TABLE IF NOT EXISTS ${t} (
         id serial PRIMARY KEY,
@@ -383,10 +390,37 @@ export async function ensureSchema() {
         description text,
         creation_date timestamptz,
         uploaded_at timestamptz NOT NULL DEFAULT now(),
-        uploaded_by_id integer REFERENCES users(id)
+        uploaded_by_id integer REFERENCES users(id)${uniq}
       )
     `);
   }
+
+  // Idempotent: add the SOD unique constraints to tables created before this
+  // change (CREATE TABLE IF NOT EXISTS won't alter an existing table). Existing
+  // SOD rows may already hold duplicate keys (old plain-INSERT replace), so we
+  // dedup first (keep lowest id per key) before adding the constraint.
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_dsl_sod_uniq') THEN
+        DELETE FROM ticket_dsl_sod a USING ticket_dsl_sod b
+          WHERE a.id > b.id AND a.ticket_id = b.ticket_id
+            AND COALESCE(a.status_code,'') = COALESCE(b.status_code,'');
+        ALTER TABLE ticket_dsl_sod ADD CONSTRAINT ticket_dsl_sod_uniq UNIQUE (ticket_id, status_code);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ticket_ftth_sod_uniq') THEN
+        DELETE FROM ticket_ftth_sod a USING ticket_ftth_sod b
+          WHERE a.id > b.id AND a.ticket_id = b.ticket_id
+            AND COALESCE(a.status_code,'') = COALESCE(b.status_code,'');
+        ALTER TABLE ticket_ftth_sod ADD CONSTRAINT ticket_ftth_sod_uniq UNIQUE (ticket_id, status_code);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'wfm_sod_central_wo_uniq') THEN
+        DELETE FROM wfm_sod a USING wfm_sod b
+          WHERE a.id > b.id AND a.central_name = b.central_name
+            AND a.work_order_id = b.work_order_id;
+        ALTER TABLE wfm_sod ADD CONSTRAINT wfm_sod_central_wo_uniq UNIQUE (central_name, work_order_id);
+      END IF;
+    END $$;
+  `);
 
   // ftth_orders — ملف Order (FTTH provisioning). تاريخي + حالي + أرشيف سنوي.
   // raw jsonb يحفظ كل أعمدة الملف (70 عمود) مع استخراج المهم للعرض/الفلترة.

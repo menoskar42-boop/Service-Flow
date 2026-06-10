@@ -213,7 +213,9 @@ function UploadCard({
         const arch = d.archivedYear ? ` — تمت أرشفة سنة ${d.archivedYear}` : "";
         desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current}${arch}`;
       } else if (d.current !== undefined) {
-        const sod = d.startOfDay >= 0 ? `بداية اليوم: ${d.startOfDay} (تم التحديث)` : "بداية اليوم: لم تتغير";
+        const sod = d.sodReplaced
+          ? `بداية اليوم: ${d.startOfDay} (لقطة جديدة لليوم)`
+          : `بداية اليوم: +${d.startOfDay} عطل جديد (إضافة)`;
         desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current} — ${sod}`;
       } else {
         desc = `${d.inserted} سجل جديد — تخطى ${d.skipped ?? 0}`;
