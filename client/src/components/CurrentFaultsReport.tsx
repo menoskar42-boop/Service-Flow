@@ -85,7 +85,6 @@ export function CurrentFaultsReport() {
       "ترمنال": f.dpTerminal,
       "وقت الشكوي": fmtDt(f.complainTime),
       "ComplainTypeName": f.complainTypeName,
-      "Field5": f.customerName,
       "تصنيف الاعطال": f.faultClass,
       "تاريخ الإغلاق": fmtDt(f.closeDate),
       "Onu": f.onu,
@@ -247,7 +246,6 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
-                <TableHead className="text-right font-bold text-white">العميل</TableHead>
                 <TableHead className="text-right font-bold text-white">تصنيف</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ الإغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
@@ -266,7 +264,7 @@ export function CurrentFaultsReport() {
             <TableBody>
               {faults.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={26} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={25} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أعطال حالية — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
@@ -293,7 +291,6 @@ export function CurrentFaultsReport() {
                     <TableCell>{f.dpTerminal || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
-                    <TableCell className="max-w-[100px] truncate">{f.customerName || "-"}</TableCell>
                     <TableCell>{faultBadge(f.faultClass)}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.closeDate)}</TableCell>
                     <TableCell>{f.onu || "-"}</TableCell>
