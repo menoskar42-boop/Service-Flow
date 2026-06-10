@@ -2418,7 +2418,7 @@ export async function registerRoutes(
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x
-         ORDER BY x."complainTime" DESC NULLS LAST`,
+         ORDER BY x."complainTime" ASC NULLS LAST`,
         params,
       );
       res.json(rows);
@@ -2497,7 +2497,7 @@ export async function registerRoutes(
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x
-         ORDER BY x."closeDate" DESC NULLS LAST, x."complainTime" DESC NULLS LAST`,
+         ORDER BY x."complainTime" ASC NULLS LAST`,
         params,
       );
       res.json(rows);
