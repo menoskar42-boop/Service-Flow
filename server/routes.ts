@@ -850,30 +850,32 @@ export async function registerRoutes(
 
     const conds: string[] = [];
     const params: any[] = [];
-    if (central) { params.push(central); conds.push(`central = $${params.length}`); }
-    if (cabin) { params.push(cabin); conds.push(`cabin_number = $${params.length}`); }
-    if (box) { params.push(box); conds.push(`box_number = $${params.length}`); }
+    if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+    if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
+    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;
-      conds.push(`(LOWER(full_phone) LIKE ${p} OR LOWER(tel_no) LIKE ${p} OR LOWER(central) LIKE ${p} OR LOWER(cabin_number) LIKE ${p} OR LOWER(box_number) LIKE ${p})`);
+      conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone`;
 
-    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c FROM phone_lines ${where}`, params);
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
 
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
-      `SELECT id, tel_no AS "telNo", central, idu_no AS "iduNo", odu_no AS "oduNo",
-              cabin_number AS "cabinNumber", primary_block_no AS "primaryBlockNo",
-              cabinet_in AS "cabinetIn", sec_block_no AS "secBlockNo", cabinet_out AS "cabinetOut",
-              box_number AS "boxNumber", dp_terminal AS "dpTerminal", port, len,
-              fiber_block AS "fiberBlock", fiber_out AS "fiberOut",
-              tel_num_txt AS "telNumTxt", full_phone AS "fullPhone"
-       FROM phone_lines ${where}
-       ORDER BY id
+      `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+              pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
+              pl.cabinet_in AS "cabinetIn", pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
+              pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
+              COALESCE(pp.frame, pl.port) AS port, pl.len,
+              pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
+              pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone"
+       ${joinClause} ${where}
+       ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
