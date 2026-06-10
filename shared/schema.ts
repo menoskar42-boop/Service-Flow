@@ -341,6 +341,52 @@ export const remainingComplaints = pgTable("remaining_complaints", {
 
 export type RemainingComplaint = typeof remainingComplaints.$inferSelect;
 
+// FTTH / ADSL Subscribers Table — from FTTH-Subscibers sheet (full replace each upload)
+export const ftthSubscribers = pgTable("ftth_subscribers", {
+  id: serial("id").primaryKey(),
+  sector: text("sector"),
+  region: text("region"),
+  mainEx: text("main_ex"),
+  subEx: text("sub_ex"),
+  fccCode: text("fcc_code"),
+  type: text("type"),
+  msanGponCode: text("msan_gpon_code"),
+  fbbSubs: integer("fbb_subs"),
+  fvSubs: integer("fv_subs"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type FtthSubscriber = typeof ftthSubscribers.$inferSelect;
+
+// حاله 138 Table — DSL fault cases (full replace each upload)
+export const case138 = pgTable("case_138", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name"),
+  phoneShort: text("phone_short"),
+  complainNo: text("complain_no"),
+  score: integer("score"),
+  currentSpeed: text("current_speed"),
+  maxSpeed: text("max_speed"),
+  fullPhone: text("full_phone"),
+  accountNo: text("account_no"),
+  statusCode: text("status_code"),
+  cabinetNo: text("cabinet_no"),
+  boxNo: text("box_no"),
+  complainTypeName: text("complain_type_name"),
+  complainTime: timestamp("complain_time"),
+  customerName: text("customer_name"),
+  dispatchTime: timestamp("dispatch_time"),
+  techCode: text("tech_code"),
+  closeDate: timestamp("close_date"),
+  onu: text("onu"),
+  faultType: text("fault_type"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type Case138 = typeof case138.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',

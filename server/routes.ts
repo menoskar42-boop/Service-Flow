@@ -1287,6 +1287,204 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // POST /api/ftth-subscribers/import — full replace from FTTH-Subscibers sheet
+  app.post("/api/ftth-subscribers/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets["FTTH-Subscibers"] || wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const { find, dataRows } = smartSheet(rows, ["fcc code", "msan/gpon", "msan"]);
+      const iSector = find("sector");
+      const iRegion = find("regoin", "region");
+      const iMainEx = find("main ex");
+      const iSubEx  = find("sub ex");
+      const iFcc    = find("fcc code", "fcc");
+      const iType   = find("type");
+      const iMsan   = find("msan/gpon", "msan", "gpon code");
+      const iFbb    = find("fbb subs", "fbb");
+      const iFv     = find("fv subs", "fv");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+      const toInt = (v: any) => { const n = parseInt(String(v)); return isNaN(n) ? null : n; };
+
+      const inserts: any[][] = [];
+      for (const r of dataRows) {
+        const fcc = String(g(r, iFcc)).trim();
+        const msan = String(g(r, iMsan)).trim();
+        if (!fcc && !msan) continue;
+        inserts.push([
+          String(g(r, iSector)) || null,
+          String(g(r, iRegion)) || null,
+          String(g(r, iMainEx)) || null,
+          String(g(r, iSubEx)) || null,
+          fcc || null,
+          String(g(r, iType)) || null,
+          msan || null,
+          toInt(g(r, iFbb)),
+          toInt(g(r, iFv)),
+        ]);
+      }
+
+      await pool.query("DELETE FROM ftth_subscribers");
+      let inserted = 0;
+      const BATCH = 300;
+      for (let s = 0; s < inserts.length; s += BATCH) {
+        const chunk = inserts.slice(s, s + BATCH);
+        const ph = chunk.map((_, ci) => {
+          const o = ci * 9;
+          return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9})`;
+        }).join(",");
+        const r = await pool.query(
+          `INSERT INTO ftth_subscribers
+             (sector, region, main_ex, sub_ex, fcc_code, type, msan_gpon_code, fbb_subs, fv_subs)
+           VALUES ${ph}`,
+          chunk.flat(),
+        );
+        inserted += r.rowCount ?? 0;
+      }
+      res.json({ inserted, total: inserts.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/ftth-subscribers — list with search (summary report, all centrals)
+  app.get("/api/ftth-subscribers", requireAuth, async (req, res) => {
+    const { q } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      where = `WHERE (fcc_code ILIKE ${p} OR main_ex ILIKE ${p} OR sub_ex ILIKE ${p} OR msan_gpon_code ILIKE ${p} OR type ILIKE ${p})`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, sector, region, main_ex AS "mainEx", sub_ex AS "subEx",
+              fcc_code AS "fccCode", type, msan_gpon_code AS "msanGponCode",
+              fbb_subs AS "fbbSubs", fv_subs AS "fvSubs"
+       FROM ftth_subscribers ${where}
+       ORDER BY fcc_code, msan_gpon_code
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // POST /api/case-138/import — full replace from حاله 138 sheet
+  app.post("/api/case-138/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets["حاله 138"] || wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain"]);
+      const iCentral = find("field1");
+      const iPhoneShort = find("رقم التلفون");
+      const iComplainNo = find("رقم الشكوي", "رقم الشكوى");
+      const iScore = find("score");
+      const iCurSpeed = find("السرعه الحاليه", "السرعة الحالية");
+      const iMaxSpeed = find("اقصى سرعه", "أقصى سرعة");
+      const iFullPhone = find("رقم التليفون كاملا", "كاملا");
+      const iAccount = find("رقم الاكونت", "اكونت", "account");
+      const iStatus = find("status code");
+      const iCabinet = find("cabinet no");
+      const iBox = find("رقم البكس", "البكس");
+      const iType = find("complaintypename", "complain type");
+      const iComplainTime = find("وقت الشكوي", "وقت الشكوى");
+      const iCustomer = find("field5");
+      const iDispatch = find("وقت التسليم");
+      const iTech = find("كود الفنى", "كود الفني");
+      const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق");
+      const iOnu = find("onu");
+      const iFault = find("نوع العطل");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+      const toInt = (v: any) => { const n = parseInt(String(v)); return isNaN(n) ? null : n; };
+
+      const inserts: any[][] = [];
+      for (const r of dataRows) {
+        const complainNo = String(g(r, iComplainNo)).trim();
+        const central = String(g(r, iCentral)).trim();
+        if (!complainNo && !central) continue;
+        inserts.push([
+          central || null,
+          String(g(r, iPhoneShort)) || null,
+          complainNo || null,
+          toInt(g(r, iScore)),
+          String(g(r, iCurSpeed)) || null,
+          String(g(r, iMaxSpeed)) || null,
+          String(g(r, iFullPhone)) || null,
+          String(g(r, iAccount)) || null,
+          String(g(r, iStatus)) || null,
+          String(g(r, iCabinet)) || null,
+          String(g(r, iBox)) || null,
+          String(g(r, iType)) || null,
+          toDate(g(r, iComplainTime)),
+          String(g(r, iCustomer)) || null,
+          toDate(g(r, iDispatch)),
+          String(g(r, iTech)) || null,
+          toDate(g(r, iCloseDate)),
+          String(g(r, iOnu)) || null,
+          String(g(r, iFault)) || null,
+        ]);
+      }
+
+      await pool.query("DELETE FROM case_138");
+      let inserted = 0;
+      const BATCH = 200;
+      for (let s = 0; s < inserts.length; s += BATCH) {
+        const chunk = inserts.slice(s, s + BATCH);
+        const ph = chunk.map((_, ci) => {
+          const o = ci * 19;
+          return "(" + Array.from({ length: 19 }, (_, k) => `$${o+k+1}`).join(",") + ")";
+        }).join(",");
+        const r = await pool.query(
+          `INSERT INTO case_138
+             (central_name, phone_short, complain_no, score, current_speed, max_speed,
+              full_phone, account_no, status_code, cabinet_no, box_no, complain_type_name,
+              complain_time, customer_name, dispatch_time, tech_code, close_date, onu, fault_type)
+           VALUES ${ph}`,
+          chunk.flat(),
+        );
+        inserted += r.rowCount ?? 0;
+      }
+      res.json({ inserted, total: inserts.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/case-138 — list with date filter + search (الغنايم only by default)
+  app.get("/api/case-138", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo, q, all } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (all !== "true") {
+      conds.push(`(central_name = 'الغنايم' OR central_name = 'الغنايم-العزايزة' OR central_name = 'الغنايم-دير الجنادله' OR central_name = 'الغنايم-نجع العمدة')`);
+    }
+    if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
+    if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      conds.push(`(complain_no ILIKE ${p} OR full_phone ILIKE ${p} OR phone_short ILIKE ${p} OR central_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+    }
+    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    const { rows } = await pool.query(
+      `SELECT id, central_name AS "centralName", phone_short AS "phoneShort",
+              complain_no AS "complainNo", score, current_speed AS "currentSpeed",
+              max_speed AS "maxSpeed", full_phone AS "fullPhone", account_no AS "accountNo",
+              status_code AS "statusCode", cabinet_no AS "cabinetNo", box_no AS "boxNo",
+              complain_type_name AS "complainTypeName", complain_time AS "complainTime",
+              customer_name AS "customerName", dispatch_time AS "dispatchTime",
+              tech_code AS "techCode", close_date AS "closeDate", onu, fault_type AS "faultType"
+       FROM case_138 ${where}
+       ORDER BY complain_time DESC NULLS LAST
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // === External API (token-protected, for other sites) ===
   // Requires header: Authorization: Bearer <SF_API_TOKEN>
   const requireApiToken = (req: any, res: any, next: any) => {

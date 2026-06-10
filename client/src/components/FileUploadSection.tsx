@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,42 @@ interface RemainingComplaint {
   statusCode: string | null;
   cabinetNo: string | null;
   complainType: string | null;
+}
+
+interface FtthSubscriber {
+  id: number;
+  sector: string | null;
+  region: string | null;
+  mainEx: string | null;
+  subEx: string | null;
+  fccCode: string | null;
+  type: string | null;
+  msanGponCode: string | null;
+  fbbSubs: number | null;
+  fvSubs: number | null;
+}
+
+interface Case138 {
+  id: number;
+  centralName: string | null;
+  phoneShort: string | null;
+  complainNo: string | null;
+  score: number | null;
+  currentSpeed: string | null;
+  maxSpeed: string | null;
+  fullPhone: string | null;
+  accountNo: string | null;
+  statusCode: string | null;
+  cabinetNo: string | null;
+  boxNo: string | null;
+  complainTypeName: string | null;
+  complainTime: string | null;
+  customerName: string | null;
+  dispatchTime: string | null;
+  techCode: string | null;
+  closeDate: string | null;
+  onu: string | null;
+  faultType: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -182,7 +218,7 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets" | "details" | "remaining">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "details" | "remaining" | "ftth" | "case138">("maintenance");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [searchQ, setSearchQ] = useState("");
@@ -237,10 +273,36 @@ export function FileUploadSection() {
     },
   });
 
+  const { data: ftth = [], isFetching: fetchF } = useQuery<FtthSubscriber[]>({
+    queryKey: ["/api/ftth-subscribers", searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (searchQ) p.set("q", searchQ);
+      const res = await fetch(`/api/ftth-subscribers?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
+  const { data: case138 = [], isFetching: fetchC } = useQuery<Case138[]>({
+    queryKey: ["/api/case-138", dateFrom, dateTo, searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo)   p.set("dateTo", dateTo);
+      if (searchQ)  p.set("q", searchQ);
+      const res = await fetch(`/api/case-138?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
   const isFetching =
     tab === "maintenance" ? fetchM :
     tab === "tickets" ? fetchT :
-    tab === "details" ? fetchD : fetchR;
+    tab === "details" ? fetchD :
+    tab === "remaining" ? fetchR :
+    tab === "ftth" ? fetchF : fetchC;
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -268,6 +330,20 @@ export function FileUploadSection() {
           queryKey="/api/complaint-details"
           extraKeys={["/api/remaining-complaints"]}
           color="border-teal-200 bg-teal-50/50"
+        />
+        <UploadCard
+          label="مشتركين FTTH / ADSL — يستبدل القديم"
+          icon={Wifi}
+          endpoint="/api/ftth-subscribers/import"
+          queryKey="/api/ftth-subscribers"
+          color="border-indigo-200 bg-indigo-50/50"
+        />
+        <UploadCard
+          label="حاله 138 (أعطال DSL) — يستبدل القديم"
+          icon={Gauge}
+          endpoint="/api/case-138/import"
+          queryKey="/api/case-138"
+          color="border-amber-200 bg-amber-50/50"
         />
       </Card>
 
@@ -300,6 +376,18 @@ export function FileUploadSection() {
             >
               المتبقى ({remaining.length})
             </button>
+            <button
+              onClick={() => setTab("ftth")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "ftth" ? "bg-indigo-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              FTTH/ADSL ({ftth.length})
+            </button>
+            <button
+              onClick={() => setTab("case138")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "case138" ? "bg-amber-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              حاله 138 ({case138.length})
+            </button>
           </div>
 
           <div className="flex-1" />
@@ -327,7 +415,7 @@ export function FileUploadSection() {
         <span>
           إجمالي:{" "}
           <strong className="text-foreground">
-            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "details" ? details.length : remaining.length}
+            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : case138.length}
           </strong>{" "}
           سجل
         </span>
@@ -478,6 +566,110 @@ export function FileUploadSection() {
                       <TableCell className="text-xs">{d.statusCode || "-"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(d.complainTime)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(d.dispatchTime)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "ftth" && (
+        <>
+          <div className="px-1">
+            <Input
+              placeholder="بحث بكود السنترال / المركز / MSAN / النوع"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-indigo-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    <TableHead className="text-right font-bold">المركز الرئيسي</TableHead>
+                    <TableHead className="text-right font-bold">المركز الفرعي</TableHead>
+                    <TableHead className="text-right font-bold">كود FCC</TableHead>
+                    <TableHead className="text-right font-bold">النوع</TableHead>
+                    <TableHead className="text-right font-bold">MSAN/GPON</TableHead>
+                    <TableHead className="text-right font-bold">FBB</TableHead>
+                    <TableHead className="text-right font-bold">FV</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ftth.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-16 text-muted-foreground">
+                      {fetchF ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف FTTH/ADSL"}
+                    </TableCell></TableRow>
+                  ) : ftth.map((f, i) => (
+                    <TableRow key={f.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{f.mainEx || "-"}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{f.subEx || "-"}</TableCell>
+                      <TableCell><span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{f.fccCode}</span></TableCell>
+                      <TableCell className="text-xs">{f.type || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{f.msanGponCode || "-"}</TableCell>
+                      <TableCell className="font-medium">{f.fbbSubs ?? "-"}</TableCell>
+                      <TableCell className="font-medium">{f.fvSubs ?? "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "case138" && (
+        <>
+          <div className="px-1">
+            <Input
+              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-amber-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    <TableHead className="text-right font-bold">السنترال</TableHead>
+                    <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
+                    <TableHead className="text-right font-bold">التليفون</TableHead>
+                    <TableHead className="text-right font-bold">الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">البكس</TableHead>
+                    <TableHead className="text-right font-bold">السرعة الحالية</TableHead>
+                    <TableHead className="text-right font-bold">أقصى سرعة</TableHead>
+                    <TableHead className="text-right font-bold">نوع العطل</TableHead>
+                    <TableHead className="text-right font-bold">وقت الشكوى</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {case138.length === 0 ? (
+                    <TableRow><TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
+                      {fetchC ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف حاله 138"}
+                    </TableCell></TableRow>
+                  ) : case138.map((c, i) => (
+                    <TableRow key={c.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{c.centralName || "-"}</TableCell>
+                      <TableCell><span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{c.complainNo}</span></TableCell>
+                      <TableCell dir="ltr" className="text-left">{c.fullPhone || c.phoneShort || "-"}</TableCell>
+                      <TableCell className="text-xs">{c.cabinetNo || "-"}</TableCell>
+                      <TableCell className="text-xs">{c.boxNo || "-"}</TableCell>
+                      <TableCell className="text-center">{c.currentSpeed || "-"}</TableCell>
+                      <TableCell className="text-center">{c.maxSpeed || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{c.complainTypeName || c.faultType || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(c.complainTime)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

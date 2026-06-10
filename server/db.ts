@@ -320,4 +320,50 @@ export async function ensureSchema() {
       uploaded_by_id integer REFERENCES users(id)
     )
   `);
+
+  // ftth_subscribers — ملخص مشتركين FTTH/ADSL (full replace each upload)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ftth_subscribers (
+      id serial PRIMARY KEY,
+      sector text,
+      region text,
+      main_ex text,
+      sub_ex text,
+      fcc_code text,
+      type text,
+      msan_gpon_code text,
+      fbb_subs integer,
+      fv_subs integer,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+
+  // case_138 — حاله 138 (DSL fault cases, full replace each upload)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS case_138 (
+      id serial PRIMARY KEY,
+      central_name text,
+      phone_short text,
+      complain_no text,
+      score integer,
+      current_speed text,
+      max_speed text,
+      full_phone text,
+      account_no text,
+      status_code text,
+      cabinet_no text,
+      box_no text,
+      complain_type_name text,
+      complain_time timestamptz,
+      customer_name text,
+      dispatch_time timestamptz,
+      tech_code text,
+      close_date timestamptz,
+      onu text,
+      fault_type text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
 }
