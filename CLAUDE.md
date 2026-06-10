@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 4. **For files over 200 lines: insert/replace code sections only** — never a full file replacement.
 5. **If a task is complex, break it into steps and confirm after each step** before continuing.
 6. **Always push to `origin/main`** after every commit.
+7. **Every report in the reports section (`قسم التقارير`) must have an Excel export button and a PDF export button** — follow the existing pattern in `CurrentFaultsReport.tsx` / `RegularizedFaultsReport.tsx` (`handleExportExcel` via XLSX + `handleExportPDF` via a printable RTL HTML window).
 
 ## Domain Context
 - Expert full-stack engineer (40+ years experience).
