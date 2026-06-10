@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +42,23 @@ interface TicketRow {
   operationType: string | null;
   complainTypeName: string | null;
   statusCode: string | null;
+}
+
+interface ComplaintDetail {
+  id: number;
+  complainNo: string;
+  sector: string | null;
+  region: string | null;
+  exchangeName: string | null;
+  phoneNumber: string | null;
+  msanId: string | null;
+  cabinetNo: string | null;
+  complainTime: string | null;
+  closeTime: string | null;
+  closeCode: string | null;
+  complainSideName: string | null;
+  complainTypeName: string | null;
+  closeBy: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -134,9 +151,10 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "details">("maintenance");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [searchQ, setSearchQ] = useState("");
 
   const { data: maintenance = [], isFetching: fetchM } = useQuery<MaintenanceOrder[]>({
     queryKey: ["/api/maintenance-orders", dateFrom, dateTo],
@@ -162,7 +180,20 @@ export function FileUploadSection() {
     },
   });
 
-  const isFetching = tab === "maintenance" ? fetchM : fetchT;
+  const { data: details = [], isFetching: fetchD } = useQuery<ComplaintDetail[]>({
+    queryKey: ["/api/complaint-details", dateFrom, dateTo, searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo)   p.set("dateTo", dateTo);
+      if (searchQ)  p.set("q", searchQ);
+      const res = await fetch(`/api/complaint-details?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
+  const isFetching = tab === "maintenance" ? fetchM : tab === "tickets" ? fetchT : fetchD;
 
   return (
     <div className="space-y-5" dir="rtl">
@@ -183,6 +214,13 @@ export function FileUploadSection() {
           queryKey="/api/ticket-queue"
           color="border-purple-200 bg-purple-50/50"
         />
+        <UploadCard
+          label="تفاصيل الأعطال (430D_Trial) — يستبدل القديم"
+          icon={FileSearch}
+          endpoint="/api/complaint-details/import"
+          queryKey="/api/complaint-details"
+          color="border-teal-200 bg-teal-50/50"
+        />
       </Card>
 
       {/* Date filter + Tabs */}
@@ -201,6 +239,12 @@ export function FileUploadSection() {
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "tickets" ? "bg-purple-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
               الشكاوى ({tickets.length})
+            </button>
+            <button
+              onClick={() => setTab("details")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "details" ? "bg-teal-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              تفاصيل الأعطال ({details.length})
             </button>
           </div>
 
@@ -277,6 +321,61 @@ export function FileUploadSection() {
             </Table>
           </div>
         </Card>
+      )}
+
+      {tab === "details" && (
+        <>
+          {/* Search box for details tab */}
+          <div className="px-1">
+            <Input
+              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-teal-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
+                    <TableHead className="text-right font-bold">السنترال</TableHead>
+                    <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                    <TableHead className="text-right font-bold">الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">MSAN</TableHead>
+                    <TableHead className="text-right font-bold">نوع العطل</TableHead>
+                    <TableHead className="text-right font-bold">كود الإغلاق</TableHead>
+                    <TableHead className="text-right font-bold">وقت الشكوى</TableHead>
+                    <TableHead className="text-right font-bold">وقت الإغلاق</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {details.length === 0 ? (
+                    <TableRow><TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
+                      {fetchD ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف 430D_Trial"}
+                    </TableCell></TableRow>
+                  ) : details.map((d, i) => (
+                    <TableRow key={d.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell><span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{d.complainNo}</span></TableCell>
+                      <TableCell className="whitespace-nowrap text-xs">{d.exchangeName || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left">{d.phoneNumber || "-"}</TableCell>
+                      <TableCell className="text-xs">{d.cabinetNo || "-"}</TableCell>
+                      <TableCell className="text-xs">{d.msanId || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{d.complainTypeName || "-"}</TableCell>
+                      <TableCell className="text-xs">{d.closeCode || "-"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(d.complainTime)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(d.closeTime)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
       )}
 
       {tab === "tickets" && (

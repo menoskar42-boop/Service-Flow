@@ -246,4 +246,27 @@ export async function ensureSchema() {
       CONSTRAINT ticket_queue_ticket_status_uniq UNIQUE (ticket_id, status_code)
     )
   `);
+
+  // complaint_details — شيت التفاصيل (430D_Trial Excel)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS complaint_details (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      sector text,
+      region text,
+      exchange_name text,
+      central_name text,
+      phone_number text,
+      msan_id text,
+      cabinet_no text,
+      complain_time timestamptz,
+      close_time timestamptz,
+      close_code text,
+      complain_side_name text,
+      complain_type_name text,
+      close_by text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
 }

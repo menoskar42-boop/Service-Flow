@@ -293,6 +293,29 @@ export const ticketQueue = pgTable("ticket_queue", {
 
 export type TicketQueueRow = typeof ticketQueue.$inferSelect;
 
+// Complaint Details Table — from التفاصيل sheet (430D_Trial Excel)
+export const complaintDetails = pgTable("complaint_details", {
+  id: serial("id").primaryKey(),
+  complainNo: text("complain_no").notNull().unique(),
+  sector: text("sector"),
+  region: text("region"),
+  exchangeName: text("exchange_name"),
+  centralName: text("central_name"),
+  phoneNumber: text("phone_number"),
+  msanId: text("msan_id"),
+  cabinetNo: text("cabinet_no"),
+  complainTime: timestamp("complain_time"),
+  closeTime: timestamp("close_time"),
+  closeCode: text("close_code"),
+  complainSideName: text("complain_side_name"),
+  complainTypeName: text("complain_type_name"),
+  closeBy: text("close_by"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type ComplaintDetail = typeof complaintDetails.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',

@@ -1012,6 +1012,136 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // POST /api/complaint-details/import — REPLACE all data from التفاصيل + تفاصيل متبقى sheets
+  app.post("/api/complaint-details/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+
+      const parseExcelDate = (v: any): Date | null => {
+        if (typeof v === "number" && v > 1) {
+          const d = XLSX.SSF.parse_date_code(v);
+          return new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
+        }
+        return null;
+      };
+
+      // collect rows from both sheets
+      const allInserts: any[][] = [];
+
+      // Sheet 1: التفاصيل — headers at row[1], data from row[2]
+      const ws1 = wb.Sheets["التفاصيل"];
+      if (ws1) {
+        const rows1: any[][] = XLSX.utils.sheet_to_json(ws1, { header: 1, defval: "" }) as any[][];
+        for (let i = 2; i < rows1.length; i++) {
+          const r = rows1[i];
+          const complainNo = String(r[6] ?? "").trim();
+          if (!complainNo || complainNo === "0") continue;
+          allInserts.push([
+            complainNo,
+            String(r[1] ?? "") || null, // sector
+            String(r[2] ?? "") || null, // region
+            String(r[3] ?? "") || null, // exchange_name
+            String(r[5] ?? "") || null, // phone_number
+            String(r[7] ?? "") || null, // msan_id
+            String(r[8] ?? "") || null, // cabinet_no
+            parseExcelDate(r[12]),      // complain_time
+            parseExcelDate(r[13]),      // close_time
+            String(r[11] ?? "") || null, // close_code
+            String(r[14] ?? "") || null, // complain_side_name
+            String(r[15] ?? "") || null, // complain_type_name
+            String(r[16] ?? "") || null, // close_by
+          ]);
+        }
+      }
+
+      // Sheet 2: تفاصيل متبقى — headers at row[0], data from row[1]
+      const ws2 = wb.Sheets["تفاصيل متبقى"];
+      if (ws2) {
+        const rows2: any[][] = XLSX.utils.sheet_to_json(ws2, { header: 1, defval: "" }) as any[][];
+        for (let i = 1; i < rows2.length; i++) {
+          const r = rows2[i];
+          const complainNo = String(r[4] ?? "").trim();
+          if (!complainNo || complainNo === "0") continue;
+          allInserts.push([
+            complainNo,
+            String(r[1] ?? "") || null, // sector
+            String(r[2] ?? "") || null, // region
+            String(r[3] ?? "") || null, // exchange_name
+            String(r[5] ?? "") || null, // phone_number (Tel No)
+            String(r[10] ?? "") || null, // msan_id
+            String(r[16] ?? "") || null, // cabinet_no
+            parseExcelDate(r[6]),        // complain_time
+            parseExcelDate(r[11]),       // close_time
+            String(r[12] ?? "") || null, // close_code
+            null,                        // complain_side_name (not in this sheet)
+            String(r[18] ?? "") || null, // complain_type_name
+            String(r[13] ?? "") || null, // close_by
+          ]);
+        }
+      }
+
+      // REPLACE: delete all existing rows then insert fresh
+      await pool.query("DELETE FROM complaint_details");
+
+      let inserted = 0;
+      const BATCH = 200;
+      for (let s = 0; s < allInserts.length; s += BATCH) {
+        const chunk = allInserts.slice(s, s + BATCH);
+        const placeholders = chunk.map((_, ci) => {
+          const o = ci * 13;
+          return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9},$${o+10},$${o+11},$${o+12},$${o+13})`;
+        }).join(",");
+        const values = chunk.flat();
+        const r = await pool.query(
+          `INSERT INTO complaint_details
+             (complain_no, sector, region, exchange_name, phone_number, msan_id, cabinet_no,
+              complain_time, close_time, close_code, complain_side_name, complain_type_name, close_by)
+           VALUES ${placeholders}
+           ON CONFLICT (complain_no) DO NOTHING`,
+          values,
+        );
+        inserted += r.rowCount ?? 0;
+      }
+
+      res.json({ inserted, total: allInserts.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/complaint-details — list with date filter + search (Ghanaim centrals only by default)
+  app.get("/api/complaint-details", requireAuth, async (req, res) => {
+    const { dateFrom, dateTo, q, all } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    // Show only الغنايم branches unless all=true
+    if (all !== "true") {
+      conds.push(`(exchange_name = 'الغنايم' OR exchange_name = 'الغنايم-العزايزة' OR exchange_name = 'الغنايم-دير الجنادله' OR exchange_name = 'الغنايم-نجع العمدة')`);
+    }
+    if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
+    if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      conds.push(`(complain_no ILIKE ${p} OR phone_number ILIKE ${p} OR exchange_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+    }
+    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
+    const { rows } = await pool.query(
+      `SELECT id, complain_no AS "complainNo", sector, region,
+              exchange_name AS "exchangeName", phone_number AS "phoneNumber",
+              msan_id AS "msanId", cabinet_no AS "cabinetNo",
+              complain_time AS "complainTime", close_time AS "closeTime",
+              close_code AS "closeCode", complain_side_name AS "complainSideName",
+              complain_type_name AS "complainTypeName", close_by AS "closeBy"
+       FROM complaint_details ${where}
+       ORDER BY complain_time DESC NULLS LAST
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // === External API (token-protected, for other sites) ===
   // Requires header: Authorization: Bearer <SF_API_TOKEN>
   const requireApiToken = (req: any, res: any, next: any) => {
