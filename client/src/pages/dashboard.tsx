@@ -17,12 +17,12 @@ import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
-type AdminTab = "orders" | "reports";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "file-upload";
+type AdminTab = "orders" | "reports" | "file-upload";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -152,6 +152,18 @@ export default function Dashboard() {
                   <BarChart3 className="w-4 h-4" />
                   التقارير
                 </button>
+                <button
+                  onClick={() => setAdminTab("file-upload")}
+                  data-testid="tab-admin-file-upload"
+                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    adminTab === "file-upload"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Upload className="w-4 h-4" />
+                  رفع الملفات
+                </button>
               </div>
             </div>
           </div>
@@ -202,12 +214,6 @@ export default function Dashboard() {
               >
                 أوامر الشغل
               </button>
-              <button
-                onClick={() => setReportTab("file-upload")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "file-upload" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                رفع الملفات
-              </button>
             </div>
 
             {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
@@ -216,7 +222,13 @@ export default function Dashboard() {
             {reportTab === "box-full" && <BoxFullRejectionsReport orders={orders || []} />}
             {reportTab === "box-broken" && <BoxBrokenRejectionsReport orders={orders || []} />}
             {reportTab === "work-orders" && <WorkOrdersReport />}
-            {reportTab === "file-upload" && <FileUploadSection />}
+          </div>
+        )}
+
+        {/* ── FILE UPLOAD TAB (Admin only) ── */}
+        {user.role === ROLES.ADMIN && adminTab === "file-upload" && (
+          <div className="space-y-6">
+            <FileUploadSection />
           </div>
         )}
 
