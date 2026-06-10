@@ -1535,12 +1535,16 @@ export async function registerRoutes(
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
       const toInt = (v: any) => { const n = parseInt(String(v)); return isNaN(n) ? null : n; };
 
-      const inserts: any[][] = [];
+      // Dedup by رقم الشكوى (complain_no) — keep the LAST row for each (Map.set overwrites).
+      // Rows without a complain number keep a unique key so they are not merged.
+      const byComplain = new Map<string, any[]>();
+      let noKeySeq = 0;
       for (const r of dataRows) {
         const complainNo = String(g(r, iComplainNo)).trim();
         const central = String(g(r, iCentral)).trim();
         if (!complainNo && !central) continue;
-        inserts.push([
+        const key = complainNo || `__no_complain_${noKeySeq++}`;
+        byComplain.set(key, [
           central || null,
           String(g(r, iPhoneShort)) || null,
           complainNo || null,
@@ -1562,6 +1566,7 @@ export async function registerRoutes(
           String(g(r, iFault)) || null,
         ]);
       }
+      const inserts = Array.from(byComplain.values());
 
       await pool.query("DELETE FROM case_138");
       let inserted = 0;
