@@ -347,15 +347,16 @@ export function FileUploadSection() {
     },
   });
 
-  const { data: detailsCount = 0 } = useQuery<number>({
+  const { data: dbCounts = {} } = useQuery<Record<string, number>>({
     queryKey: ["/api/complaint-details/counts"],
     queryFn: async () => {
       const res = await fetch("/api/complaint-details/counts", { credentials: "include" });
-      if (!res.ok) return 0;
-      const j = await res.json();
-      return j.complaint_details ?? 0;
+      if (!res.ok) return {};
+      return res.json();
     },
   });
+  const detailsCount = dbCounts.complaint_details ?? 0;
+  const ftthCount    = dbCounts.ftth_subscribers  ?? 0;
 
   const { data: remaining = [], isFetching: fetchR } = useQuery<RemainingComplaint[]>({
     queryKey: ["/api/remaining-complaints", dateFrom, dateTo, searchQ],
@@ -571,7 +572,7 @@ export function FileUploadSection() {
               onClick={() => setTab("ftth")}
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "ftth" ? "bg-indigo-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
-              FTTH/ADSL ({ftth.length})
+              FTTH/ADSL ({ftthCount || ftth.length})
             </button>
             <button
               onClick={() => setTab("case138")}

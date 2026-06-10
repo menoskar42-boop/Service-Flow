@@ -1375,6 +1375,7 @@ export async function registerRoutes(
     const tables = [
       "complaint_details", "complaint_details_sod", "complaint_details_current",
       "remaining_complaints", "remaining_complaints_sod", "remaining_complaints_current",
+      "ftth_subscribers",
     ];
     const out: Record<string, number> = {};
     for (const t of tables) {
