@@ -17,10 +17,9 @@ interface CurrentFault {
   statusCode: string | null;
   msanCode: string | null;
   frame: string | null;
-  masht: string | null;
-  terminal: string | null;
   cabinetNo: string | null;
   boxNo: string | null;
+  dpTerminal: string | null;
   complainTime: string | null;
   complainTypeName: string | null;
   customerName: string | null;
@@ -81,10 +80,9 @@ export function CurrentFaultsReport() {
       "Status Code": f.statusCode,
       "MSAN Code": f.msanCode,
       "Frame": f.frame,
-      "مشط": f.masht,
-      "ترمنال": f.terminal,
       "رقم كابينه نهائى": f.cabinetNo,
       "رقم البكس نهائى": f.boxNo,
+      "ترمنال": f.dpTerminal,
       "وقت الشكوي": fmtDt(f.complainTime),
       "ComplainTypeName": f.complainTypeName,
       "Field5": f.customerName,
@@ -116,8 +114,8 @@ export function CurrentFaultsReport() {
     const totalPages = Math.max(1, Math.ceil(faults.length / ROWS_PER_PAGE));
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>تكرار</th><th>Status</th>
-      <th>MSAN</th><th>Frame</th><th>مشط</th><th>ترمنال</th>
-      <th>الكابينة</th><th>البكس</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
+      <th>MSAN</th><th>Frame</th>
+      <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>تصنيف</th><th>كود العامل</th><th>اسم الفنى</th><th>نوع العطل</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
@@ -132,10 +130,9 @@ export function CurrentFaultsReport() {
           <td style="font-size:9px">${esc(f.statusCode)}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
           <td>${esc(f.frame)}</td>
-          <td>${esc(f.masht)}</td>
-          <td>${esc(f.terminal)}</td>
           <td>${esc(f.cabinetNo)}</td>
           <td>${esc(f.boxNo)}</td>
+          <td>${esc(f.dpTerminal)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
           <td>${esc(f.faultClass)}</td>
@@ -245,10 +242,9 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
                 <TableHead className="text-right font-bold text-white">Frame</TableHead>
-                <TableHead className="text-right font-bold text-white">مشط</TableHead>
-                <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">الكابينة</TableHead>
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
+                <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">العميل</TableHead>
@@ -270,7 +266,7 @@ export function CurrentFaultsReport() {
             <TableBody>
               {faults.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={27} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={26} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أعطال حالية — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
@@ -292,10 +288,9 @@ export function CurrentFaultsReport() {
                     <TableCell className="max-w-[140px] truncate">{f.statusCode || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
                     <TableCell>{f.frame || "-"}</TableCell>
-                    <TableCell>{f.masht || "-"}</TableCell>
-                    <TableCell>{f.terminal || "-"}</TableCell>
                     <TableCell>{f.cabinetNo || "-"}</TableCell>
                     <TableCell>{f.boxNo || "-"}</TableCell>
+                    <TableCell>{f.dpTerminal || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell className="max-w-[100px] truncate">{f.customerName || "-"}</TableCell>
