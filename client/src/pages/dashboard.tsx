@@ -19,12 +19,48 @@ import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
 type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults";
+
+// ── Sidebar navigation definition ──────────────────────────────────────────
+const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
+  {
+    label: "الأعطال",
+    icon: Zap,
+    items: [
+      { id: "current-faults",      label: "الأعطال الحالية" },
+      { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
+    ],
+  },
+  {
+    label: "الخطوط والبكسيات",
+    icon: Phone,
+    items: [
+      { id: "phone-lines",  label: "بيان التليفونات" },
+      { id: "box-summary",  label: "ملخص البكسيات" },
+    ],
+  },
+  {
+    label: "المتعذرات",
+    icon: AlertTriangle,
+    items: [
+      { id: "box-rejections", label: "البوكسات المتعذرة" },
+      { id: "box-full",       label: "متعذرات بوكس مليان" },
+      { id: "box-broken",     label: "متعذرات بوكس معطل" },
+    ],
+  },
+  {
+    label: "أوامر الشغل",
+    icon: FileText,
+    items: [
+      { id: "work-orders", label: "أوامر الشغل" },
+    ],
+  },
+];
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
@@ -177,67 +213,45 @@ export default function Dashboard() {
 
         {/* ── REPORTS TAB (Admin only) ── */}
         {user.role === ROLES.ADMIN && adminTab === "reports" && (
-          <div className="space-y-4">
-            {/* Report sub-tabs */}
-            <div className="flex gap-1 bg-muted/50 p-1 rounded-lg w-fit" dir="rtl">
-              <button
-                onClick={() => setReportTab("box-rejections")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-rejections" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                البوكسات المتعذرة
-              </button>
-              <button
-                onClick={() => setReportTab("phone-lines")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "phone-lines" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                بيان التليفونات
-              </button>
-              <button
-                onClick={() => setReportTab("box-summary")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-summary" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                ملخص البكسيات
-              </button>
-              <button
-                onClick={() => setReportTab("box-full")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-full" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                متعذرات بوكس مليان
-              </button>
-              <button
-                onClick={() => setReportTab("box-broken")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "box-broken" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                متعذرات بوكس معطل
-              </button>
-              <button
-                onClick={() => setReportTab("work-orders")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "work-orders" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                أوامر الشغل
-              </button>
-              <button
-                onClick={() => setReportTab("current-faults")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "current-faults" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                الأعطال الحالية
-              </button>
-              <button
-                onClick={() => setReportTab("regularized-faults")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${reportTab === "regularized-faults" ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                الأعطال المنتظمة اليوم
-              </button>
-            </div>
+          <div className="flex gap-5" dir="rtl">
+            {/* ── Sidebar ── */}
+            <aside className="w-52 shrink-0">
+              <nav className="sticky top-4 bg-white rounded-xl border shadow-sm overflow-hidden">
+                {REPORT_GROUPS.map((group) => (
+                  <div key={group.label}>
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b">
+                      <group.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.label}</span>
+                    </div>
+                    {group.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setReportTab(item.id)}
+                        className={`w-full text-right px-4 py-2.5 text-sm transition-colors border-b last:border-b-0
+                          ${reportTab === item.id
+                            ? "bg-blue-50 text-blue-700 font-semibold border-r-2 border-r-blue-600"
+                            : "text-foreground hover:bg-muted/40"
+                          }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </nav>
+            </aside>
 
-            {reportTab === "box-rejections" && <BoxRejectionReport orders={orders || []} />}
-            {reportTab === "phone-lines" && <PhoneLinesReport />}
-            {reportTab === "box-summary" && <BoxLinesSummaryReport />}
-            {reportTab === "box-full" && <BoxFullRejectionsReport orders={orders || []} />}
-            {reportTab === "box-broken" && <BoxBrokenRejectionsReport orders={orders || []} />}
-            {reportTab === "work-orders" && <WorkOrdersReport />}
-            {reportTab === "current-faults" && <CurrentFaultsReport />}
-            {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
+            {/* ── Report Content ── */}
+            <div className="flex-1 min-w-0">
+              {reportTab === "box-rejections"    && <BoxRejectionReport orders={orders || []} />}
+              {reportTab === "phone-lines"       && <PhoneLinesReport />}
+              {reportTab === "box-summary"       && <BoxLinesSummaryReport />}
+              {reportTab === "box-full"          && <BoxFullRejectionsReport orders={orders || []} />}
+              {reportTab === "box-broken"        && <BoxBrokenRejectionsReport orders={orders || []} />}
+              {reportTab === "work-orders"       && <WorkOrdersReport />}
+              {reportTab === "current-faults"    && <CurrentFaultsReport />}
+              {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
+            </div>
           </div>
         )}
 
