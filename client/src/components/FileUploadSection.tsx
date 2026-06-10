@@ -196,19 +196,14 @@ const priorityBadge = (p: string | null) => {
 
 // ─── Sub-component: Upload Card ───────────────────────────────────────────────
 
-// Staged FTTH/ADSL import: parse the Excel file in the browser (no server RAM /
-// file-size limits) and send normalized rows to the server in JSON batches.
-async function importFtthStaged(file: File): Promise<{ inserted: number; skipped: number }> {
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array", cellDates: false });
-  const ws = wb.Sheets["FTTH-Subscibers"] || wb.Sheets[wb.SheetNames[0]];
+// Extract normalized FTTH rows from a single worksheet; null if no header row.
+function extractFtthRows(ws: XLSX.WorkSheet): any[][] | null {
   const all: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-
   const norm = (v: any) => String(v ?? "").trim().toLowerCase();
   const hIdx = all.findIndex((r) =>
     r.some((c) => norm(c).includes("fcc code") || norm(c).includes("msan/gpon") || norm(c) === "msan"),
   );
-  if (hIdx < 0) throw new Error("لم يتم العثور على صف العناوين (FCC Code / MSAN) في الملف");
+  if (hIdx < 0) return null;
   const header = all[hIdx].map(norm);
   const find = (...names: string[]) => header.findIndex((h) => names.some((n) => h.includes(n)));
   const iSector = find("sector");
@@ -233,7 +228,30 @@ async function importFtthStaged(file: File): Promise<{ inserted: number; skipped
       fcc, String(g(r, iType)), msan, g(r, iFbb), g(r, iFv),
     ]);
   }
-  if (data.length === 0) throw new Error("لا توجد صفوف بيانات في الملف");
+  return data;
+}
+
+// Staged FTTH/ADSL import: parse the Excel file in the browser (no server RAM /
+// file-size limits) and send normalized rows to the server in JSON batches.
+// Scans every sheet and uses the one with the most data rows — the subscribers
+// sheet may not be first in the workbook.
+async function importFtthStaged(file: File): Promise<{ inserted: number; skipped: number; sheet: string }> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: false });
+  let data: any[][] = [];
+  let sheetName = "";
+  for (const name of wb.SheetNames) {
+    const rows = extractFtthRows(wb.Sheets[name]);
+    if (rows && rows.length > data.length) {
+      data = rows;
+      sheetName = name;
+    }
+  }
+  if (data.length === 0) {
+    throw new Error(
+      `لم يتم العثور على بيانات (FCC Code / MSAN) في أي شيت — الشيتات الموجودة: ${wb.SheetNames.join("، ")}`,
+    );
+  }
 
   let inserted = 0;
   const STEP = 2000;
@@ -254,7 +272,7 @@ async function importFtthStaged(file: File): Promise<{ inserted: number; skipped
     if (!res.ok) throw new Error(json.message || "خطأ");
     inserted += json.inserted ?? 0;
   }
-  return { inserted, skipped: data.length - inserted };
+  return { inserted, skipped: data.length - inserted, sheet: sheetName };
 }
 
 function UploadCard({
@@ -303,6 +321,7 @@ function UploadCard({
         desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current} — ${sod}`;
       } else {
         desc = `${d.inserted} سجل جديد — تخطى ${d.skipped ?? 0}`;
+        if (d.sheet) desc += ` — من شيت «${d.sheet}»`;
       }
       toast({ title: "تم الاستيراد", description: desc, duration: 4500 });
       [queryKey, ...extraKeys].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
