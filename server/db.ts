@@ -388,6 +388,26 @@ export async function ensureSchema() {
     `);
   }
 
+  // phone_ports — منافذ MSAN، مفتاحها رقم التليفون (upsert على كل رفعة)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS phone_ports (
+      id serial PRIMARY KEY,
+      phone_number text NOT NULL UNIQUE,
+      area_code text,
+      msan_code text,
+      frame text,
+      shelf text,
+      slot text,
+      port_number text,
+      port_type text,
+      voice_status text,
+      data_status text,
+      operator text,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS case_138 (

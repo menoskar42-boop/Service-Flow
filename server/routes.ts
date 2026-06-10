@@ -1589,6 +1589,100 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // POST /api/phone-ports/import — upsert by phone_number (update existing, insert new)
+  app.post("/api/phone-ports/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const { find, dataRows } = smartSheet(rows, ["phone number", "رقم التليفون", "رقم التلفون"]);
+      const iPhone = find("phone number", "رقم التليفون", "رقم التلفون");
+      const iArea  = find("area code", "كود المنطقة");
+      const iMsan  = find("msan code", "msan");
+      const iFrame = find("frame");
+      const iShelf = find("shelf");
+      const iSlot  = find("slot");
+      const iPort  = find("port number", "port no");
+      const iPortType = find("port type");
+      const iVoice = find("voice status");
+      const iData  = find("data status");
+      const iOper  = find("operator");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+
+      // dedup within file by phone (last occurrence wins)
+      const byPhone = new Map<string, any[]>();
+      for (const r of dataRows) {
+        const phone = String(g(r, iPhone)).trim();
+        if (!phone) continue;
+        byPhone.set(phone, [
+          phone,
+          String(g(r, iArea)) || null,
+          String(g(r, iMsan)) || null,
+          String(g(r, iFrame)) || null,
+          String(g(r, iShelf)) || null,
+          String(g(r, iSlot)) || null,
+          String(g(r, iPort)) || null,
+          String(g(r, iPortType)) || null,
+          String(g(r, iVoice)) || null,
+          String(g(r, iData)) || null,
+          String(g(r, iOper)) || null,
+        ]);
+      }
+      const all = Array.from(byPhone.values());
+
+      let affected = 0;
+      const BATCH = 300;
+      for (let s = 0; s < all.length; s += BATCH) {
+        const chunk = all.slice(s, s + BATCH);
+        const ph = chunk.map((_, ci) => {
+          const o = ci * 11;
+          return "(" + Array.from({ length: 11 }, (_, k) => `$${o+k+1}`).join(",") + ")";
+        }).join(",");
+        const r = await pool.query(
+          `INSERT INTO phone_ports
+             (phone_number, area_code, msan_code, frame, shelf, slot, port_number,
+              port_type, voice_status, data_status, operator)
+           VALUES ${ph}
+           ON CONFLICT (phone_number) DO UPDATE SET
+             area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code,
+             frame = EXCLUDED.frame, shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
+             port_number = EXCLUDED.port_number, port_type = EXCLUDED.port_type,
+             voice_status = EXCLUDED.voice_status, data_status = EXCLUDED.data_status,
+             operator = EXCLUDED.operator, uploaded_at = now()`,
+          chunk.flat(),
+        );
+        affected += r.rowCount ?? 0;
+      }
+      res.json({ inserted: affected, total: all.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/phone-ports — list with search
+  app.get("/api/phone-ports", requireAuth, async (req, res) => {
+    const { q } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      where = `WHERE (phone_number ILIKE ${p} OR msan_code ILIKE ${p} OR operator ILIKE ${p})`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, phone_number AS "phoneNumber", area_code AS "areaCode",
+              msan_code AS "msanCode", frame, shelf, slot, port_number AS "portNumber",
+              port_type AS "portType", voice_status AS "voiceStatus",
+              data_status AS "dataStatus", operator
+       FROM phone_ports ${where}
+       ORDER BY phone_number
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // === External API (token-protected, for other sites) ===
   // Requires header: Authorization: Bearer <SF_API_TOKEN>
   const requireApiToken = (req: any, res: any, next: any) => {

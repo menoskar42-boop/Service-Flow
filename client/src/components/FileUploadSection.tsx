@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,21 @@ interface Case138 {
   closeDate: string | null;
   onu: string | null;
   faultType: string | null;
+}
+
+interface PhonePort {
+  id: number;
+  phoneNumber: string;
+  areaCode: string | null;
+  msanCode: string | null;
+  frame: string | null;
+  shelf: string | null;
+  slot: string | null;
+  portNumber: string | null;
+  portType: string | null;
+  voiceStatus: string | null;
+  dataStatus: string | null;
+  operator: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -223,7 +238,7 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
-  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138">("maintenance");
+  const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports">("maintenance");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [searchQ, setSearchQ] = useState("");
@@ -319,13 +334,25 @@ export function FileUploadSection() {
     },
   });
 
+  const { data: ports = [], isFetching: fetchP } = useQuery<PhonePort[]>({
+    queryKey: ["/api/phone-ports", searchQ],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (searchQ) p.set("q", searchQ);
+      const res = await fetch(`/api/phone-ports?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
   const isFetching =
     tab === "maintenance" ? fetchM :
     tab === "tickets" ? fetchT :
     tab === "ticketsFtth" ? fetchTF :
     tab === "details" ? fetchD :
     tab === "remaining" ? fetchR :
-    tab === "ftth" ? fetchF : fetchC;
+    tab === "ftth" ? fetchF :
+    tab === "case138" ? fetchC : fetchP;
 
   // bucket selector applies to tabs that keep 3 snapshots
   const showBucket = tab === "maintenance" || tab === "tickets" || tab === "ticketsFtth";
@@ -378,6 +405,13 @@ export function FileUploadSection() {
           queryKey="/api/case-138"
           color="border-amber-200 bg-amber-50/50"
         />
+        <UploadCard
+          label="منافذ MSAN (Ports) — تحديث برقم التليفون"
+          icon={Network}
+          endpoint="/api/phone-ports/import"
+          queryKey="/api/phone-ports"
+          color="border-cyan-200 bg-cyan-50/50"
+        />
       </Card>
 
       {/* Date filter + Tabs */}
@@ -427,6 +461,12 @@ export function FileUploadSection() {
             >
               حاله 138 ({case138.length})
             </button>
+            <button
+              onClick={() => setTab("ports")}
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "ports" ? "bg-cyan-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
+            >
+              منافذ MSAN ({ports.length})
+            </button>
           </div>
 
           <div className="flex-1" />
@@ -474,7 +514,7 @@ export function FileUploadSection() {
         <span>
           إجمالي:{" "}
           <strong className="text-foreground">
-            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : case138.length}
+            {tab === "maintenance" ? maintenance.length : tab === "tickets" ? tickets.length : tab === "ticketsFtth" ? ticketsFtth.length : tab === "details" ? details.length : tab === "remaining" ? remaining.length : tab === "ftth" ? ftth.length : tab === "case138" ? case138.length : ports.length}
           </strong>{" "}
           سجل
         </span>
@@ -729,6 +769,62 @@ export function FileUploadSection() {
                       <TableCell className="text-center">{c.maxSpeed || "-"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{c.complainTypeName || c.faultType || "-"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmt(c.complainTime)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "ports" && (
+        <>
+          <div className="px-1">
+            <Input
+              placeholder="بحث برقم التليفون / MSAN / المشغّل"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              className="max-w-sm text-sm"
+              dir="rtl"
+            />
+          </div>
+          <Card className="overflow-hidden shadow-sm border-0 bg-white">
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-cyan-50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold w-8">#</TableHead>
+                    <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                    <TableHead className="text-right font-bold">كود MSAN</TableHead>
+                    <TableHead className="text-right font-bold">Frame</TableHead>
+                    <TableHead className="text-right font-bold">Shelf</TableHead>
+                    <TableHead className="text-right font-bold">Slot</TableHead>
+                    <TableHead className="text-right font-bold">Port</TableHead>
+                    <TableHead className="text-right font-bold">نوع المنفذ</TableHead>
+                    <TableHead className="text-right font-bold">Voice</TableHead>
+                    <TableHead className="text-right font-bold">Data</TableHead>
+                    <TableHead className="text-right font-bold">المشغّل</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ports.length === 0 ? (
+                    <TableRow><TableCell colSpan={11} className="text-center py-16 text-muted-foreground">
+                      {fetchP ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف المنافذ"}
+                    </TableCell></TableRow>
+                  ) : ports.map((p, i) => (
+                    <TableRow key={p.id} className="hover:bg-muted/30">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell dir="ltr" className="text-left font-mono text-xs">{p.phoneNumber}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs">{p.msanCode || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.frame || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.shelf || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.slot || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.portNumber || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.portType || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.voiceStatus || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.dataStatus || "-"}</TableCell>
+                      <TableCell className="text-xs">{p.operator || "-"}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
