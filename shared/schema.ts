@@ -317,6 +317,45 @@ export const complaintDetails = pgTable("complaint_details", {
 
 export type ComplaintDetail = typeof complaintDetails.$inferSelect;
 
+// Start-of-day + current snapshot companions for complaint_details (430D التفاصيل).
+export const complaintDetailsSod = pgTable("complaint_details_sod", {
+  id: serial("id").primaryKey(),
+  complainNo: text("complain_no").notNull().unique(),
+  sector: text("sector"),
+  region: text("region"),
+  exchangeName: text("exchange_name"),
+  phoneNumber: text("phone_number"),
+  msanId: text("msan_id"),
+  cabinetNo: text("cabinet_no"),
+  complainTime: timestamp("complain_time"),
+  closeTime: timestamp("close_time"),
+  closeCode: text("close_code"),
+  complainSideName: text("complain_side_name"),
+  complainTypeName: text("complain_type_name"),
+  closeBy: text("close_by"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export const complaintDetailsCurrent = pgTable("complaint_details_current", {
+  id: serial("id").primaryKey(),
+  complainNo: text("complain_no").notNull().unique(),
+  sector: text("sector"),
+  region: text("region"),
+  exchangeName: text("exchange_name"),
+  phoneNumber: text("phone_number"),
+  msanId: text("msan_id"),
+  cabinetNo: text("cabinet_no"),
+  complainTime: timestamp("complain_time"),
+  closeTime: timestamp("close_time"),
+  closeCode: text("close_code"),
+  complainSideName: text("complain_side_name"),
+  complainTypeName: text("complain_type_name"),
+  closeBy: text("close_by"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
 // Remaining (open) Complaints Table — from تفاصيل متبقى sheet (430D_Trial Excel)
 // Replaced in full on each upload (snapshot of currently-open faults).
 export const remainingComplaints = pgTable("remaining_complaints", {
@@ -341,6 +380,49 @@ export const remainingComplaints = pgTable("remaining_complaints", {
 });
 
 export type RemainingComplaint = typeof remainingComplaints.$inferSelect;
+
+// Start-of-day + current snapshot companions for remaining_complaints (تفاصيل متبقى).
+export const remainingComplaintsSod = pgTable("remaining_complaints_sod", {
+  id: serial("id").primaryKey(),
+  complainNo: text("complain_no").notNull().unique(),
+  sector: text("sector"),
+  region: text("region"),
+  exchangeName: text("exchange_name"),
+  phoneNumber: text("phone_number"),
+  complainTime: timestamp("complain_time"),
+  dispatchTime: timestamp("dispatch_time"),
+  dispatchUser: text("dispatch_user"),
+  msanId: text("msan_id"),
+  closeTime: timestamp("close_time"),
+  closeCode: text("close_code"),
+  closeBy: text("close_by"),
+  statusCode: text("status_code"),
+  cabinetNo: text("cabinet_no"),
+  complainType: text("complain_type"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export const remainingComplaintsCurrent = pgTable("remaining_complaints_current", {
+  id: serial("id").primaryKey(),
+  complainNo: text("complain_no").notNull().unique(),
+  sector: text("sector"),
+  region: text("region"),
+  exchangeName: text("exchange_name"),
+  phoneNumber: text("phone_number"),
+  complainTime: timestamp("complain_time"),
+  dispatchTime: timestamp("dispatch_time"),
+  dispatchUser: text("dispatch_user"),
+  msanId: text("msan_id"),
+  closeTime: timestamp("close_time"),
+  closeCode: text("close_code"),
+  closeBy: text("close_by"),
+  statusCode: text("status_code"),
+  cabinetNo: text("cabinet_no"),
+  complainType: text("complain_type"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
 
 // FTTH / ADSL Subscribers Table — from FTTH-Subscibers sheet (full replace each upload)
 export const ftthSubscribers = pgTable("ftth_subscribers", {
