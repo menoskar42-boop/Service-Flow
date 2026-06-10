@@ -1433,8 +1433,7 @@ export async function registerRoutes(
               close_by AS "closeBy", status_code AS "statusCode",
               cabinet_no AS "cabinetNo", complain_type AS "complainType"
        FROM remaining_complaints ${where}
-       ORDER BY complain_time DESC NULLS LAST
-       LIMIT 5000`,
+       ORDER BY complain_time DESC NULLS LAST`,
       params,
     );
     res.json(rows);
