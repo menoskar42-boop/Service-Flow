@@ -336,6 +336,7 @@ export function FileUploadSection() {
     queryKey: ["/api/complaint-details", dateFrom, dateTo, searchQ],
     queryFn: async () => {
       const p = new URLSearchParams();
+      p.set("all", "true");
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo)   p.set("dateTo", dateTo);
       if (searchQ)  p.set("q", searchQ);
@@ -349,6 +350,7 @@ export function FileUploadSection() {
     queryKey: ["/api/remaining-complaints", dateFrom, dateTo, searchQ],
     queryFn: async () => {
       const p = new URLSearchParams();
+      p.set("all", "true");
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo)   p.set("dateTo", dateTo);
       if (searchQ)  p.set("q", searchQ);
