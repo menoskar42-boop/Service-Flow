@@ -112,3 +112,41 @@
 .status-not-feasible {
   @apply bg-red-50 text-red-700 border-red-200;
 }
+
+/* Global always-visible horizontal scrollbar for wide tables (StickyScrollbars).
+   Pinned to the bottom of the viewport so the user can scroll a table left/right
+   without first scrolling down to its native scrollbar. */
+.global-hscroll-bar {
+  position: fixed;
+  bottom: 0;
+  height: 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  z-index: 40;
+  display: none;
+  background: rgba(241, 245, 249, 0.92);
+  border-top: 1px solid rgba(203, 213, 225, 0.9);
+  box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.06);
+}
+.global-hscroll-bar::-webkit-scrollbar {
+  height: 14px;
+  -webkit-appearance: none;
+}
+.global-hscroll-bar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.global-hscroll-bar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.6);
+  border-radius: 7px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.global-hscroll-bar::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.8);
+  background-clip: content-box;
+}
+/* Firefox */
+.global-hscroll-bar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.6) transparent;
+}
