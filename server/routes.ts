@@ -101,6 +101,24 @@ const WFM_COLS = [
   "status", "priority", "current_workspec", "notes", "description", "creation_date",
 ];
 
+// أنواع أوامر الشغل التى تُعتبر "تركيبات / نقل" (حالات التركيب wfm).
+// تُستخدم لفلترة تقريرى التركيبات الحالية والتركيبات المنتظمة.
+// المقارنة تتم بعد lower(trim(...)) لتجاوز فروق الأحرف/المسافات.
+const INSTALL_TYPES = [
+  "FVInstallationMSAN",
+  "FVChPhoneNoNewLoc",
+  "FVInstallationTDM",
+  "FTTHNewSubVS",
+  "FV TDM Change Phone Number New Location",
+  "Fixed Voice Installation MSAN",
+  "FVTDMCHGPhNoNewLoc",
+  "FTTHMigrationVS",
+  "FTTHMigrationSurvey",
+  "FixPassiveCC",
+  "ChPhoneNoSurv",
+];
+const INSTALL_TYPES_LC = INSTALL_TYPES.map((s) => s.toLowerCase());
+
 // Parse a TicketQueue sheet (Arabic OR English headers) into value arrays
 // matching TICKET_COLS. Stores ALL centrals (name falls back to the code).
 // Deduplicated by (ticket_id, status_code) for the historical unique key.
@@ -2640,6 +2658,101 @@ export async function registerRoutes(
            ORDER BY t.ticket_id, t.id DESC
          ) x
          ORDER BY x."closeDate" ASC NULLS LAST`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // أعمدة موحّدة لتقريرى التركيبات (الحالى + المنتظم اليوم).
+  // المصدر أوامر الشغل (wfm) + إثراء ببيانات الخط (كابينة/بكس/ترمنال) واسم الفنى.
+  const INSTALL_SELECT = `
+    t.central_name        AS "centralName",
+    t.work_order_id       AS "workOrderId",
+    t.phone_number        AS "phoneNumber",
+    t.work_order_type     AS "workOrderType",
+    t.stage               AS "stage",
+    t.status              AS "status",
+    t.priority            AS "priority",
+    pl.cabin_number       AS "cabinetNo",
+    pl.box_number         AS "boxNo",
+    pl.dp_terminal        AS "dpTerminal",
+    ct.worker_code        AS "workerCode",
+    tn.tech_name          AS "techName",
+    t.creation_date       AS "creationDate",
+    t.description         AS "description"`;
+  const INSTALL_JOINS = `
+    LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
+    LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = pl.cabin_number
+    LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code`;
+
+  // GET /api/reports/current-installations — التركيبات والنقل الحالى
+  // المصدر: لقطة أوامر الشغل الحالية (wfm_current)، مفلترة بأنواع التركيب/النقل.
+  app.get("/api/reports/current-installations", requireAuth, async (req, res) => {
+    try {
+      const { central = "", q = "" } = req.query as Record<string, string>;
+      const params: any[] = [INSTALL_TYPES_LC];
+      const conds: string[] = [
+        `lower(trim(t.work_order_type)) = ANY($1::text[])`,
+        `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
+      ];
+      if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+      if (q.trim()) {
+        params.push(`%${q.trim()}%`);
+        const p = `$${params.length}`;
+        conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
+      }
+      const where = "WHERE " + conds.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT * FROM (
+           SELECT DISTINCT ON (t.central_name, t.work_order_id)
+             ${INSTALL_SELECT}
+           FROM wfm_current t
+           ${INSTALL_JOINS}
+           ${where}
+           ORDER BY t.central_name, t.work_order_id, t.id DESC
+         ) x
+         ORDER BY x."creationDate" DESC NULLS LAST`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/reports/regularized-installations — التركيبات المنتظمة اليوم
+  // لا يوجد تاريخ إغلاق لأوامر التركيب، لذا "المنتظم اليوم" = أمر التركيب الذى كان
+  // موجوداً فى لقطة بداية اليوم (wfm_sod) ولم يَعُد موجوداً فى اللقطة الحالية
+  // (wfm_current) — أى تم تنفيذه/إغلاقه خلال اليوم. نفس فلاتر أنواع التركيب.
+  app.get("/api/reports/regularized-installations", requireAuth, async (req, res) => {
+    try {
+      const { central = "", q = "" } = req.query as Record<string, string>;
+      const params: any[] = [INSTALL_TYPES_LC];
+      const conds: string[] = [
+        `lower(trim(t.work_order_type)) = ANY($1::text[])`,
+        `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
+        `NOT EXISTS (SELECT 1 FROM wfm_current c WHERE c.central_name = t.central_name AND c.work_order_id = t.work_order_id)`,
+      ];
+      if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+      if (q.trim()) {
+        params.push(`%${q.trim()}%`);
+        const p = `$${params.length}`;
+        conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
+      }
+      const where = "WHERE " + conds.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT * FROM (
+           SELECT DISTINCT ON (t.central_name, t.work_order_id)
+             ${INSTALL_SELECT}
+           FROM wfm_sod t
+           ${INSTALL_JOINS}
+           ${where}
+           ORDER BY t.central_name, t.work_order_id, t.id DESC
+         ) x
+         ORDER BY x."creationDate" DESC NULLS LAST`,
         params,
       );
       res.json(rows);

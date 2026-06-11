@@ -16,16 +16,17 @@ import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
 import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRangeReport";
+import { InstallationsReport } from "@/components/InstallationsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -36,6 +37,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "current-faults",      label: "الأعطال الحالية" },
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
+    ],
+  },
+  {
+    label: "التركيبات والنقل",
+    icon: Wrench,
+    items: [
+      { id: "current-installations",     label: "التركيبات والنقل الحالى" },
+      { id: "regularized-installations", label: "التركيبات المنتظمة اليوم" },
     ],
   },
   {
@@ -254,6 +263,25 @@ export default function Dashboard() {
               {reportTab === "current-faults"    && <CurrentFaultsReport />}
               {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
               {reportTab === "regularized-faults-range" && <RegularizedFaultsRangeReport />}
+              {reportTab === "current-installations" && (
+                <InstallationsReport
+                  endpoint="/api/reports/current-installations"
+                  queryKey="/api/reports/current-installations"
+                  title="تقرير التركيبات والنقل الحالى"
+                  sheetName="التركيبات الحالية"
+                  fileName="current-installations"
+                />
+              )}
+              {reportTab === "regularized-installations" && (
+                <InstallationsReport
+                  endpoint="/api/reports/regularized-installations"
+                  queryKey="/api/reports/regularized-installations"
+                  title="تقرير التركيبات المنتظمة اليوم"
+                  regularized
+                  sheetName="التركيبات المنتظمة"
+                  fileName="regularized-installations"
+                />
+              )}
             </div>
           </div>
         )}
