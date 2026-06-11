@@ -244,7 +244,7 @@ export default function Dashboard() {
           <div className="flex gap-5" dir="rtl">
             {/* ── Sidebar ── */}
             <aside className="w-52 shrink-0">
-              <nav className="sticky top-4 bg-white rounded-xl border shadow-sm overflow-hidden">
+              <nav className="sticky top-4 bg-white rounded-xl border shadow-sm overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto sidebar-scroll">
                 {REPORT_GROUPS.map((group) => {
                   const isOpen = openGroups.includes(group.label);
                   return (
