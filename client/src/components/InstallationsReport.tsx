@@ -38,6 +38,7 @@ const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغن
 
 export function InstallationsReport({
   endpoint, queryKey, title, regularized = false, sheetName, fileName,
+  showDates = false, extraParams,
 }: {
   endpoint: string;
   queryKey: string;
@@ -45,16 +46,22 @@ export function InstallationsReport({
   regularized?: boolean;
   sheetName: string;
   fileName: string;
+  showDates?: boolean;
+  extraParams?: Record<string, string>;
 }) {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const { data: items = [], isFetching } = useQuery<Installation[]>({
-    queryKey: [queryKey, central, q],
+    queryKey: [queryKey, central, q, dateFrom, dateTo],
     queryFn: async () => {
-      const p = new URLSearchParams();
+      const p = new URLSearchParams(extraParams ?? {});
       if (central) p.set("central", central);
       if (q) p.set("q", q);
+      if (showDates && dateFrom) p.set("dateFrom", dateFrom);
+      if (showDates && dateTo) p.set("dateTo", dateTo);
       const res = await fetch(`${endpoint}?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -171,6 +178,18 @@ export function InstallationsReport({
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
+        {showDates && (
+          <>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">من</span>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="text-sm w-auto" dir="ltr" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">إلى</span>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="text-sm w-auto" dir="ltr" />
+            </div>
+          </>
+        )}
         <select
           value={central}
           onChange={(e) => setCentral(e.target.value)}

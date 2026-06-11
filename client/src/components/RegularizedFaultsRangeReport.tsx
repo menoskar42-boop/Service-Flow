@@ -45,15 +45,16 @@ export function RegularizedFaultsRangeReport() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  // المصدر: الأرشيف اليومى (regularized_daily) الذى يُحفظ تلقائياً كل ليلة.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
-    queryKey: ["/api/reports/regularized-faults-range", central, q, dateFrom, dateTo],
+    queryKey: ["/api/reports/regularized-daily", "faults", central, q, dateFrom, dateTo],
     queryFn: async () => {
-      const p = new URLSearchParams();
+      const p = new URLSearchParams({ category: "faults" });
       if (central) p.set("central", central);
       if (q) p.set("q", q);
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
-      const res = await fetch(`/api/reports/regularized-faults-range?${p}`, { credentials: "include" });
+      const res = await fetch(`/api/reports/regularized-daily?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
     },

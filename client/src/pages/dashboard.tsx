@@ -26,7 +26,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "current-surveys" | "regularized-surveys";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -45,6 +45,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "current-installations",     label: "التركيبات والنقل الحالى" },
       { id: "regularized-installations", label: "التركيبات المنتظمة اليوم" },
+      { id: "regularized-installations-range", label: "التركيبات المنتظمة (فترة من/إلى)" },
     ],
   },
   {
@@ -53,6 +54,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "current-surveys",     label: "المعاينات الحالية" },
       { id: "regularized-surveys", label: "المعاينات المنتظمة اليوم" },
+      { id: "regularized-surveys-range", label: "المعاينات المنتظمة (فترة من/إلى)" },
     ],
   },
   {
@@ -307,6 +309,30 @@ export default function Dashboard() {
                   regularized
                   sheetName="المعاينات المنتظمة"
                   fileName="regularized-surveys"
+                />
+              )}
+              {reportTab === "regularized-installations-range" && (
+                <InstallationsReport
+                  endpoint="/api/reports/regularized-daily"
+                  queryKey="/api/reports/regularized-daily-installations"
+                  extraParams={{ category: "installations" }}
+                  showDates
+                  title="تقرير التركيبات المنتظمة (فترة من/إلى)"
+                  regularized
+                  sheetName="التركيبات المنتظمة بتاريخ"
+                  fileName="regularized-installations-range"
+                />
+              )}
+              {reportTab === "regularized-surveys-range" && (
+                <InstallationsReport
+                  endpoint="/api/reports/regularized-daily"
+                  queryKey="/api/reports/regularized-daily-surveys"
+                  extraParams={{ category: "surveys" }}
+                  showDates
+                  title="تقرير المعاينات المنتظمة (فترة من/إلى)"
+                  regularized
+                  sheetName="المعاينات المنتظمة بتاريخ"
+                  fileName="regularized-surveys-range"
                 />
               )}
             </div>
