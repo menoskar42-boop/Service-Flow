@@ -34,6 +34,16 @@ interface Installation {
 const fmtDt = (d: string | null) =>
   d ? format(new Date(d), "yyyy/MM/dd HH:mm") : "-";
 
+// نوع أمر الشغل المبسَّط: نقل (تغيير رقم/مكان) / معاينة / تركيب.
+// الاسم الخام (FVInstallationMSAN...) يُعرض فى عمود الوصف.
+function displayType(t: string | null): string {
+  if (!t) return "-";
+  const lc = t.toLowerCase().replace(/\s/g, "");
+  if (lc.includes("chphoneno") || lc.includes("chgphno") || lc.includes("changephonenumber")) return "نقل";
+  if (lc.includes("survey")) return "معاينة";
+  return "تركيب";
+}
+
 function classify(creationDate: string | null): { label: string; cls: string } {
   if (!creationDate) return { label: "—", cls: "bg-gray-100 text-gray-600" };
   const hours = (Date.now() - new Date(creationDate).getTime()) / 3_600_000;
@@ -87,14 +97,16 @@ export function InstallationsReport({
       "رقم الموبايل": o.mobile,
       "اسم العميل": o.customerName,
       "العنوان": o.address,
-      "نوع أمر الشغل": o.workOrderType,
+      "نوع أمر الشغل": displayType(o.workOrderType),
+      "تاريخ الإنشاء": fmtDt(o.creationDate),
+      "التصنيف": classify(o.creationDate).label,
       "المرحلة": o.stage,
       "الحالة": o.status,
       "الأهمية": o.priority,
+      "الكابينة": o.cabinetNo,
       "كود العامل": o.workerCode,
       "اسم الفنى": o.techName,
-      "تاريخ الإنشاء": fmtDt(o.creationDate),
-      "التصنيف": classify(o.creationDate).label,
+      "الوصف": o.workOrderType,
       ...(regularized ? { "حالة الانتظام": "تم التنفيذ" } : {}),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -112,7 +124,8 @@ export function InstallationsReport({
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>رقم المرجع</th><th>${esc(phoneLabel)}</th><th>الموبايل</th>
       <th>اسم العميل</th><th>العنوان</th><th>نوع الأمر</th>
-      <th>اسم الفنى</th><th>تاريخ الإنشاء</th><th>التصنيف</th>${regularized ? "<th>الانتظام</th>" : ""}
+      <th>تاريخ الإنشاء</th><th>التصنيف</th>
+      <th>الكابينة</th><th>اسم الفنى</th>${regularized ? "<th>الانتظام</th>" : ""}
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -130,10 +143,11 @@ export function InstallationsReport({
           <td>${esc(o.mobile)}</td>
           <td style="font-size:9px">${esc(o.customerName)}</td>
           <td style="font-size:8px">${esc(o.address)}</td>
-          <td style="font-size:9px">${esc(o.workOrderType)}</td>
-          <td>${esc(o.techName)}</td>
+          <td style="font-size:9px">${esc(displayType(o.workOrderType))}</td>
           <td style="font-size:9px">${esc(fmtDt(o.creationDate))}</td>
           <td style="background:${clBg}!important;color:${clColor};font-weight:600;text-align:center">${esc(cl.label)}</td>
+          <td>${esc(o.cabinetNo)}</td>
+          <td>${esc(o.techName)}</td>
           ${regularized ? "<td>تم التنفيذ</td>" : ""}
         </tr>`;
       }).join("");
@@ -180,7 +194,7 @@ export function InstallationsReport({
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const colCount = regularized ? 17 : 16;
+  const colCount = regularized ? 18 : 17;
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -250,12 +264,14 @@ export function InstallationsReport({
                 <TableHead className="text-right font-bold text-white">اسم العميل</TableHead>
                 <TableHead className="text-right font-bold text-white">العنوان</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع أمر الشغل</TableHead>
+                <TableHead className="text-right font-bold text-white">تاريخ الإنشاء</TableHead>
+                <TableHead className="text-right font-bold text-white">التصنيف</TableHead>
                 <TableHead className="text-right font-bold text-white">المرحلة</TableHead>
                 <TableHead className="text-right font-bold text-white">الحالة</TableHead>
                 <TableHead className="text-right font-bold text-white">الأهمية</TableHead>
+                <TableHead className="text-right font-bold text-white">الكابينة</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
-                <TableHead className="text-right font-bold text-white">تاريخ الإنشاء</TableHead>
-                <TableHead className="text-right font-bold text-white">التصنيف</TableHead>
+                <TableHead className="text-right font-bold text-white">الوصف</TableHead>
                 {regularized && <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>}
               </TableRow>
             </TableHeader>
@@ -281,15 +297,17 @@ export function InstallationsReport({
                   <TableCell dir="ltr" className="text-left font-mono">{o.mobile || "-"}</TableCell>
                   <TableCell className="max-w-[180px] whitespace-normal break-words align-top">{o.customerName || "-"}</TableCell>
                   <TableCell className="max-w-[260px] whitespace-normal break-words align-top">{o.address || "-"}</TableCell>
-                  <TableCell className="max-w-[160px] truncate" title={o.workOrderType || ""}>{o.workOrderType || "-"}</TableCell>
+                  <TableCell className="font-medium" title={o.workOrderType || ""}>{displayType(o.workOrderType)}</TableCell>
+                  <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(o.creationDate)}</TableCell>
+                  <TableCell>
+                    {(() => { const c = classify(o.creationDate); return <span className={`text-xs px-2 py-0.5 rounded font-semibold whitespace-nowrap ${c.cls}`}>{c.label}</span>; })()}
+                  </TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.stage || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.status || "-"}</TableCell>
                   <TableCell>{o.priority || "-"}</TableCell>
+                  <TableCell>{o.cabinetNo || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.techName || "-"}</TableCell>
-                  <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(o.creationDate)}</TableCell>
-                  <TableCell>
-                    {(() => { const c = classify(o.creationDate); return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${c.cls}`}>{c.label}</span>; })()}
-                  </TableCell>
+                  <TableCell className="max-w-[160px] truncate" title={o.workOrderType || ""}>{o.workOrderType || "-"}</TableCell>
                   {regularized && (
                     <TableCell>
                       <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-800">تم التنفيذ</span>

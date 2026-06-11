@@ -120,7 +120,7 @@ const TICKET_COLS = [
 const WFM_COLS = [
   "central_name", "work_order_id", "phone_number", "work_order_type", "stage",
   "status", "priority", "current_workspec", "notes", "description", "creation_date",
-  "mobile", "customer_name", "address", "reference_no",
+  "mobile", "customer_name", "address", "reference_no", "exch_cabinet",
 ];
 
 // أنواع أوامر الشغل التى تُعتبر "تركيبات / نقل" (حالات التركيب wfm).
@@ -411,7 +411,7 @@ const WFM_REPORT_SELECT = `
     t.stage               AS "stage",
     t.status              AS "status",
     t.priority            AS "priority",
-    pl.cabin_number       AS "cabinetNo",
+    COALESCE(NULLIF(t.exch_cabinet, ''), pl.cabin_number) AS "cabinetNo",
     pl.box_number         AS "boxNo",
     pl.dp_terminal        AS "dpTerminal",
     ct.worker_code        AS "workerCode",
@@ -424,7 +424,8 @@ const WFM_REPORT_SELECT = `
     t.reference_no        AS "referenceNo"`;
 const WFM_REPORT_JOINS = `
     LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
-    LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = pl.cabin_number
+    LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name
+         AND ct.cabin_number = COALESCE(NULLIF(t.exch_cabinet, ''), pl.cabin_number)
     LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code`;
 
 // تقرير تركيبات/معاينات (حالى أو منتظم اليوم) — يُرجع الصفوف.
@@ -1358,6 +1359,9 @@ export async function registerRoutes(
       const iCustomer = find("اسم العميل", "customer name", "customer");
       const iAddress  = find("العنوان", "address");
       const iRef      = find("رقم المرجع", "reference no", "reference");
+      // "اسم السنترال" = كود السنترال/رقم الكابينة (مثال GHNAT/7-3) — نستخرج
+      // منه رقم الكابينة لربط أمر الشغل بفنى الكابينة فى تقارير التركيبات.
+      const iExchName = find("اسم السنترال", "exchange name");
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
       // build value rows (store ALL centrals; name falls back to the code)
@@ -1386,6 +1390,7 @@ export async function registerRoutes(
           String(g(r, iCustomer)) || null,
           String(g(r, iAddress))  || null,
           String(g(r, iRef))      || null,
+          (String(g(r, iExchName)).split("/")[1] || "").trim() || null,
         ]);
       }
 

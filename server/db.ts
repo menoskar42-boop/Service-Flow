@@ -514,6 +514,8 @@ export async function ensureSchema() {
     await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS customer_name text`);
     await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS address text`);
     await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS reference_no text`);
+    // رقم الكابينة المستخرج من "اسم السنترال" فى شيت أوامر الشغل (GHNAT/7-3 → 7-3)
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS exch_cabinet text`);
   }
 
   // Idempotent: add the SOD unique constraints to tables created before this
