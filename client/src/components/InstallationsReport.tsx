@@ -274,8 +274,8 @@ export function InstallationsReport({
                   </TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{o.phoneNumber || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{o.mobile || "-"}</TableCell>
-                  <TableCell className="max-w-[140px] truncate" title={o.customerName || ""}>{o.customerName || "-"}</TableCell>
-                  <TableCell className="max-w-[200px] truncate" title={o.address || ""}>{o.address || "-"}</TableCell>
+                  <TableCell className="max-w-[180px] whitespace-normal break-words align-top">{o.customerName || "-"}</TableCell>
+                  <TableCell className="max-w-[260px] whitespace-normal break-words align-top">{o.address || "-"}</TableCell>
                   <TableCell className="max-w-[160px] truncate" title={o.workOrderType || ""}>{o.workOrderType || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.stage || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.status || "-"}</TableCell>
