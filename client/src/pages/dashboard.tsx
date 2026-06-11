@@ -251,11 +251,11 @@ export default function Dashboard() {
                     <div key={group.label}>
                       <button
                         onClick={() => toggleGroup(group.label)}
-                        className="w-full flex items-center gap-2 px-3 py-2 bg-muted/60 border-b hover:bg-muted/80 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2.5 m-1 w-[calc(100%-0.5rem)] rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
                       >
-                        <group.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-right">{group.label}</span>
-                        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
+                        <group.icon className="w-4 h-4 text-white shrink-0" />
+                        <span className="text-sm font-bold text-white flex-1 text-right">{group.label}</span>
+                        <ChevronDown className={`w-4 h-4 text-white shrink-0 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
                       </button>
                       {isOpen && group.items.map((item) => (
                         <button
