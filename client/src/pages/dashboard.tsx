@@ -15,6 +15,7 @@ import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsRepor
 import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
+import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRangeReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
@@ -24,7 +25,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -34,6 +35,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "current-faults",      label: "الأعطال الحالية" },
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
+      { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
     ],
   },
   {
@@ -251,6 +253,7 @@ export default function Dashboard() {
               {reportTab === "work-orders"       && <WorkOrdersReport />}
               {reportTab === "current-faults"    && <CurrentFaultsReport />}
               {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
+              {reportTab === "regularized-faults-range" && <RegularizedFaultsRangeReport />}
             </div>
           </div>
         )}

@@ -2568,5 +2568,85 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/regularized-faults-range — الأعطال المنتظمة (مغلقة) خلال فترة من/إلى
+  // مثل تقرير الأعطال المنتظمة اليوم، لكن المصدر هو السجل التاريخى (ticket_queue)
+  // مفلتراً بتاريخ الإغلاق (close_date) ضمن المدى [dateFrom, dateTo] بتوقيت القاهرة.
+  // نفس فلاتر السنترالات + أكواد الأعطال + نفس الأعمدة والوصلات.
+  app.get("/api/reports/regularized-faults-range", requireAuth, async (req, res) => {
+    try {
+      const { central = "", q = "", dateFrom = "", dateTo = "" } =
+        req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [
+        `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
+        `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
+      ];
+      if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+      if (dateFrom) {
+        params.push(dateFrom);
+        conds.push(`(t.close_date AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
+      }
+      if (dateTo) {
+        params.push(dateTo);
+        conds.push(`(t.close_date AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
+      }
+      if (q.trim()) {
+        params.push(`%${q.trim()}%`);
+        const p = `$${params.length}`;
+        conds.push(`(t.phone_number ILIKE ${p} OR t.cabinet_no ILIKE ${p} OR t.status_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
+      }
+      const where = "WHERE " + conds.join(" AND ");
+
+      const { rows } = await pool.query(
+        `SELECT * FROM (
+           SELECT DISTINCT ON (t.ticket_id)
+             t.central_name          AS "centralName",
+             t.phone_number          AS "phoneShort",
+             CASE WHEN t.phone_number IS NOT NULL AND t.phone_number <> '' AND t.complaint_time IS NOT NULL
+                       AND EXISTS (
+                         SELECT 1 FROM complaint_details cd
+                         WHERE cd.close_time IS NOT NULL
+                           AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
+                           AND date_trunc('month', cd.close_time) = date_trunc('month', t.complaint_time)
+                           AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
+                       )
+                  THEN 'مكرر' ELSE '' END AS "repeatStatus",
+             t.status_code           AS "statusCode",
+             ct.cabin_code           AS "msanCode",
+             pp.frame                AS "frame",
+             t.cabinet_no            AS "cabinetNo",
+             pl.box_number           AS "boxNo",
+             pl.dp_terminal          AS "dpTerminal",
+             t.complaint_time        AS "complainTime",
+             t.complain_type_name    AS "complainTypeName",
+             'مغلق'                  AS "regStatus",
+             t.close_date            AS "closeDate",
+             t.onu                   AS "onu",
+             ct.worker_code          AS "workerCode",
+             tn.tech_name            AS "techName",
+             ct.haya_karima          AS "hayaKarima",
+             pp.voice_status         AS "voiceStatus",
+             pp.data_status          AS "dataStatus",
+             pp.shelf                AS "shelf",
+             pp.slot                 AS "slot",
+             pp.port_number          AS "portNumber",
+             t.central_code          AS "centralCode"
+           FROM ticket_queue t
+           LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
+           LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
+           LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
+           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+           ${where} AND t.close_date IS NOT NULL
+           ORDER BY t.ticket_id, t.id DESC
+         ) x
+         ORDER BY x."closeDate" ASC NULLS LAST`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   return httpServer;
 }
