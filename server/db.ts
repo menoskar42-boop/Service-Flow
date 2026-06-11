@@ -18,6 +18,54 @@ export const db = drizzle(pool, { schema });
 // Idempotent runtime migrations: keep DB in sync with schema additions even
 // when `npm run db:push` is not executed (e.g. Replit deploy).
 export async function ensureSchema() {
+  // Core tables (users, orders) — historically created by drizzle-kit push, now
+  // also created here so ensureSchema is self-sufficient on a fresh database.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id serial PRIMARY KEY,
+      username text NOT NULL UNIQUE,
+      password text NOT NULL,
+      role text NOT NULL,
+      suspended boolean NOT NULL DEFAULT false,
+      created_at timestamp DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id serial PRIMARY KEY,
+      customer_name text NOT NULL,
+      customer_phone text NOT NULL,
+      customer_address text NOT NULL,
+      national_id text,
+      serial_number text,
+      sales_id integer NOT NULL REFERENCES users(id),
+      sales_name text NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      is_feasible boolean,
+      rejection_reason text,
+      cabin_number text,
+      box_number text,
+      nearest_box_distance text,
+      additional_notes text,
+      central_name text,
+      tech_id integer REFERENCES users(id),
+      tech_name text,
+      tech_response_at timestamp,
+      external_id integer REFERENCES users(id),
+      external_name text,
+      external_response_at timestamp,
+      is_feasible_external boolean,
+      external_rejection_reason text,
+      external_cabin_number text,
+      external_box_number text,
+      external_nearest_box_distance text,
+      external_additional_notes text,
+      external_central_name text,
+      contract_status text NOT NULL DEFAULT 'لم يتم التعاقد',
+      created_at timestamp NOT NULL DEFAULT now()
+    )
+  `);
+
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS serial_number text`);
 
   await pool.query(`
