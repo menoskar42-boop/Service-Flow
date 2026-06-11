@@ -210,6 +210,12 @@ export function CurrentFaultsReport() {
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{faults.length}</strong> عطل</span>
+        <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">
+          48 ساعة: <strong>{faults.filter((f) => f.faultClass === "اعطال 48 ساعه").length}</strong>
+        </span>
+        <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-800">
+          المتبقيات: <strong>{faults.filter((f) => f.faultClass === "المتبقيات").length}</strong>
+        </span>
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}
