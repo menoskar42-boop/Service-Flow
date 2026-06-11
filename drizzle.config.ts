@@ -11,9 +11,10 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
-  // NOTE: every table is defined in shared/schema.ts AND created idempotently at
-  // runtime by ensureSchema() in server/db.ts. A committed migration snapshot
-  // (migrations/) gives the deploy step a baseline to diff against, so it stops
-  // comparing the live production DB directly to the schema and never emits the
-  // destructive DROP TABLE statements that previously wiped uploaded data.
+  // IMPORTANT: tablesFilter "!*" tells drizzle-kit to manage ZERO tables in push/generate mode.
+  // All schema creation/alteration is handled exclusively by ensureSchema() in server/db.ts,
+  // which only ever uses CREATE TABLE IF NOT EXISTS and ALTER TABLE ADD COLUMN IF NOT EXISTS.
+  // This prevents Replit's automatic deploy-time schema diffing from generating DROP statements
+  // when Replit's AI agent modifies schema.ts in its internal workspace.
+  tablesFilter: ["!*"],
 });
