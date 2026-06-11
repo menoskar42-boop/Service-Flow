@@ -71,3 +71,17 @@ Orders store denormalized `salesName` and `techName` directly. Status flows: Sal
 
 ## UI Language
 The application UI is in Arabic with RTL layout (`dir="rtl"` on the dashboard). Enum values (rejection reasons, central names, contract status) are Arabic strings defined in `shared/schema.ts`.
+
+## Replit Deploy — DROP COLUMN/TABLE warnings (الحل المجرَّب)
+
+**سبب المشكلة**: زر Publishing في Replit يقارن **dev DB مع prod DB مباشرة**. لو prod فيها أعمدة/جداول غير موجودة في dev DB، يولّد Replit تحذيرات `DROP COLUMN` / `DROP TABLE` لمسحها من prod.
+
+**الحل (3 خطوات — يجب أن تكون الثلاثة متزامنة دائماً عند إضافة أي عمود/جدول جديد):**
+1. **`server/db.ts` → `ensureSchema()`**: أضف `ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col> <type>` (أو `CREATE TABLE IF NOT EXISTS`) — يعمل تلقائياً عند تشغيل السيرفر.
+2. **`shared/schema.ts`**: أضف نفس الأعمدة في تعريف الجدول (pgTable) — حتى لا يعتبرها أي diff أعمدة زائدة.
+3. **dev DB في Replit**: شغّل نفس الـ ALTERs يدوياً عبر `psql $DATABASE_URL -c "..."` في Replit Shell (أو أعد تشغيل dev server ليُنفّذ `ensureSchema()` على dev DB) — **هذه الخطوة هي التي تزيل التحذيرات** لأنها تجعل dev DB مطابقة لـ prod DB.
+
+**قواعد دائمة**:
+- لا تستخدم أبداً `drizzle-kit push` / `db:push` — كل إدارة الـ schema حصرياً عبر `ensureSchema()` بصيغ idempotent (لا DROP أبداً).
+- `drizzle.config.ts` فيه `tablesFilter: ["!*"]` عمداً — لا تحذفه.
+- لو Replit Agent عدّل `schema.ts` في الـ workspace: `git fetch origin && git reset --hard origin/main` في Replit Shell ثم Republish.
