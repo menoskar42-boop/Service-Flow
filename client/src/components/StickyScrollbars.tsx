@@ -54,8 +54,10 @@ export function StickyScrollbars() {
         const inner = bar.firstElementChild as HTMLElement;
         const r = container.getBoundingClientRect();
         const inView = r.top < vh - 24 && r.bottom > 48;
-        const nativeBarVisible = r.bottom <= vh; // native scrollbar already on screen
-        const show = overflow && inView && !nativeBarVisible && r.width > 0;
+        // Always show the pinned bar whenever the table overflows and any part of
+        // it is in view — even if its own native scrollbar happens to be on screen
+        // (the user wants a bottom scrollbar that is always present).
+        const show = overflow && inView && r.width > 0;
 
         if (show) {
           bar.style.display = "block";
