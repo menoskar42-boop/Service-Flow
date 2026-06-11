@@ -15,6 +15,13 @@
       "when": 1781109170430,
       "tag": "0001_nappy_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781162440550,
+      "tag": "0002_friendly_ezekiel",
+      "breakpoints": true
     }
   ]
 }

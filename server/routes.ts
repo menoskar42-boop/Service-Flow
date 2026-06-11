@@ -99,6 +99,7 @@ const TICKET_COLS = [
 const WFM_COLS = [
   "central_name", "work_order_id", "phone_number", "work_order_type", "stage",
   "status", "priority", "current_workspec", "notes", "description", "creation_date",
+  "mobile", "customer_name", "address", "reference_no",
 ];
 
 // أنواع أوامر الشغل التى تُعتبر "تركيبات / نقل" (حالات التركيب wfm).
@@ -1117,6 +1118,10 @@ export async function registerRoutes(
       const iWorkspec = find("currentworkspec", "workspec");
       const iNotes    = find("notes", "ملاحظات");
       const iDesc     = find("الوصف", "description");
+      const iMobile   = find("رقم الموبايل", "mobile");
+      const iCustomer = find("اسم العميل", "customer name", "customer");
+      const iAddress  = find("العنوان", "address");
+      const iRef      = find("رقم المرجع", "reference no", "reference");
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
       // build value rows (store ALL centrals; name falls back to the code)
@@ -1141,6 +1146,10 @@ export async function registerRoutes(
           String(g(r, iNotes))    || null,
           String(g(r, iDesc))     || null,
           toDate(g(r, iDate)),
+          String(g(r, iMobile))   || null,
+          String(g(r, iCustomer)) || null,
+          String(g(r, iAddress))  || null,
+          String(g(r, iRef))      || null,
         ]);
       }
 
@@ -2688,7 +2697,11 @@ export async function registerRoutes(
     ct.worker_code        AS "workerCode",
     tn.tech_name          AS "techName",
     t.creation_date       AS "creationDate",
-    t.description         AS "description"`;
+    t.description         AS "description",
+    t.mobile              AS "mobile",
+    t.customer_name       AS "customerName",
+    t.address             AS "address",
+    t.reference_no        AS "referenceNo"`;
   const INSTALL_JOINS = `
     LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
     LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = pl.cabin_number

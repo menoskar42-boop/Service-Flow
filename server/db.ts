@@ -458,6 +458,16 @@ export async function ensureSchema() {
     `);
   }
 
+  // أعمدة بيانات العميل من شيت أوامر الشغل (تظهر فى تقارير التركيبات/المعاينات).
+  // إضافية (ADD COLUMN IF NOT EXISTS) — آمنة ولا تُسقط بيانات. تُطبّق على الجدول
+  // التاريخى ولقطتى بداية اليوم/الحالى.
+  for (const t of ["maintenance_orders", "wfm_sod", "wfm_current"]) {
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS mobile text`);
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS customer_name text`);
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS address text`);
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS reference_no text`);
+  }
+
   // Idempotent: add the SOD unique constraints to tables created before this
   // change (CREATE TABLE IF NOT EXISTS won't alter an existing table). Existing
   // SOD rows may already hold duplicate keys (old plain-INSERT replace), so we

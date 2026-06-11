@@ -261,6 +261,10 @@ export const maintenanceOrders = pgTable("maintenance_orders", {
   notes: text("notes"),
   description: text("description"),
   creationDate: timestamp("creation_date"),
+  mobile: text("mobile"),
+  customerName: text("customer_name"),
+  address: text("address"),
+  referenceNo: text("reference_no"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 }, (t) => ({
@@ -569,6 +573,10 @@ const wfmCols = () => ({
   notes: text("notes"),
   description: text("description"),
   creationDate: timestamp("creation_date", { withTimezone: true }),
+  mobile: text("mobile"),
+  customerName: text("customer_name"),
+  address: text("address"),
+  referenceNo: text("reference_no"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });

@@ -25,6 +25,10 @@ interface Installation {
   techName: string | null;
   creationDate: string | null;
   description: string | null;
+  mobile: string | null;
+  customerName: string | null;
+  address: string | null;
+  referenceNo: string | null;
 }
 
 const fmtDt = (d: string | null) =>
@@ -62,7 +66,11 @@ export function InstallationsReport({
       "#": i + 1,
       "اسم السنترال": o.centralName,
       "رقم أمر الشغل": o.workOrderId,
+      "رقم المرجع": o.referenceNo,
       "رقم التليفون": o.phoneNumber,
+      "رقم الموبايل": o.mobile,
+      "اسم العميل": o.customerName,
+      "العنوان": o.address,
       "نوع أمر الشغل": o.workOrderType,
       "المرحلة": o.stage,
       "الحالة": o.status,
@@ -89,8 +97,9 @@ export function InstallationsReport({
     const ROWS_PER_PAGE = 11;
     const totalPages = Math.max(1, Math.ceil(items.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>رقم الأمر</th><th>التليفون</th><th>نوع الأمر</th>
-      <th>المرحلة</th><th>الحالة</th><th>الكابينة</th><th>البكس</th><th>ترمنال</th>
+      <th>#</th><th>السنترال</th><th>رقم المرجع</th><th>التليفون</th><th>الموبايل</th>
+      <th>اسم العميل</th><th>العنوان</th><th>نوع الأمر</th>
+      <th>الكابينة</th><th>البكس</th><th>ترمنال</th>
       <th>اسم الفنى</th><th>تاريخ الإنشاء</th>${regularized ? "<th>الانتظام</th>" : ""}
     </tr>`;
     let pages = "";
@@ -100,11 +109,12 @@ export function InstallationsReport({
         <tr class="green">
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
           <td>${esc(o.centralName)}</td>
-          <td>${esc(o.workOrderId)}</td>
+          <td style="font-size:9px">${esc(o.referenceNo)}</td>
           <td>${esc(o.phoneNumber)}</td>
+          <td>${esc(o.mobile)}</td>
+          <td style="font-size:9px">${esc(o.customerName)}</td>
+          <td style="font-size:8px">${esc(o.address)}</td>
           <td style="font-size:9px">${esc(o.workOrderType)}</td>
-          <td style="font-size:9px">${esc(o.stage)}</td>
-          <td style="font-size:9px">${esc(o.status)}</td>
           <td>${esc(o.cabinetNo)}</td>
           <td>${esc(o.boxNo)}</td>
           <td>${esc(o.dpTerminal)}</td>
@@ -155,7 +165,7 @@ export function InstallationsReport({
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const colCount = regularized ? 16 : 15;
+  const colCount = regularized ? 20 : 19;
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -206,8 +216,12 @@ export function InstallationsReport({
               <TableRow>
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم المرجع</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم الأمر</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                <TableHead className="text-right font-bold text-white">الموبايل</TableHead>
+                <TableHead className="text-right font-bold text-white">اسم العميل</TableHead>
+                <TableHead className="text-right font-bold text-white">العنوان</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع أمر الشغل</TableHead>
                 <TableHead className="text-right font-bold text-white">المرحلة</TableHead>
                 <TableHead className="text-right font-bold text-white">الحالة</TableHead>
@@ -235,10 +249,14 @@ export function InstallationsReport({
                 <TableRow key={i} className="bg-green-50 hover:bg-green-100">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell>{o.centralName || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono text-xs">{o.referenceNo || "-"}</TableCell>
                   <TableCell>
                     <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{o.workOrderId ?? "-"}</span>
                   </TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{o.phoneNumber || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono">{o.mobile || "-"}</TableCell>
+                  <TableCell className="max-w-[140px] truncate" title={o.customerName || ""}>{o.customerName || "-"}</TableCell>
+                  <TableCell className="max-w-[200px] truncate" title={o.address || ""}>{o.address || "-"}</TableCell>
                   <TableCell className="max-w-[160px] truncate" title={o.workOrderType || ""}>{o.workOrderType || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.stage || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.status || "-"}</TableCell>
