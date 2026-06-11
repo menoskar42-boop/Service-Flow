@@ -51,11 +51,32 @@ const CENTRAL_CODE_TO_NAME: Record<string, string> = {
   NGOAT: "الغنايم-نجع العمدة",
 };
 
+// Some telecom exports are HTML files with an .xls extension. SheetJS parses
+// them but leaves text as HTML numeric entities (&#1578;... instead of Arabic
+// letters), which breaks header detection and stores garbage values. Decode
+// &#NNNN; / &#xHHHH; and the common named entities back to real characters.
+function decodeHtmlEntities(s: string): string {
+  if (s.indexOf("&") === -1) return s;
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(parseInt(n, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&nbsp;/g, " ");
+}
+
 // Smart sheet reader: scans the first `scanRows` rows to locate the header row
 // (the one containing any of the anchor keywords), then exposes a name-based
 // column finder. This makes imports tolerant of reordered columns and of files
 // that prepend report-title rows above the real header (e.g. 430D exports).
 function smartSheet(rows: any[][], anchors: string[], scanRows = 25) {
+  // Decode HTML entities in every string cell (headers AND data) so that
+  // HTML-disguised .xls exports behave exactly like real Excel files.
+  for (const row of rows) {
+    if (!row) continue;
+    for (let j = 0; j < row.length; j++) {
+      if (typeof row[j] === "string") row[j] = decodeHtmlEntities(row[j]);
+    }
+  }
   let headerRowIdx = 0;
   for (let i = 0; i < Math.min(scanRows, rows.length); i++) {
     const cells = (rows[i] || []).map((c) => String(c ?? "").trim().toLowerCase());
