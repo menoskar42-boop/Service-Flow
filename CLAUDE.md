@@ -86,3 +86,8 @@ The application UI is in Arabic with RTL layout (`dir="rtl"` on the dashboard). 
 - لا تستخدم أبداً `drizzle-kit push` / `db:push` — كل إدارة الـ schema حصرياً عبر `ensureSchema()` بصيغ idempotent (لا DROP أبداً).
 - `drizzle.config.ts` فيه `tablesFilter: ["!*"]` عمداً — لا تحذفه.
 - لو Replit Agent عدّل `schema.ts` في الـ workspace: `git fetch origin && git reset --hard origin/main` في Replit Shell ثم Republish.
+
+**ملاحظات مجرَّبة (نجحت فعلياً 2026-06)**:
+- تعديل `server/db.ts` في Replit workspace **لا يكفي وحده**: الـ HMR يعيد تحميل الـ frontend فقط، و`ensureSchema()` لا يُنفَّذ على dev DB إلا بإعادة تشغيل الـ backend. الأسرع والأضمن: تنفيذ الـ ALTERs مباشرة عبر `psql $DATABASE_URL -c "..."` في Replit Shell (نجاح كل سطر يظهر كـ `ALTER TABLE` في الناتج).
+- تحذيرات DROP داخل عملية Publishing **جارية** هي snapshot قديم محسوب قبل مزامنة dev DB — لا تتحدث تلقائياً. بعد المزامنة: Cancel ثم Republish جديد.
+- قبل الضغط على **Approve and publish**: افتح قسم "Generated migrations" المطوي (حتى لو ظهر "validated successfully") وتأكد بالعين أن القائمة خالية من أي `DROP COLUMN` / `DROP TABLE`. لو فيها DROP → Cancel وRepublish جديد.
