@@ -254,7 +254,7 @@ async function importFtthStaged(file: File): Promise<{ inserted: number; skipped
   }
 
   let inserted = 0;
-  const STEP = 2000;
+  const STEP = 5000;
   for (let s = 0; s < data.length; s += STEP) {
     const res = await fetch("/api/ftth-subscribers/import-rows", {
       method: "POST",
