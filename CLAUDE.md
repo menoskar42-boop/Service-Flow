@@ -91,3 +91,18 @@ The application UI is in Arabic with RTL layout (`dir="rtl"` on the dashboard). 
 - تعديل `server/db.ts` في Replit workspace **لا يكفي وحده**: الـ HMR يعيد تحميل الـ frontend فقط، و`ensureSchema()` لا يُنفَّذ على dev DB إلا بإعادة تشغيل الـ backend. الأسرع والأضمن: تنفيذ الـ ALTERs مباشرة عبر `psql $DATABASE_URL -c "..."` في Replit Shell (نجاح كل سطر يظهر كـ `ALTER TABLE` في الناتج).
 - تحذيرات DROP داخل عملية Publishing **جارية** هي snapshot قديم محسوب قبل مزامنة dev DB — لا تتحدث تلقائياً. بعد المزامنة: Cancel ثم Republish جديد.
 - قبل الضغط على **Approve and publish**: افتح قسم "Generated migrations" المطوي (حتى لو ظهر "validated successfully") وتأكد بالعين أن القائمة خالية من أي `DROP COLUMN` / `DROP TABLE`. لو فيها DROP → Cancel وRepublish جديد.
+
+**دليل التصرف الكامل حسب نوع التحذير (مجرَّب بالكامل 2026-06-11 — اتبعه حرفياً من أول مرة):**
+
+| التحذير في شاشة Publishing | السبب | العلاج |
+|---|---|---|
+| `DROP COLUMN x` | العمود موجود في prod وناقص في dev DB | `psql $DATABASE_URL -c "ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col> <type>"` ثم Cancel + Republish |
+| `DROP TABLE x CASCADE` | الجدول موجود في prod وناقص في dev DB | `psql` بـ `CREATE TABLE` **منسوخ حرفياً من `ensureSchema()` في `server/db.ts`** ثم Cancel + Republish |
+| شاشة "Detected potential conflicts / rename column?" | جدول dev اتعمل بأسماء أعمدة غلط (غالباً من تخمين Replit Agent) | **لا تضغط Submit أبداً** (الاختيارات تمسح بيانات prod). Cancel → `DROP TABLE` للجدول الغلط في dev (آمن — dev فاضي) → إعادة إنشائه بالـ DDL الصحيح من `ensureSchema()` → `\d <table>` للتأكد → Republish |
+
+**قواعد ذهبية من الحادثة:**
+1. **المصدر الوحيد الموثوق للـ DDL هو `ensureSchema()` في `server/db.ts`** — انسخ منه حرفياً (أسماء الأعمدة، الـ constraints، الـ indexes). لا تخمّن أبداً ولا تثق في DDL يقترحه Replit Agent (خمّن `item_data`/`uploaded_at` بدل `data`/`created_at` ونسي `central_name` — كاد يمسح أرشيف prod مرتين).
+2. **لا توافق أبداً على اقتراح "عدّل schema.ts ليطابق dev DB"** — الاتجاه الصحيح دائماً: عدّل dev DB ليطابق الكود/prod.
+3. لو Replit Agent عدّل ملفات الـ workspace: `git fetch origin && git reset --hard origin/main` يرجّع كل شيء (تحقّق أولاً أن origin/main لم يستقبل commits غريبة بـ `git log`).
+4. بعد أي إصلاح على dev DB: تحقّق بـ `psql $DATABASE_URL -c "\d <table>"` أن الهيكل مطابق لـ `ensureSchema()` **قبل** الـ Republish.
+5. التسلسل الكامل دائماً: إصلاح dev DB بـ psql → `\d` للتحقق → Cancel للنشر الجاري → Republish جديد → فتح Generated migrations والتأكد أنها **فارغة تماماً** → Approve and publish.
