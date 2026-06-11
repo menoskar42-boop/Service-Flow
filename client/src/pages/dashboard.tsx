@@ -21,7 +21,7 @@ import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
@@ -89,6 +89,13 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [adminTab, setAdminTab] = useState<AdminTab>("orders");
   const [reportTab, setReportTab] = useState<ReportTab>("box-rejections");
+  // مجموعات التقارير القابلة للطى — المجموعة التى تحوى التقرير النشط مفتوحة افتراضياً
+  const [openGroups, setOpenGroups] = useState<string[]>(() => {
+    const g = REPORT_GROUPS.find((grp) => grp.items.some((it) => it.id === "box-rejections"));
+    return g ? [g.label] : [];
+  });
+  const toggleGroup = (label: string) =>
+    setOpenGroups((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
 
   useWebSocket();
 
@@ -238,27 +245,34 @@ export default function Dashboard() {
             {/* ── Sidebar ── */}
             <aside className="w-52 shrink-0">
               <nav className="sticky top-4 bg-white rounded-xl border shadow-sm overflow-hidden">
-                {REPORT_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b">
-                      <group.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.label}</span>
-                    </div>
-                    {group.items.map((item) => (
+                {REPORT_GROUPS.map((group) => {
+                  const isOpen = openGroups.includes(group.label);
+                  return (
+                    <div key={group.label}>
                       <button
-                        key={item.id}
-                        onClick={() => setReportTab(item.id)}
-                        className={`w-full text-right px-4 py-2.5 text-sm transition-colors border-b last:border-b-0
-                          ${reportTab === item.id
-                            ? "bg-blue-50 text-blue-700 font-semibold border-r-2 border-r-blue-600"
-                            : "text-foreground hover:bg-muted/40"
-                          }`}
+                        onClick={() => toggleGroup(group.label)}
+                        className="w-full flex items-center gap-2 px-3 py-2 bg-muted/60 border-b hover:bg-muted/80 transition-colors"
                       >
-                        {item.label}
+                        <group.icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1 text-right">{group.label}</span>
+                        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${isOpen ? "" : "-rotate-90"}`} />
                       </button>
-                    ))}
-                  </div>
-                ))}
+                      {isOpen && group.items.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => setReportTab(item.id)}
+                          className={`w-full text-right px-4 py-2.5 text-sm transition-colors border-b last:border-b-0
+                            ${reportTab === item.id
+                              ? "bg-blue-50 text-blue-700 font-semibold border-r-2 border-r-blue-600"
+                              : "text-foreground hover:bg-muted/40"
+                            }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
               </nav>
             </aside>
 

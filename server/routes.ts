@@ -188,24 +188,36 @@ async function isFirstUploadToday(table: string): Promise<boolean> {
 }
 
 // Full-replace a table with the given value rows (+ uploaded_by_id appended).
+// Transactional: the DELETE and all INSERTs run in one transaction, so if any
+// INSERT fails (e.g. a column mismatch) the whole thing rolls back and the old
+// data is preserved — never leaving the table empty on a failed upload.
 async function replaceTable(table: string, cols: string[], rows: any[][], userId: number): Promise<number> {
-  await pool.query(`DELETE FROM ${table}`);
-  if (!rows.length) return 0;
-  const allCols = [...cols, "uploaded_by_id"];
-  const n = allCols.length;
-  let inserted = 0;
-  const BATCH = 200;
-  for (let s = 0; s < rows.length; s += BATCH) {
-    const chunk = rows.slice(s, s + BATCH);
-    const ph = chunk.map((_, ci) => {
-      const o = ci * n;
-      return "(" + Array.from({ length: n }, (_, k) => `$${o + k + 1}`).join(",") + ")";
-    }).join(",");
-    const vals = chunk.flatMap((r) => [...r, userId]);
-    const res = await pool.query(`INSERT INTO ${table} (${allCols.join(",")}) VALUES ${ph}`, vals);
-    inserted += res.rowCount ?? 0;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM ${table}`);
+    const allCols = [...cols, "uploaded_by_id"];
+    const n = allCols.length;
+    let inserted = 0;
+    const BATCH = 200;
+    for (let s = 0; s < rows.length; s += BATCH) {
+      const chunk = rows.slice(s, s + BATCH);
+      const ph = chunk.map((_, ci) => {
+        const o = ci * n;
+        return "(" + Array.from({ length: n }, (_, k) => `$${o + k + 1}`).join(",") + ")";
+      }).join(",");
+      const vals = chunk.flatMap((r) => [...r, userId]);
+      const res = await client.query(`INSERT INTO ${table} (${allCols.join(",")}) VALUES ${ph}`, vals);
+      inserted += res.rowCount ?? 0;
+    }
+    await client.query("COMMIT");
+    return inserted;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
   }
-  return inserted;
 }
 
 // Accumulate into a historical table (dedup via ON CONFLICT DO NOTHING).
