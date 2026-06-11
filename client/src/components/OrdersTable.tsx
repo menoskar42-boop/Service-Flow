@@ -29,6 +29,7 @@ import { TechActionModal } from "./TechActionModal";
 import { ExternalActionModal } from "./ExternalActionModal";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrders } from "@/hooks/use-orders";
+import { useUsers } from "@/hooks/use-users";
 import { Search, RotateCcw, Loader2, FileCheck, Undo2, RefreshCw } from "lucide-react";
 
 interface OrdersTableProps {
@@ -41,9 +42,13 @@ type ContractFilter = "all" | "contracted" | "not_contracted";
 export function OrdersTable({ orders }: OrdersTableProps) {
   const { user } = useAuth();
   const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract, requestExternalReview, isRequestingExternal } = useOrders();
+  const { users } = useUsers();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
+  const [techFilter, setTechFilter] = useState("");
+
+  const techUsers = users?.filter(u => u.role === ROLES.TECH) ?? [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -82,6 +87,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
 
   const filteredOrders = orders.filter((order) => {
     if (statusFilter !== "all" && order.status !== statusFilter) return false;
+
+    // Tech filter: show orders for selected tech + all pending (unassigned) orders
+    if (techFilter) {
+      const isPending = order.status === ORDER_STATUS.PENDING;
+      const isTechMatch = order.techName === techFilter;
+      if (!isPending && !isTechMatch) return false;
+    }
 
     if (user?.role === ROLES.ADMIN && contractFilter !== "all") {
       if (contractFilter === "contracted" && order.contractStatus !== CONTRACT_STATUS.CONTRACTED) return false;
@@ -237,18 +249,33 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       )}
 
       <div className="p-4 border-b">
-        <div className="relative">
-          <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="بحث في جميع الحقول..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pr-10 text-right"
-            dir="rtl"
-            data-testid="input-search"
-          />
+        <div className="flex gap-2 items-center" dir="rtl">
+          <div className="relative flex-1">
+            <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="بحث في جميع الحقول..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pr-10 text-right"
+              dir="rtl"
+              data-testid="input-search"
+            />
+          </div>
+          {user?.role === ROLES.ADMIN && techUsers.length > 0 && (
+            <select
+              value={techFilter}
+              onChange={(e) => setTechFilter(e.target.value)}
+              className="border rounded-md px-3 py-2 text-sm bg-white min-w-[140px]"
+              dir="rtl"
+            >
+              <option value="">كل الفنيين</option>
+              {techUsers.map(t => (
+                <option key={t.id} value={t.username}>{t.username}</option>
+              ))}
+            </select>
+          )}
         </div>
-        {(searchQuery || statusFilter !== "all" || contractFilter !== "all") && (
+        {(searchQuery || statusFilter !== "all" || contractFilter !== "all" || techFilter) && (
           <p className="text-sm text-muted-foreground mt-2">
             عدد النتائج: {filteredOrders.length} من {orders.length}
           </p>
