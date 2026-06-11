@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 5. **If a task is complex, break it into steps and confirm after each step** before continuing.
 6. **Always push to `origin/main`** after every commit.
 7. **Every report in the reports section (`قسم التقارير`) must have an Excel export button and a PDF export button** — follow the existing pattern in `CurrentFaultsReport.tsx` / `RegularizedFaultsReport.tsx` (`handleExportExcel` via XLSX + `handleExportPDF` via a printable RTL HTML window).
+8. **Every new column added to any table in `shared/schema.ts` MUST be accompanied — in the same commit — by a matching `ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col> <type>` at the start of `ensureSchema()` in `server/db.ts`** (and `CREATE TABLE IF NOT EXISTS` for new tables), so it gets applied to the Replit dev DB on server restart and prod/dev stay in sync (see "Replit Deploy" section below).
 
 ## Domain Context
 - Expert full-stack engineer (40+ years experience).
