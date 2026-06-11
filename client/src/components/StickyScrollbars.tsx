@@ -52,10 +52,10 @@ export function StickyScrollbars() {
         const inner = bar.firstElementChild as HTMLElement;
         const r = container.getBoundingClientRect();
 
-        // Show the proxy bar whenever the container has horizontal overflow AND
-        // any part of it is currently visible in the viewport.
-        const inView = r.top < vh && r.bottom > 0 && r.width > 0;
-        const show   = scrollable && inView;
+        // Show the proxy bar only when the container's native bottom scrollbar
+        // is below the viewport fold (r.bottom > vh). No need for it when the
+        // native scrollbar is already visible on-screen.
+        const show = scrollable && r.top < vh && r.bottom > vh && r.width > 0;
 
         if (show) {
           // Clamp left/width to the visible portion of the viewport.

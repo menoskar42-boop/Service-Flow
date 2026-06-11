@@ -313,6 +313,7 @@ export default function Dashboard() {
                   title="تقرير المعاينات الحالية"
                   sheetName="المعاينات الحالية"
                   fileName="current-surveys"
+                  phoneLabel="المسلسل"
                 />
               )}
               {reportTab === "regularized-surveys" && (
@@ -323,6 +324,7 @@ export default function Dashboard() {
                   regularized
                   sheetName="المعاينات المنتظمة"
                   fileName="regularized-surveys"
+                  phoneLabel="المسلسل"
                 />
               )}
               {reportTab === "regularized-installations-range" && (
@@ -347,6 +349,7 @@ export default function Dashboard() {
                   regularized
                   sheetName="المعاينات المنتظمة بتاريخ"
                   fileName="regularized-surveys-range"
+                  phoneLabel="المسلسل"
                 />
               )}
             </div>

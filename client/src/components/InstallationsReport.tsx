@@ -34,11 +34,19 @@ interface Installation {
 const fmtDt = (d: string | null) =>
   d ? format(new Date(d), "yyyy/MM/dd HH:mm") : "-";
 
+function classify(creationDate: string | null): { label: string; cls: string } {
+  if (!creationDate) return { label: "—", cls: "bg-gray-100 text-gray-600" };
+  const hours = (Date.now() - new Date(creationDate).getTime()) / 3_600_000;
+  if (hours <= 24) return { label: "24 ساعة", cls: "bg-green-100 text-green-800" };
+  if (hours <= 48) return { label: "48 ساعة", cls: "bg-yellow-100 text-yellow-800" };
+  return { label: "متبقيات", cls: "bg-red-100 text-red-800" };
+}
+
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 
 export function InstallationsReport({
   endpoint, queryKey, title, regularized = false, sheetName, fileName,
-  showDates = false, extraParams,
+  showDates = false, extraParams, phoneLabel = "التليفون",
 }: {
   endpoint: string;
   queryKey: string;
@@ -48,6 +56,7 @@ export function InstallationsReport({
   fileName: string;
   showDates?: boolean;
   extraParams?: Record<string, string>;
+  phoneLabel?: string;
 }) {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
@@ -74,7 +83,7 @@ export function InstallationsReport({
       "اسم السنترال": o.centralName,
       "رقم أمر الشغل": o.workOrderId,
       "رقم المرجع": o.referenceNo,
-      "رقم التليفون": o.phoneNumber,
+      [phoneLabel]: o.phoneNumber,
       "رقم الموبايل": o.mobile,
       "اسم العميل": o.customerName,
       "العنوان": o.address,
@@ -82,13 +91,10 @@ export function InstallationsReport({
       "المرحلة": o.stage,
       "الحالة": o.status,
       "الأهمية": o.priority,
-      "الكابينة": o.cabinetNo,
-      "البكس": o.boxNo,
-      "الترمنال": o.dpTerminal,
       "كود العامل": o.workerCode,
       "اسم الفنى": o.techName,
       "تاريخ الإنشاء": fmtDt(o.creationDate),
-      "الوصف": o.description,
+      "التصنيف": classify(o.creationDate).label,
       ...(regularized ? { "حالة الانتظام": "تم التنفيذ" } : {}),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -104,15 +110,18 @@ export function InstallationsReport({
     const ROWS_PER_PAGE = 11;
     const totalPages = Math.max(1, Math.ceil(items.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>رقم المرجع</th><th>التليفون</th><th>الموبايل</th>
+      <th>#</th><th>السنترال</th><th>رقم المرجع</th><th>${esc(phoneLabel)}</th><th>الموبايل</th>
       <th>اسم العميل</th><th>العنوان</th><th>نوع الأمر</th>
-      <th>الكابينة</th><th>البكس</th><th>ترمنال</th>
-      <th>اسم الفنى</th><th>تاريخ الإنشاء</th>${regularized ? "<th>الانتظام</th>" : ""}
+      <th>اسم الفنى</th><th>تاريخ الإنشاء</th><th>التصنيف</th>${regularized ? "<th>الانتظام</th>" : ""}
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
       const chunk = items.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE);
-      const body = chunk.map((o, ci) => `
+      const body = chunk.map((o, ci) => {
+        const cl = classify(o.creationDate);
+        const clColor = cl.label === "24 ساعة" ? "#166534" : cl.label === "48 ساعة" ? "#854d0e" : "#991b1b";
+        const clBg = cl.label === "24 ساعة" ? "#dcfce7" : cl.label === "48 ساعة" ? "#fef9c3" : "#fee2e2";
+        return `
         <tr class="green">
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
           <td>${esc(o.centralName)}</td>
@@ -122,13 +131,12 @@ export function InstallationsReport({
           <td style="font-size:9px">${esc(o.customerName)}</td>
           <td style="font-size:8px">${esc(o.address)}</td>
           <td style="font-size:9px">${esc(o.workOrderType)}</td>
-          <td>${esc(o.cabinetNo)}</td>
-          <td>${esc(o.boxNo)}</td>
-          <td>${esc(o.dpTerminal)}</td>
           <td>${esc(o.techName)}</td>
           <td style="font-size:9px">${esc(fmtDt(o.creationDate))}</td>
+          <td style="background:${clBg}!important;color:${clColor};font-weight:600;text-align:center">${esc(cl.label)}</td>
           ${regularized ? "<td>تم التنفيذ</td>" : ""}
-        </tr>`).join("");
+        </tr>`;
+      }).join("");
       pages += `
         <section class="page">
           <h2>${esc(fullTitle)}</h2>
@@ -172,7 +180,7 @@ export function InstallationsReport({
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const colCount = regularized ? 20 : 19;
+  const colCount = regularized ? 17 : 16;
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -237,7 +245,7 @@ export function InstallationsReport({
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم المرجع</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم الأمر</TableHead>
-                <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                <TableHead className="text-right font-bold text-white">{phoneLabel}</TableHead>
                 <TableHead className="text-right font-bold text-white">الموبايل</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم العميل</TableHead>
                 <TableHead className="text-right font-bold text-white">العنوان</TableHead>
@@ -245,12 +253,9 @@ export function InstallationsReport({
                 <TableHead className="text-right font-bold text-white">المرحلة</TableHead>
                 <TableHead className="text-right font-bold text-white">الحالة</TableHead>
                 <TableHead className="text-right font-bold text-white">الأهمية</TableHead>
-                <TableHead className="text-right font-bold text-white">الكابينة</TableHead>
-                <TableHead className="text-right font-bold text-white">البكس</TableHead>
-                <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ الإنشاء</TableHead>
-                <TableHead className="text-right font-bold text-white">الوصف</TableHead>
+                <TableHead className="text-right font-bold text-white">التصنيف</TableHead>
                 {regularized && <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>}
               </TableRow>
             </TableHeader>
@@ -280,12 +285,11 @@ export function InstallationsReport({
                   <TableCell className="max-w-[120px] truncate">{o.stage || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.status || "-"}</TableCell>
                   <TableCell>{o.priority || "-"}</TableCell>
-                  <TableCell>{o.cabinetNo || "-"}</TableCell>
-                  <TableCell>{o.boxNo || "-"}</TableCell>
-                  <TableCell>{o.dpTerminal || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{o.techName || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(o.creationDate)}</TableCell>
-                  <TableCell className="max-w-[220px] truncate" title={o.description || ""}>{o.description || "-"}</TableCell>
+                  <TableCell>
+                    {(() => { const c = classify(o.creationDate); return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${c.cls}`}>{c.label}</span>; })()}
+                  </TableCell>
                   {regularized && (
                     <TableCell>
                       <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-800">تم التنفيذ</span>
