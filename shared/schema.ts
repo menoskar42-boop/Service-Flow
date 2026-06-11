@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -585,6 +585,19 @@ export const wfmSod = pgTable("wfm_sod", wfmCols(), (t) => ({
   uniq: unique("wfm_sod_central_wo_uniq").on(t.centralName, t.workOrderId),
 }));
 export const wfmCurrent = pgTable("wfm_current", wfmCols());
+
+// ─── الأرشيف اليومى للمنتظمات (أعطال/تركيبات/معاينات) ───────────────────────
+export const regularizedDaily = pgTable("regularized_daily", {
+  id: serial("id").primaryKey(),
+  snapshotDate: date("snapshot_date").notNull(),
+  category: text("category").notNull(),
+  itemKey: text("item_key").notNull(),
+  centralName: text("central_name"),
+  data: jsonb("data").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniq: unique("regularized_daily_cat_key_uniq").on(t.category, t.itemKey),
+}));
 
 // ─── FTTH provisioning orders (ملف Order): تاريخي + حالي + أرشيف سنوي ────────
 const ftthOrderCols = () => ({

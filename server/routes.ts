@@ -294,6 +294,209 @@ async function archiveIfNewYear(histTable: string, archiveTable: string, cols: s
   return lastYear;
 }
 
+// أنواع التركيب/المعاينة المسموحة — معرّفة لاحقاً (INSTALL/SURVEY) ولكن دوال
+// الاستعلام التالية تستقبلها كوسيط حتى تعمل كدوال مستوى-وحدة قابلة للمشاركة بين
+// الـ endpoints وجدولة الحفظ اليومى.
+
+// الأعطال المنتظمة اليوم — تُرجع الصفوف (مع ticketId للمفتاح الفريد).
+async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
+  const { central = "", q = "" } = opts;
+  const params: any[] = [];
+  const conds: string[] = [
+    `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
+    `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
+  ];
+  if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+  if (q.trim()) {
+    params.push(`%${q.trim()}%`);
+    const p = `$${params.length}`;
+    conds.push(`(t.phone_number ILIKE ${p} OR t.cabinet_no ILIKE ${p} OR t.status_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
+  }
+  const where = "WHERE " + conds.join(" AND ");
+  const { rows } = await pool.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (t.ticket_id)
+         t.ticket_id             AS "ticketId",
+         t.central_name          AS "centralName",
+         t.phone_number          AS "phoneShort",
+         CASE WHEN t.phone_number IS NOT NULL AND t.phone_number <> '' AND t.complaint_time IS NOT NULL
+                   AND EXISTS (
+                     SELECT 1 FROM complaint_details cd
+                     WHERE cd.close_time IS NOT NULL
+                       AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
+                       AND date_trunc('month', cd.close_time) = date_trunc('month', t.complaint_time)
+                       AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
+                   )
+              THEN 'مكرر' ELSE '' END AS "repeatStatus",
+         t.status_code           AS "statusCode",
+         ct.cabin_code           AS "msanCode",
+         pp.frame                AS "frame",
+         t.cabinet_no            AS "cabinetNo",
+         pl.box_number           AS "boxNo",
+         pl.dp_terminal          AS "dpTerminal",
+         t.complaint_time        AS "complainTime",
+         t.complain_type_name    AS "complainTypeName",
+         t.reg_source            AS "regStatus",
+         t.close_date            AS "closeDate",
+         t.onu                   AS "onu",
+         ct.worker_code          AS "workerCode",
+         tn.tech_name            AS "techName",
+         ct.haya_karima          AS "hayaKarima",
+         pp.voice_status         AS "voiceStatus",
+         pp.data_status          AS "dataStatus",
+         pp.shelf                AS "shelf",
+         pp.slot                 AS "slot",
+         pp.port_number          AS "portNumber",
+         t.central_code          AS "centralCode"
+       FROM (
+         SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
+         WHERE close_date IS NOT NULL
+           AND (close_date AT TIME ZONE 'Africa/Cairo')::date = (now() AT TIME ZONE 'Africa/Cairo')::date
+         UNION ALL
+         SELECT *, 'اختفى من الحالى' AS reg_source FROM ticket_dsl_sod s
+         WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)
+       ) t
+       LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
+       LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
+       LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
+       LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+       ${where}
+       ORDER BY t.ticket_id, t.id DESC
+     ) x
+     ORDER BY x."complainTime" ASC NULLS LAST`,
+    params,
+  );
+  return rows;
+}
+
+// SQL مشترك لتقارير التركيبات/المعاينات (أعمدة + وصلات الإثراء).
+const WFM_REPORT_SELECT = `
+    t.central_name        AS "centralName",
+    t.work_order_id       AS "workOrderId",
+    t.phone_number        AS "phoneNumber",
+    t.work_order_type     AS "workOrderType",
+    t.stage               AS "stage",
+    t.status              AS "status",
+    t.priority            AS "priority",
+    pl.cabin_number       AS "cabinetNo",
+    pl.box_number         AS "boxNo",
+    pl.dp_terminal        AS "dpTerminal",
+    ct.worker_code        AS "workerCode",
+    tn.tech_name          AS "techName",
+    t.creation_date       AS "creationDate",
+    t.description         AS "description",
+    t.mobile              AS "mobile",
+    t.customer_name       AS "customerName",
+    t.address             AS "address",
+    t.reference_no        AS "referenceNo"`;
+const WFM_REPORT_JOINS = `
+    LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
+    LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = pl.cabin_number
+    LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code`;
+
+// تقرير تركيبات/معاينات (حالى أو منتظم اليوم) — يُرجع الصفوف.
+async function queryWfmReport(
+  typesLc: string[], regularized: boolean, opts: { central?: string; q?: string },
+) {
+  const { central = "", q = "" } = opts;
+  const params: any[] = [typesLc];
+  const conds: string[] = [
+    `lower(trim(t.work_order_type)) = ANY($1::text[])`,
+    `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
+  ];
+  if (regularized) {
+    conds.push(`NOT EXISTS (SELECT 1 FROM wfm_current c WHERE c.central_name = t.central_name AND c.work_order_id = t.work_order_id)`);
+  }
+  if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+  if (q.trim()) {
+    params.push(`%${q.trim()}%`);
+    const p = `$${params.length}`;
+    conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
+  }
+  const where = "WHERE " + conds.join(" AND ");
+  const sourceTable = regularized ? "wfm_sod" : "wfm_current";
+  const { rows } = await pool.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (t.central_name, t.work_order_id)
+         ${WFM_REPORT_SELECT}
+       FROM ${sourceTable} t
+       ${WFM_REPORT_JOINS}
+       ${where}
+       ORDER BY t.central_name, t.work_order_id, t.id DESC
+     ) x
+     ORDER BY x."creationDate" DESC NULLS LAST`,
+    params,
+  );
+  return rows;
+}
+
+// يحفظ منتظمات يوم محدد فى regularized_daily (مرة واحدة لكل عنصر).
+// dateStr بصيغة YYYY-MM-DD (تاريخ القاهرة). يُستدعى من الـ cron والتعويض.
+async function recordDailySnapshot(dateStr: string) {
+  const insertRows = async (
+    category: string, rows: any[], keyOf: (r: any) => string,
+  ) => {
+    for (const r of rows) {
+      await pool.query(
+        `INSERT INTO regularized_daily (snapshot_date, category, item_key, central_name, data)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (category, item_key) DO NOTHING`,
+        [dateStr, category, keyOf(r), r.centralName ?? null, JSON.stringify(r)],
+      );
+    }
+  };
+  const faults = await queryRegularizedFaults({});
+  await insertRows("faults", faults, (r) => String(r.ticketId ?? `${r.centralName}|${r.phoneShort}|${r.complainTime}`));
+  const installs = await queryWfmReport(INSTALL_TYPES_LC, true, {});
+  await insertRows("installations", installs, (r) => `${r.centralName}|${r.workOrderId}`);
+  const surveys = await queryWfmReport(SURVEY_TYPES_LC, true, {});
+  await insertRows("surveys", surveys, (r) => `${r.centralName}|${r.workOrderId}`);
+  return { faults: faults.length, installations: installs.length, surveys: surveys.length };
+}
+
+// تاريخ القاهرة (YYYY-MM-DD) وساعة القاهرة الحالية.
+function cairoNow() {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const date = `${get("year")}-${get("month")}-${get("day")}`;
+  const hour = parseInt(get("hour"), 10);
+  return { date, hour };
+}
+
+// يحسب آخر تاريخ يُفترض وجود لقطة له (اليوم لو تعدّينا 11 مساءً، وإلا أمس)
+// ويسجّلها لو غير موجودة — يُستدعى عند الإقلاع وكل فترة (تعويض عند الصحيان).
+let lastSnapshotCheck = "";
+async function checkAndSnapshot() {
+  try {
+    const { date, hour } = cairoNow();
+    const targetDate = hour >= 23 ? date
+      : new Date(Date.parse(date + "T00:00:00Z") - 86400000).toISOString().slice(0, 10);
+    if (lastSnapshotCheck === targetDate) return; // فحصناه بالفعل هذه الدورة
+    const { rows } = await pool.query(
+      `SELECT 1 FROM regularized_daily WHERE snapshot_date = $1 LIMIT 1`, [targetDate],
+    );
+    if (rows.length === 0) {
+      const r = await recordDailySnapshot(targetDate);
+      console.log(`[daily-snapshot] recorded ${targetDate}:`, r);
+    }
+    lastSnapshotCheck = targetDate;
+  } catch (e: any) {
+    console.error("[daily-snapshot] check failed:", e.message);
+  }
+}
+
+// يبدأ جدولة الحفظ اليومى: تعويض فورى عند الإقلاع + فحص كل 15 دقيقة.
+// (cron داخلى — عند صحيان السيرفر يلتقط لقطة الساعة 11 خلال 15 دقيقة كحد أقصى،
+//  ولو كان نائماً يُعوّض بمجرد وصول أى طلب يوقظه.)
+function startDailySnapshotScheduler() {
+  setTimeout(checkAndSnapshot, 10_000);           // بعد الإقلاع بقليل
+  setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -2530,71 +2733,7 @@ export async function registerRoutes(
   app.get("/api/reports/regularized-faults", requireAuth, async (req, res) => {
     try {
       const { central = "", q = "" } = req.query as Record<string, string>;
-      const params: any[] = [];
-      const conds: string[] = [
-        `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
-        `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
-      ];
-      if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
-      if (q.trim()) {
-        params.push(`%${q.trim()}%`);
-        const p = `$${params.length}`;
-        conds.push(`(t.phone_number ILIKE ${p} OR t.cabinet_no ILIKE ${p} OR t.status_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
-      }
-      const where = "WHERE " + conds.join(" AND ");
-
-      const { rows } = await pool.query(
-        `SELECT * FROM (
-           SELECT DISTINCT ON (t.ticket_id)
-             t.central_name          AS "centralName",
-             t.phone_number          AS "phoneShort",
-             CASE WHEN t.phone_number IS NOT NULL AND t.phone_number <> '' AND t.complaint_time IS NOT NULL
-                       AND EXISTS (
-                         SELECT 1 FROM complaint_details cd
-                         WHERE cd.close_time IS NOT NULL
-                           AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
-                           AND date_trunc('month', cd.close_time) = date_trunc('month', t.complaint_time)
-                           AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
-                       )
-                  THEN 'مكرر' ELSE '' END AS "repeatStatus",
-             t.status_code           AS "statusCode",
-             ct.cabin_code           AS "msanCode",
-             pp.frame                AS "frame",
-             t.cabinet_no            AS "cabinetNo",
-             pl.box_number           AS "boxNo",
-             pl.dp_terminal          AS "dpTerminal",
-             t.complaint_time        AS "complainTime",
-             t.complain_type_name    AS "complainTypeName",
-             t.reg_source            AS "regStatus",
-             t.close_date            AS "closeDate",
-             t.onu                   AS "onu",
-             ct.worker_code          AS "workerCode",
-             tn.tech_name            AS "techName",
-             ct.haya_karima          AS "hayaKarima",
-             pp.voice_status         AS "voiceStatus",
-             pp.data_status          AS "dataStatus",
-             pp.shelf                AS "shelf",
-             pp.slot                 AS "slot",
-             pp.port_number          AS "portNumber",
-             t.central_code          AS "centralCode"
-           FROM (
-             SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
-             WHERE close_date IS NOT NULL
-               AND (close_date AT TIME ZONE 'Africa/Cairo')::date = (now() AT TIME ZONE 'Africa/Cairo')::date
-             UNION ALL
-             SELECT *, 'اختفى من الحالى' AS reg_source FROM ticket_dsl_sod s
-             WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)
-           ) t
-           LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
-           LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
-           LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
-           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
-           ${where}
-           ORDER BY t.ticket_id, t.id DESC
-         ) x
-         ORDER BY x."complainTime" ASC NULLS LAST`,
-        params,
-      );
+      const rows = await queryRegularizedFaults({ central, q });
       res.json(rows);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -2681,69 +2820,12 @@ export async function registerRoutes(
     }
   });
 
-  // أعمدة موحّدة لتقريرى التركيبات (الحالى + المنتظم اليوم).
-  // المصدر أوامر الشغل (wfm) + إثراء ببيانات الخط (كابينة/بكس/ترمنال) واسم الفنى.
-  const INSTALL_SELECT = `
-    t.central_name        AS "centralName",
-    t.work_order_id       AS "workOrderId",
-    t.phone_number        AS "phoneNumber",
-    t.work_order_type     AS "workOrderType",
-    t.stage               AS "stage",
-    t.status              AS "status",
-    t.priority            AS "priority",
-    pl.cabin_number       AS "cabinetNo",
-    pl.box_number         AS "boxNo",
-    pl.dp_terminal        AS "dpTerminal",
-    ct.worker_code        AS "workerCode",
-    tn.tech_name          AS "techName",
-    t.creation_date       AS "creationDate",
-    t.description         AS "description",
-    t.mobile              AS "mobile",
-    t.customer_name       AS "customerName",
-    t.address             AS "address",
-    t.reference_no        AS "referenceNo"`;
-  const INSTALL_JOINS = `
-    LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
-    LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = pl.cabin_number
-    LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code`;
-
-  // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — حالى أو منتظم اليوم.
-  //  - typesLc: قائمة الأنواع المسموحة (lowercased).
-  //  - regularized=false: المصدر wfm_current (الأوامر الحالية).
-  //  - regularized=true : المصدر wfm_sod مع استبعاد ما زال موجوداً فى wfm_current
-  //                       (أى اختفى بين بداية اليوم والحالى = تم تنفيذه اليوم).
+  // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — يستخدم queryWfmReport.
   const wfmReportHandler = (typesLc: string[], regularized: boolean) =>
     async (req: any, res: any) => {
       try {
         const { central = "", q = "" } = req.query as Record<string, string>;
-        const params: any[] = [typesLc];
-        const conds: string[] = [
-          `lower(trim(t.work_order_type)) = ANY($1::text[])`,
-          `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
-        ];
-        if (regularized) {
-          conds.push(`NOT EXISTS (SELECT 1 FROM wfm_current c WHERE c.central_name = t.central_name AND c.work_order_id = t.work_order_id)`);
-        }
-        if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
-        if (q.trim()) {
-          params.push(`%${q.trim()}%`);
-          const p = `$${params.length}`;
-          conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
-        }
-        const where = "WHERE " + conds.join(" AND ");
-        const sourceTable = regularized ? "wfm_sod" : "wfm_current";
-        const { rows } = await pool.query(
-          `SELECT * FROM (
-             SELECT DISTINCT ON (t.central_name, t.work_order_id)
-               ${INSTALL_SELECT}
-             FROM ${sourceTable} t
-             ${INSTALL_JOINS}
-             ${where}
-             ORDER BY t.central_name, t.work_order_id, t.id DESC
-           ) x
-           ORDER BY x."creationDate" DESC NULLS LAST`,
-          params,
-        );
+        const rows = await queryWfmReport(typesLc, regularized, { central, q });
         res.json(rows);
       } catch (e: any) {
         res.status(500).json({ message: e.message });
@@ -2757,6 +2839,48 @@ export async function registerRoutes(
   // المعاينات (حالات معاينات wfm)
   app.get("/api/reports/current-surveys", requireAuth, wfmReportHandler(SURVEY_TYPES_LC, false));
   app.get("/api/reports/regularized-surveys", requireAuth, wfmReportHandler(SURVEY_TYPES_LC, true));
+
+  // GET /api/reports/regularized-daily — الأرشيف اليومى للمنتظمات بتاريخ من/إلى.
+  //   ?category=faults|installations|surveys & ?dateFrom= & ?dateTo= & ?central= & ?q=
+  // المصدر جدول regularized_daily الذى يُكتب تلقائياً كل ليلة. يُرجع صفوف التقرير
+  // كما حُفظت (نفس شكل التقرير اليومى) مع إضافة snapshotDate لكل صف.
+  app.get("/api/reports/regularized-daily", requireAuth, async (req, res) => {
+    try {
+      const { category = "faults", dateFrom = "", dateTo = "", central = "", q = "" } =
+        req.query as Record<string, string>;
+      const params: any[] = [category];
+      const conds: string[] = [`category = $1`];
+      if (dateFrom) { params.push(dateFrom); conds.push(`snapshot_date >= $${params.length}::date`); }
+      if (dateTo)   { params.push(dateTo);   conds.push(`snapshot_date <= $${params.length}::date`); }
+      if (central)  { params.push(central);  conds.push(`central_name = $${params.length}`); }
+      if (q.trim()) { params.push(`%${q.trim()}%`); conds.push(`data::text ILIKE $${params.length}`); }
+      const where = "WHERE " + conds.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT snapshot_date AS "snapshotDate", data
+         FROM regularized_daily ${where}
+         ORDER BY snapshot_date DESC, id DESC`,
+        params,
+      );
+      res.json(rows.map((r: any) => ({ ...r.data, snapshotDate: r.snapshotDate })));
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // POST /api/reports/regularized-daily/run — تشغيل يدوى للحفظ اليومى (admin).
+  // يلتقط لقطة اليوم الحالى فوراً (للاختبار أو التعويض اليدوى).
+  app.post("/api/reports/regularized-daily/run", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const { date } = cairoNow();
+      const r = await recordDailySnapshot(date);
+      res.json({ date, ...r });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
+  startDailySnapshotScheduler();
 
   return httpServer;
 }

@@ -605,4 +605,24 @@ export async function ensureSchema() {
       uploaded_by_id integer REFERENCES users(id)
     )
   `);
+
+  // regularized_daily — الأرشيف اليومى للمنتظمات (أعطال/تركيبات/معاينات).
+  // يُكتب تلقائياً كل ليلة الساعة 11 (cron داخلى + تعويض عند الصحيان).
+  // مفتاح فريد (category, item_key) يمنع تكرار نفس العنصر:
+  //   - faults:        item_key = رقم الشكوى (ticket_id)
+  //   - installations/surveys: item_key = اسم السنترال | رقم أمر الشغل
+  // العنصر يُسجَّل مرة واحدة بتاريخ أول يوم انتظم فيه (ON CONFLICT DO NOTHING).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS regularized_daily (
+      id serial PRIMARY KEY,
+      snapshot_date date NOT NULL,
+      category text NOT NULL,
+      item_key text NOT NULL,
+      central_name text,
+      data jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT regularized_daily_cat_key_uniq UNIQUE (category, item_key)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS regularized_daily_cat_date_idx ON regularized_daily (category, snapshot_date)`);
 }
