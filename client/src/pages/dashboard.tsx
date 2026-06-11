@@ -26,7 +26,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "current-surveys" | "regularized-surveys";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -45,6 +45,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "current-installations",     label: "التركيبات والنقل الحالى" },
       { id: "regularized-installations", label: "التركيبات المنتظمة اليوم" },
+    ],
+  },
+  {
+    label: "المعاينات",
+    icon: ClipboardList,
+    items: [
+      { id: "current-surveys",     label: "المعاينات الحالية" },
+      { id: "regularized-surveys", label: "المعاينات المنتظمة اليوم" },
     ],
   },
   {
@@ -280,6 +288,25 @@ export default function Dashboard() {
                   regularized
                   sheetName="التركيبات المنتظمة"
                   fileName="regularized-installations"
+                />
+              )}
+              {reportTab === "current-surveys" && (
+                <InstallationsReport
+                  endpoint="/api/reports/current-surveys"
+                  queryKey="/api/reports/current-surveys"
+                  title="تقرير المعاينات الحالية"
+                  sheetName="المعاينات الحالية"
+                  fileName="current-surveys"
+                />
+              )}
+              {reportTab === "regularized-surveys" && (
+                <InstallationsReport
+                  endpoint="/api/reports/regularized-surveys"
+                  queryKey="/api/reports/regularized-surveys"
+                  title="تقرير المعاينات المنتظمة اليوم"
+                  regularized
+                  sheetName="المعاينات المنتظمة"
+                  fileName="regularized-surveys"
                 />
               )}
             </div>
