@@ -86,10 +86,9 @@ export function CurrentFaultsReport() {
       "وقت الشكوي": fmtDt(f.complainTime),
       "ComplainTypeName": f.complainTypeName,
       "تصنيف الاعطال": f.faultClass,
-      "تاريخ الإغلاق": fmtDt(f.closeDate),
+      "اسم الفنى": f.techName,
       "Onu": f.onu,
       "كود العامل": f.workerCode,
-      "اسم الفنى": f.techName,
       "حياة كريمة ام لا": f.hayaKarima,
       "نوع العطل": f.faultType,
       "LastOfVoice Status": f.voiceStatus,
@@ -253,10 +252,9 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">تصنيف</TableHead>
-                <TableHead className="text-right font-bold text-white">تاريخ الإغلاق</TableHead>
+                <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
-                <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">حياة كريمة</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع العطل</TableHead>
                 <TableHead className="text-right font-bold text-white">Voice</TableHead>
@@ -270,7 +268,7 @@ export function CurrentFaultsReport() {
             <TableBody>
               {faults.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={25} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={24} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أعطال حالية — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
@@ -298,10 +296,9 @@ export function CurrentFaultsReport() {
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell>{faultBadge(f.faultClass)}</TableCell>
-                    <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.closeDate)}</TableCell>
+                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell>{f.onu || "-"}</TableCell>
                     <TableCell>{f.workerCode || "-"}</TableCell>
-                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell className="max-w-[100px] truncate">{f.hayaKarima || "-"}</TableCell>
                     <TableCell>{f.faultType || "-"}</TableCell>
                     <TableCell className="text-xs">{f.voiceStatus || "-"}</TableCell>
