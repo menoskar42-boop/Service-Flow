@@ -83,10 +83,10 @@ export function RegularizedFaultsReport() {
       "وقت الشكوي": fmtDt(f.complainTime),
       "ComplainTypeName": f.complainTypeName,
       "حالة الانتظام": f.regStatus,
+      "اسم الفنى": f.techName,
       "تاريخ الإغلاق": fmtDt(f.closeDate),
       "Onu": f.onu,
       "كود العامل": f.workerCode,
-      "اسم الفنى": f.techName,
       "حياة كريمة ام لا": f.hayaKarima,
       "LastOfVoice Status": f.voiceStatus,
       "LastOfData Status": f.dataStatus,
@@ -111,7 +111,7 @@ export function RegularizedFaultsReport() {
       <th>#</th><th>السنترال</th><th>التليفون</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
-      <th>حالة الانتظام</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
+      <th>حالة الانتظام</th><th>اسم الفنى</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -131,9 +131,9 @@ export function RegularizedFaultsReport() {
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
           <td>${esc(f.regStatus)}</td>
+          <td>${esc(f.techName)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.closeDate))}</td>
           <td>${esc(f.workerCode)}</td>
-          <td>${esc(f.techName)}</td>
           <td>${esc(f.voiceStatus)}</td>
           <td>${esc(f.dataStatus)}</td>
         </tr>`).join("");
@@ -243,10 +243,10 @@ export function RegularizedFaultsReport() {
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>
+                <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ الإغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
-                <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">حياة كريمة</TableHead>
                 <TableHead className="text-right font-bold text-white">Voice</TableHead>
                 <TableHead className="text-right font-bold text-white">Data</TableHead>
@@ -259,7 +259,7 @@ export function RegularizedFaultsReport() {
             <TableBody>
               {faults.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={24} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={23} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أعطال منتظمة اليوم — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
@@ -286,10 +286,10 @@ export function RegularizedFaultsReport() {
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell>{regBadge(f.regStatus)}</TableCell>
+                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.closeDate)}</TableCell>
                     <TableCell>{f.onu || "-"}</TableCell>
                     <TableCell>{f.workerCode || "-"}</TableCell>
-                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell className="max-w-[100px] truncate">{f.hayaKarima || "-"}</TableCell>
                     <TableCell className="text-xs">{f.voiceStatus || "-"}</TableCell>
                     <TableCell className="text-xs">{f.dataStatus || "-"}</TableCell>
