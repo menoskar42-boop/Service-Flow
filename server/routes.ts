@@ -3353,6 +3353,54 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/repetition-debug — تشخيص: الخطوط التى تظهر أكثر من مرة في الدمج
+  // مع تفصيل complain_no لكل ظهور والمصدر، لمعرفة أيها يُحسب مكرراً ولماذا
+  app.get("/api/reports/repetition-debug", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      const { rows } = await pool.query(`
+        WITH src_raw AS (
+          SELECT complain_no, phone_number, complain_time, 'مغلقة' AS src
+          FROM complaint_details
+          WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%' ${dateClause}
+          UNION ALL
+          SELECT complain_no, phone_number, complain_time, 'مفتوحة' AS src
+          FROM remaining_complaints
+          WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            AND FLOOR(status_code::numeric)::int IN (135, 138) ${dateClause}
+        ),
+        dedup AS (
+          SELECT DISTINCT ON (complain_no) complain_no, phone_number
+          FROM src_raw ORDER BY complain_no
+        )
+        SELECT
+          sr.phone_number,
+          COUNT(*)                                              AS raw_rows,
+          COUNT(DISTINCT sr.complain_no)                        AS distinct_complain_no,
+          STRING_AGG(DISTINCT sr.complain_no || '(' || sr.src || ')', ' | ' ORDER BY sr.complain_no || '(' || sr.src || ')') AS detail
+        FROM src_raw sr
+        WHERE sr.phone_number IN (
+          SELECT phone_number FROM src_raw GROUP BY phone_number HAVING COUNT(*) > 1
+        )
+        GROUP BY sr.phone_number
+        ORDER BY distinct_complain_no DESC, raw_rows DESC
+      `, params);
+
+      res.json({
+        note: "raw_rows=عدد الصفوف قبل التوحيد، distinct_complain_no=عدد الشكاوى المختلفة (>1 يعنى مكرر فعلى)",
+        repeatedAfterDedup: rows.filter(r => Number(r.distinct_complain_no) > 1).length,
+        rows,
+      });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 
