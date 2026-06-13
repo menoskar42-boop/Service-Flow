@@ -3025,7 +3025,7 @@ export async function registerRoutes(
               'غير معروف'
             )                                               AS tech_name,
             EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0 AS hours
-          FROM remaining_complaints rc
+          FROM remaining_complaints_current rc
           ${where}
         )
         SELECT
@@ -3080,7 +3080,7 @@ export async function registerRoutes(
           UNION ALL
           -- الأعطال المفتوحة (متبقيات 135/138)
           SELECT rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no
-          FROM remaining_complaints rc
+          FROM remaining_complaints_current rc
           WHERE rc.close_time IS NOT NULL AND rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
         ),
@@ -3224,7 +3224,7 @@ export async function registerRoutes(
                  WHERE ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no LIMIT 1),
               'غير معروف'
             ) AS tech_name
-          FROM remaining_complaints rc
+          FROM remaining_complaints_current rc
           WHERE rc.close_time IS NOT NULL
             AND rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
@@ -3286,7 +3286,7 @@ export async function registerRoutes(
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           UNION ALL
           SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 2 AS src_priority
-          FROM remaining_complaints
+          FROM remaining_complaints_current
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             AND FLOOR(status_code::numeric)::int IN (135, 138)
         ),
@@ -3388,7 +3388,7 @@ export async function registerRoutes(
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%' ${dateClause}
           UNION ALL
           SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 'مفتوحة' AS src
-          FROM remaining_complaints
+          FROM remaining_complaints_current
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             AND FLOOR(status_code::numeric)::int IN (135, 138) ${dateClause}
         ),
