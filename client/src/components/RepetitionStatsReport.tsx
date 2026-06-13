@@ -28,18 +28,19 @@ interface RepData {
   byTechOnly: RepRow[];
 }
 
-// نسبة التكرار: المستهدف ألا تتجاوز 4% — أخضر ≤4%، بينك >4-8%، أحمر >8%
-const TARGET_REP = 4;
+// نسبة التكرار: المستهدف ألا تتجاوز 4% — أخضر <3%، أصفر 3-4%، أحمر >4%
+const TARGET_REP = 4;  // فوقها = أحمر (تعدّى المستهدف)
+const WARN_REP = 3;    // من 3% حتى 4% = أصفر (تحذير)
 const ratioBadge = (pct: number) => {
   const cls =
-    pct <= TARGET_REP     ? "bg-green-100 text-green-800" :
-    pct <= TARGET_REP * 2 ? "bg-pink-100 text-pink-700" :
-                            "bg-red-100 text-red-800";
+    pct < WARN_REP    ? "bg-green-100 text-green-800" :
+    pct <= TARGET_REP ? "bg-yellow-100 text-yellow-800" :
+                        "bg-red-100 text-red-800";
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{pct}%</span>;
 };
 
 const ratioStyle = (p: number) =>
-  `background:${p <= TARGET_REP ? "#dcfce7" : p <= TARGET_REP * 2 ? "#fce7f3" : "#fee2e2"}!important;color:${p <= TARGET_REP ? "#166534" : p <= TARGET_REP * 2 ? "#9d174d" : "#991b1b"};font-weight:600;text-align:center`;
+  `background:${p < WARN_REP ? "#dcfce7" : p <= TARGET_REP ? "#fef9c3" : "#fee2e2"}!important;color:${p < WARN_REP ? "#166534" : p <= TARGET_REP ? "#854d0e" : "#991b1b"};font-weight:600;text-align:center`;
 
 export function RepetitionStatsReport() {
   const today      = format(new Date(), "yyyy-MM-dd");
@@ -259,7 +260,7 @@ export function RepetitionStatsReport() {
                 <CardTitle className="text-xs text-muted-foreground font-normal">{label}</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-3">
-                <div className={`text-2xl font-bold ${label === "نسبة التكرار" ? (Number(ov.repRatio) <= TARGET_REP ? "text-green-600" : Number(ov.repRatio) <= TARGET_REP * 2 ? "text-pink-600" : "text-red-600") : "text-gray-800"}`}>{value}</div>
+                <div className={`text-2xl font-bold ${label === "نسبة التكرار" ? (Number(ov.repRatio) < WARN_REP ? "text-green-600" : Number(ov.repRatio) <= TARGET_REP ? "text-yellow-600" : "text-red-600") : "text-gray-800"}`}>{value}</div>
                 {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
               </CardContent>
             </Card>
