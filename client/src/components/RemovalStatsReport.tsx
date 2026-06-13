@@ -34,6 +34,7 @@ interface StatsData {
   overall: StatRow | null;
   byCentral: StatRow[];
   byTech: StatRow[];
+  byTechOnly: StatRow[];
   _diag?: DiagInfo;
 }
 
@@ -256,6 +257,58 @@ export function RemovalStatsReport() {
             </div>
           )}
         </div>
+      )}
+
+      {/* إجمالى الفنيين — يظهر أولاً */}
+      {data && data.byTechOnly.length > 0 && (
+        <Card className="overflow-hidden shadow-sm border-0 bg-white">
+          <CardHeader className="pb-2 bg-blue-900 text-white rounded-t-lg px-4 py-3">
+            <CardTitle className="text-sm font-bold">إحصائيات بالفنى (إجمالى الإدارة)</CardTitle>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <Table className="text-right text-xs" dir="rtl">
+              <TableHeader className="bg-blue-800">
+                <TableRow>
+                  <TableHead className="text-white font-bold text-right">الفنى</TableHead>
+                  <TableHead className="text-white font-bold text-right">الإجمالى</TableHead>
+                  <TableHead className="text-white font-bold text-right">إزالة 24 ساعة</TableHead>
+                  <TableHead className="text-white font-bold text-right">نسبة 24 ساعة</TableHead>
+                  <TableHead className="text-white font-bold text-right">إزالة 48 ساعة</TableHead>
+                  <TableHead className="text-white font-bold text-right">نسبة 48 ساعة</TableHead>
+                  <TableHead className="text-white font-bold text-right">إزالة 120 ساعة</TableHead>
+                  <TableHead className="text-white font-bold text-right">نسبة 120 ساعة</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.byTechOnly.map(r => (
+                  <TableRow key={r.techName} className="hover:bg-green-50">
+                    <TableCell className="font-medium">{r.techName}</TableCell>
+                    <TableCell className="font-bold">{r.total}</TableCell>
+                    <TableCell>{r.within24h}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct24h))}</TableCell>
+                    <TableCell>{r.within48h}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct48h))}</TableCell>
+                    <TableCell>{r.within120h}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct120h))}</TableCell>
+                  </TableRow>
+                ))}
+                {/* سطر إجمالى الإدارة */}
+                {ov && (
+                  <TableRow className="bg-blue-900 text-white font-bold hover:bg-blue-800">
+                    <TableCell className="text-white font-bold">إجمالى الإدارة</TableCell>
+                    <TableCell className="text-white font-bold">{ov.total}</TableCell>
+                    <TableCell className="text-white">{ov.within24h}</TableCell>
+                    <TableCell><span className="text-xs px-2 py-0.5 rounded font-semibold bg-white text-blue-900">{ov.pct24h}%</span></TableCell>
+                    <TableCell className="text-white">{ov.within48h}</TableCell>
+                    <TableCell><span className="text-xs px-2 py-0.5 rounded font-semibold bg-white text-blue-900">{ov.pct48h}%</span></TableCell>
+                    <TableCell className="text-white">{ov.within120h}</TableCell>
+                    <TableCell><span className="text-xs px-2 py-0.5 rounded font-semibold bg-white text-blue-900">{ov.pct120h}%</span></TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
       )}
 
       {/* بالسنترال */}

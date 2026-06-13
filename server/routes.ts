@@ -2959,15 +2959,18 @@ export async function registerRoutes(
         GROUP BY GROUPING SETS (
           (central_name, tech_name),
           (central_name),
+          (tech_name),
           ()
         )
         ORDER BY central_name NULLS LAST, tech_name NULLS LAST
       `, params);
 
-      // فصل النتائج إلى ثلاث مجموعات: إجمالى / بالسنترال / بالفنى
-      const overall   = rows.find(r => r.centralName === null && r.techName === null) ?? null;
-      const byCentral = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech    = rows.filter(r => r.centralName !== null && r.techName !== null);
+      // فصل النتائج إلى أربع مجموعات
+      const overall      = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral    = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech       = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTechOnly   = rows.filter(r => r.centralName === null && r.techName !== null)
+                               .sort((a, b) => b.total - a.total);
 
       // إذا لم توجد بيانات — أضف معلومات تشخيصية
       let diag: any = undefined;
@@ -2984,7 +2987,7 @@ export async function registerRoutes(
         diag = diagRes.rows[0];
       }
 
-      res.json({ overall, byCentral, byTech, _diag: diag });
+      res.json({ overall, byCentral, byTech, byTechOnly, _diag: diag });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
