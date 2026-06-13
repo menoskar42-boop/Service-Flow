@@ -3065,6 +3065,79 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/combined-stats — إحصائيات الأعطال الإجمالية
+  // = (الأعطال المغلقة complaint_details) + (الأعطال المفتوحة remaining_complaints 135/138)
+  // النِسب تُحسب على إجمالى الأعطال مجتمعة. ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  app.get("/api/reports/combined-stats", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      // فلتر التاريخ يُطبَّق على المصدرين بنفس البارامترات
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      const { rows } = await pool.query(`
+        WITH src AS (
+          -- الأعطال المغلقة
+          SELECT cd.exchange_name, cd.complain_time, cd.close_time, cd.close_by, cd.cabinet_no
+          FROM complaint_details cd
+          WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
+          UNION ALL
+          -- الأعطال المفتوحة (متبقيات 135/138)
+          SELECT rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no
+          FROM remaining_complaints rc
+          WHERE rc.close_time IS NOT NULL AND rc.exchange_name ILIKE '%غنايم%'
+            AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
+        ),
+        base AS (
+          SELECT
+            src.exchange_name                               AS central_name,
+            COALESCE(
+              tn_direct.tech_name,
+              tn_cabinet.tech_name,
+              'غير معروف'
+            )                                               AS tech_name,
+            EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0 AS hours
+          FROM src
+          LEFT JOIN technician_names tn_direct
+            ON tn_direct.worker_code = src.close_by
+          LEFT JOIN cabinet_technicians ct
+            ON ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no
+          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
+          WHERE TRUE ${dateClause}
+        )
+        SELECT
+          central_name    AS "centralName",
+          tech_name       AS "techName",
+          COUNT(*)::int                                             AS total,
+          COUNT(*) FILTER (WHERE hours <= 24)::int                 AS within24h,
+          COUNT(*) FILTER (WHERE hours <= 48)::int                 AS within48h,
+          COUNT(*) FILTER (WHERE hours <= 120)::int                AS within120h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / COUNT(*), 1) AS pct24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / COUNT(*), 1) AS pct48h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / COUNT(*), 1) AS pct120h
+        FROM base
+        GROUP BY GROUPING SETS (
+          (central_name, tech_name),
+          (central_name),
+          (tech_name),
+          ()
+        )
+        ORDER BY central_name NULLS LAST, tech_name NULLS LAST
+      `, params);
+
+      const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
+                             .sort((a, b) => b.total - a.total);
+      res.json({ overall, byCentral, byTech, byTechOnly });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 

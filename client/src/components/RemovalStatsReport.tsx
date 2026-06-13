@@ -47,10 +47,11 @@ const pctBadge = (pct: number) => {
 };
 
 export function RemovalStatsReport() {
-  const today = format(new Date(), "yyyy-MM-dd");
-  const [dateFrom, setDateFrom] = useState(today);
+  const today      = format(new Date(), "yyyy-MM-dd");
+  const monthStart = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd");
+  const [dateFrom, setDateFrom] = useState(monthStart);
   const [dateTo,   setDateTo]   = useState(today);
-  const [activeTab, setActiveTab] = useState<"details" | "remaining">("details");
+  const [activeTab, setActiveTab] = useState<"combined" | "details" | "remaining">("combined");
 
   const { data, isFetching: fetchingDetails } = useQuery<StatsData>({
     queryKey: ["/api/reports/removal-stats", dateFrom, dateTo],
@@ -76,8 +77,20 @@ export function RemovalStatsReport() {
     },
   });
 
-  const isFetching  = fetchingDetails || fetchingRemaining;
-  const activeData  = activeTab === "details" ? data : dataR;
+  const { data: dataC, isFetching: fetchingCombined } = useQuery<StatsData>({
+    queryKey: ["/api/reports/combined-stats", dateFrom, dateTo],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo)   p.set("dateTo",   dateTo);
+      const res = await fetch(`/api/reports/combined-stats?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("فشل التحميل");
+      return res.json();
+    },
+  });
+
+  const isFetching  = fetchingDetails || fetchingRemaining || fetchingCombined;
+  const activeData  = activeTab === "combined" ? dataC : activeTab === "details" ? data : dataR;
   const ov          = activeData?.overall;
 
   const handleExportExcel = () => {
@@ -117,15 +130,16 @@ export function RemovalStatsReport() {
     })));
     XLSX.utils.book_append_sheet(wb, ws3, "بالفنى");
 
-    const suffix = activeTab === "remaining" ? "remaining" : "removal";
+    const suffix = activeTab === "combined" ? "combined" : activeTab === "remaining" ? "remaining" : "removal";
     XLSX.writeFile(wb, `${suffix}-stats-${dateFrom}-${dateTo}.xlsx`);
   };
 
   const handleExportPDF = () => {
     if (!activeData) return;
-    const title = activeTab === "remaining"
-      ? `إحصائيات الأعطال المفتوحة — ${dateFrom} إلى ${dateTo}`
-      : `إحصائيات الإزالة — ${dateFrom} إلى ${dateTo}`;
+    const tabLabel = activeTab === "combined" ? "الأعطال الإجمالية"
+                   : activeTab === "remaining" ? "الأعطال المفتوحة"
+                   : "الأعطال المغلقة";
+    const title = `إحصائيات ${tabLabel} — ${dateFrom} إلى ${dateTo}`;
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const thStyle = `background:#1e50a0!important;color:#fff!important;padding:5px 4px;border:1px solid #15407f;font-size:10px;text-align:right`;
     const tdStyle = `border:1px solid #ccc;padding:4px;text-align:right;font-size:10px`;
@@ -219,9 +233,9 @@ export function RemovalStatsReport() {
           <span className="text-xs text-muted-foreground">إلى</span>
           <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm w-auto" dir="ltr" />
         </div>
-        {/* تبديل التابين */}
+        {/* تبديل التابات */}
         <div className="flex rounded-lg border overflow-hidden text-xs">
-          {(["details", "remaining"] as const).map(tab => (
+          {(["combined", "details", "remaining"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -231,7 +245,7 @@ export function RemovalStatsReport() {
                   : "bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
-              {tab === "details" ? "الأعطال المغلقة" : "الأعطال المفتوحة"}
+              {tab === "combined" ? "الأعطال الإجمالية" : tab === "details" ? "الأعطال المغلقة" : "الأعطال المفتوحة"}
             </button>
           ))}
         </div>
