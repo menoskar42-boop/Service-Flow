@@ -124,7 +124,7 @@ export function RemovalStatsReport() {
   const handleExportPDF = () => {
     if (!activeData) return;
     const title = activeTab === "remaining"
-      ? `إحصائيات المتبقيات (135/138) — ${dateFrom} إلى ${dateTo}`
+      ? `إحصائيات الأعطال المفتوحة — ${dateFrom} إلى ${dateTo}`
       : `إحصائيات الإزالة — ${dateFrom} إلى ${dateTo}`;
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const thStyle = `background:#1e50a0!important;color:#fff!important;padding:5px 4px;border:1px solid #15407f;font-size:10px;text-align:right`;
@@ -231,7 +231,7 @@ export function RemovalStatsReport() {
                   : "bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
-              {tab === "details" ? "الأعطال" : "المتبقيات (135/138)"}
+              {tab === "details" ? "الأعطال المغلقة" : "الأعطال المفتوحة"}
             </button>
           ))}
         </div>
