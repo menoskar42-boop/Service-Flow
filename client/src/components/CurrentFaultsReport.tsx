@@ -193,7 +193,7 @@ export function CurrentFaultsReport() {
         <select
           value={central}
           onChange={(e) => setCentral(e.target.value)}
-          className="border rounded-md px-3 py-1.5 text-sm"
+          className="border rounded-md px-3 py-1.5 text-sm w-full sm:w-auto"
           dir="rtl"
         >
           <option value="">كل السنترالات</option>
@@ -203,7 +203,7 @@ export function CurrentFaultsReport() {
           placeholder="بحث برقم التليفون / الكابينة / البكس / status"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="max-w-xs text-sm"
+          className="w-full sm:max-w-xs text-sm"
           dir="rtl"
         />
         <div className="flex-1" />
