@@ -28,17 +28,18 @@ interface RepData {
   byTechOnly: RepRow[];
 }
 
-// نسبة التكرار: كلما قلّت كان أفضل — أخضر ≤10%، بينك 11-20%، أحمر >20%
+// نسبة التكرار: المستهدف ألا تتجاوز 4% — أخضر ≤4%، بينك >4-8%، أحمر >8%
+const TARGET_REP = 4;
 const ratioBadge = (pct: number) => {
   const cls =
-    pct <= 10 ? "bg-green-100 text-green-800" :
-    pct <= 20 ? "bg-pink-100 text-pink-700" :
-                "bg-red-100 text-red-800";
+    pct <= TARGET_REP     ? "bg-green-100 text-green-800" :
+    pct <= TARGET_REP * 2 ? "bg-pink-100 text-pink-700" :
+                            "bg-red-100 text-red-800";
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{pct}%</span>;
 };
 
 const ratioStyle = (p: number) =>
-  `background:${p <= 10 ? "#dcfce7" : p <= 20 ? "#fce7f3" : "#fee2e2"}!important;color:${p <= 10 ? "#166534" : p <= 20 ? "#9d174d" : "#991b1b"};font-weight:600;text-align:center`;
+  `background:${p <= TARGET_REP ? "#dcfce7" : p <= TARGET_REP * 2 ? "#fce7f3" : "#fee2e2"}!important;color:${p <= TARGET_REP ? "#166534" : p <= TARGET_REP * 2 ? "#9d174d" : "#991b1b"};font-weight:600;text-align:center`;
 
 export function RepetitionStatsReport() {
   const today      = format(new Date(), "yyyy-MM-dd");
@@ -251,14 +252,14 @@ export function RepetitionStatsReport() {
             { label: "إجمالى الأعطال",   value: ov.total,          sub: "" },
             { label: "الخطوط الفريدة",   value: ov.distinctPhones, sub: "" },
             { label: "خطوط مكررة",        value: ov.repeatedPhones, sub: `مرات تكرار: ${ov.repCharges}` },
-            { label: "نسبة التكرار",  value: `${ov.repRatio}%`, sub: `مكررة: ${ov.repeatedPhones}` },
+            { label: "نسبة التكرار",  value: `${ov.repRatio}%`, sub: `المستهدف ≤ ${TARGET_REP}% — مكررة: ${ov.repeatedPhones}` },
           ].map(({ label, value, sub }) => (
             <Card key={label} className="border-0 shadow-sm">
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardTitle className="text-xs text-muted-foreground font-normal">{label}</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-3">
-                <div className={`text-2xl font-bold ${label === "نسبة التكرار" ? (Number(ov.repRatio) <= 10 ? "text-green-600" : Number(ov.repRatio) <= 20 ? "text-pink-600" : "text-red-600") : "text-gray-800"}`}>{value}</div>
+                <div className={`text-2xl font-bold ${label === "نسبة التكرار" ? (Number(ov.repRatio) <= TARGET_REP ? "text-green-600" : Number(ov.repRatio) <= TARGET_REP * 2 ? "text-pink-600" : "text-red-600") : "text-gray-800"}`}>{value}</div>
                 {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
               </CardContent>
             </Card>
