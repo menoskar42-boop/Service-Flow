@@ -807,8 +807,8 @@ export function FileUploadSection() {
 
       {tab === "details" && (
         <>
-          {/* Search box for details tab */}
-          <div className="px-1">
+          {/* Search box + export for details tab */}
+          <div className="px-1 flex items-center gap-2 flex-wrap">
             <Input
               placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
               value={searchQ}
@@ -816,6 +816,32 @@ export function FileUploadSection() {
               className="max-w-sm text-sm"
               dir="rtl"
             />
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1"
+              onClick={() => {
+                const ws = XLSX.utils.json_to_sheet(details.map(d => ({
+                  "رقم الشكوى": d.complainNo,
+                  "السنترال": d.exchangeName ?? "",
+                  "رقم التليفون": d.phoneNumber ?? "",
+                  "الكابينة": d.cabinetNo ?? "",
+                  "MSAN": d.msanId ?? "",
+                  "نوع العطل": d.complainTypeName ?? "",
+                  "كود الإغلاق": d.closeCode ?? "",
+                  "أغلق بواسطة": d.closeBy ?? "",
+                  "وقت الشكوى": d.complainTime ?? "",
+                  "وقت الإغلاق": d.closeTime ?? "",
+                  "القطاع": d.sector ?? "",
+                  "المنطقة": d.region ?? "",
+                })));
+                const wb2 = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb2, ws, "تفاصيل الأعطال");
+                XLSX.writeFile(wb2, "complaint_details.xlsx");
+              }}
+            >
+              📥 تصدير Excel ({details.length})
+            </Button>
           </div>
           <Card className="overflow-hidden shadow-sm border-0 bg-white">
             <div className="overflow-x-auto">
@@ -862,8 +888,8 @@ export function FileUploadSection() {
 
       {tab === "remaining" && (
         <>
-          {/* Search box for remaining tab */}
-          <div className="px-1">
+          {/* Search box + export for remaining tab */}
+          <div className="px-1 flex items-center gap-2 flex-wrap">
             <Input
               placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
               value={searchQ}
@@ -871,6 +897,34 @@ export function FileUploadSection() {
               className="max-w-sm text-sm"
               dir="rtl"
             />
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1"
+              onClick={() => {
+                const ws = XLSX.utils.json_to_sheet(remaining.map(d => ({
+                  "رقم الشكوى": d.complainNo,
+                  "السنترال": d.exchangeName ?? "",
+                  "رقم التليفون": d.phoneNumber ?? "",
+                  "الكابينة": d.cabinetNo ?? "",
+                  "MSAN": d.msanId ?? "",
+                  "نوع العطل": d.complainType ?? "",
+                  "كود الحالة": d.statusCode ?? "",
+                  "كود الإغلاق": d.closeCode ?? "",
+                  "أغلق بواسطة": d.closeBy ?? "",
+                  "وقت الشكوى": d.complainTime ?? "",
+                  "وقت التسليم": d.dispatchTime ?? "",
+                  "وقت الإغلاق": d.closeTime ?? "",
+                  "القطاع": d.sector ?? "",
+                  "المنطقة": d.region ?? "",
+                })));
+                const wb2 = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb2, ws, "المتبقى");
+                XLSX.writeFile(wb2, "remaining_complaints.xlsx");
+              }}
+            >
+              📥 تصدير Excel ({remaining.length})
+            </Button>
           </div>
           <Card className="overflow-hidden shadow-sm border-0 bg-white">
             <div className="overflow-x-auto">
