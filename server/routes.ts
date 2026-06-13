@@ -3365,35 +3365,47 @@ export async function registerRoutes(
 
       const { rows } = await pool.query(`
         WITH src_raw AS (
-          SELECT complain_no, phone_number, complain_time, 'مغلقة' AS src
+          SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 'مغلقة' AS src
           FROM complaint_details
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%' ${dateClause}
           UNION ALL
-          SELECT complain_no, phone_number, complain_time, 'مفتوحة' AS src
+          SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 'مفتوحة' AS src
           FROM remaining_complaints
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             AND FLOOR(status_code::numeric)::int IN (135, 138) ${dateClause}
         ),
         dedup AS (
-          SELECT DISTINCT ON (complain_no) complain_no, phone_number
-          FROM src_raw ORDER BY complain_no
+          SELECT DISTINCT ON (complain_no)
+            complain_no, exchange_name, phone_number, close_time, close_by, cabinet_no, src
+          FROM src_raw ORDER BY complain_no, src
+        ),
+        with_tech AS (
+          SELECT d.*,
+            COALESCE(
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = d.close_by LIMIT 1),
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = d.exchange_name AND ct.cabin_number = d.cabinet_no LIMIT 1),
+              'غير معروف'
+            ) AS tech_name
+          FROM dedup d
         )
         SELECT
-          sr.phone_number,
-          COUNT(*)                                              AS raw_rows,
-          COUNT(DISTINCT sr.complain_no)                        AS distinct_complain_no,
-          STRING_AGG(DISTINCT sr.complain_no || '(' || sr.src || ')', ' | ' ORDER BY sr.complain_no || '(' || sr.src || ')') AS detail
-        FROM src_raw sr
-        WHERE sr.phone_number IN (
-          SELECT phone_number FROM src_raw GROUP BY phone_number HAVING COUNT(*) > 1
+          phone_number,
+          COUNT(*)                                              AS distinct_complain_no,
+          STRING_AGG(complain_no || '(' || src || '/' || tech_name || ')', ' | ' ORDER BY close_time) AS detail,
+          (ARRAY_AGG(tech_name ORDER BY close_time ASC NULLS LAST))[1] AS oldest_close_tech
+        FROM with_tech
+        WHERE phone_number IN (
+          SELECT phone_number FROM with_tech GROUP BY phone_number HAVING COUNT(*) > 1
         )
-        GROUP BY sr.phone_number
-        ORDER BY distinct_complain_no DESC, raw_rows DESC
+        GROUP BY phone_number
+        ORDER BY distinct_complain_no DESC
       `, params);
 
       res.json({
-        note: "raw_rows=عدد الصفوف قبل التوحيد، distinct_complain_no=عدد الشكاوى المختلفة (>1 يعنى مكرر فعلى)",
-        repeatedAfterDedup: rows.filter(r => Number(r.distinct_complain_no) > 1).length,
+        note: "distinct_complain_no>1 يعنى مكرر، oldest_close_tech=الفنى صاحب أقدم إغلاق (يُحسب عليه التكرار)، detail=الشكاوى بالترتيب الزمنى",
+        repeatedLines: rows.length,
         rows,
       });
     } catch (e: any) {
