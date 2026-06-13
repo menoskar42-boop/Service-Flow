@@ -28,17 +28,17 @@ interface RepData {
   byTechOnly: RepRow[];
 }
 
-// نسبة عدم التكرار: أخضر ≥90%، بينك 80-89%، أحمر <80%
+// نسبة التكرار: كلما قلّت كان أفضل — أخضر ≤10%، بينك 11-20%، أحمر >20%
 const ratioBadge = (pct: number) => {
   const cls =
-    pct >= 90 ? "bg-green-100 text-green-800" :
-    pct >= 80 ? "bg-pink-100 text-pink-700" :
+    pct <= 10 ? "bg-green-100 text-green-800" :
+    pct <= 20 ? "bg-pink-100 text-pink-700" :
                 "bg-red-100 text-red-800";
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{pct}%</span>;
 };
 
 const ratioStyle = (p: number) =>
-  `background:${p >= 90 ? "#dcfce7" : p >= 80 ? "#fce7f3" : "#fee2e2"}!important;color:${p >= 90 ? "#166534" : p >= 80 ? "#9d174d" : "#991b1b"};font-weight:600;text-align:center`;
+  `background:${p <= 10 ? "#dcfce7" : p <= 20 ? "#fce7f3" : "#fee2e2"}!important;color:${p <= 10 ? "#166534" : p <= 20 ? "#9d174d" : "#991b1b"};font-weight:600;text-align:center`;
 
 export function RepetitionStatsReport() {
   const today      = format(new Date(), "yyyy-MM-dd");
@@ -81,7 +81,7 @@ export function RepetitionStatsReport() {
         "غير مكررة": ov.nonRepeated,
         "مكررة": ov.repeatedPhones,
         "مرات التكرار المحسوبة": ov.repCharges,
-        "نسبة عدم التكرار": `${ov.repRatio}%`,
+        "نسبة التكرار": `${ov.repRatio}%`,
       }]);
       XLSX.utils.book_append_sheet(wb, ws1, "الإجمالى");
     }
@@ -93,7 +93,7 @@ export function RepetitionStatsReport() {
       "غير مكررة": r.nonRepeated,
       "مكررة": r.repeatedPhones,
       "مرات التكرار": r.repCharges,
-      "نسبة عدم التكرار": `${r.repRatio}%`,
+      "نسبة التكرار": `${r.repRatio}%`,
     })));
     XLSX.utils.book_append_sheet(wb, ws2, "بالسنترال");
 
@@ -105,7 +105,7 @@ export function RepetitionStatsReport() {
       "غير مكررة": r.nonRepeated,
       "مكررة": r.repeatedPhones,
       "مرات التكرار": r.repCharges,
-      "نسبة عدم التكرار": `${r.repRatio}%`,
+      "نسبة التكرار": `${r.repRatio}%`,
     })));
     XLSX.utils.book_append_sheet(wb, ws3, "بالفنى");
 
@@ -131,7 +131,7 @@ export function RepetitionStatsReport() {
           <th style="${thStyle}">غير مكررة</th>
           <th style="${thStyle}">مكررة</th>
           <th style="${thStyle}">مرات التكرار</th>
-          <th style="${thStyle}">نسبة عدم التكرار</th>
+          <th style="${thStyle}">نسبة التكرار</th>
         </tr></thead>
         <tbody><tr>
           <td style="${tdStyle}">${ov.total}</td>
@@ -186,7 +186,7 @@ export function RepetitionStatsReport() {
             <th style="${thStyle}">السنترال</th><th style="${thStyle}">الإجمالى</th>
             <th style="${thStyle}">الخطوط الفريدة</th><th style="${thStyle}">غير مكررة</th>
             <th style="${thStyle}">مكررة</th><th style="${thStyle}">مرات التكرار</th>
-            <th style="${thStyle}">نسبة عدم التكرار</th>
+            <th style="${thStyle}">نسبة التكرار</th>
           </tr></thead>
           <tbody>${centralRows}</tbody>
         </table>
@@ -196,7 +196,7 @@ export function RepetitionStatsReport() {
             <th style="${thStyle}">السنترال</th><th style="${thStyle}">الفنى</th>
             <th style="${thStyle}">الإجمالى</th><th style="${thStyle}">الخطوط الفريدة</th>
             <th style="${thStyle}">غير مكررة</th><th style="${thStyle}">مكررة</th>
-            <th style="${thStyle}">مرات التكرار</th><th style="${thStyle}">نسبة عدم التكرار</th>
+            <th style="${thStyle}">مرات التكرار</th><th style="${thStyle}">نسبة التكرار</th>
           </tr></thead>
           <tbody>${techRows}</tbody>
         </table>
@@ -251,14 +251,14 @@ export function RepetitionStatsReport() {
             { label: "إجمالى الأعطال",   value: ov.total,          sub: "" },
             { label: "الخطوط الفريدة",   value: ov.distinctPhones, sub: "" },
             { label: "خطوط مكررة",        value: ov.repeatedPhones, sub: `مرات تكرار: ${ov.repCharges}` },
-            { label: "نسبة عدم التكرار",  value: `${ov.repRatio}%`, sub: `غير مكررة: ${ov.nonRepeated}` },
+            { label: "نسبة التكرار",  value: `${ov.repRatio}%`, sub: `مكررة: ${ov.repeatedPhones}` },
           ].map(({ label, value, sub }) => (
             <Card key={label} className="border-0 shadow-sm">
               <CardHeader className="pb-1 pt-3 px-4">
                 <CardTitle className="text-xs text-muted-foreground font-normal">{label}</CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-3">
-                <div className={`text-2xl font-bold ${label === "نسبة عدم التكرار" ? (Number(ov.repRatio) >= 90 ? "text-green-600" : Number(ov.repRatio) >= 80 ? "text-pink-600" : "text-red-600") : "text-gray-800"}`}>{value}</div>
+                <div className={`text-2xl font-bold ${label === "نسبة التكرار" ? (Number(ov.repRatio) <= 10 ? "text-green-600" : Number(ov.repRatio) <= 20 ? "text-pink-600" : "text-red-600") : "text-gray-800"}`}>{value}</div>
                 {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
               </CardContent>
             </Card>
@@ -288,7 +288,7 @@ export function RepetitionStatsReport() {
                   <TableHead className="text-white font-bold text-right">غير مكررة</TableHead>
                   <TableHead className="text-white font-bold text-right">مكررة</TableHead>
                   <TableHead className="text-white font-bold text-right">مرات التكرار</TableHead>
-                  <TableHead className="text-white font-bold text-right">نسبة عدم التكرار</TableHead>
+                  <TableHead className="text-white font-bold text-right">نسبة التكرار</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -336,7 +336,7 @@ export function RepetitionStatsReport() {
                   <TableHead className="text-white font-bold text-right">غير مكررة</TableHead>
                   <TableHead className="text-white font-bold text-right">مكررة</TableHead>
                   <TableHead className="text-white font-bold text-right">مرات التكرار</TableHead>
-                  <TableHead className="text-white font-bold text-right">نسبة عدم التكرار</TableHead>
+                  <TableHead className="text-white font-bold text-right">نسبة التكرار</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -374,7 +374,7 @@ export function RepetitionStatsReport() {
                   <TableHead className="text-white font-bold text-right">غير مكررة</TableHead>
                   <TableHead className="text-white font-bold text-right">مكررة</TableHead>
                   <TableHead className="text-white font-bold text-right">مرات التكرار</TableHead>
-                  <TableHead className="text-white font-bold text-right">نسبة عدم التكرار</TableHead>
+                  <TableHead className="text-white font-bold text-right">نسبة التكرار</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
