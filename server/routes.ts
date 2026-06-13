@@ -3353,6 +3353,167 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/removal-beyond24 — تفصيل الأعطال التى تجاوزت 24 ساعة
+  // ?tab=combined|details|remaining&dateFrom=...&dateTo=...
+  app.get("/api/reports/removal-beyond24", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo, tab } = req.query as Record<string, string>;
+      const srcTab = tab || "combined";
+      const params: any[] = [];
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      let srcCTE: string;
+      if (srcTab === "details") {
+        srcCTE = `
+          WITH src AS (
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            FROM complaint_details
+            WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+          )`;
+      } else if (srcTab === "remaining") {
+        srcCTE = `
+          WITH src AS (
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            FROM remaining_complaints_current
+            WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+              AND FLOOR(status_code::numeric)::int IN (135, 138)
+          )`;
+      } else {
+        srcCTE = `
+          WITH src_raw AS (
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp
+            FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            UNION ALL
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp
+            FROM remaining_complaints_current WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+              AND FLOOR(status_code::numeric)::int IN (135, 138)
+          ),
+          src AS (
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            FROM src_raw ORDER BY complain_no, sp
+          )`;
+      }
+
+      const { rows } = await pool.query(`
+        ${srcCTE},
+        base AS (
+          SELECT
+            src.complain_no                                                              AS "complainNo",
+            src.phone_number                                                             AS "phoneNumber",
+            src.exchange_name                                                            AS "centralName",
+            src.cabinet_no                                                               AS "cabinetNo",
+            src.complain_time                                                            AS "complainTime",
+            src.close_time                                                               AS "closeTime",
+            ROUND(EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0, 1) AS hours,
+            COALESCE(
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
+              'غير معروف'
+            )                                                                            AS "closeByName",
+            COALESCE(
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no LIMIT 1),
+              'غير معروف'
+            )                                                                            AS "areaTechName"
+          FROM src
+          WHERE TRUE ${dateClause}
+        )
+        SELECT * FROM base WHERE hours > 24 ORDER BY hours DESC LIMIT 5000
+      `, params);
+
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/reports/repetition-detail — تفصيل الخطوط المكررة (appearances > 1)
+  // ?tab=combined|closed|open&dateFrom=...&dateTo=...
+  app.get("/api/reports/repetition-detail", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo, tab } = req.query as Record<string, string>;
+      const srcTab = tab || "combined";
+      const params: any[] = [];
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      let srcCTE: string;
+      if (srcTab === "closed") {
+        srcCTE = `
+          WITH src AS (
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            FROM complaint_details
+            WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+          )`;
+      } else if (srcTab === "open") {
+        srcCTE = `
+          WITH src AS (
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            FROM remaining_complaints_current
+            WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+              AND FLOOR(status_code::numeric)::int IN (135, 138)
+          )`;
+      } else {
+        srcCTE = `
+          WITH src_raw AS (
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp
+            FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            UNION ALL
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp
+            FROM remaining_complaints_current WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+              AND FLOOR(status_code::numeric)::int IN (135, 138)
+          ),
+          src AS (
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            FROM src_raw ORDER BY complain_no, sp
+          )`;
+      }
+
+      const { rows } = await pool.query(`
+        ${srcCTE},
+        phone_occ AS (
+          SELECT
+            po.complain_no, po.exchange_name AS central_name, po.cabinet_no,
+            po.phone_number, po.complain_time, po.close_time, po.close_by,
+            COUNT(*) OVER (PARTITION BY po.phone_number) AS appearances
+          FROM src po
+          WHERE TRUE ${dateClause}
+        ),
+        repeated AS (
+          SELECT * FROM phone_occ WHERE appearances > 1
+        )
+        SELECT
+          r.complain_no                                                                AS "complainNo",
+          r.phone_number                                                               AS "phoneNumber",
+          r.central_name                                                               AS "centralName",
+          r.cabinet_no                                                                 AS "cabinetNo",
+          r.complain_time                                                              AS "complainTime",
+          r.close_time                                                                 AS "closeTime",
+          r.appearances::int                                                           AS appearances,
+          COALESCE(
+            (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = r.close_by LIMIT 1),
+            'غير معروف'
+          )                                                                            AS "closeByName",
+          COALESCE(
+            (SELECT tn.tech_name FROM cabinet_technicians ct
+               JOIN technician_names tn ON tn.worker_code = ct.worker_code
+               WHERE ct.central_name = r.central_name AND ct.cabin_number = r.cabinet_no LIMIT 1),
+            'غير معروف'
+          )                                                                            AS "areaTechName"
+        FROM repeated r
+        ORDER BY r.phone_number, r.complain_time
+        LIMIT 5000
+      `, params);
+
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 

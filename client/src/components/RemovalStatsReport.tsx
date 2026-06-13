@@ -7,7 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Loader2, FileSpreadsheet, Printer, Clock } from "lucide-react";
 import { format } from "date-fns";
 
 interface StatRow {
@@ -28,6 +31,18 @@ interface DiagInfo {
   min_complain: string | null;
   max_complain: string | null;
   centrals: string[];
+}
+
+interface Beyond24Row {
+  complainNo: string;
+  phoneNumber: string;
+  centralName: string;
+  cabinetNo: string;
+  complainTime: string;
+  closeTime: string;
+  hours: number;
+  closeByName: string;
+  areaTechName: string;
 }
 
 interface StatsData {
@@ -56,6 +71,9 @@ export function RemovalStatsReport() {
   const [dateFrom, setDateFrom] = useState(monthStart);
   const [dateTo,   setDateTo]   = useState(today);
   const [activeTab, setActiveTab] = useState<"combined" | "details" | "remaining">("combined");
+  const [beyond24Open, setBeyond24Open]     = useState(false);
+  const [beyond24Data, setBeyond24Data]     = useState<Beyond24Row[] | null>(null);
+  const [beyond24Loading, setBeyond24Loading] = useState(false);
 
   const { data, isFetching: fetchingDetails } = useQuery<StatsData>({
     queryKey: ["/api/reports/removal-stats", dateFrom, dateTo],
@@ -226,24 +244,55 @@ export function RemovalStatsReport() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
+  const handleBeyond24 = async () => {
+    setBeyond24Open(true);
+    if (beyond24Data) return; // already loaded for this filter — reset on filter change
+    setBeyond24Loading(true);
+    const p = new URLSearchParams({ tab: activeTab });
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo)   p.set("dateTo",   dateTo);
+    const r = await fetch(`/api/reports/removal-beyond24?${p}`, { credentials: "include" });
+    setBeyond24Data(r.ok ? await r.json() : []);
+    setBeyond24Loading(false);
+  };
+
+  const exportBeyond24Excel = () => {
+    if (!beyond24Data) return;
+    const ws = XLSX.utils.json_to_sheet(beyond24Data.map((r, i) => ({
+      "#": i + 1,
+      "رقم الشكوى": r.complainNo,
+      "رقم التليفون": r.phoneNumber,
+      "السنترال": r.centralName,
+      "الكابينة": r.cabinetNo,
+      "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
+      "تاريخ الإغلاق": r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "",
+      "المدة (ساعة)": r.hours,
+      "فنى الإغلاق": r.closeByName,
+      "فنى المنطقة": r.areaTechName,
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "تجاوزات 24 ساعة");
+    XLSX.writeFile(wb, `beyond24-${activeTab}-${dateFrom}-${dateTo}.xlsx`);
+  };
+
   return (
     <div className="space-y-6" dir="rtl">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <span className="text-xs text-muted-foreground shrink-0">من</span>
-          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-sm w-full sm:w-auto" dir="ltr" />
+          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setBeyond24Data(null); }} className="text-sm w-full sm:w-auto" dir="ltr" />
         </div>
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <span className="text-xs text-muted-foreground shrink-0">إلى</span>
-          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm w-full sm:w-auto" dir="ltr" />
+          <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setBeyond24Data(null); }} className="text-sm w-full sm:w-auto" dir="ltr" />
         </div>
         {/* تبديل التابات */}
         <div className="flex rounded-lg border overflow-hidden text-xs w-full sm:w-auto">
           {(["combined", "details", "remaining"] as const).map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => { setActiveTab(tab); setBeyond24Data(null); }}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 activeTab === tab
                   ? "bg-blue-900 text-white"
@@ -256,6 +305,10 @@ export function RemovalStatsReport() {
         </div>
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        <Button variant="outline" size="sm" onClick={handleBeyond24} disabled={!ov}
+          className="text-amber-700 border-amber-300 gap-1">
+          <Clock className="w-4 h-4" /> تجاوزات ٢٤ س
+        </Button>
         <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!activeData || !ov}
           className="text-green-700 border-green-200 gap-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
@@ -451,6 +504,75 @@ export function RemovalStatsReport() {
           </div>
         </Card>
       )}
+
+      {/* Dialog: تفصيل الأعطال التى تجاوزت 24 ساعة */}
+      <Dialog open={beyond24Open} onOpenChange={setBeyond24Open}>
+        <DialogContent className="max-w-5xl w-full" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-right text-sm">
+              تفصيل الأعطال التى تجاوزت ٢٤ ساعة — {activeTab === "combined" ? "إجمالية" : activeTab === "details" ? "مغلقة" : "مفتوحة"} — {dateFrom} إلى {dateTo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs text-muted-foreground">
+              {beyond24Loading ? "جارى التحميل..." : `${beyond24Data?.length ?? 0} عطل تجاوز ٢٤ ساعة`}
+            </span>
+            <Button variant="outline" size="sm" onClick={exportBeyond24Excel}
+              disabled={!beyond24Data || beyond24Data.length === 0}
+              className="text-green-700 border-green-200 gap-1 text-xs">
+              <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
+            </Button>
+          </div>
+          {beyond24Loading && (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
+          )}
+          {!beyond24Loading && beyond24Data && (
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+              <Table className="text-right text-xs" dir="rtl">
+                <TableHeader className="bg-amber-900 sticky top-0">
+                  <TableRow>
+                    <TableHead className="text-white font-bold text-right">#</TableHead>
+                    <TableHead className="text-white font-bold text-right">رقم الشكوى</TableHead>
+                    <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
+                    <TableHead className="text-white font-bold text-right">السنترال</TableHead>
+                    <TableHead className="text-white font-bold text-right">الكابينة</TableHead>
+                    <TableHead className="text-white font-bold text-right">تاريخ الشكوى</TableHead>
+                    <TableHead className="text-white font-bold text-right">تاريخ الإغلاق</TableHead>
+                    <TableHead className="text-white font-bold text-right">المدة (ساعة)</TableHead>
+                    <TableHead className="text-white font-bold text-right">فنى الإغلاق</TableHead>
+                    <TableHead className="text-white font-bold text-right">فنى المنطقة</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {beyond24Data.map((r, i) => (
+                    <TableRow key={r.complainNo} className="hover:bg-amber-50">
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>
+                      <TableCell className="font-bold">{r.phoneNumber}</TableCell>
+                      <TableCell>{r.centralName}</TableCell>
+                      <TableCell>{r.cabinetNo}</TableCell>
+                      <TableCell dir="ltr" className="text-right">{r.complainTime ? new Date(r.complainTime).toLocaleDateString("ar-EG") : ""}</TableCell>
+                      <TableCell dir="ltr" className="text-right">{r.closeTime ? new Date(r.closeTime).toLocaleDateString("ar-EG") : ""}</TableCell>
+                      <TableCell>
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${Number(r.hours) <= 48 ? "bg-yellow-100 text-yellow-800" : Number(r.hours) <= 120 ? "bg-orange-100 text-orange-800" : "bg-red-100 text-red-800"}`}>
+                          {r.hours}
+                        </span>
+                      </TableCell>
+                      <TableCell>{r.closeByName}</TableCell>
+                      <TableCell>{r.areaTechName}</TableCell>
+                    </TableRow>
+                  ))}
+                  {beyond24Data.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-6">لا توجد أعطال تجاوزت ٢٤ ساعة</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

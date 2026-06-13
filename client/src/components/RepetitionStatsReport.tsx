@@ -7,7 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Loader2, FileSpreadsheet, Printer, Repeat2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface RepRow {
@@ -26,6 +29,18 @@ interface RepData {
   byCentral: RepRow[];
   byTech: RepRow[];
   byTechOnly: RepRow[];
+}
+
+interface RepDetailRow {
+  complainNo: string;
+  phoneNumber: string;
+  centralName: string;
+  cabinetNo: string;
+  complainTime: string;
+  closeTime: string;
+  appearances: number;
+  closeByName: string;
+  areaTechName: string;
 }
 
 // نسبة التكرار: المستهدف ألا تتجاوز 4% — أخضر <3%، أصفر 3-4%، أحمر >4%
@@ -48,6 +63,9 @@ export function RepetitionStatsReport() {
   const [dateFrom, setDateFrom] = useState(monthStart);
   const [dateTo,   setDateTo]   = useState(today);
   const [activeTab, setActiveTab] = useState<"combined" | "closed" | "open">("combined");
+  const [repDetailOpen, setRepDetailOpen]     = useState(false);
+  const [repDetailData, setRepDetailData]     = useState<RepDetailRow[] | null>(null);
+  const [repDetailLoading, setRepDetailLoading] = useState(false);
 
   const mkQuery = (endpoint: string, key: string) => useQuery<RepData>({
     queryKey: [key, dateFrom, dateTo],
@@ -207,23 +225,54 @@ export function RepetitionStatsReport() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
+  const handleRepDetail = async () => {
+    setRepDetailOpen(true);
+    if (repDetailData) return;
+    setRepDetailLoading(true);
+    const p = new URLSearchParams({ tab: activeTab });
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo)   p.set("dateTo",   dateTo);
+    const r = await fetch(`/api/reports/repetition-detail?${p}`, { credentials: "include" });
+    setRepDetailData(r.ok ? await r.json() : []);
+    setRepDetailLoading(false);
+  };
+
+  const exportRepDetailExcel = () => {
+    if (!repDetailData) return;
+    const ws = XLSX.utils.json_to_sheet(repDetailData.map((r, i) => ({
+      "#": i + 1,
+      "رقم التليفون": r.phoneNumber,
+      "السنترال": r.centralName,
+      "الكابينة": r.cabinetNo,
+      "عدد المرات": r.appearances,
+      "رقم الشكوى": r.complainNo,
+      "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
+      "تاريخ الإغلاق": r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "",
+      "فنى الإغلاق": r.closeByName,
+      "فنى المنطقة": r.areaTechName,
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "الخطوط المكررة");
+    XLSX.writeFile(wb, `repetition-detail-${activeTab}-${dateFrom}-${dateTo}.xlsx`);
+  };
+
   return (
     <div className="space-y-6" dir="rtl">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <span className="text-xs text-muted-foreground shrink-0">من</span>
-          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-sm w-full sm:w-auto" dir="ltr" />
+          <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setRepDetailData(null); }} className="text-sm w-full sm:w-auto" dir="ltr" />
         </div>
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <span className="text-xs text-muted-foreground shrink-0">إلى</span>
-          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm w-full sm:w-auto" dir="ltr" />
+          <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setRepDetailData(null); }} className="text-sm w-full sm:w-auto" dir="ltr" />
         </div>
         <div className="flex rounded-lg border overflow-hidden text-xs w-full sm:w-auto">
           {(["combined", "closed", "open"] as const).map(tab => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => { setActiveTab(tab); setRepDetailData(null); }}
               className={`px-3 py-1.5 font-medium transition-colors ${
                 activeTab === tab
                   ? "bg-blue-900 text-white"
@@ -236,6 +285,10 @@ export function RepetitionStatsReport() {
         </div>
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        <Button variant="outline" size="sm" onClick={handleRepDetail} disabled={!ov}
+          className="text-purple-700 border-purple-300 gap-1">
+          <Repeat2 className="w-4 h-4" /> الخطوط المكررة
+        </Button>
         <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!activeData || !ov}
           className="text-green-700 border-green-200 gap-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
@@ -397,6 +450,78 @@ export function RepetitionStatsReport() {
           </div>
         </Card>
       )}
+
+      {/* Dialog: تفصيل الخطوط المكررة */}
+      <Dialog open={repDetailOpen} onOpenChange={setRepDetailOpen}>
+        <DialogContent className="max-w-5xl w-full" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-right text-sm">
+              تفصيل الخطوط المكررة — {activeTab === "combined" ? "إجمالية" : activeTab === "closed" ? "مغلقة" : "مفتوحة"} — {dateFrom} إلى {dateTo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <span className="text-xs text-muted-foreground">
+              {repDetailLoading
+                ? "جارى التحميل..."
+                : repDetailData
+                  ? `${new Set(repDetailData.map(r => r.phoneNumber)).size} خط مكرر — ${repDetailData.length} شكوى`
+                  : ""}
+            </span>
+            <Button variant="outline" size="sm" onClick={exportRepDetailExcel}
+              disabled={!repDetailData || repDetailData.length === 0}
+              className="text-green-700 border-green-200 gap-1 text-xs">
+              <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
+            </Button>
+          </div>
+          {repDetailLoading && (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-600" /></div>
+          )}
+          {!repDetailLoading && repDetailData && (
+            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+              <Table className="text-right text-xs" dir="rtl">
+                <TableHeader className="bg-purple-900 sticky top-0">
+                  <TableRow>
+                    <TableHead className="text-white font-bold text-right">#</TableHead>
+                    <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
+                    <TableHead className="text-white font-bold text-right">السنترال</TableHead>
+                    <TableHead className="text-white font-bold text-right">الكابينة</TableHead>
+                    <TableHead className="text-white font-bold text-right">عدد المرات</TableHead>
+                    <TableHead className="text-white font-bold text-right">رقم الشكوى</TableHead>
+                    <TableHead className="text-white font-bold text-right">تاريخ الشكوى</TableHead>
+                    <TableHead className="text-white font-bold text-right">تاريخ الإغلاق</TableHead>
+                    <TableHead className="text-white font-bold text-right">فنى الإغلاق</TableHead>
+                    <TableHead className="text-white font-bold text-right">فنى المنطقة</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {repDetailData.map((r, i) => (
+                    <TableRow key={`${r.complainNo}-${i}`}
+                      className={`hover:bg-purple-50 ${i > 0 && repDetailData[i-1].phoneNumber === r.phoneNumber ? "border-t-0" : "border-t-2 border-purple-200"}`}>
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="font-bold text-purple-900">{r.phoneNumber}</TableCell>
+                      <TableCell>{r.centralName}</TableCell>
+                      <TableCell>{r.cabinetNo}</TableCell>
+                      <TableCell>
+                        <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">{r.appearances} مرات</span>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>
+                      <TableCell dir="ltr" className="text-right">{r.complainTime ? new Date(r.complainTime).toLocaleDateString("ar-EG") : ""}</TableCell>
+                      <TableCell dir="ltr" className="text-right">{r.closeTime ? new Date(r.closeTime).toLocaleDateString("ar-EG") : ""}</TableCell>
+                      <TableCell>{r.closeByName}</TableCell>
+                      <TableCell>{r.areaTechName}</TableCell>
+                    </TableRow>
+                  ))}
+                  {repDetailData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-6">لا توجد خطوط مكررة</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
