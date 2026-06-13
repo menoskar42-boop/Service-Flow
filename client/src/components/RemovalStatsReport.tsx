@@ -22,10 +22,19 @@ interface StatRow {
   pct120h: number;
 }
 
+interface DiagInfo {
+  total_all: string;
+  total_closed: string;
+  min_complain: string | null;
+  max_complain: string | null;
+  centrals: string[];
+}
+
 interface StatsData {
   overall: StatRow | null;
   byCentral: StatRow[];
   byTech: StatRow[];
+  _diag?: DiagInfo;
 }
 
 const pctBadge = (pct: number) => {
@@ -228,8 +237,24 @@ export function RemovalStatsReport() {
       )}
 
       {!ov && !isFetching && (
-        <div className="text-center py-12 text-muted-foreground bg-white rounded-lg border border-dashed">
-          لا توجد بيانات للفترة المحددة — تأكد من رفع ملف 430D
+        <div className="py-6 bg-white rounded-lg border border-dashed space-y-3 px-6">
+          <div className="text-center text-muted-foreground">
+            لا توجد بيانات مُغلقة للفترة المحددة
+          </div>
+          {data?._diag && (
+            <div className="text-xs text-gray-500 border-t pt-3 space-y-1 text-right" dir="rtl">
+              <div>إجمالى السجلات في قاعدة البيانات: <strong>{data._diag.total_all}</strong> (منها مغلقة: <strong>{data._diag.total_closed}</strong>)</div>
+              {data._diag.min_complain && (
+                <div>نطاق تواريخ الشكاوى: <span dir="ltr">{data._diag.min_complain?.slice(0,10)}</span> — <span dir="ltr">{data._diag.max_complain?.slice(0,10)}</span></div>
+              )}
+              {data._diag.centrals?.length > 0 && (
+                <div>أسماء السنترالات الموجودة: <span className="font-medium">{data._diag.centrals.filter(Boolean).join(" | ")}</span></div>
+              )}
+              {Number(data._diag.total_all) === 0 && (
+                <div className="text-red-600 font-medium">الجدول فارغ — تأكد من رفع ملف 430D من صفحة رفع الملفات</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
