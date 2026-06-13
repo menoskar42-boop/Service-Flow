@@ -43,6 +43,10 @@ interface Beyond24Row {
   hours: number;
   closeByName: string;
   areaTechName: string;
+  lineCabin: string | null;
+  lineBox: string | null;
+  msanCode: string | null;
+  frame: string | null;
 }
 
 interface StatsData {
@@ -263,7 +267,11 @@ export function RemovalStatsReport() {
       "رقم الشكوى": r.complainNo,
       "رقم التليفون": r.phoneNumber,
       "السنترال": r.centralName,
-      "الكابينة": r.cabinetNo,
+      "الكابينة (430D)": r.cabinetNo,
+      "الكابينة (بيان الخطوط)": r.lineCabin ?? "",
+      "البكس": r.lineBox ?? "",
+      "كود الكابينة (MSAN)": r.msanCode ?? "",
+      "الفريم": r.frame ?? "",
       "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
       "تاريخ الإغلاق": r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "",
       "المدة (ساعة)": r.hours,
@@ -536,6 +544,9 @@ export function RemovalStatsReport() {
                     <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
                     <TableHead className="text-white font-bold text-right">السنترال</TableHead>
                     <TableHead className="text-white font-bold text-right">الكابينة</TableHead>
+                    <TableHead className="text-white font-bold text-right">البكس</TableHead>
+                    <TableHead className="text-white font-bold text-right">كود MSAN</TableHead>
+                    <TableHead className="text-white font-bold text-right">الفريم</TableHead>
                     <TableHead className="text-white font-bold text-right">تاريخ الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">تاريخ الإغلاق</TableHead>
                     <TableHead className="text-white font-bold text-right">المدة (ساعة)</TableHead>
@@ -550,7 +561,10 @@ export function RemovalStatsReport() {
                       <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>
                       <TableCell className="font-bold">{r.phoneNumber}</TableCell>
                       <TableCell>{r.centralName}</TableCell>
-                      <TableCell>{r.cabinetNo}</TableCell>
+                      <TableCell>{r.lineCabin ?? r.cabinetNo}</TableCell>
+                      <TableCell>{r.lineBox ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{r.msanCode ?? "—"}</TableCell>
+                      <TableCell>{r.frame ?? "—"}</TableCell>
                       <TableCell dir="ltr" className="text-right">{r.complainTime ? new Date(r.complainTime).toLocaleDateString("ar-EG") : ""}</TableCell>
                       <TableCell dir="ltr" className="text-right">{r.closeTime ? new Date(r.closeTime).toLocaleDateString("ar-EG") : ""}</TableCell>
                       <TableCell>
@@ -564,7 +578,7 @@ export function RemovalStatsReport() {
                   ))}
                   {beyond24Data.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-6">لا توجد أعطال تجاوزت ٢٤ ساعة</TableCell>
+                      <TableCell colSpan={13} className="text-center text-muted-foreground py-6">لا توجد أعطال تجاوزت ٢٤ ساعة</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

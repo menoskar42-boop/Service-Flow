@@ -3416,7 +3416,17 @@ export async function registerRoutes(
                  JOIN technician_names tn ON tn.worker_code = ct.worker_code
                  WHERE ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no LIMIT 1),
               'غير معروف'
-            )                                                                            AS "areaTechName"
+            )                                                                            AS "areaTechName",
+            (SELECT pl.cabin_number FROM phone_lines pl WHERE pl.tel_no = src.phone_number LIMIT 1)
+                                                                                         AS "lineCabin",
+            (SELECT pl.box_number   FROM phone_lines pl WHERE pl.tel_no = src.phone_number LIMIT 1)
+                                                                                         AS "lineBox",
+            (SELECT pp.msan_code FROM phone_lines pl
+               JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+               WHERE pl.tel_no = src.phone_number LIMIT 1)                               AS "msanCode",
+            (SELECT pp.frame     FROM phone_lines pl
+               JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+               WHERE pl.tel_no = src.phone_number LIMIT 1)                               AS "frame"
           FROM src
           WHERE TRUE ${dateClause}
         )
@@ -3502,7 +3512,17 @@ export async function registerRoutes(
                JOIN technician_names tn ON tn.worker_code = ct.worker_code
                WHERE ct.central_name = r.central_name AND ct.cabin_number = r.cabinet_no LIMIT 1),
             'غير معروف'
-          )                                                                            AS "areaTechName"
+          )                                                                            AS "areaTechName",
+          (SELECT pl.cabin_number FROM phone_lines pl WHERE pl.tel_no = r.phone_number LIMIT 1)
+                                                                                       AS "lineCabin",
+          (SELECT pl.box_number   FROM phone_lines pl WHERE pl.tel_no = r.phone_number LIMIT 1)
+                                                                                       AS "lineBox",
+          (SELECT pp.msan_code FROM phone_lines pl
+             JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+             WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "msanCode",
+          (SELECT pp.frame     FROM phone_lines pl
+             JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+             WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "frame"
         FROM repeated r
         ORDER BY r.phone_number, r.complain_time
         LIMIT 5000

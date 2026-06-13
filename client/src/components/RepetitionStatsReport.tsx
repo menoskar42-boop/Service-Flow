@@ -41,6 +41,10 @@ interface RepDetailRow {
   appearances: number;
   closeByName: string;
   areaTechName: string;
+  lineCabin: string | null;
+  lineBox: string | null;
+  msanCode: string | null;
+  frame: string | null;
 }
 
 // نسبة التكرار: المستهدف ألا تتجاوز 4% — أخضر <3%، أصفر 3-4%، أحمر >4%
@@ -243,7 +247,10 @@ export function RepetitionStatsReport() {
       "#": i + 1,
       "رقم التليفون": r.phoneNumber,
       "السنترال": r.centralName,
-      "الكابينة": r.cabinetNo,
+      "الكابينة (بيان الخطوط)": r.lineCabin ?? "",
+      "البكس": r.lineBox ?? "",
+      "كود الكابينة (MSAN)": r.msanCode ?? "",
+      "الفريم": r.frame ?? "",
       "عدد المرات": r.appearances,
       "رقم الشكوى": r.complainNo,
       "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
@@ -485,6 +492,9 @@ export function RepetitionStatsReport() {
                     <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
                     <TableHead className="text-white font-bold text-right">السنترال</TableHead>
                     <TableHead className="text-white font-bold text-right">الكابينة</TableHead>
+                    <TableHead className="text-white font-bold text-right">البكس</TableHead>
+                    <TableHead className="text-white font-bold text-right">كود MSAN</TableHead>
+                    <TableHead className="text-white font-bold text-right">الفريم</TableHead>
                     <TableHead className="text-white font-bold text-right">عدد المرات</TableHead>
                     <TableHead className="text-white font-bold text-right">رقم الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">تاريخ الشكوى</TableHead>
@@ -500,7 +510,10 @@ export function RepetitionStatsReport() {
                       <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="font-bold text-purple-900">{r.phoneNumber}</TableCell>
                       <TableCell>{r.centralName}</TableCell>
-                      <TableCell>{r.cabinetNo}</TableCell>
+                      <TableCell>{r.lineCabin ?? r.cabinetNo}</TableCell>
+                      <TableCell>{r.lineBox ?? "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{r.msanCode ?? "—"}</TableCell>
+                      <TableCell>{r.frame ?? "—"}</TableCell>
                       <TableCell>
                         <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">{r.appearances} مرات</span>
                       </TableCell>
@@ -513,7 +526,7 @@ export function RepetitionStatsReport() {
                   ))}
                   {repDetailData.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-6">لا توجد خطوط مكررة</TableCell>
+                      <TableCell colSpan={13} className="text-center text-muted-foreground py-6">لا توجد خطوط مكررة</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
