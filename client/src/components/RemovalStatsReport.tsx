@@ -50,8 +50,9 @@ export function RemovalStatsReport() {
   const today = format(new Date(), "yyyy-MM-dd");
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo,   setDateTo]   = useState(today);
+  const [activeTab, setActiveTab] = useState<"details" | "remaining">("details");
 
-  const { data, isFetching } = useQuery<StatsData>({
+  const { data, isFetching: fetchingDetails } = useQuery<StatsData>({
     queryKey: ["/api/reports/removal-stats", dateFrom, dateTo],
     queryFn: async () => {
       const p = new URLSearchParams();
@@ -63,10 +64,24 @@ export function RemovalStatsReport() {
     },
   });
 
-  const ov = data?.overall;
+  const { data: dataR, isFetching: fetchingRemaining } = useQuery<StatsData>({
+    queryKey: ["/api/reports/remaining-stats", dateFrom, dateTo],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo)   p.set("dateTo",   dateTo);
+      const res = await fetch(`/api/reports/remaining-stats?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("فشل التحميل");
+      return res.json();
+    },
+  });
+
+  const isFetching  = fetchingDetails || fetchingRemaining;
+  const activeData  = activeTab === "details" ? data : dataR;
+  const ov          = activeData?.overall;
 
   const handleExportExcel = () => {
-    if (!data) return;
+    if (!activeData) return;
     const wb = XLSX.utils.book_new();
     const period = `${dateFrom} → ${dateTo}`;
 
@@ -83,7 +98,7 @@ export function RemovalStatsReport() {
     }
 
     // شيت بالسنترال
-    const ws2 = XLSX.utils.json_to_sheet(data.byCentral.map(r => ({
+    const ws2 = XLSX.utils.json_to_sheet(activeData.byCentral.map(r => ({
       "السنترال": r.centralName,
       "إجمالى": r.total,
       "إزالة 24 ساعة": r.within24h, "نسبة 24 ساعة": `${r.pct24h}%`,
@@ -93,7 +108,7 @@ export function RemovalStatsReport() {
     XLSX.utils.book_append_sheet(wb, ws2, "بالسنترال");
 
     // شيت بالفنى
-    const ws3 = XLSX.utils.json_to_sheet(data.byTech.map(r => ({
+    const ws3 = XLSX.utils.json_to_sheet(activeData.byTech.map(r => ({
       "السنترال": r.centralName, "الفنى": r.techName,
       "إجمالى": r.total,
       "إزالة 24 ساعة": r.within24h, "نسبة 24 ساعة": `${r.pct24h}%`,
@@ -102,12 +117,15 @@ export function RemovalStatsReport() {
     })));
     XLSX.utils.book_append_sheet(wb, ws3, "بالفنى");
 
-    XLSX.writeFile(wb, `removal-stats-${dateFrom}-${dateTo}.xlsx`);
+    const suffix = activeTab === "remaining" ? "remaining" : "removal";
+    XLSX.writeFile(wb, `${suffix}-stats-${dateFrom}-${dateTo}.xlsx`);
   };
 
   const handleExportPDF = () => {
-    if (!data) return;
-    const title = `إحصائيات الإزالة — ${dateFrom} إلى ${dateTo}`;
+    if (!activeData) return;
+    const title = activeTab === "remaining"
+      ? `إحصائيات المتبقيات (135/138) — ${dateFrom} إلى ${dateTo}`
+      : `إحصائيات الإزالة — ${dateFrom} إلى ${dateTo}`;
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const thStyle = `background:#1e50a0!important;color:#fff!important;padding:5px 4px;border:1px solid #15407f;font-size:10px;text-align:right`;
     const tdStyle = `border:1px solid #ccc;padding:4px;text-align:right;font-size:10px`;
@@ -131,7 +149,7 @@ export function RemovalStatsReport() {
         </tr></tbody>
       </table>` : "";
 
-    const centralRows = data.byCentral.map(r => `<tr>
+    const centralRows = activeData.byCentral.map(r => `<tr>
       <td style="${tdStyle}">${esc(r.centralName)}</td>
       <td style="${tdStyle}">${r.total}</td>
       <td style="${tdStyle}">${r.within24h}</td><td style="${pctStyle(Number(r.pct24h))};${tdStyle}">${r.pct24h}%</td>
@@ -139,7 +157,7 @@ export function RemovalStatsReport() {
       <td style="${tdStyle}">${r.within120h}</td><td style="${pctStyle(Number(r.pct120h))};${tdStyle}">${r.pct120h}%</td>
     </tr>`).join("");
 
-    const techRows = data.byTech.map(r => `<tr>
+    const techRows = activeData.byTech.map(r => `<tr>
       <td style="${tdStyle}">${esc(r.centralName)}</td>
       <td style="${tdStyle}">${esc(r.techName)}</td>
       <td style="${tdStyle}">${r.total}</td>
@@ -201,13 +219,29 @@ export function RemovalStatsReport() {
           <span className="text-xs text-muted-foreground">إلى</span>
           <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm w-auto" dir="ltr" />
         </div>
+        {/* تبديل التابين */}
+        <div className="flex rounded-lg border overflow-hidden text-xs">
+          {(["details", "remaining"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1.5 font-medium transition-colors ${
+                activeTab === tab
+                  ? "bg-blue-900 text-white"
+                  : "bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {tab === "details" ? "الأعطال" : "المتبقيات (135/138)"}
+            </button>
+          ))}
+        </div>
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!data || !ov}
+        <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!activeData || !ov}
           className="text-green-700 border-green-200 gap-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
         </Button>
-        <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!data || !ov}
+        <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={!activeData || !ov}
           className="text-red-700 border-red-200 gap-1">
           <Printer className="w-4 h-4" /> PDF
         </Button>
@@ -260,7 +294,7 @@ export function RemovalStatsReport() {
       )}
 
       {/* إجمالى الفنيين — يظهر أولاً */}
-      {data && data.byTechOnly.length > 0 && (
+      {activeData && activeData.byTechOnly.length > 0 && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
           <CardHeader className="pb-2 bg-blue-900 text-white rounded-t-lg px-4 py-3">
             <CardTitle className="text-sm font-bold">إحصائيات بالفنى (إجمالى الإدارة)</CardTitle>
@@ -280,7 +314,7 @@ export function RemovalStatsReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.byTechOnly.map(r => (
+                {activeData.byTechOnly.map(r => (
                   <TableRow key={r.techName} className="hover:bg-green-50">
                     <TableCell className="font-medium">{r.techName}</TableCell>
                     <TableCell className="font-bold">{r.total}</TableCell>
@@ -312,7 +346,7 @@ export function RemovalStatsReport() {
       )}
 
       {/* بالسنترال */}
-      {data && data.byCentral.length > 0 && (
+      {activeData && activeData.byCentral.length > 0 && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
           <CardHeader className="pb-2 bg-blue-900 text-white rounded-t-lg px-4 py-3">
             <CardTitle className="text-sm font-bold">إحصائيات بالسنترال</CardTitle>
@@ -332,7 +366,7 @@ export function RemovalStatsReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.byCentral.map(r => (
+                {activeData.byCentral.map(r => (
                   <TableRow key={r.centralName} className="hover:bg-blue-50">
                     <TableCell className="font-medium">{r.centralName}</TableCell>
                     <TableCell className="font-bold">{r.total}</TableCell>
@@ -351,7 +385,7 @@ export function RemovalStatsReport() {
       )}
 
       {/* بالفنى */}
-      {data && data.byTech.length > 0 && (
+      {activeData && activeData.byTech.length > 0 && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
           <CardHeader className="pb-2 bg-blue-900 text-white rounded-t-lg px-4 py-3">
             <CardTitle className="text-sm font-bold">إحصائيات بالفنى</CardTitle>
@@ -372,7 +406,7 @@ export function RemovalStatsReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.byTech.map(r => (
+                {activeData.byTech.map(r => (
                   <TableRow key={`${r.centralName}-${r.techName}`} className="hover:bg-green-50">
                     <TableCell>{r.centralName}</TableCell>
                     <TableCell className="font-medium">{r.techName}</TableCell>

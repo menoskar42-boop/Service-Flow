@@ -3001,6 +3001,70 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/remaining-stats — إحصائيات إزالة المتبقيات (حالات 135 و138 فقط)
+  // ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  app.get("/api/reports/remaining-stats", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [
+        `rc.close_time IS NOT NULL`,
+        `rc.exchange_name ILIKE '%غنايم%'`,
+        `rc.close_code::text IN ('135','138')`,
+      ];
+      if (dateFrom) { params.push(dateFrom); conds.push(`(rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`); }
+      if (dateTo)   { params.push(dateTo);   conds.push(`(rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`); }
+      const where = "WHERE " + conds.join(" AND ");
+
+      const { rows } = await pool.query(`
+        WITH base AS (
+          SELECT
+            rc.exchange_name                                AS central_name,
+            COALESCE(
+              tn_direct.tech_name,
+              tn_cabinet.tech_name,
+              'غير معروف'
+            )                                               AS tech_name,
+            EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0 AS hours
+          FROM remaining_complaints rc
+          LEFT JOIN technician_names tn_direct
+            ON tn_direct.worker_code = rc.close_by
+          LEFT JOIN cabinet_technicians ct
+            ON ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no
+          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
+          ${where}
+        )
+        SELECT
+          central_name    AS "centralName",
+          tech_name       AS "techName",
+          COUNT(*)::int                                             AS total,
+          COUNT(*) FILTER (WHERE hours <= 24)::int                 AS within24h,
+          COUNT(*) FILTER (WHERE hours <= 48)::int                 AS within48h,
+          COUNT(*) FILTER (WHERE hours <= 120)::int                AS within120h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / COUNT(*), 1) AS pct24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / COUNT(*), 1) AS pct48h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / COUNT(*), 1) AS pct120h
+        FROM base
+        GROUP BY GROUPING SETS (
+          (central_name, tech_name),
+          (central_name),
+          (tech_name),
+          ()
+        )
+        ORDER BY central_name NULLS LAST, tech_name NULLS LAST
+      `, params);
+
+      const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
+                             .sort((a, b) => b.total - a.total);
+      res.json({ overall, byCentral, byTech, byTechOnly });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 
