@@ -2924,7 +2924,11 @@ export async function registerRoutes(
       const { dateFrom, dateTo } = req.query as Record<string, string>;
       const params: any[] = [];
       // نجلب الأعطال التى أُغلقت (close_time NOT NULL) وأُبلغ عنها في الفترة المحددة
-      const conds: string[] = [`cd.close_time IS NOT NULL`];
+      // فلتر السنترال: ILIKE يمسك أي فروق في كتابة "غنايم" (الغنايم / غنايم / الغنايم-العزايزة …)
+      const conds: string[] = [
+        `cd.close_time IS NOT NULL`,
+        `cd.central_name ILIKE '%غنايم%'`,
+      ];
       if (dateFrom) { params.push(dateFrom); conds.push(`(cd.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`); }
       if (dateTo)   { params.push(dateTo);   conds.push(`(cd.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`); }
       const where = "WHERE " + conds.join(" AND ");
@@ -2965,17 +2969,20 @@ export async function registerRoutes(
       const byCentral = rows.filter(r => r.centralName !== null && r.techName === null);
       const byTech    = rows.filter(r => r.centralName !== null && r.techName !== null);
 
-      // معلومات تشخيصية: إجمالى السجلات وأسماء السنترالات الموجودة فعلاً في complaint_details
-      const diagRes = await pool.query(`
-        SELECT
-          COUNT(*) AS total_all,
-          COUNT(*) FILTER (WHERE close_time IS NOT NULL) AS total_closed,
-          MIN(complain_time) AS min_complain,
-          MAX(complain_time) AS max_complain,
-          json_agg(DISTINCT central_name ORDER BY central_name) AS centrals
-        FROM complaint_details
-      `);
-      const diag = diagRes.rows[0];
+      // إذا لم توجد بيانات — أضف معلومات تشخيصية
+      let diag: any = undefined;
+      if (!overall) {
+        const diagRes = await pool.query(`
+          SELECT
+            COUNT(*) AS total_all,
+            COUNT(*) FILTER (WHERE close_time IS NOT NULL) AS total_closed,
+            MIN(complain_time) AS min_complain,
+            MAX(complain_time) AS max_complain,
+            json_agg(DISTINCT central_name ORDER BY central_name) AS centrals
+          FROM complaint_details
+        `);
+        diag = diagRes.rows[0];
+      }
 
       res.json({ overall, byCentral, byTech, _diag: diag });
     } catch (e: any) {
