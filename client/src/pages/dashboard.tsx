@@ -197,8 +197,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Admin Tab Navigation */}
-        {user.role === ROLES.ADMIN && (
+        {/* Tab Navigation — Admin & Tech */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
           <div className="border-t bg-white">
             <div className="container mx-auto px-4">
               <div className="flex" dir="rtl">
@@ -226,18 +226,20 @@ export default function Dashboard() {
                   <BarChart3 className="w-4 h-4" />
                   التقارير
                 </button>
-                <button
-                  onClick={() => setAdminTab("file-upload")}
-                  data-testid="tab-admin-file-upload"
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    adminTab === "file-upload"
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Upload className="w-4 h-4" />
-                  رفع الملفات
-                </button>
+                {user.role === ROLES.ADMIN && (
+                  <button
+                    onClick={() => setAdminTab("file-upload")}
+                    data-testid="tab-admin-file-upload"
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      adminTab === "file-upload"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Upload className="w-4 h-4" />
+                    رفع الملفات
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -247,8 +249,8 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
-        {/* ── REPORTS TAB (Admin only) ── */}
-        {user.role === ROLES.ADMIN && adminTab === "reports" && (
+        {/* ── REPORTS TAB (Admin & Tech) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "reports" && (
           <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
             {/* ── زر فتح/قفل القائمة على الموبايل ── */}
             <button
@@ -384,7 +386,7 @@ export default function Dashboard() {
         )}
 
         {/* ── ORDERS TAB (all roles) ── */}
-        {(user.role !== ROLES.ADMIN || adminTab === "orders") && (
+        {((user.role !== ROLES.ADMIN && user.role !== ROLES.TECH) || adminTab === "orders") && (
           <>
             {/* Actions Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
