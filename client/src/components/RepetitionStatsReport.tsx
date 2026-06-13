@@ -211,15 +211,15 @@ export function RepetitionStatsReport() {
     <div className="space-y-6" dir="rtl">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">من</span>
-          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-sm w-auto" dir="ltr" />
+        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+          <span className="text-xs text-muted-foreground shrink-0">من</span>
+          <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="text-sm w-full sm:w-auto" dir="ltr" />
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">إلى</span>
-          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm w-auto" dir="ltr" />
+        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+          <span className="text-xs text-muted-foreground shrink-0">إلى</span>
+          <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="text-sm w-full sm:w-auto" dir="ltr" />
         </div>
-        <div className="flex rounded-lg border overflow-hidden text-xs">
+        <div className="flex rounded-lg border overflow-hidden text-xs w-full sm:w-auto">
           {(["combined", "closed", "open"] as const).map(tab => (
             <button
               key={tab}

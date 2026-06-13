@@ -229,7 +229,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
               onChange={(v) => { setFilterCentral(v); setFilterCabin(""); setFilterBox(""); }}
               placeholder="كل السنترالات"
               searchPlaceholder="ابحث في السنترالات..."
-              className="w-44 text-sm"
+              className="w-full sm:w-44 text-sm"
             />
             <SearchableCombobox
               options={cabinOptions}
@@ -238,7 +238,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
               placeholder="كل الكابينات"
               searchPlaceholder="ابحث في الكابينات..."
               disabled={!filterCentral}
-              className="w-36 text-sm"
+              className="w-full sm:w-36 text-sm"
             />
             <SearchableCombobox
               options={boxOptions}
@@ -247,9 +247,9 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
               placeholder="كل البكسيات"
               searchPlaceholder="ابحث في البكسيات..."
               disabled={!filterCabin}
-              className="w-32 text-sm"
+              className="w-full sm:w-32 text-sm"
             />
-            <div className="relative w-36">
+            <div className="relative w-full sm:w-36">
               <Input
                 type="number"
                 min={0}
@@ -260,7 +260,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
                 dir="rtl"
               />
             </div>
-            <div className="relative w-48">
+            <div className="relative w-full sm:w-48">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="بحث نصي..."

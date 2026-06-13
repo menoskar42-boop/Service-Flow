@@ -143,7 +143,7 @@ export function PhoneLinesReport() {
               onChange={(v) => { setCentral(v); setCabin(""); setBox(""); setPage(1); }}
               placeholder="كل السنترالات"
               searchPlaceholder="ابحث في السنترالات..."
-              className="w-44 text-sm"
+              className="w-full sm:w-44 text-sm"
             />
 
             <SearchableCombobox
@@ -153,7 +153,7 @@ export function PhoneLinesReport() {
               placeholder="كل الكابينات"
               searchPlaceholder="ابحث في الكابينات..."
               disabled={!central}
-              className="w-40 text-sm"
+              className="w-full sm:w-40 text-sm"
             />
 
             <SearchableCombobox
@@ -163,7 +163,7 @@ export function PhoneLinesReport() {
               placeholder="كل البكسيات"
               searchPlaceholder="ابحث في البكسيات..."
               disabled={!cabin}
-              className="w-36 text-sm"
+              className="w-full sm:w-36 text-sm"
             />
 
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">

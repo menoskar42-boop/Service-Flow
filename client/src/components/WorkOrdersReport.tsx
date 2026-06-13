@@ -176,14 +176,14 @@ export function WorkOrdersReport() {
       <Card className="p-4 bg-white border-0 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           {/* Date range */}
-          <div className="flex items-end gap-2">
-            <div>
+          <div className="flex flex-wrap items-end gap-2 w-full sm:w-auto">
+            <div className="flex-1 sm:flex-none">
               <label className="text-xs text-muted-foreground block mb-1">من تاريخ</label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40 text-sm" />
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full sm:w-40 text-sm" />
             </div>
-            <div>
+            <div className="flex-1 sm:flex-none">
               <label className="text-xs text-muted-foreground block mb-1">إلى تاريخ</label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40 text-sm" />
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full sm:w-40 text-sm" />
             </div>
             {(dateFrom || dateTo) && (
               <Button variant="ghost" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-muted-foreground">

@@ -95,7 +95,7 @@ export function BoxLinesSummaryReport() {
               onChange={(v) => { setCentral(v); setCabin(""); setBox(""); }}
               placeholder="كل السنترالات"
               searchPlaceholder="ابحث في السنترالات..."
-              className="w-44 text-sm"
+              className="w-full sm:w-44 text-sm"
             />
             <SearchableCombobox
               options={cabins}
@@ -104,7 +104,7 @@ export function BoxLinesSummaryReport() {
               placeholder="كل الكابينات"
               searchPlaceholder="ابحث في الكابينات..."
               disabled={!central}
-              className="w-36 text-sm"
+              className="w-full sm:w-36 text-sm"
             />
             <SearchableCombobox
               options={boxes}
@@ -113,7 +113,7 @@ export function BoxLinesSummaryReport() {
               placeholder="كل البكسيات"
               searchPlaceholder="ابحث في البكسيات..."
               disabled={!cabin}
-              className="w-32 text-sm"
+              className="w-full sm:w-32 text-sm"
             />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
