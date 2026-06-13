@@ -18,6 +18,7 @@ import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
 import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRangeReport";
 import { InstallationsReport } from "@/components/InstallationsReport";
 import { RemovalStatsReport } from "@/components/RemovalStatsReport";
+import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
@@ -27,7 +28,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -39,6 +40,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
+      { id: "repetition-stats",    label: "إحصائيات التكرار" },
     ],
   },
   {
@@ -355,6 +357,7 @@ export default function Dashboard() {
                 />
               )}
               {reportTab === "removal-stats" && <RemovalStatsReport />}
+              {reportTab === "repetition-stats" && <RepetitionStatsReport />}
             </div>
           </div>
         )}

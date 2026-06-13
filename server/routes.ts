@@ -3138,6 +3138,216 @@ export async function registerRoutes(
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────────
+  // إحصائيات التكرار — ثلاثة endpoint لنفس هيكل التقرير الثلاثى
+  // قاعدة التبعية: يُحسَب التكرار على الفنى الذى أغلق أقدم شكوى (حسب close_time):
+  //   إذا نزل الخط N مرة، رتبة k (1=أقدم) تحصل على (N-k) مرة تكرار، الأحدث يحصل على 0.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // GET /api/reports/repetition-closed — complaint_details (أعطال مغلقة)
+  app.get("/api/reports/repetition-closed", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      const { rows } = await pool.query(`
+        WITH phone_occ AS (
+          SELECT
+            cd.exchange_name AS central_name,
+            cd.phone_number,
+            cd.close_time,
+            COALESCE(tn_direct.tech_name, tn_cabinet.tech_name, 'غير معروف') AS tech_name
+          FROM complaint_details cd
+          LEFT JOIN technician_names tn_direct ON tn_direct.worker_code = cd.close_by
+          LEFT JOIN cabinet_technicians ct
+            ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
+          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
+          WHERE cd.close_time IS NOT NULL
+            AND cd.exchange_name ILIKE '%غنايم%'
+            ${dateClause}
+        ),
+        ranked AS (
+          SELECT
+            central_name, phone_number, tech_name,
+            COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
+            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY close_time ASC NULLS LAST) AS rk
+          FROM phone_occ
+        )
+        SELECT
+          central_name                                                                      AS "centralName",
+          tech_name                                                                         AS "techName",
+          COUNT(*)::int                                                                     AS total,
+          COUNT(DISTINCT phone_number)::int                                                 AS "distinctPhones",
+          COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)::int                  AS "nonRepeated",
+          COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
+          SUM(CASE WHEN rk = appearances THEN 0 ELSE appearances - rk END)::int             AS "repCharges",
+          ROUND(
+            100.0 * COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)
+            / NULLIF(COUNT(DISTINCT phone_number), 0),
+          1)                                                                                AS "repRatio"
+        FROM ranked
+        GROUP BY GROUPING SETS (
+          (central_name, tech_name),
+          (central_name),
+          (tech_name),
+          ()
+        )
+        ORDER BY central_name NULLS LAST, tech_name NULLS LAST
+      `, params);
+
+      const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
+                             .sort((a, b) => b.total - a.total);
+      res.json({ overall, byCentral, byTech, byTechOnly });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/reports/repetition-open — remaining_complaints (حالات 135 و138 فقط)
+  app.get("/api/reports/repetition-open", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      const { rows } = await pool.query(`
+        WITH phone_occ AS (
+          SELECT
+            rc.exchange_name AS central_name,
+            rc.phone_number,
+            rc.close_time,
+            COALESCE(tn_direct.tech_name, tn_cabinet.tech_name, 'غير معروف') AS tech_name
+          FROM remaining_complaints rc
+          LEFT JOIN technician_names tn_direct ON tn_direct.worker_code = rc.close_by
+          LEFT JOIN cabinet_technicians ct
+            ON ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no
+          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
+          WHERE rc.close_time IS NOT NULL
+            AND rc.exchange_name ILIKE '%غنايم%'
+            AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
+            ${dateClause}
+        ),
+        ranked AS (
+          SELECT
+            central_name, phone_number, tech_name,
+            COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
+            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY close_time ASC NULLS LAST) AS rk
+          FROM phone_occ
+        )
+        SELECT
+          central_name                                                                      AS "centralName",
+          tech_name                                                                         AS "techName",
+          COUNT(*)::int                                                                     AS total,
+          COUNT(DISTINCT phone_number)::int                                                 AS "distinctPhones",
+          COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)::int                  AS "nonRepeated",
+          COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
+          SUM(CASE WHEN rk = appearances THEN 0 ELSE appearances - rk END)::int             AS "repCharges",
+          ROUND(
+            100.0 * COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)
+            / NULLIF(COUNT(DISTINCT phone_number), 0),
+          1)                                                                                AS "repRatio"
+        FROM ranked
+        GROUP BY GROUPING SETS (
+          (central_name, tech_name),
+          (central_name),
+          (tech_name),
+          ()
+        )
+        ORDER BY central_name NULLS LAST, tech_name NULLS LAST
+      `, params);
+
+      const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
+                             .sort((a, b) => b.total - a.total);
+      res.json({ overall, byCentral, byTech, byTechOnly });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/reports/repetition-combined — المصدران معاً (UNION ALL) لتحديد التكرار عبر المغلقة والمفتوحة
+  app.get("/api/reports/repetition-combined", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      let dateClause = "";
+      if (dateFrom) { params.push(dateFrom); dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
+      if (dateTo)   { params.push(dateTo);   dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      const { rows } = await pool.query(`
+        WITH src AS (
+          SELECT exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+          FROM complaint_details
+          WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+          UNION ALL
+          SELECT exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+          FROM remaining_complaints
+          WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            AND FLOOR(status_code::numeric)::int IN (135, 138)
+        ),
+        phone_occ AS (
+          SELECT
+            po.exchange_name AS central_name,
+            po.phone_number,
+            po.close_time,
+            COALESCE(tn_direct.tech_name, tn_cabinet.tech_name, 'غير معروف') AS tech_name
+          FROM src po
+          LEFT JOIN technician_names tn_direct ON tn_direct.worker_code = po.close_by
+          LEFT JOIN cabinet_technicians ct
+            ON ct.central_name = po.exchange_name AND ct.cabin_number = po.cabinet_no
+          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
+          WHERE TRUE ${dateClause}
+        ),
+        ranked AS (
+          SELECT
+            central_name, phone_number, tech_name,
+            COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
+            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY close_time ASC NULLS LAST) AS rk
+          FROM phone_occ
+        )
+        SELECT
+          central_name                                                                      AS "centralName",
+          tech_name                                                                         AS "techName",
+          COUNT(*)::int                                                                     AS total,
+          COUNT(DISTINCT phone_number)::int                                                 AS "distinctPhones",
+          COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)::int                  AS "nonRepeated",
+          COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
+          SUM(CASE WHEN rk = appearances THEN 0 ELSE appearances - rk END)::int             AS "repCharges",
+          ROUND(
+            100.0 * COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)
+            / NULLIF(COUNT(DISTINCT phone_number), 0),
+          1)                                                                                AS "repRatio"
+        FROM ranked
+        GROUP BY GROUPING SETS (
+          (central_name, tech_name),
+          (central_name),
+          (tech_name),
+          ()
+        )
+        ORDER BY central_name NULLS LAST, tech_name NULLS LAST
+      `, params);
+
+      const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
+                             .sort((a, b) => b.total - a.total);
+      res.json({ overall, byCentral, byTech, byTechOnly });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 
