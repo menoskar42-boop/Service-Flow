@@ -38,11 +38,15 @@ interface StatsData {
   _diag?: DiagInfo;
 }
 
-const pctBadge = (pct: number) => {
+// النِسب المستهدفة لكل نافذة زمنية
+const TARGET_24 = 90, TARGET_48 = 95, TARGET_120 = 100;
+
+// تلوين النسبة حسب المستهدف: أخضر إذا حقق المستهدف، بينك إذا قريب منه، أحمر إذا بعيد
+const pctBadge = (pct: number, target: number) => {
   const cls =
-    pct >= 80 ? "bg-green-100 text-green-800" :
-    pct >= 50 ? "bg-yellow-100 text-yellow-800" :
-                "bg-red-100 text-red-800";
+    pct >= target        ? "bg-green-100 text-green-800" :
+    pct >= target - 10   ? "bg-pink-100 text-pink-700" :
+                           "bg-red-100 text-red-800";
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{pct}%</span>;
 };
 
@@ -143,8 +147,9 @@ export function RemovalStatsReport() {
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const thStyle = `background:#1e50a0!important;color:#fff!important;padding:5px 4px;border:1px solid #15407f;font-size:10px;text-align:right`;
     const tdStyle = `border:1px solid #ccc;padding:4px;text-align:right;font-size:10px`;
-    const pctStyle = (p: number) =>
-      `background:${p >= 80 ? "#dcfce7" : p >= 50 ? "#fef9c3" : "#fee2e2"}!important;color:${p >= 80 ? "#166534" : p >= 50 ? "#854d0e" : "#991b1b"};font-weight:600;text-align:center`;
+    // تلوين النسبة حسب المستهدف: أخضر (حقق) / بينك (قريب) / أحمر (بعيد)
+    const pctStyle = (p: number, target: number) =>
+      `background:${p >= target ? "#dcfce7" : p >= target - 10 ? "#fce7f3" : "#fee2e2"}!important;color:${p >= target ? "#166534" : p >= target - 10 ? "#9d174d" : "#991b1b"};font-weight:600;text-align:center`;
 
     const overallHtml = ov ? `
       <h3 style="margin:12px 0 4px;font-size:12px">الإجمالى</h3>
@@ -157,27 +162,27 @@ export function RemovalStatsReport() {
         </tr></thead>
         <tbody><tr>
           <td style="${tdStyle}">${ov.total}</td>
-          <td style="${tdStyle}">${ov.within24h}</td><td style="${pctStyle(Number(ov.pct24h))};${tdStyle}">${ov.pct24h}%</td>
-          <td style="${tdStyle}">${ov.within48h}</td><td style="${pctStyle(Number(ov.pct48h))};${tdStyle}">${ov.pct48h}%</td>
-          <td style="${tdStyle}">${ov.within120h}</td><td style="${pctStyle(Number(ov.pct120h))};${tdStyle}">${ov.pct120h}%</td>
+          <td style="${tdStyle}">${ov.within24h}</td><td style="${pctStyle(Number(ov.pct24h), TARGET_24)};${tdStyle}">${ov.pct24h}%</td>
+          <td style="${tdStyle}">${ov.within48h}</td><td style="${pctStyle(Number(ov.pct48h), TARGET_48)};${tdStyle}">${ov.pct48h}%</td>
+          <td style="${tdStyle}">${ov.within120h}</td><td style="${pctStyle(Number(ov.pct120h), TARGET_120)};${tdStyle}">${ov.pct120h}%</td>
         </tr></tbody>
       </table>` : "";
 
     const centralRows = activeData.byCentral.map(r => `<tr>
       <td style="${tdStyle}">${esc(r.centralName)}</td>
       <td style="${tdStyle}">${r.total}</td>
-      <td style="${tdStyle}">${r.within24h}</td><td style="${pctStyle(Number(r.pct24h))};${tdStyle}">${r.pct24h}%</td>
-      <td style="${tdStyle}">${r.within48h}</td><td style="${pctStyle(Number(r.pct48h))};${tdStyle}">${r.pct48h}%</td>
-      <td style="${tdStyle}">${r.within120h}</td><td style="${pctStyle(Number(r.pct120h))};${tdStyle}">${r.pct120h}%</td>
+      <td style="${tdStyle}">${r.within24h}</td><td style="${pctStyle(Number(r.pct24h), TARGET_24)};${tdStyle}">${r.pct24h}%</td>
+      <td style="${tdStyle}">${r.within48h}</td><td style="${pctStyle(Number(r.pct48h), TARGET_48)};${tdStyle}">${r.pct48h}%</td>
+      <td style="${tdStyle}">${r.within120h}</td><td style="${pctStyle(Number(r.pct120h), TARGET_120)};${tdStyle}">${r.pct120h}%</td>
     </tr>`).join("");
 
     const techRows = activeData.byTech.map(r => `<tr>
       <td style="${tdStyle}">${esc(r.centralName)}</td>
       <td style="${tdStyle}">${esc(r.techName)}</td>
       <td style="${tdStyle}">${r.total}</td>
-      <td style="${tdStyle}">${r.within24h}</td><td style="${pctStyle(Number(r.pct24h))};${tdStyle}">${r.pct24h}%</td>
-      <td style="${tdStyle}">${r.within48h}</td><td style="${pctStyle(Number(r.pct48h))};${tdStyle}">${r.pct48h}%</td>
-      <td style="${tdStyle}">${r.within120h}</td><td style="${pctStyle(Number(r.pct120h))};${tdStyle}">${r.pct120h}%</td>
+      <td style="${tdStyle}">${r.within24h}</td><td style="${pctStyle(Number(r.pct24h), TARGET_24)};${tdStyle}">${r.pct24h}%</td>
+      <td style="${tdStyle}">${r.within48h}</td><td style="${pctStyle(Number(r.pct48h), TARGET_48)};${tdStyle}">${r.pct48h}%</td>
+      <td style="${tdStyle}">${r.within120h}</td><td style="${pctStyle(Number(r.pct120h), TARGET_120)};${tdStyle}">${r.pct120h}%</td>
     </tr>`).join("");
 
     const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
@@ -265,23 +270,31 @@ export function RemovalStatsReport() {
       {ov && (
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "إزالة خلال 24 ساعة", count: ov.within24h, pct: ov.pct24h, color: "green" },
-            { label: "إزالة خلال 48 ساعة", count: ov.within48h, pct: ov.pct48h, color: "yellow" },
-            { label: "إزالة خلال 120 ساعة", count: ov.within120h, pct: ov.pct120h, color: "blue" },
-          ].map(({ label, count, pct, color }) => (
-            <Card key={label} className="border-0 shadow-sm">
-              <CardHeader className="pb-1 pt-3 px-4">
-                <CardTitle className="text-xs text-muted-foreground font-normal">{label}</CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-3">
-                <div className={`text-2xl font-bold text-${color}-600`}>{count}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">من إجمالى {ov.total} — {pct}%</div>
-                <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className={`h-2 bg-${color}-500 rounded-full`} style={{ width: `${Math.min(100, Number(pct))}%` }} />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+            { label: "إزالة خلال 24 ساعة",  count: ov.within24h,  pct: ov.pct24h,  target: TARGET_24 },
+            { label: "إزالة خلال 48 ساعة",  count: ov.within48h,  pct: ov.pct48h,  target: TARGET_48 },
+            { label: "إزالة خلال 120 ساعة", count: ov.within120h, pct: ov.pct120h, target: TARGET_120 },
+          ].map(({ label, count, pct, target }) => {
+            const ok   = Number(pct) >= target;
+            const near = Number(pct) >= target - 10;
+            const numCls = ok ? "text-green-600" : near ? "text-pink-600" : "text-red-600";
+            const barCls = ok ? "bg-green-500"  : near ? "bg-pink-500"  : "bg-red-500";
+            return (
+              <Card key={label} className="border-0 shadow-sm">
+                <CardHeader className="pb-1 pt-3 px-4">
+                  <CardTitle className="text-xs text-muted-foreground font-normal">
+                    {label} <span className="text-[10px]">(المستهدف {target}%)</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  <div className={`text-2xl font-bold ${numCls}`}>{count}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">من إجمالى {ov.total} — {pct}%</div>
+                  <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-2 ${barCls} rounded-full`} style={{ width: `${Math.min(100, Number(pct))}%` }} />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -333,11 +346,11 @@ export function RemovalStatsReport() {
                     <TableCell className="font-medium">{r.techName}</TableCell>
                     <TableCell className="font-bold">{r.total}</TableCell>
                     <TableCell>{r.within24h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct24h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct24h), TARGET_24)}</TableCell>
                     <TableCell>{r.within48h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct48h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct48h), TARGET_48)}</TableCell>
                     <TableCell>{r.within120h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct120h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct120h), TARGET_120)}</TableCell>
                   </TableRow>
                 ))}
                 {/* سطر إجمالى الإدارة */}
@@ -385,11 +398,11 @@ export function RemovalStatsReport() {
                     <TableCell className="font-medium">{r.centralName}</TableCell>
                     <TableCell className="font-bold">{r.total}</TableCell>
                     <TableCell>{r.within24h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct24h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct24h), TARGET_24)}</TableCell>
                     <TableCell>{r.within48h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct48h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct48h), TARGET_48)}</TableCell>
                     <TableCell>{r.within120h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct120h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct120h), TARGET_120)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -426,11 +439,11 @@ export function RemovalStatsReport() {
                     <TableCell className="font-medium">{r.techName}</TableCell>
                     <TableCell className="font-bold">{r.total}</TableCell>
                     <TableCell>{r.within24h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct24h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct24h), TARGET_24)}</TableCell>
                     <TableCell>{r.within48h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct48h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct48h), TARGET_48)}</TableCell>
                     <TableCell>{r.within120h}</TableCell>
-                    <TableCell>{pctBadge(Number(r.pct120h))}</TableCell>
+                    <TableCell>{pctBadge(Number(r.pct120h), TARGET_120)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
