@@ -820,8 +820,16 @@ export function FileUploadSection() {
               size="sm"
               variant="outline"
               className="text-xs gap-1"
-              onClick={() => {
-                const ws = XLSX.utils.json_to_sheet(details.map(d => ({
+              onClick={async () => {
+                // جلب سنترالات الغنايم الأربعة فقط (بدون all=true) بحد مرتفع
+                const p = new URLSearchParams();
+                p.set("limit", "100000");
+                if (dateFrom) p.set("dateFrom", dateFrom);
+                if (dateTo)   p.set("dateTo", dateTo);
+                if (searchQ)  p.set("q", searchQ);
+                const res = await fetch(`/api/complaint-details?${p}`, { credentials: "include" });
+                const rows: ComplaintDetail[] = res.ok ? await res.json() : [];
+                const ws = XLSX.utils.json_to_sheet(rows.map(d => ({
                   "رقم الشكوى": d.complainNo,
                   "السنترال": d.exchangeName ?? "",
                   "رقم التليفون": d.phoneNumber ?? "",
@@ -837,10 +845,10 @@ export function FileUploadSection() {
                 })));
                 const wb2 = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb2, ws, "تفاصيل الأعطال");
-                XLSX.writeFile(wb2, "complaint_details.xlsx");
+                XLSX.writeFile(wb2, "complaint_details_ghonaim.xlsx");
               }}
             >
-              📥 تصدير Excel ({details.length})
+              📥 تصدير الغنايم (Excel)
             </Button>
           </div>
           <Card className="overflow-hidden shadow-sm border-0 bg-white">
@@ -901,8 +909,15 @@ export function FileUploadSection() {
               size="sm"
               variant="outline"
               className="text-xs gap-1"
-              onClick={() => {
-                const ws = XLSX.utils.json_to_sheet(remaining.map(d => ({
+              onClick={async () => {
+                // جلب سنترالات الغنايم الأربعة فقط (بدون all=true)
+                const p = new URLSearchParams();
+                if (dateFrom) p.set("dateFrom", dateFrom);
+                if (dateTo)   p.set("dateTo", dateTo);
+                if (searchQ)  p.set("q", searchQ);
+                const res = await fetch(`/api/remaining-complaints?${p}`, { credentials: "include" });
+                const rows: RemainingComplaint[] = res.ok ? await res.json() : [];
+                const ws = XLSX.utils.json_to_sheet(rows.map(d => ({
                   "رقم الشكوى": d.complainNo,
                   "السنترال": d.exchangeName ?? "",
                   "رقم التليفون": d.phoneNumber ?? "",
@@ -920,10 +935,10 @@ export function FileUploadSection() {
                 })));
                 const wb2 = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb2, ws, "المتبقى");
-                XLSX.writeFile(wb2, "remaining_complaints.xlsx");
+                XLSX.writeFile(wb2, "remaining_complaints_ghonaim.xlsx");
               }}
             >
-              📥 تصدير Excel ({remaining.length})
+              📥 تصدير الغنايم (Excel)
             </Button>
           </div>
           <Card className="overflow-hidden shadow-sm border-0 bg-white">
