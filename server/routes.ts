@@ -3185,8 +3185,8 @@ export async function registerRoutes(
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
           SUM(CASE WHEN rk = appearances THEN 0 ELSE appearances - rk END)::int             AS "repCharges",
           ROUND(
-            100.0 * (COUNT(*) - COUNT(DISTINCT phone_number))
-            / NULLIF(COUNT(DISTINCT phone_number), 0),
+            100.0 * COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)
+            / NULLIF(COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1), 0),
           1)                                                                                AS "repRatio"
         FROM ranked
         GROUP BY GROUPING SETS (
@@ -3251,8 +3251,8 @@ export async function registerRoutes(
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
           SUM(CASE WHEN rk = appearances THEN 0 ELSE appearances - rk END)::int             AS "repCharges",
           ROUND(
-            100.0 * (COUNT(*) - COUNT(DISTINCT phone_number))
-            / NULLIF(COUNT(DISTINCT phone_number), 0),
+            100.0 * COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)
+            / NULLIF(COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1), 0),
           1)                                                                                AS "repRatio"
         FROM ranked
         GROUP BY GROUPING SETS (
@@ -3324,8 +3324,8 @@ export async function registerRoutes(
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
           SUM(CASE WHEN rk = appearances THEN 0 ELSE appearances - rk END)::int             AS "repCharges",
           ROUND(
-            100.0 * (COUNT(*) - COUNT(DISTINCT phone_number))
-            / NULLIF(COUNT(DISTINCT phone_number), 0),
+            100.0 * COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)
+            / NULLIF(COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1), 0),
           1)                                                                                AS "repRatio"
         FROM ranked
         GROUP BY GROUPING SETS (
