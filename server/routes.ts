@@ -2924,10 +2924,10 @@ export async function registerRoutes(
       const { dateFrom, dateTo } = req.query as Record<string, string>;
       const params: any[] = [];
       // نجلب الأعطال التى أُغلقت (close_time NOT NULL) وأُبلغ عنها في الفترة المحددة
-      // فلتر السنترال: ILIKE يمسك أي فروق في كتابة "غنايم" (الغنايم / غنايم / الغنايم-العزايزة …)
+      // العمود الصحيح هو exchange_name (وليس central_name الذى يكون NULL دائماً في complaint_details)
       const conds: string[] = [
         `cd.close_time IS NOT NULL`,
-        `cd.central_name ILIKE '%غنايم%'`,
+        `cd.exchange_name ILIKE '%غنايم%'`,
       ];
       if (dateFrom) { params.push(dateFrom); conds.push(`(cd.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`); }
       if (dateTo)   { params.push(dateTo);   conds.push(`(cd.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`); }
@@ -2936,12 +2936,12 @@ export async function registerRoutes(
       const { rows } = await pool.query(`
         WITH base AS (
           SELECT
-            cd.central_name,
-            COALESCE(tn.tech_name, 'غير معروف') AS tech_name,
+            cd.exchange_name                                AS central_name,
+            COALESCE(tn.tech_name, 'غير معروف')            AS tech_name,
             EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0 AS hours
           FROM complaint_details cd
           LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = cd.central_name AND ct.cabin_number = cd.cabinet_no
+            ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
           ${where}
         )
@@ -2978,7 +2978,7 @@ export async function registerRoutes(
             COUNT(*) FILTER (WHERE close_time IS NOT NULL) AS total_closed,
             MIN(complain_time) AS min_complain,
             MAX(complain_time) AS max_complain,
-            json_agg(DISTINCT central_name ORDER BY central_name) AS centrals
+            json_agg(DISTINCT exchange_name ORDER BY exchange_name) FILTER (WHERE exchange_name ILIKE '%غنايم%') AS centrals
           FROM complaint_details
         `);
         diag = diagRes.rows[0];
