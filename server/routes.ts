@@ -3010,7 +3010,7 @@ export async function registerRoutes(
       const conds: string[] = [
         `rc.close_time IS NOT NULL`,
         `rc.exchange_name ILIKE '%غنايم%'`,
-        `rc.close_code::text IN ('135','138')`,
+        `FLOOR(rc.status_code::numeric)::int IN (135, 138)`,
       ];
       if (dateFrom) { params.push(dateFrom); conds.push(`(rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`); }
       if (dateTo)   { params.push(dateTo);   conds.push(`(rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`); }
