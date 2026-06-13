@@ -3357,7 +3357,25 @@ export async function registerRoutes(
   // مع تفصيل complain_no لكل ظهور والمصدر، لمعرفة أيها يُحسب مكرراً ولماذا
   app.get("/api/reports/repetition-debug", requireAuth, async (req, res) => {
     try {
-      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const { dateFrom, dateTo, phone } = req.query as Record<string, string>;
+
+      // فحص رقم معيّن: عرض كل صفوفه في كل الجداول مع التاريخ المحسوب
+      if (phone) {
+        const out: any = {};
+        for (const t of ["complaint_details", "remaining_complaints", "remaining_complaints_current"]) {
+          const { rows } = await pool.query(
+            `SELECT complain_no, exchange_name, phone_number,
+                    complain_time, (complain_time AT TIME ZONE 'Africa/Cairo')::date AS cairo_date,
+                    close_time, close_by, cabinet_no,
+                    ${t === "complaint_details" ? "NULL" : "status_code"} AS status_code
+             FROM ${t} WHERE phone_number = $1 ORDER BY complain_time`,
+            [phone],
+          );
+          out[t] = rows;
+        }
+        return res.json(out);
+      }
+
       const params: any[] = [];
       let dateClause = "";
       if (dateFrom) { params.push(dateFrom); dateClause += ` AND (complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
