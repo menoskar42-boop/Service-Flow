@@ -23,7 +23,7 @@ import { FileUploadSection } from "@/components/FileUploadSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
@@ -100,6 +100,10 @@ export default function Dashboard() {
   });
   const toggleGroup = (label: string) =>
     setOpenGroups((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
+  // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
+  const [navOpen, setNavOpen] = useState(false);
+  const currentReportLabel =
+    REPORT_GROUPS.flatMap((g) => g.items).find((it) => it.id === reportTab)?.label ?? "اختر التقرير";
 
   useWebSocket();
 
@@ -241,14 +245,24 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
         {/* ── REPORTS TAB (Admin only) ── */}
         {user.role === ROLES.ADMIN && adminTab === "reports" && (
-          <div className="flex gap-5" dir="rtl">
+          <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
+            {/* ── زر فتح/قفل القائمة على الموبايل ── */}
+            <button
+              onClick={() => setNavOpen((v) => !v)}
+              className="lg:hidden w-full flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-600 text-white shadow-sm"
+            >
+              <Menu className="w-5 h-5 shrink-0" />
+              <span className="text-sm font-bold flex-1 text-right truncate">{currentReportLabel}</span>
+              <ChevronDown className={`w-5 h-5 shrink-0 transition-transform ${navOpen ? "" : "-rotate-90"}`} />
+            </button>
+
             {/* ── Sidebar ── */}
-            <aside className="w-52 shrink-0">
-              <nav className="sticky top-4 bg-white rounded-xl border shadow-sm overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto sidebar-scroll">
+            <aside className={`${navOpen ? "block" : "hidden"} lg:block w-full lg:w-52 shrink-0`}>
+              <nav className="lg:sticky lg:top-4 bg-white rounded-xl border shadow-sm overflow-hidden lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto sidebar-scroll">
                 {REPORT_GROUPS.map((group) => {
                   const isOpen = openGroups.includes(group.label);
                   return (
@@ -264,7 +278,7 @@ export default function Dashboard() {
                       {isOpen && group.items.map((item) => (
                         <button
                           key={item.id}
-                          onClick={() => setReportTab(item.id)}
+                          onClick={() => { setReportTab(item.id); setNavOpen(false); }}
                           className={`w-full text-right px-4 py-2.5 text-sm transition-colors border-b last:border-b-0
                             ${reportTab === item.id
                               ? "bg-blue-50 text-blue-700 font-semibold border-r-2 border-r-blue-600"
