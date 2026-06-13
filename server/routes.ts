@@ -2937,12 +2937,20 @@ export async function registerRoutes(
         WITH base AS (
           SELECT
             cd.exchange_name                                AS central_name,
-            COALESCE(tn.tech_name, 'غير معروف')            AS tech_name,
+            COALESCE(
+              tn_direct.tech_name,
+              tn_cabinet.tech_name,
+              'غير معروف'
+            )                                               AS tech_name,
             EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0 AS hours
           FROM complaint_details cd
+          -- أولاً: close_by كود عامل مباشر
+          LEFT JOIN technician_names tn_direct
+            ON tn_direct.worker_code = cd.close_by
+          -- احتياطاً: التبعية بالكابينة والسنترال
           LEFT JOIN cabinet_technicians ct
             ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
-          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           ${where}
         )
         SELECT
