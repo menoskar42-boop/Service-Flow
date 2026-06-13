@@ -2938,19 +2938,16 @@ export async function registerRoutes(
           SELECT
             cd.exchange_name                                AS central_name,
             COALESCE(
-              tn_direct.tech_name,
-              tn_cabinet.tech_name,
+              -- أولاً: close_by كود عامل مباشر
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
+              -- احتياطاً: التبعية بالكابينة والسنترال
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no LIMIT 1),
               'غير معروف'
             )                                               AS tech_name,
             EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0 AS hours
           FROM complaint_details cd
-          -- أولاً: close_by كود عامل مباشر
-          LEFT JOIN technician_names tn_direct
-            ON tn_direct.worker_code = cd.close_by
-          -- احتياطاً: التبعية بالكابينة والسنترال
-          LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
-          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           ${where}
         )
         SELECT
@@ -3021,17 +3018,14 @@ export async function registerRoutes(
           SELECT
             rc.exchange_name                                AS central_name,
             COALESCE(
-              tn_direct.tech_name,
-              tn_cabinet.tech_name,
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = rc.close_by LIMIT 1),
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no LIMIT 1),
               'غير معروف'
             )                                               AS tech_name,
             EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0 AS hours
           FROM remaining_complaints rc
-          LEFT JOIN technician_names tn_direct
-            ON tn_direct.worker_code = rc.close_by
-          LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no
-          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           ${where}
         )
         SELECT
@@ -3094,17 +3088,14 @@ export async function registerRoutes(
           SELECT
             src.exchange_name                               AS central_name,
             COALESCE(
-              tn_direct.tech_name,
-              tn_cabinet.tech_name,
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no LIMIT 1),
               'غير معروف'
             )                                               AS tech_name,
             EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0 AS hours
           FROM src
-          LEFT JOIN technician_names tn_direct
-            ON tn_direct.worker_code = src.close_by
-          LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no
-          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           WHERE TRUE ${dateClause}
         )
         SELECT
@@ -3159,12 +3150,14 @@ export async function registerRoutes(
             cd.exchange_name AS central_name,
             cd.phone_number,
             cd.close_time,
-            COALESCE(tn_direct.tech_name, tn_cabinet.tech_name, 'غير معروف') AS tech_name
+            COALESCE(
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no LIMIT 1),
+              'غير معروف'
+            ) AS tech_name
           FROM complaint_details cd
-          LEFT JOIN technician_names tn_direct ON tn_direct.worker_code = cd.close_by
-          LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
-          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           WHERE cd.close_time IS NOT NULL
             AND cd.exchange_name ILIKE '%غنايم%'
             ${dateClause}
@@ -3224,12 +3217,14 @@ export async function registerRoutes(
             rc.exchange_name AS central_name,
             rc.phone_number,
             rc.close_time,
-            COALESCE(tn_direct.tech_name, tn_cabinet.tech_name, 'غير معروف') AS tech_name
+            COALESCE(
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = rc.close_by LIMIT 1),
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no LIMIT 1),
+              'غير معروف'
+            ) AS tech_name
           FROM remaining_complaints rc
-          LEFT JOIN technician_names tn_direct ON tn_direct.worker_code = rc.close_by
-          LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no
-          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           WHERE rc.close_time IS NOT NULL
             AND rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
@@ -3300,12 +3295,14 @@ export async function registerRoutes(
             po.exchange_name AS central_name,
             po.phone_number,
             po.close_time,
-            COALESCE(tn_direct.tech_name, tn_cabinet.tech_name, 'غير معروف') AS tech_name
+            COALESCE(
+              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = po.close_by LIMIT 1),
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = po.exchange_name AND ct.cabin_number = po.cabinet_no LIMIT 1),
+              'غير معروف'
+            ) AS tech_name
           FROM src po
-          LEFT JOIN technician_names tn_direct ON tn_direct.worker_code = po.close_by
-          LEFT JOIN cabinet_technicians ct
-            ON ct.central_name = po.exchange_name AND ct.cabin_number = po.cabinet_no
-          LEFT JOIN technician_names tn_cabinet ON tn_cabinet.worker_code = ct.worker_code
           WHERE TRUE ${dateClause}
         ),
         ranked AS (
