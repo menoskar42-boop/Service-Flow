@@ -2917,6 +2917,61 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/removal-stats — إحصائيات الإزالة خلال 24/48/120 ساعة
+  // ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  app.get("/api/reports/removal-stats", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [
+        `cd.close_time IS NOT NULL`,
+        `cd.central_name IN ('الغنايم','الغنايم-العزايزة','الغنايم-دير الجنادله','الغنايم-نجع العمدة')`,
+      ];
+      if (dateFrom) { params.push(dateFrom); conds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`); }
+      if (dateTo)   { params.push(dateTo);   conds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`); }
+      const where = "WHERE " + conds.join(" AND ");
+
+      const { rows } = await pool.query(`
+        WITH base AS (
+          SELECT
+            cd.central_name,
+            COALESCE(tn.tech_name, 'غير معروف') AS tech_name,
+            EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0 AS hours
+          FROM complaint_details cd
+          LEFT JOIN cabinet_technicians ct
+            ON ct.central_name = cd.central_name AND ct.cabin_number = cd.cabinet_no
+          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+          ${where}
+        )
+        SELECT
+          central_name    AS "centralName",
+          tech_name       AS "techName",
+          COUNT(*)::int                                             AS total,
+          COUNT(*) FILTER (WHERE hours <= 24)::int                 AS within24h,
+          COUNT(*) FILTER (WHERE hours <= 48)::int                 AS within48h,
+          COUNT(*) FILTER (WHERE hours <= 120)::int                AS within120h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / COUNT(*), 1) AS pct24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / COUNT(*), 1) AS pct48h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / COUNT(*), 1) AS pct120h
+        FROM base
+        GROUP BY GROUPING SETS (
+          (central_name, tech_name),
+          (central_name),
+          ()
+        )
+        ORDER BY central_name NULLS LAST, tech_name NULLS LAST
+      `, params);
+
+      // فصل النتائج إلى ثلاث مجموعات: إجمالى / بالسنترال / بالفنى
+      const overall   = rows.find(r => r.centralName === null && r.techName === null) ?? null;
+      const byCentral = rows.filter(r => r.centralName !== null && r.techName === null);
+      const byTech    = rows.filter(r => r.centralName !== null && r.techName !== null);
+      res.json({ overall, byCentral, byTech });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 
