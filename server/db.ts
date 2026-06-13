@@ -675,4 +675,18 @@ export async function ensureSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS regularized_daily_cat_date_idx ON regularized_daily (category, snapshot_date)`);
+
+  // إدخال يدوى لكابينة TB07 (الغنايم) على حسن عبد الفتاح يعقوب — خارج حياة كريمة
+  // يُنفَّذ مرة واحدة فقط إذا لم تكن الكابينة موجودة بالفعل
+  await pool.query(`
+    INSERT INTO cabinet_technicians (central_name, cabin_number, worker_code, haya_karima)
+    SELECT 'الغنايم', 'TB07', tn.worker_code, 'لا'
+    FROM technician_names tn
+    WHERE tn.tech_name ILIKE '%حسن عبد الفتاح%'
+      AND NOT EXISTS (
+        SELECT 1 FROM cabinet_technicians
+        WHERE central_name = 'الغنايم' AND cabin_number = 'TB07'
+      )
+    LIMIT 1
+  `);
 }
