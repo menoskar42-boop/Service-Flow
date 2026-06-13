@@ -3280,15 +3280,23 @@ export async function registerRoutes(
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
 
       const { rows } = await pool.query(`
-        WITH src AS (
-          SELECT exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+        WITH src_raw AS (
+          SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 1 AS src_priority
           FROM complaint_details
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           UNION ALL
-          SELECT exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+          SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 2 AS src_priority
           FROM remaining_complaints
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             AND FLOOR(status_code::numeric)::int IN (135, 138)
+        ),
+        -- توحيد العطل الواحد: لو نفس complain_no ظهر في الجدولين (مفتوح ثم مغلق)
+        -- يُحسب مرة واحدة، مع تفضيل النسخة المغلقة (src_priority=1) للتبعية الصحيحة
+        src AS (
+          SELECT DISTINCT ON (complain_no)
+            exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+          FROM src_raw
+          ORDER BY complain_no, src_priority
         ),
         phone_occ AS (
           SELECT
