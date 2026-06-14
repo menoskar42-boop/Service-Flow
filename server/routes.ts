@@ -3133,6 +3133,60 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/cabinet-adsl-faults — لكل كابينة: عدد الشغال ADSL (ثابت من ملف
+  // مشتركى FTTH/ADSL حسب كود MSAN) + عدد الأعطال خلال فترة (من 430D حسب كود الكابينة)
+  // + اسم الفنى + رقم الكابينة. العمود الفقرى = cabinet_technicians (cabin_code = كود MSAN).
+  //   ?dateFrom=YYYY-MM-DD & dateTo=YYYY-MM-DD & central= & q=
+  app.get("/api/reports/cabinet-adsl-faults", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom = "", dateTo = "", central = "", q = "" } = req.query as Record<string, string>;
+      const from = dateFrom || "1900-01-01";
+      const to   = dateTo   || "2999-12-31";
+      const params: any[] = [from, to];
+      const conds: string[] = [
+        `(ct.central_name = 'الغنايم' OR ct.central_name = 'الغنايم-العزايزة' OR ct.central_name = 'الغنايم-دير الجنادله' OR ct.central_name = 'الغنايم-نجع العمدة')`,
+        `COALESCE(ct.cabin_code, '') <> ''`,
+      ];
+      if (central) { params.push(central); conds.push(`ct.central_name = $${params.length}`); }
+      if (q.trim()) {
+        params.push(`%${q.trim()}%`);
+        const p = `$${params.length}`;
+        conds.push(`(ct.cabin_number ILIKE ${p} OR ct.cabin_code ILIKE ${p} OR tn.tech_name ILIKE ${p})`);
+      }
+      const where = "WHERE " + conds.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT
+           ct.central_name                         AS "centralName",
+           ct.cabin_number                         AS "cabinNumber",
+           ct.cabin_code                           AS "msanCode",
+           COALESCE(tn.tech_name, 'غير معروف')     AS "techName",
+           -- الشغال ADSL: ثابت من ملف مشتركى FTTH/ADSL حسب كود MSAN
+           COALESCE((SELECT SUM(f.fbb_subs) FROM ftth_subscribers f
+                       WHERE f.msan_gpon_code = ct.cabin_code), 0)::int AS "workingAdsl",
+           -- عدد الأعطال خلال الفترة (مغلقة + متبقية) لكود الكابينة (MSAN)
+           (SELECT COUNT(*) FROM (
+              SELECT cd.complain_no FROM complaint_details cd
+                WHERE cd.msan_id = ct.cabin_code
+                  AND (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                  AND (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+              UNION
+              SELECT rc.complain_no FROM remaining_complaints rc
+                WHERE rc.msan_id = ct.cabin_code
+                  AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                  AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+           ) u)::int                               AS "faultCount"
+         FROM cabinet_technicians ct
+         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+         ${where}
+         ORDER BY ct.central_name, ct.cabin_number`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — يستخدم queryWfmReport.
   const wfmReportHandler = (typesLc: string[], regularized: boolean) =>
     async (req: any, res: any) => {

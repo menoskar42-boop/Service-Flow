@@ -19,6 +19,7 @@ import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRang
 import { InstallationsReport } from "@/components/InstallationsReport";
 import { RemovalStatsReport } from "@/components/RemovalStatsReport";
 import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
+import { CabinetAdslFaultsReport } from "@/components/CabinetAdslFaultsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { DataCompletionSection } from "@/components/DataCompletionSection";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -29,7 +30,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -40,6 +41,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "current-faults",      label: "الأعطال الحالية" },
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
+      { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف لكل كابينة" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
       { id: "repetition-stats",    label: "إحصائيات التكرار" },
     ],
@@ -389,6 +391,7 @@ export default function Dashboard() {
               )}
               {reportTab === "removal-stats" && <RemovalStatsReport />}
               {reportTab === "repetition-stats" && <RepetitionStatsReport />}
+              {reportTab === "cabinet-adsl-faults" && <CabinetAdslFaultsReport />}
             </div>
           </div>
         )}
