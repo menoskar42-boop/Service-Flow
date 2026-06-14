@@ -260,20 +260,28 @@ async function replaceTable(table: string, cols: string[], rows: any[][], userId
 }
 
 // Accumulate into a historical table.
-// When updateCols is provided → ON CONFLICT DO UPDATE SET col = COALESCE(EXCLUDED.col, table.col)
-// so that previously-null columns get filled in on re-upload without overwriting existing data.
-// Without updateCols → DO NOTHING (original behaviour for tables that don't need backfill).
+// • updateCols    → ON CONFLICT DO UPDATE SET col = COALESCE(EXCLUDED.col, table.col)
+//                   (fill previously-null columns on re-upload, never overwrite real data)
+// • overwriteCols → ON CONFLICT DO UPDATE SET col = EXCLUDED.col
+//                   (latest snapshot is authoritative — e.g. a fault's status_code/close_time
+//                    that changes as it progresses 135→138; keeps the historical table fresh
+//                    instead of "بايت"/stale on the first-seen status)
+// • neither       → DO NOTHING (original behaviour)
 async function accumulateTable(
   table: string, cols: string[], conflict: string, rows: any[][], userId: number,
-  updateCols?: string[],
+  updateCols?: string[], overwriteCols?: string[],
 ): Promise<number> {
   if (!rows.length) return 0;
   const allCols = [...cols, "uploaded_by_id"];
   const n = allCols.length;
   let inserted = 0;
   const BATCH = 200;
-  const conflictClause = (updateCols && updateCols.length)
-    ? `ON CONFLICT (${conflict}) DO UPDATE SET ${updateCols.map(c => `${c} = COALESCE(EXCLUDED.${c}, ${table}.${c})`).join(", ")}`
+  const setParts = [
+    ...(updateCols ?? []).map(c => `${c} = COALESCE(EXCLUDED.${c}, ${table}.${c})`),
+    ...(overwriteCols ?? []).map(c => `${c} = EXCLUDED.${c}`),
+  ];
+  const conflictClause = setParts.length
+    ? `ON CONFLICT (${conflict}) DO UPDATE SET ${setParts.join(", ")}`
     : `ON CONFLICT (${conflict}) DO NOTHING`;
   for (let s = 0; s < rows.length; s += BATCH) {
     const chunk = rows.slice(s, s + BATCH);
@@ -300,13 +308,13 @@ async function accumulateTable(
 async function writeThreeDestinations(opts: {
   histTable: string; sodTable: string; curTable: string;
   cols: string[]; conflict: string; rows: any[][]; userId: number;
-  updateCols?: string[];
+  updateCols?: string[]; overwriteCols?: string[];
 }) {
   const firstToday = await isFirstUploadToday(opts.sodTable);
-  const hist = await accumulateTable(opts.histTable, opts.cols, opts.conflict, opts.rows, opts.userId, opts.updateCols);
+  const hist = await accumulateTable(opts.histTable, opts.cols, opts.conflict, opts.rows, opts.userId, opts.updateCols, opts.overwriteCols);
   const current = await replaceTable(opts.curTable, opts.cols, opts.rows, opts.userId);
   if (firstToday) await pool.query(`DELETE FROM ${opts.sodTable}`);
-  const startOfDay = await accumulateTable(opts.sodTable, opts.cols, opts.conflict, opts.rows, opts.userId, opts.updateCols);
+  const startOfDay = await accumulateTable(opts.sodTable, opts.cols, opts.conflict, opts.rows, opts.userId, opts.updateCols, opts.overwriteCols);
   return { hist, current, startOfDay, sodReplaced: firstToday, total: opts.rows.length };
 }
 
@@ -1655,7 +1663,12 @@ export async function registerRoutes(
         }
         remainingTotal = inserts.length;
         // المتبقى snapshot: current is fully replaced each upload (fresh open-faults
-        // snapshot), while the historical table keeps accumulating.
+        // snapshot), while the historical table keeps accumulating. The historical
+        // table OVERWRITES the volatile state fields (status_code/close_time/...) with
+        // the latest snapshot, so a fault that progresses 135→138 is recorded with its
+        // final removed-status + close_time and never goes stale — this lets combined
+        // stats read removed (138) faults from the permanent historical table so they
+        // don't vanish when a newer 430D file replaces remaining_complaints_current.
         const r2 = await writeThreeDestinations({
           histTable: "remaining_complaints",
           sodTable: "remaining_complaints_sod",
@@ -1664,7 +1677,9 @@ export async function registerRoutes(
           conflict: "complain_no",
           rows: inserts,
           userId,
-          updateCols: ["close_by", "time_till_now", "cabinet_no", "status_code"],
+          overwriteCols: ["exchange_name", "status_code", "close_time", "close_code",
+                          "close_by", "time_till_now", "cabinet_no", "dispatch_time",
+                          "dispatch_user", "complain_type", "msan_id"],
         });
         remainingInserted = r2.hist;
       }
@@ -3115,20 +3130,27 @@ export async function registerRoutes(
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
 
       const { rows } = await pool.query(`
-        WITH src AS (
-          -- الأعطال المغلقة (complaint_details): كلها عندها close_time
-          SELECT cd.exchange_name, cd.complain_time, cd.close_time, cd.close_by, cd.cabinet_no,
-                 FALSE AS is_open, cd.time_till_now
+        WITH src_raw AS (
+          -- الأعطال المغلقة (complaint_details): كلها عندها close_time — جدول دائم متراكم
+          SELECT cd.complain_no, cd.exchange_name, cd.complain_time, cd.close_time, cd.close_by, cd.cabinet_no,
+                 FALSE AS is_open, cd.time_till_now, 1 AS pr
           FROM complaint_details cd
           WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
           UNION ALL
-          -- الأعطال المتبقية: 138 عنده close_time، 135 مفتوح ممكن بدون close_time
-          SELECT rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no,
-                 (FLOOR(rc.status_code::numeric)::int = 135) AS is_open, rc.time_till_now
-          FROM remaining_complaints_current rc
+          -- الأعطال المتبقية (135/138): تُقرأ من الجدول التاريخى الدائم remaining_complaints
+          -- (وليس _current المتطاير) حتى لا تختفى الأعطال المُزالة عند رفع ملف 430D أحدث.
+          SELECT rc.complain_no, rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no,
+                 (FLOOR(rc.status_code::numeric)::int = 135) AS is_open, rc.time_till_now, 2 AS pr
+          FROM remaining_complaints rc
           WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
             AND (FLOOR(rc.status_code::numeric)::int = 135 OR rc.close_time IS NOT NULL)
+        ),
+        -- إزالة التكرار بمفتاح رقم الشكوى — تفضيل السجل المغلق (pr=1) على المتبقى (pr=2)
+        src AS (
+          SELECT DISTINCT ON (complain_no)
+                 exchange_name, complain_time, close_time, close_by, cabinet_no, is_open, time_till_now
+          FROM src_raw ORDER BY complain_no, pr
         ),
         base AS (
           SELECT
@@ -3441,9 +3463,10 @@ export async function registerRoutes(
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp, FALSE::bool AS is_open, time_till_now
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
+            -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp,
                    (FLOOR(status_code::numeric)::int = 135)::bool AS is_open, time_till_now
-            FROM remaining_complaints_current WHERE exchange_name ILIKE '%غنايم%'
+            FROM remaining_complaints WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
               AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
