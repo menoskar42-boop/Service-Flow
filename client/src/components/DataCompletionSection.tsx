@@ -58,7 +58,12 @@ export function DataCompletionSection() {
       qc.invalidateQueries({ queryKey: ["/api/work-orders"] });
     },
     onError: (e: Error) => {
-      toast({ title: "خطأ", description: e.message, variant: "destructive", duration: 5000 });
+      // رسالة الخطأ تأتى بصيغة "409: {\"message\":\"...\"}" — ننظّفها للعرض
+      let msg = e.message || "حدث خطأ";
+      const m = msg.match(/^\d+:\s*(.*)$/s);
+      if (m) msg = m[1];
+      try { const j = JSON.parse(msg); if (j?.message) msg = j.message; } catch { /* نص عادى */ }
+      toast({ title: "تعذّر الحفظ", description: msg, variant: "destructive", duration: 6000 });
     },
   });
 

@@ -1406,7 +1406,8 @@ export async function registerRoutes(
     res.json(rows);
   });
 
-  // POST /api/cable-entries — إضافة/تحديث كمية السلك لرقم + نوع امر شغل (فنى + أدمن)
+  // POST /api/cable-entries — إضافة كمية السلك لرقم + نوع امر شغل (فنى + أدمن)
+  // التكرار (نفس الرقم + نفس النوع) مرفوض برسالة خطأ — لتعديل القيمة يُحذف الإدخال أولاً.
   app.post("/api/cable-entries", requireTechOrAdmin, async (req: any, res) => {
     const { phone, workOrderType, cableQuantity } = req.body as Record<string, string>;
     const { local, full } = normalizePhone(phone);
@@ -1416,18 +1417,30 @@ export async function registerRoutes(
     if (!/^\d+(\.\d+)?$/.test(qty)) return res.status(400).json({ message: "كمية السلك يجب أن تكون رقماً (يقبل العشرى)" });
     const userId = req.user.id;
     const userName = req.user.username;
-    const { rows } = await pool.query(
-      `INSERT INTO cable_entries (phone_local, phone_full, work_order_type, cable_quantity, created_by_id, created_by_name)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (phone_local, work_order_type)
-       DO UPDATE SET cable_quantity = EXCLUDED.cable_quantity,
-                     created_by_id = EXCLUDED.created_by_id,
-                     created_by_name = EXCLUDED.created_by_name,
-                     updated_at = now()
-       RETURNING id`,
-      [local, full, type, qty, userId, userName],
+    // رفض التكرار صراحةً: لو الرقم + النوع موجود من قبل
+    const dup = await pool.query(
+      `SELECT created_by_name FROM cable_entries WHERE phone_local = $1 AND work_order_type = $2 LIMIT 1`,
+      [local, type],
     );
-    res.json({ ok: true, id: rows[0]?.id });
+    if (dup.rowCount && dup.rowCount > 0) {
+      return res.status(409).json({
+        message: `سبق إدخال كمية السلك للرقم ${full} (${type}) من قبل بواسطة ${dup.rows[0].created_by_name}. احذف الإدخال السابق أولاً لتعديله.`,
+      });
+    }
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO cable_entries (phone_local, phone_full, work_order_type, cable_quantity, created_by_id, created_by_name)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [local, full, type, qty, userId, userName],
+      );
+      res.json({ ok: true, id: rows[0]?.id });
+    } catch (e: any) {
+      // حماية إضافية ضد سباق التزامن على قيد التفرّد
+      if (e.code === "23505") {
+        return res.status(409).json({ message: `سبق إدخال كمية السلك للرقم ${full} (${type}) من قبل.` });
+      }
+      throw e;
+    }
   });
 
   // DELETE /api/cable-entries/:id — حذف إدخال (فنى + أدمن)
