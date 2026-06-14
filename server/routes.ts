@@ -337,6 +337,25 @@ const REMAINING_COMPLAINTS_COLS = [
   "status_code","cabinet_no","complain_type","time_till_now",
 ];
 
+// ترتيب الفنيين من الأفضل للأسوأ — الأفضل أولاً، وعند التساوى أبجدياً بالاسم.
+const arName = (a: any, b: any) =>
+  String(a.techName ?? "").localeCompare(String(b.techName ?? ""), "ar");
+// تقارير الإزالة: الأعلى نسبة إزالة (24س ثم 48س ثم 120س) هو الأفضل.
+const cmpRemovalTech = (a: any, b: any) =>
+  (Number(b.pct24h ?? 0)  - Number(a.pct24h ?? 0))  ||
+  (Number(b.pct48h ?? 0)  - Number(a.pct48h ?? 0))  ||
+  (Number(b.pct120h ?? 0) - Number(a.pct120h ?? 0)) ||
+  arName(a, b);
+// تقارير التكرار: الأقل نسبة تكرار هو الأفضل (تصاعدى).
+const cmpRepetitionTech = (a: any, b: any) =>
+  (Number(a.repRatio ?? 0) - Number(b.repRatio ?? 0)) || arName(a, b);
+// مقارِن موحّد: صفوف التكرار فيها repRatio، وصفوف الإزالة فيها نِسب pct.
+const cmpTechBest = (a: any, b: any) =>
+  ("repRatio" in (a || {}) || "repRatio" in (b || {})) ? cmpRepetitionTech(a, b) : cmpRemovalTech(a, b);
+// نسخة "بالفنى لكل سنترال": تُبقى السنترالات مجمّعة ثم ترتّب الفنيين داخل كل سنترال.
+const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
+  String(a.centralName ?? "").localeCompare(String(b.centralName ?? ""), "ar") || cmp(a, b);
+
 // Archive a historical table into its archive table when the year (Africa/Cairo)
 // has rolled over since the last upload. Returns the archived year or null.
 async function archiveIfNewYear(histTable: string, archiveTable: string, cols: string[]): Promise<number | null> {
@@ -3110,9 +3129,9 @@ export async function registerRoutes(
       // فصل النتائج إلى أربع مجموعات
       const overall      = rows.find(r => r.centralName === null && r.techName === null) ?? null;
       const byCentral    = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech       = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTech       = rows.filter(r => r.centralName !== null && r.techName !== null).sort(byCentralThen(cmpTechBest));
       const byTechOnly   = rows.filter(r => r.centralName === null && r.techName !== null)
-                               .sort((a, b) => b.total - a.total);
+                               .sort(cmpTechBest);
 
       // إذا لم توجد بيانات — أضف معلومات تشخيصية
       let diag: any = undefined;
@@ -3195,9 +3214,9 @@ export async function registerRoutes(
 
       const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
       const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null).sort(byCentralThen(cmpTechBest));
       const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
-                             .sort((a, b) => b.total - a.total);
+                             .sort(cmpTechBest);
       res.json({ overall, byCentral, byTech, byTechOnly });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -3280,9 +3299,9 @@ export async function registerRoutes(
 
       const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
       const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null).sort(byCentralThen(cmpTechBest));
       const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
-                             .sort((a, b) => b.total - a.total);
+                             .sort(cmpTechBest);
       res.json({ overall, byCentral, byTech, byTechOnly });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -3353,9 +3372,9 @@ export async function registerRoutes(
 
       const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
       const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null).sort(byCentralThen(cmpTechBest));
       const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
-                             .sort((a, b) => b.total - a.total);
+                             .sort(cmpTechBest);
       res.json({ overall, byCentral, byTech, byTechOnly });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -3421,9 +3440,9 @@ export async function registerRoutes(
 
       const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
       const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null).sort(byCentralThen(cmpTechBest));
       const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
-                             .sort((a, b) => b.total - a.total);
+                             .sort(cmpTechBest);
       res.json({ overall, byCentral, byTech, byTechOnly });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -3506,9 +3525,9 @@ export async function registerRoutes(
 
       const overall    = rows.find(r => r.centralName === null && r.techName === null) ?? null;
       const byCentral  = rows.filter(r => r.centralName !== null && r.techName === null);
-      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null);
+      const byTech     = rows.filter(r => r.centralName !== null && r.techName !== null).sort(byCentralThen(cmpTechBest));
       const byTechOnly = rows.filter(r => r.centralName === null && r.techName !== null)
-                             .sort((a, b) => b.total - a.total);
+                             .sort(cmpTechBest);
       res.json({ overall, byCentral, byTech, byTechOnly });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
