@@ -189,6 +189,26 @@ export const workOrders = pgTable("work_orders", {
 
 export type WorkOrder = typeof workOrders.$inferSelect;
 
+// Cable Entries Table — استكمال بيانات: كمية السلك التى يضيفها الفنى يدوياً
+// لكل (رقم تليفون محلى + نوع امر الشغل). رقم امر الشغل فى تقرير التركيبات يكون مثل
+// 88-2657290 لكن الفنى يُدخل 2657290 فقط — نخزّن المحلى (أرقام فقط) ونعيد بناء 88-.
+export const cableEntries = pgTable("cable_entries", {
+  id: serial("id").primaryKey(),
+  phoneLocal: text("phone_local").notNull(),   // 2657290 (أرقام فقط، بدون 88-)
+  phoneFull: text("phone_full").notNull(),     // 88-2657290
+  workOrderType: text("work_order_type").notNull(), // "تركيب" | "نقل"
+  cableQuantity: text("cable_quantity").notNull(),  // كمية السلك بالمتر (رقم، يقبل العشرى)
+  createdById: integer("created_by_id").references(() => users.id),
+  createdByName: text("created_by_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  // كل (رقم محلى + نوع) مرة واحدة — يُحدَّث عند إعادة الإدخال
+  phoneTypeUniq: unique("cable_entries_phone_type_uniq").on(t.phoneLocal, t.workOrderType),
+}));
+
+export type CableEntry = typeof cableEntries.$inferSelect;
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users);
 export const insertOrderSchema = createInsertSchema(orders).omit({

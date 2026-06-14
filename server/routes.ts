@@ -1352,16 +1352,90 @@ export async function registerRoutes(
     if (dateTo) { params.push(dateTo); conds.push(`close_date < ($${params.length}::date + interval '1 day')`); }
 
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    // كمية السلك: تؤخذ من work_orders لو موجودة، وإلا من cable_entries (إدخال الفنى يدوياً)
+    // المطابقة: رقم تليفون محلى (إزالة 88- البادئة) + نوع امر الشغل (نقل / تركيب).
     const { rows } = await pool.query(
-      `SELECT id, central_name AS "centralName", work_order_id AS "workOrderId",
-              phone_number AS "phoneNumber", service_type AS "serviceType",
-              close_date AS "closeDate", item_name AS "itemName",
-              cable_quantity AS "cableQuantity", tech_name AS "techName"
-       FROM work_orders ${where}
-       ORDER BY close_date ASC`,
+      `SELECT w.id, w.central_name AS "centralName", w.work_order_id AS "workOrderId",
+              w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
+              w.close_date AS "closeDate", w.item_name AS "itemName",
+              COALESCE(NULLIF(w.cable_quantity, ''), ce.cable_quantity) AS "cableQuantity",
+              w.tech_name AS "techName"
+       FROM work_orders w
+       LEFT JOIN cable_entries ce
+         ON ce.phone_local = CASE
+              WHEN regexp_replace(w.phone_number, '\\D', '', 'g') LIKE '88%'
+                   AND length(regexp_replace(w.phone_number, '\\D', '', 'g')) > 7
+              THEN substring(regexp_replace(w.phone_number, '\\D', '', 'g') FROM 3)
+              ELSE regexp_replace(w.phone_number, '\\D', '', 'g')
+            END
+        AND ce.work_order_type = CASE WHEN trim(w.service_type) = 'نقل' THEN 'نقل' ELSE 'تركيب' END
+       ${where}
+       ORDER BY w.close_date ASC`,
       params,
     );
     res.json(rows);
+  });
+
+  // === استكمال بيانات: كمية السلك (cable_entries) ===
+
+  // يحوّل رقم التليفون الذى يدخله الفنى إلى صيغة محلية موحّدة (أرقام فقط، بدون 88-)
+  // ثم يعيد بناء الصيغة الكاملة 88-<local>. يقبل: 2657290 | 88-2657290 | 882657290.
+  const normalizePhone = (raw: string) => {
+    let digits = String(raw || "").replace(/\D/g, "");
+    if (digits.startsWith("88") && digits.length > 7) digits = digits.slice(2);
+    return { local: digits, full: digits ? `88-${digits}` : "" };
+  };
+
+  // GET /api/cable-entries — قائمة الإدخالات (فنى + أدمن)
+  app.get("/api/cable-entries", requireTechOrAdmin, async (req, res) => {
+    const { q } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q && q.trim()) {
+      params.push(`%${q.trim()}%`);
+      where = `WHERE phone_local ILIKE $1 OR phone_full ILIKE $1`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, phone_local AS "phoneLocal", phone_full AS "phoneFull",
+              work_order_type AS "workOrderType", cable_quantity AS "cableQuantity",
+              created_by_name AS "createdByName", created_at AS "createdAt", updated_at AS "updatedAt"
+       FROM cable_entries ${where}
+       ORDER BY updated_at DESC`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // POST /api/cable-entries — إضافة/تحديث كمية السلك لرقم + نوع امر شغل (فنى + أدمن)
+  app.post("/api/cable-entries", requireTechOrAdmin, async (req: any, res) => {
+    const { phone, workOrderType, cableQuantity } = req.body as Record<string, string>;
+    const { local, full } = normalizePhone(phone);
+    if (!local || local.length < 5) return res.status(400).json({ message: "رقم تليفون غير صالح" });
+    const type = workOrderType === "نقل" ? "نقل" : "تركيب";
+    const qty = String(cableQuantity ?? "").trim();
+    if (!/^\d+(\.\d+)?$/.test(qty)) return res.status(400).json({ message: "كمية السلك يجب أن تكون رقماً (يقبل العشرى)" });
+    const userId = req.user.id;
+    const userName = req.user.username;
+    const { rows } = await pool.query(
+      `INSERT INTO cable_entries (phone_local, phone_full, work_order_type, cable_quantity, created_by_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (phone_local, work_order_type)
+       DO UPDATE SET cable_quantity = EXCLUDED.cable_quantity,
+                     created_by_id = EXCLUDED.created_by_id,
+                     created_by_name = EXCLUDED.created_by_name,
+                     updated_at = now()
+       RETURNING id`,
+      [local, full, type, qty, userId, userName],
+    );
+    res.json({ ok: true, id: rows[0]?.id });
+  });
+
+  // DELETE /api/cable-entries/:id — حذف إدخال (فنى + أدمن)
+  app.delete("/api/cable-entries/:id", requireTechOrAdmin, async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id || isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
+    await pool.query(`DELETE FROM cable_entries WHERE id = $1`, [id]);
+    res.json({ ok: true });
   });
 
   // === Multi-file upload section ===

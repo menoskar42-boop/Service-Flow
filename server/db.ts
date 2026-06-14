@@ -429,6 +429,22 @@ export async function ensureSchema() {
     )
   `);
 
+  // cable_entries — استكمال بيانات: كمية السلك التى يضيفها الفنى يدوياً
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cable_entries (
+      id serial PRIMARY KEY,
+      phone_local text NOT NULL,
+      phone_full text NOT NULL,
+      work_order_type text NOT NULL,
+      cable_quantity text NOT NULL,
+      created_by_id integer REFERENCES users(id),
+      created_by_name text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT cable_entries_phone_type_uniq UNIQUE (phone_local, work_order_type)
+    )
+  `);
+
   // time_till_now — المدة المحسوبة مسبقاً من ملف 430D (except status 135)
   await pool.query(`ALTER TABLE complaint_details          ADD COLUMN IF NOT EXISTS time_till_now numeric`);
   await pool.query(`ALTER TABLE complaint_details_sod      ADD COLUMN IF NOT EXISTS time_till_now numeric`);
