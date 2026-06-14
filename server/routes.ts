@@ -3358,8 +3358,9 @@ export async function registerRoutes(
           FROM complaint_details
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           UNION ALL
+          -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
           SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 2 AS src_priority
-          FROM remaining_complaints_current
+          FROM remaining_complaints
           WHERE exchange_name ILIKE '%غنايم%'
             AND FLOOR(status_code::numeric)::int IN (135, 138)
             AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
@@ -3558,8 +3559,9 @@ export async function registerRoutes(
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
+            -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp
-            FROM remaining_complaints_current WHERE exchange_name ILIKE '%غنايم%'
+            FROM remaining_complaints WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
               AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
