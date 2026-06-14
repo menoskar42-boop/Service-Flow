@@ -96,6 +96,24 @@ function smartSheet(rows: any[][], anchors: string[], scanRows = 25) {
   return { headerRowIdx, header, find, findExact, dataRows };
 }
 
+// Duration cell → hours (number) | null.
+// Handles two formats found in 430D:
+//   • Numeric fraction-of-day (تفاصيل متبقى): 0.8285 → 19.9 h
+//   • Text "d:h:m" (التفاصيل):  "0:21:34" → 21.6 h
+function toHours(v: any): number | null {
+  if (v == null || v === "") return null;
+  if (typeof v === "number" && v > 0) return Math.round(v * 24 * 10) / 10;
+  const s = String(v).trim();
+  if (!s) return null;
+  const parts = s.split(":");
+  if (parts.length < 2) return null;
+  const d = parseFloat(parts[0]) || 0;
+  const h = parseFloat(parts[1]) || 0;
+  const m = parts.length > 2 ? (parseFloat(parts[2]) || 0) : 0;
+  const total = d * 24 + h + m / 60;
+  return total > 0 ? Math.round(total * 10) / 10 : null;
+}
+
 // Excel serial date (or string) → JS Date | null
 function toDate(v: any): Date | null {
   if (v == null || v === "") return null;
@@ -1540,7 +1558,8 @@ export async function registerRoutes(
         const iSide     = find("complain side name", "side name");
         const iType     = find("complain type name", "complain type", "نوع العطل");
         const iCloseBy  = find("close by", "أغلق بواسطة");
-        const iTimeTillNow1 = find("except 135");
+        // Arabic header: "فترة الاستمرار...استبعاد الحالة 135" | English: "time till now(except 135)"
+        const iTimeTillNow1 = find("except 135", "استبعاد الحالة 135");
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
@@ -1549,10 +1568,7 @@ export async function registerRoutes(
           const no = String(g(r, iNo)).trim();
           if (!no || no === "0" || seen.has(no)) continue;
           seen.add(no);
-          const rawTtN1 = iTimeTillNow1 >= 0 ? r[iTimeTillNow1] : null;
-          const timeTillNow1 = (typeof rawTtN1 === "number" && rawTtN1 > 0)
-            ? Math.round(rawTtN1 * 24 * 10) / 10
-            : null;
+          const timeTillNow1 = toHours(iTimeTillNow1 >= 0 ? r[iTimeTillNow1] : null);
           inserts.push([
             no,
             String(g(r, iSector)) || null,
@@ -1617,10 +1633,7 @@ export async function registerRoutes(
           const no = String(g(r, iNo)).trim();
           if (!no || no === "0" || seen.has(no)) continue;
           seen.add(no);
-          const rawTtN2 = iTimeTillNow2 >= 0 ? r[iTimeTillNow2] : null;
-          const timeTillNow2 = (typeof rawTtN2 === "number" && rawTtN2 > 0)
-            ? Math.round(rawTtN2 * 24 * 10) / 10
-            : null;
+          const timeTillNow2 = toHours(iTimeTillNow2 >= 0 ? r[iTimeTillNow2] : null);
           inserts.push([
             no,
             String(g(r, iSector)) || null,
