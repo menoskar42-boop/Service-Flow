@@ -196,6 +196,18 @@ export function InstallationsReport({
 
   const colCount = regularized ? 18 : 17;
 
+  // إحصائية حسب التصنيف الزمنى (مثل الأعطال الحالية)
+  const stats = items.reduce(
+    (acc, o) => {
+      const label = classify(o.creationDate).label;
+      if (label === "24 ساعة") acc.h24++;
+      else if (label === "48 ساعة") acc.h48++;
+      else if (label === "متبقيات") acc.rem++;
+      return acc;
+    },
+    { h24: 0, h48: 0, rem: 0 },
+  );
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
@@ -247,6 +259,26 @@ export function InstallationsReport({
         >
           <Printer className="w-4 h-4" /> PDF
         </Button>
+      </div>
+
+      {/* بطاقات الإحصائية الزمنية */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="rounded-lg border bg-white p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-foreground">{items.length}</div>
+          <div className="text-xs text-muted-foreground mt-1">الإجمالي</div>
+        </div>
+        <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-green-700">{stats.h24}</div>
+          <div className="text-xs text-green-700 mt-1">خلال ٢٤ ساعة</div>
+        </div>
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-yellow-700">{stats.h48}</div>
+          <div className="text-xs text-yellow-700 mt-1">خلال ٤٨ ساعة</div>
+        </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-center shadow-sm">
+          <div className="text-2xl font-bold text-red-700">{stats.rem}</div>
+          <div className="text-xs text-red-700 mt-1">متبقيات (أكثر من ٤٨ ساعة)</div>
+        </div>
       </div>
 
       {/* Table */}
