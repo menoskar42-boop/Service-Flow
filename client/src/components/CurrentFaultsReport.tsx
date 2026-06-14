@@ -38,8 +38,15 @@ interface CurrentFault {
   centralCode: string | null;
 }
 
-const fmtDt = (d: string | null) =>
-  d ? format(new Date(d), "yyyy/MM/dd HH:mm") : "-";
+// الأوقات قادمة من ملف TicketQueue بتوقيت القاهرة لكنها مخزَّنة كـ UTC — نعرضها
+// كما هى (UTC) دون إزاحة توقيت المتصفح حتى تطابق الملف (مثل 22:00 وليس 01:00).
+const fmtDt = (d: string | null) => {
+  if (!d) return "-";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "-";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
 
 const faultBadge = (cls: string | null) => {
   if (!cls) return null;

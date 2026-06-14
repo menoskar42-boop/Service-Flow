@@ -36,8 +36,14 @@ interface RegularizedFault {
   centralCode: string | null;
 }
 
-const fmtDt = (d: string | null) =>
-  d ? format(new Date(d), "yyyy/MM/dd HH:mm") : "-";
+// الأوقات من ملف TicketQueue مخزَّنة كـ UTC — تُعرض كما هى دون إزاحة المتصفح.
+const fmtDt = (d: string | null) => {
+  if (!d) return "-";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "-";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
 
 export function RegularizedFaultsRangeReport() {
   const [central, setCentral] = useState("");
