@@ -53,11 +53,20 @@ export function CabinetAdslFaultsReport() {
     const d = Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
     return d > 0 ? d : 1;
   })();
+  // مُضاعِف الإسقاط لنهاية الشهر: لو الفترة داخل شهر واحد → عدد أيام ذلك الشهر
+  // (30/31/28/29)؛ لو امتدت لأكثر من شهر → 31.
+  const monthDays = (() => {
+    if (!dateFrom || !dateTo) return 31;
+    const [y1, m1] = dateFrom.split("-").map(Number);
+    const [y2, m2] = dateTo.split("-").map(Number);
+    if (y1 === y2 && m1 === m2) return new Date(y1, m1, 0).getDate();
+    return 31;
+  })();
   // عدد الأعطال لكل 1000 مشترك = (الأعطال × 1000 ÷ الشغال) مقرّباً لرقمين عشريين
   const per1000 = (f: number, w: number) => (Number(w) > 0 ? Math.round((Number(f) * 1000 / Number(w)) * 100) / 100 : 0);
-  // المتوقع بنهاية الشهر = (الأعطال ÷ أيام الفترة) × 31 × 1000 ÷ الشغال
+  // المتوقع بنهاية الشهر = (الأعطال ÷ أيام الفترة) × أيام الشهر × 1000 ÷ الشغال
   const projected = (f: number, w: number) =>
-    (Number(w) > 0 ? Math.round((Number(f) / periodDays) * 31 * 1000 / Number(w) * 100) / 100 : 0);
+    (Number(w) > 0 ? Math.round((Number(f) / periodDays) * monthDays * 1000 / Number(w) * 100) / 100 : 0);
 
   const passMin = (f: number, w: number) => {
     if (minFaults !== "" && !(Number(f) > Number(minFaults))) return false;
