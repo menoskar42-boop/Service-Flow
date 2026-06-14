@@ -444,6 +444,9 @@ export async function ensureSchema() {
       CONSTRAINT cable_entries_phone_type_uniq UNIQUE (phone_local, work_order_type)
     )
   `);
+  // قفل التعديل بعد الطباعة
+  await pool.query(`ALTER TABLE cable_entries ADD COLUMN IF NOT EXISTS printed_at timestamptz`);
+  await pool.query(`ALTER TABLE cable_entries ADD COLUMN IF NOT EXISTS edit_unlocked_at timestamptz`);
 
   // manual_close_by — فنى الإغلاق المُضاف يدوياً (مرجعية أولى لشكوى فنى إغلاقها غير معروف)
   await pool.query(`

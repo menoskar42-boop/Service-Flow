@@ -200,6 +200,9 @@ export const cableEntries = pgTable("cable_entries", {
   cableQuantity: text("cable_quantity").notNull(),  // كمية السلك بالمتر (رقم، يقبل العشرى)
   createdById: integer("created_by_id").references(() => users.id),
   createdByName: text("created_by_name").notNull(),
+  // قفل التعديل بعد طباعة تقرير أوامر الشغل
+  printedAt: timestamp("printed_at", { withTimezone: true }),       // وقت الطباعة (يقفل التعديل)
+  editUnlockedAt: timestamp("edit_unlocked_at", { withTimezone: true }), // منح الأدمن صلاحية تعديل (خلال 3 أيام)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({
