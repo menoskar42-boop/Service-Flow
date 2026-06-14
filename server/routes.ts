@@ -1524,7 +1524,7 @@ export async function registerRoutes(
       const iWorkspec = find("currentworkspec", "workspec");
       const iNotes    = find("notes", "ملاحظات");
       const iDesc     = find("الوصف", "description");
-      const iMobile   = find("رقم الموبايل", "mobile");
+      const iMobile   = find("رقم المحمول", "المحمول", "محمول", "رقم الموبايل", "موبايل", "mobile");
       const iCustomer = find("اسم العميل", "customer name", "customer");
       const iAddress  = find("العنوان", "address");
       const iRef      = find("رقم المرجع", "reference no", "reference");
