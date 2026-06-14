@@ -241,13 +241,22 @@ async function replaceTable(table: string, cols: string[], rows: any[][], userId
   }
 }
 
-// Accumulate into a historical table (dedup via ON CONFLICT DO NOTHING).
-async function accumulateTable(table: string, cols: string[], conflict: string, rows: any[][], userId: number): Promise<number> {
+// Accumulate into a historical table.
+// When updateCols is provided → ON CONFLICT DO UPDATE SET col = COALESCE(EXCLUDED.col, table.col)
+// so that previously-null columns get filled in on re-upload without overwriting existing data.
+// Without updateCols → DO NOTHING (original behaviour for tables that don't need backfill).
+async function accumulateTable(
+  table: string, cols: string[], conflict: string, rows: any[][], userId: number,
+  updateCols?: string[],
+): Promise<number> {
   if (!rows.length) return 0;
   const allCols = [...cols, "uploaded_by_id"];
   const n = allCols.length;
   let inserted = 0;
   const BATCH = 200;
+  const conflictClause = (updateCols && updateCols.length)
+    ? `ON CONFLICT (${conflict}) DO UPDATE SET ${updateCols.map(c => `${c} = COALESCE(EXCLUDED.${c}, ${table}.${c})`).join(", ")}`
+    : `ON CONFLICT (${conflict}) DO NOTHING`;
   for (let s = 0; s < rows.length; s += BATCH) {
     const chunk = rows.slice(s, s + BATCH);
     const ph = chunk.map((_, ci) => {
@@ -256,7 +265,7 @@ async function accumulateTable(table: string, cols: string[], conflict: string, 
     }).join(",");
     const vals = chunk.flatMap((r) => [...r, userId]);
     const res = await pool.query(
-      `INSERT INTO ${table} (${allCols.join(",")}) VALUES ${ph} ON CONFLICT (${conflict}) DO NOTHING`,
+      `INSERT INTO ${table} (${allCols.join(",")}) VALUES ${ph} ${conflictClause}`,
       vals,
     );
     inserted += res.rowCount ?? 0;
@@ -273,15 +282,13 @@ async function accumulateTable(table: string, cols: string[], conflict: string, 
 async function writeThreeDestinations(opts: {
   histTable: string; sodTable: string; curTable: string;
   cols: string[]; conflict: string; rows: any[][]; userId: number;
+  updateCols?: string[];
 }) {
   const firstToday = await isFirstUploadToday(opts.sodTable);
-  const hist = await accumulateTable(opts.histTable, opts.cols, opts.conflict, opts.rows, opts.userId);
+  const hist = await accumulateTable(opts.histTable, opts.cols, opts.conflict, opts.rows, opts.userId, opts.updateCols);
   const current = await replaceTable(opts.curTable, opts.cols, opts.rows, opts.userId);
-  // first upload of a new day clears the previous day's snapshot first; then both
-  // the fresh-day and same-day paths accumulate (ON CONFLICT DO NOTHING),
-  // tolerating duplicate keys inside the file.
   if (firstToday) await pool.query(`DELETE FROM ${opts.sodTable}`);
-  const startOfDay = await accumulateTable(opts.sodTable, opts.cols, opts.conflict, opts.rows, opts.userId);
+  const startOfDay = await accumulateTable(opts.sodTable, opts.cols, opts.conflict, opts.rows, opts.userId, opts.updateCols);
   return { hist, current, startOfDay, sodReplaced: firstToday, total: opts.rows.length };
 }
 
@@ -1564,13 +1571,15 @@ export async function registerRoutes(
           ]);
         }
         detailsTotal = inserts.length;
+        // cols that may have been null in older uploads — backfill them on re-upload
+        const detailsUpdateCols = ["close_by", "time_till_now", "complain_side_name", "complain_type_name", "cabinet_no", "msan_id"];
         // All 3 destinations accumulate — no full replace — so uploading multiple
         // parts of the national 430D file combines them instead of overwriting.
-        const r1hist = await accumulateTable("complaint_details", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId);
-        await accumulateTable("complaint_details_current", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId);
+        const r1hist = await accumulateTable("complaint_details", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId, detailsUpdateCols);
+        await accumulateTable("complaint_details_current", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId, detailsUpdateCols);
         const firstToday1 = await isFirstUploadToday("complaint_details_sod");
         if (firstToday1) await pool.query("DELETE FROM complaint_details_sod");
-        await accumulateTable("complaint_details_sod", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId);
+        await accumulateTable("complaint_details_sod", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId, detailsUpdateCols);
         detailsInserted = r1hist;
       }
 
@@ -1642,6 +1651,7 @@ export async function registerRoutes(
           conflict: "complain_no",
           rows: inserts,
           userId,
+          updateCols: ["close_by", "time_till_now", "cabinet_no", "status_code"],
         });
         remainingInserted = r2.hist;
       }
