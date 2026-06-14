@@ -28,6 +28,8 @@ export function CabinetAdslFaultsReport() {
   const [dateTo,   setDateTo]   = useState(today);
   const [central, setCentral]   = useState("");
   const [q, setQ]               = useState("");
+  const [minFaults, setMinFaults]       = useState("");  // فلتر: عدد الأعطال أكبر من
+  const [minProjected, setMinProjected] = useState("");  // فلتر: أعطال الألف المتوقع أكبر من
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
     queryKey: ["/api/reports/cabinet-adsl-faults", dateFrom, dateTo, central, q],
@@ -43,13 +45,31 @@ export function CabinetAdslFaultsReport() {
     },
   });
 
-  const totWorking = rows.reduce((s, r) => s + (Number(r.workingAdsl) || 0), 0);
-  const totFaults  = rows.reduce((s, r) => s + (Number(r.faultCount) || 0), 0);
+  // عدد أيام الفترة المعروضة بالتقرير (شامل الطرفين)
+  const periodDays = (() => {
+    if (!dateFrom || !dateTo) return 31;
+    const d = Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
+    return d > 0 ? d : 1;
+  })();
   // عدد الأعطال لكل 1000 مشترك = (الأعطال × 1000 ÷ الشغال) مقرّباً لرقمين عشريين
   const per1000 = (f: number, w: number) => (Number(w) > 0 ? Math.round((Number(f) * 1000 / Number(w)) * 100) / 100 : 0);
-  const totPer1000 = per1000(totFaults, totWorking);
+  // المتوقع بنهاية الشهر = (الأعطال ÷ أيام الفترة) × 31 × 1000 ÷ الشغال
+  const projected = (f: number, w: number) =>
+    (Number(w) > 0 ? Math.round((Number(f) / periodDays) * 31 * 1000 / Number(w) * 100) / 100 : 0);
+
+  // فلترة العميل: عدد الأعطال أكبر من / المتوقع أكبر من
+  const filtered = rows.filter((r) => {
+    if (minFaults !== "" && !(Number(r.faultCount) > Number(minFaults))) return false;
+    if (minProjected !== "" && !(projected(r.faultCount, r.workingAdsl) > Number(minProjected))) return false;
+    return true;
+  });
   // ترتيب تنازلى حسب عدد الأعطال فى الألف لكل كابينة (الأعلى أولاً)
-  const sortedRows = [...rows].sort((a, b) => per1000(b.faultCount, b.workingAdsl) - per1000(a.faultCount, a.workingAdsl));
+  const sortedRows = [...filtered].sort((a, b) => per1000(b.faultCount, b.workingAdsl) - per1000(a.faultCount, a.workingAdsl));
+
+  const totWorking = sortedRows.reduce((s, r) => s + (Number(r.workingAdsl) || 0), 0);
+  const totFaults  = sortedRows.reduce((s, r) => s + (Number(r.faultCount) || 0), 0);
+  const totPer1000 = per1000(totFaults, totWorking);
+  const totProjected = projected(totFaults, totWorking);
 
   const handleExportExcel = () => {
     const data: any[] = sortedRows.map((r, i) => ({
@@ -61,10 +81,12 @@ export function CabinetAdslFaultsReport() {
       "الشغال ADSL": r.workingAdsl,
       "عدد الأعطال": r.faultCount,
       "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
+      "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
     }));
     data.push({
       "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "كود الكابينة (MSAN)": "",
-      "اسم الفنى": "", "الشغال ADSL": totWorking, "عدد الأعطال": totFaults, "أعطال لكل 1000 مشترك": totPer1000,
+      "اسم الفنى": "", "الشغال ADSL": totWorking, "عدد الأعطال": totFaults,
+      "أعطال لكل 1000 مشترك": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected,
     });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -90,6 +112,7 @@ export function CabinetAdslFaultsReport() {
           <td>${esc(r.workingAdsl)}</td>
           <td>${esc(r.faultCount)}</td>
           <td>${esc(per1000(r.faultCount, r.workingAdsl))}</td>
+          <td>${esc(projected(r.faultCount, r.workingAdsl))}</td>
         </tr>`).join("");
       if (pg === total - 1) {
         body += `<tr class="total">
@@ -97,6 +120,7 @@ export function CabinetAdslFaultsReport() {
           <td>${esc(totWorking)}</td>
           <td>${esc(totFaults)}</td>
           <td>${esc(totPer1000)}</td>
+          <td>${esc(totProjected)}</td>
         </tr>`;
       }
       pages += `
@@ -104,7 +128,7 @@ export function CabinetAdslFaultsReport() {
           <h2>${esc(title)}</h2>
           <div class="pageno">صفحة ${pg + 1} من ${total}</div>
           <table>
-            <thead><tr><th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>كود الكابينة (MSAN)</th><th>اسم الفنى</th><th>الشغال ADSL</th><th>عدد الأعطال</th><th>أعطال / 1000 مشترك</th></tr></thead>
+            <thead><tr><th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>كود الكابينة (MSAN)</th><th>اسم الفنى</th><th>الشغال ADSL</th><th>عدد الأعطال</th><th>أعطال / 1000</th><th>متوقع نهاية الشهر</th></tr></thead>
             <tbody>${body}</tbody>
           </table>
         </section>`;
@@ -123,7 +147,7 @@ export function CabinetAdslFaultsReport() {
         .page { background: #fff; padding: 14px; margin: 12px auto; max-width: 900px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
         .toolbar { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e2e8f0; padding: 10px 14px; display: flex; gap: 10px; align-items: center; }
         .toolbar button { background: #dc2626; color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
-        @media print { body { background: #fff; } .toolbar { display: none; } .page { box-shadow: none; margin: 0; max-width: none; page-break-after: always; } @page { size: A4 portrait; margin: 10mm; } }
+        @media print { body { background: #fff; } .toolbar { display: none; } .page { box-shadow: none; margin: 0; max-width: none; page-break-after: always; } @page { size: A4 landscape; margin: 10mm; } }
       </style></head><body>
       <div class="toolbar"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
         <span>اختر "حفظ بصيغة PDF" كوجهة الطباعة.</span></div>
@@ -163,6 +187,14 @@ export function CabinetAdslFaultsReport() {
             className="w-full sm:max-w-xs text-sm"
             dir="rtl"
           />
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">الأعطال أكبر من</label>
+            <Input type="number" inputMode="numeric" value={minFaults} onChange={(e) => setMinFaults(e.target.value)} placeholder="مثال: 5" className="w-full sm:w-28 text-sm" dir="ltr" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1">المتوقع أكبر من</label>
+            <Input type="number" inputMode="decimal" value={minProjected} onChange={(e) => setMinProjected(e.target.value)} placeholder="مثال: 20" className="w-full sm:w-28 text-sm" dir="ltr" />
+          </div>
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={rows.length === 0} className="text-green-700 border-green-200 gap-1">
@@ -177,7 +209,7 @@ export function CabinetAdslFaultsReport() {
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-lg border bg-white p-3 text-center shadow-sm">
-          <div className="text-2xl font-bold text-foreground">{rows.length}</div>
+          <div className="text-2xl font-bold text-foreground">{sortedRows.length}</div>
           <div className="text-xs text-muted-foreground mt-1">عدد الكباين</div>
         </div>
         <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center shadow-sm">
@@ -204,12 +236,13 @@ export function CabinetAdslFaultsReport() {
                 <TableHead className="text-right font-bold">الشغال ADSL</TableHead>
                 <TableHead className="text-right font-bold">عدد الأعطال</TableHead>
                 <TableHead className="text-right font-bold">أعطال / ١٠٠٠ مشترك</TableHead>
+                <TableHead className="text-right font-bold">المتوقع نهاية الشهر</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-14 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-14 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد بيانات — تأكد من رفع ملف الفنيين بأرقام الكباين وملف مشتركى FTTH/ADSL"}
                   </TableCell>
                 </TableRow>
@@ -225,6 +258,7 @@ export function CabinetAdslFaultsReport() {
                       <TableCell className="text-center font-bold text-green-700">{r.workingAdsl}</TableCell>
                       <TableCell className="text-center font-bold text-red-700">{r.faultCount}</TableCell>
                       <TableCell className="text-center font-bold text-blue-700">{per1000(r.faultCount, r.workingAdsl)}</TableCell>
+                      <TableCell className="text-center font-bold text-purple-700">{projected(r.faultCount, r.workingAdsl)}</TableCell>
                     </TableRow>
                   ))}
                   {/* إجمالى الإدارة */}
@@ -233,6 +267,7 @@ export function CabinetAdslFaultsReport() {
                     <TableCell className="text-center text-white font-bold">{totWorking}</TableCell>
                     <TableCell className="text-center text-white font-bold">{totFaults}</TableCell>
                     <TableCell className="text-center text-white font-bold">{totPer1000}</TableCell>
+                    <TableCell className="text-center text-white font-bold">{totProjected}</TableCell>
                   </TableRow>
                 </>
               )}
