@@ -92,10 +92,10 @@ export default function Dashboard() {
   const { orders, isLoading: ordersLoading } = useOrders();
   const [, setLocation] = useLocation();
   const [adminTab, setAdminTab] = useState<AdminTab>("orders");
-  const [reportTab, setReportTab] = useState<ReportTab>("box-rejections");
+  const [reportTab, setReportTab] = useState<ReportTab>("current-faults");
   // مجموعات التقارير القابلة للطى — المجموعة التى تحوى التقرير النشط مفتوحة افتراضياً
   const [openGroups, setOpenGroups] = useState<string[]>(() => {
-    const g = REPORT_GROUPS.find((grp) => grp.items.some((it) => it.id === "box-rejections"));
+    const g = REPORT_GROUPS.find((grp) => grp.items.some((it) => it.id === "current-faults"));
     return g ? [g.label] : [];
   });
   const toggleGroup = (label: string) =>
