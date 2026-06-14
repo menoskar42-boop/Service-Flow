@@ -209,6 +209,20 @@ export const cableEntries = pgTable("cable_entries", {
 
 export type CableEntry = typeof cableEntries.$inferSelect;
 
+// Manual Close-By Table — فنى الإغلاق الذى يضيفه الأدمن يدوياً لشكوى فنى إغلاقها
+// غير معروف. يصبح "المرجعية الأولى" فى عرض التجاوزات وفى إحصائيات الفنيين.
+export const manualCloseBy = pgTable("manual_close_by", {
+  id: serial("id").primaryKey(),
+  complainNo: text("complain_no").notNull().unique(),
+  techName: text("tech_name").notNull(),
+  assignedById: integer("assigned_by_id").references(() => users.id),
+  assignedByName: text("assigned_by_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type ManualCloseBy = typeof manualCloseBy.$inferSelect;
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users);
 export const insertOrderSchema = createInsertSchema(orders).omit({

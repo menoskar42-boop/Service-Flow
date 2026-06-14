@@ -1470,6 +1470,36 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // === فنى الإغلاق اليدوى (manual_close_by) — أدمن فقط ===
+
+  // POST /api/manual-close-by — تعيين/تحديث فنى إغلاق يدوى لشكوى (مرجعية أولى)
+  app.post("/api/manual-close-by", requireAdmin, async (req: any, res) => {
+    const { complainNo, techName } = req.body as Record<string, string>;
+    const no = String(complainNo ?? "").trim();
+    const tech = String(techName ?? "").trim();
+    if (!no) return res.status(400).json({ message: "رقم الشكوى مطلوب" });
+    if (!tech) return res.status(400).json({ message: "اسم الفنى مطلوب" });
+    await pool.query(
+      `INSERT INTO manual_close_by (complain_no, tech_name, assigned_by_id, assigned_by_name)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (complain_no)
+       DO UPDATE SET tech_name = EXCLUDED.tech_name,
+                     assigned_by_id = EXCLUDED.assigned_by_id,
+                     assigned_by_name = EXCLUDED.assigned_by_name,
+                     updated_at = now()`,
+      [no, tech, req.user.id, req.user.username],
+    );
+    res.json({ ok: true });
+  });
+
+  // DELETE /api/manual-close-by/:complainNo — إلغاء التعيين اليدوى
+  app.delete("/api/manual-close-by/:complainNo", requireAdmin, async (req, res) => {
+    const no = String(req.params.complainNo ?? "").trim();
+    if (!no) return res.status(400).json({ message: "رقم الشكوى مطلوب" });
+    await pool.query(`DELETE FROM manual_close_by WHERE complain_no = $1`, [no]);
+    res.json({ ok: true });
+  });
+
   // === Multi-file upload section ===
 
   // POST /api/maintenance-orders/import — Work_Orders / wfm (3 destinations)
@@ -3094,7 +3124,9 @@ export async function registerRoutes(
           SELECT
             cd.exchange_name                                AS central_name,
             COALESCE(
-              -- أولاً: close_by كود عامل مباشر
+              -- مرجعية أولى: فنى الإغلاق المُضاف يدوياً بواسطة الأدمن
+              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = cd.complain_no LIMIT 1),
+              -- ثانياً: close_by كود عامل مباشر
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
               -- احتياطاً: التبعية بالكابينة والسنترال
               (SELECT tn.tech_name FROM cabinet_technicians ct
@@ -3175,6 +3207,7 @@ export async function registerRoutes(
           SELECT
             rc.exchange_name                                AS central_name,
             COALESCE(
+              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = rc.complain_no LIMIT 1),
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = rc.close_by LIMIT 1),
               (SELECT tn.tech_name FROM cabinet_technicians ct
                  JOIN technician_names tn ON tn.worker_code = ct.worker_code
@@ -3255,13 +3288,14 @@ export async function registerRoutes(
         -- إزالة التكرار بمفتاح رقم الشكوى — تفضيل السجل المغلق (pr=1) على المتبقى (pr=2)
         src AS (
           SELECT DISTINCT ON (complain_no)
-                 exchange_name, complain_time, close_time, close_by, cabinet_no, is_open, time_till_now
+                 complain_no, exchange_name, complain_time, close_time, close_by, cabinet_no, is_open, time_till_now
           FROM src_raw ORDER BY complain_no, pr
         ),
         base AS (
           SELECT
             src.exchange_name                               AS central_name,
             COALESCE(
+              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = src.complain_no LIMIT 1),
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
               (SELECT tn.tech_name FROM cabinet_technicians ct
                  JOIN technician_names tn ON tn.worker_code = ct.worker_code
@@ -3600,9 +3634,11 @@ export async function registerRoutes(
                 COALESCE(src.time_till_now, EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0)
             END, 1)                                                                      AS hours,
             COALESCE(
+              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = src.complain_no LIMIT 1),
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
               'غير معروف'
             )                                                                            AS "closeByName",
+            EXISTS (SELECT 1 FROM manual_close_by mcb WHERE mcb.complain_no = src.complain_no) AS "closeByManual",
             COALESCE(
               (SELECT tn.tech_name FROM cabinet_technicians ct
                  JOIN technician_names tn ON tn.worker_code = ct.worker_code

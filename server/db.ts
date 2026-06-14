@@ -445,6 +445,19 @@ export async function ensureSchema() {
     )
   `);
 
+  // manual_close_by — فنى الإغلاق المُضاف يدوياً (مرجعية أولى لشكوى فنى إغلاقها غير معروف)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS manual_close_by (
+      id serial PRIMARY KEY,
+      complain_no text NOT NULL UNIQUE,
+      tech_name text NOT NULL,
+      assigned_by_id integer REFERENCES users(id),
+      assigned_by_name text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // time_till_now — المدة المحسوبة مسبقاً من ملف 430D (except status 135)
   await pool.query(`ALTER TABLE complaint_details          ADD COLUMN IF NOT EXISTS time_till_now numeric`);
   await pool.query(`ALTER TABLE complaint_details_sod      ADD COLUMN IF NOT EXISTS time_till_now numeric`);
