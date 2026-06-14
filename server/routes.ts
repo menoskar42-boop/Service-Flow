@@ -3005,7 +3005,8 @@ export async function registerRoutes(
       const { dateFrom, dateTo } = req.query as Record<string, string>;
       const params: any[] = [];
       const conds: string[] = [
-        `rc.close_time IS NOT NULL`,
+        // الـ 135 مفتوح (close_time ممكن NULL)، الـ 138 لازم يكون عنده close_time
+        `(FLOOR(rc.status_code::numeric)::int = 135 OR rc.close_time IS NOT NULL)`,
         `rc.exchange_name ILIKE '%غنايم%'`,
         `FLOOR(rc.status_code::numeric)::int IN (135, 138)`,
       ];
@@ -3024,7 +3025,14 @@ export async function registerRoutes(
                  WHERE ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no LIMIT 1),
               'غير معروف'
             )                                               AS tech_name,
-            EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0 AS hours
+            -- الـ 135 (مفتوح): المدة من الشكوى حتى الآن (حيّة)
+            -- الـ 138 (أُزيل): المدة من الشكوى حتى وقت الإزالة الفعلى
+            CASE
+              WHEN FLOOR(rc.status_code::numeric)::int = 135
+                THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - rc.complain_time)) / 3600.0
+              ELSE
+                EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0
+            END                                             AS hours
           FROM remaining_complaints_current rc
           ${where}
         )
@@ -3073,16 +3081,19 @@ export async function registerRoutes(
 
       const { rows } = await pool.query(`
         WITH src AS (
-          -- الأعطال المغلقة
-          SELECT cd.exchange_name, cd.complain_time, cd.close_time, cd.close_by, cd.cabinet_no
+          -- الأعطال المغلقة (complaint_details): كلها عندها close_time
+          SELECT cd.exchange_name, cd.complain_time, cd.close_time, cd.close_by, cd.cabinet_no,
+                 FALSE AS is_open
           FROM complaint_details cd
           WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
           UNION ALL
-          -- الأعطال المفتوحة (متبقيات 135/138)
-          SELECT rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no
+          -- الأعطال المتبقية: 138 عنده close_time، 135 مفتوح ممكن بدون close_time
+          SELECT rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no,
+                 (FLOOR(rc.status_code::numeric)::int = 135) AS is_open
           FROM remaining_complaints_current rc
-          WHERE rc.close_time IS NOT NULL AND rc.exchange_name ILIKE '%غنايم%'
+          WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
+            AND (FLOOR(rc.status_code::numeric)::int = 135 OR rc.close_time IS NOT NULL)
         ),
         base AS (
           SELECT
@@ -3094,7 +3105,12 @@ export async function registerRoutes(
                  WHERE ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no LIMIT 1),
               'غير معروف'
             )                                               AS tech_name,
-            EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0 AS hours
+            CASE
+              WHEN src.is_open
+                THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
+              ELSE
+                EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0
+            END                                             AS hours
           FROM src
           WHERE TRUE ${dateClause}
         )
@@ -3225,9 +3241,9 @@ export async function registerRoutes(
               'غير معروف'
             ) AS tech_name
           FROM remaining_complaints_current rc
-          WHERE rc.close_time IS NOT NULL
-            AND rc.exchange_name ILIKE '%غنايم%'
+          WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
+            AND (FLOOR(rc.status_code::numeric)::int = 135 OR rc.close_time IS NOT NULL)
             ${dateClause}
         ),
         ranked AS (
@@ -3287,8 +3303,9 @@ export async function registerRoutes(
           UNION ALL
           SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 2 AS src_priority
           FROM remaining_complaints_current
-          WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+          WHERE exchange_name ILIKE '%غنايم%'
             AND FLOOR(status_code::numeric)::int IN (135, 138)
+            AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
         ),
         -- توحيد العطل الواحد: لو نفس complain_no ظهر في الجدولين (مفتوح ثم مغلق)
         -- يُحسب مرة واحدة، مع تفضيل النسخة المغلقة (src_priority=1) للتبعية الصحيحة
@@ -3368,30 +3385,35 @@ export async function registerRoutes(
       if (srcTab === "details") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by,
+                   FALSE AS is_open
             FROM complaint_details
             WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           )`;
       } else if (srcTab === "remaining") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by,
+                   (FLOOR(status_code::numeric)::int = 135) AS is_open
             FROM remaining_complaints_current
-            WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
+              AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           )`;
       } else {
         srcCTE = `
           WITH src_raw AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp, FALSE::bool AS is_open
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp
-            FROM remaining_complaints_current WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp,
+                   (FLOOR(status_code::numeric)::int = 135)::bool AS is_open
+            FROM remaining_complaints_current WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
+              AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
           src AS (
-            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, is_open
             FROM src_raw ORDER BY complain_no, sp
           )`;
       }
@@ -3406,7 +3428,12 @@ export async function registerRoutes(
             src.cabinet_no                                                               AS "cabinetNo",
             src.complain_time                                                            AS "complainTime",
             src.close_time                                                               AS "closeTime",
-            ROUND(EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0, 1) AS hours,
+            ROUND(CASE
+              WHEN src.is_open
+                THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
+              ELSE
+                EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0
+            END, 1)                                                                      AS hours,
             COALESCE(
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
               'غير معروف'
@@ -3463,8 +3490,9 @@ export async function registerRoutes(
           WITH src AS (
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
             FROM remaining_complaints_current
-            WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
+              AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           )`;
       } else {
         srcCTE = `
@@ -3473,8 +3501,9 @@ export async function registerRoutes(
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp
-            FROM remaining_complaints_current WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
+            FROM remaining_complaints_current WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
+              AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
           src AS (
             SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
