@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb, date } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb, date, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -316,6 +316,7 @@ export const complaintDetails = pgTable("complaint_details", {
   complainSideName: text("complain_side_name"),
   complainTypeName: text("complain_type_name"),
   closeBy: text("close_by"),
+  timeTillNow: real("time_till_now"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -338,6 +339,7 @@ export const complaintDetailsSod = pgTable("complaint_details_sod", {
   complainSideName: text("complain_side_name"),
   complainTypeName: text("complain_type_name"),
   closeBy: text("close_by"),
+  timeTillNow: real("time_till_now"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -357,6 +359,7 @@ export const complaintDetailsCurrent = pgTable("complaint_details_current", {
   complainSideName: text("complain_side_name"),
   complainTypeName: text("complain_type_name"),
   closeBy: text("close_by"),
+  timeTillNow: real("time_till_now"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -380,6 +383,7 @@ export const remainingComplaints = pgTable("remaining_complaints", {
   statusCode: text("status_code"),
   cabinetNo: text("cabinet_no"),
   complainType: text("complain_type"),
+  timeTillNow: real("time_till_now"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -404,6 +408,7 @@ export const remainingComplaintsSod = pgTable("remaining_complaints_sod", {
   statusCode: text("status_code"),
   cabinetNo: text("cabinet_no"),
   complainType: text("complain_type"),
+  timeTillNow: real("time_till_now"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -425,6 +430,7 @@ export const remainingComplaintsCurrent = pgTable("remaining_complaints_current"
   statusCode: text("status_code"),
   cabinetNo: text("cabinet_no"),
   complainType: text("complain_type"),
+  timeTillNow: real("time_till_now"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });

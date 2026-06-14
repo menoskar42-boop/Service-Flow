@@ -429,6 +429,14 @@ export async function ensureSchema() {
     )
   `);
 
+  // time_till_now — المدة المحسوبة مسبقاً من ملف 430D (except status 135)
+  await pool.query(`ALTER TABLE complaint_details          ADD COLUMN IF NOT EXISTS time_till_now numeric`);
+  await pool.query(`ALTER TABLE complaint_details_sod      ADD COLUMN IF NOT EXISTS time_till_now numeric`);
+  await pool.query(`ALTER TABLE complaint_details_current  ADD COLUMN IF NOT EXISTS time_till_now numeric`);
+  await pool.query(`ALTER TABLE remaining_complaints       ADD COLUMN IF NOT EXISTS time_till_now numeric`);
+  await pool.query(`ALTER TABLE remaining_complaints_sod   ADD COLUMN IF NOT EXISTS time_till_now numeric`);
+  await pool.query(`ALTER TABLE remaining_complaints_current ADD COLUMN IF NOT EXISTS time_till_now numeric`);
+
   // ftth_subscribers — ملخص مشتركين FTTH/ADSL (full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ftth_subscribers (

@@ -295,13 +295,13 @@ const FTTH_ORDER_COLS = [
 
 const COMPLAINT_DETAILS_COLS = [
   "complain_no","sector","region","exchange_name","phone_number","msan_id","cabinet_no",
-  "complain_time","close_time","close_code","complain_side_name","complain_type_name","close_by",
+  "complain_time","close_time","close_code","complain_side_name","complain_type_name","close_by","time_till_now",
 ];
 
 const REMAINING_COMPLAINTS_COLS = [
   "complain_no","sector","region","exchange_name","phone_number","complain_time",
   "dispatch_time","dispatch_user","msan_id","close_time","close_code","close_by",
-  "status_code","cabinet_no","complain_type",
+  "status_code","cabinet_no","complain_type","time_till_now",
 ];
 
 // Archive a historical table into its archive table when the year (Africa/Cairo)
@@ -1533,6 +1533,7 @@ export async function registerRoutes(
         const iSide = find("complain side name", "side name");
         const iType = find("complain type name", "complain type");
         const iCloseBy = find("close by");
+        const iTimeTillNow1 = find("time till now");
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
@@ -1541,6 +1542,10 @@ export async function registerRoutes(
           const no = String(g(r, iNo)).trim();
           if (!no || no === "0" || seen.has(no)) continue;
           seen.add(no);
+          const rawTtN1 = iTimeTillNow1 >= 0 ? r[iTimeTillNow1] : null;
+          const timeTillNow1 = (typeof rawTtN1 === "number" && rawTtN1 > 0)
+            ? Math.round(rawTtN1 * 24 * 10) / 10
+            : null;
           inserts.push([
             no,
             String(g(r, iSector)) || null,
@@ -1555,6 +1560,7 @@ export async function registerRoutes(
             String(g(r, iSide)) || null,
             String(g(r, iType)) || null,
             String(g(r, iCloseBy)) || null,
+            timeTillNow1,
           ]);
         }
         detailsTotal = inserts.length;
@@ -1593,6 +1599,7 @@ export async function registerRoutes(
           // prefer the column whose header is exactly "complain type"
           return exact;
         })();
+        const iTimeTillNow2 = find("time till now");
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
@@ -1601,6 +1608,10 @@ export async function registerRoutes(
           const no = String(g(r, iNo)).trim();
           if (!no || no === "0" || seen.has(no)) continue;
           seen.add(no);
+          const rawTtN2 = iTimeTillNow2 >= 0 ? r[iTimeTillNow2] : null;
+          const timeTillNow2 = (typeof rawTtN2 === "number" && rawTtN2 > 0)
+            ? Math.round(rawTtN2 * 24 * 10) / 10
+            : null;
           inserts.push([
             no,
             String(g(r, iSector)) || null,
@@ -1617,6 +1628,7 @@ export async function registerRoutes(
             String(g(r, iStatus)) || null,
             String(g(r, iCabinet)) || null,
             String(g(r, iType)) || null,
+            timeTillNow2,
           ]);
         }
         remainingTotal = inserts.length;
@@ -2946,7 +2958,7 @@ export async function registerRoutes(
                  WHERE ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no LIMIT 1),
               'غير معروف'
             )                                               AS tech_name,
-            EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0 AS hours
+            COALESCE(cd.time_till_now, EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0) AS hours
           FROM complaint_details cd
           ${where}
         )
@@ -3031,7 +3043,7 @@ export async function registerRoutes(
               WHEN FLOOR(rc.status_code::numeric)::int = 135
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - rc.complain_time)) / 3600.0
               ELSE
-                EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0
+                COALESCE(rc.time_till_now, EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0)
             END                                             AS hours
           FROM remaining_complaints_current rc
           ${where}
@@ -3083,13 +3095,13 @@ export async function registerRoutes(
         WITH src AS (
           -- الأعطال المغلقة (complaint_details): كلها عندها close_time
           SELECT cd.exchange_name, cd.complain_time, cd.close_time, cd.close_by, cd.cabinet_no,
-                 FALSE AS is_open
+                 FALSE AS is_open, cd.time_till_now
           FROM complaint_details cd
           WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
           UNION ALL
           -- الأعطال المتبقية: 138 عنده close_time، 135 مفتوح ممكن بدون close_time
           SELECT rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no,
-                 (FLOOR(rc.status_code::numeric)::int = 135) AS is_open
+                 (FLOOR(rc.status_code::numeric)::int = 135) AS is_open, rc.time_till_now
           FROM remaining_complaints_current rc
           WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
@@ -3109,7 +3121,7 @@ export async function registerRoutes(
               WHEN src.is_open
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
               ELSE
-                EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0
+                COALESCE(src.time_till_now, EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0)
             END                                             AS hours
           FROM src
           WHERE TRUE ${dateClause}
@@ -3386,7 +3398,7 @@ export async function registerRoutes(
         srcCTE = `
           WITH src AS (
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by,
-                   FALSE AS is_open
+                   FALSE AS is_open, time_till_now
             FROM complaint_details
             WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           )`;
@@ -3394,7 +3406,7 @@ export async function registerRoutes(
         srcCTE = `
           WITH src AS (
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by,
-                   (FLOOR(status_code::numeric)::int = 135) AS is_open
+                   (FLOOR(status_code::numeric)::int = 135) AS is_open, time_till_now
             FROM remaining_complaints_current
             WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
@@ -3403,17 +3415,17 @@ export async function registerRoutes(
       } else {
         srcCTE = `
           WITH src_raw AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp, FALSE::bool AS is_open
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp, FALSE::bool AS is_open, time_till_now
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp,
-                   (FLOOR(status_code::numeric)::int = 135)::bool AS is_open
+                   (FLOOR(status_code::numeric)::int = 135)::bool AS is_open, time_till_now
             FROM remaining_complaints_current WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
               AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
           src AS (
-            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, is_open
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, is_open, time_till_now
             FROM src_raw ORDER BY complain_no, sp
           )`;
       }
@@ -3432,7 +3444,7 @@ export async function registerRoutes(
               WHEN src.is_open
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
               ELSE
-                EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0
+                COALESCE(src.time_till_now, EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0)
             END, 1)                                                                      AS hours,
             COALESCE(
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
