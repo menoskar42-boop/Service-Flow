@@ -30,7 +30,7 @@ export function CabinetAdslFaultsReport() {
   const [q, setQ]               = useState("");
   const [minFaults, setMinFaults]       = useState("");  // فلتر: عدد الأعطال أكبر من
   const [minProjected, setMinProjected] = useState("");  // فلتر: أعطال الألف المتوقع أكبر من
-  const [tab, setTab] = useState<"cabinet" | "tech">("cabinet");
+  const [tab, setTab] = useState<"cabinet" | "tech">("tech");
   const isTech = tab === "tech";
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
@@ -216,7 +216,7 @@ export function CabinetAdslFaultsReport() {
 
       {/* تبديل التبويبين */}
       <div className="flex rounded-lg border overflow-hidden text-sm w-full sm:w-auto">
-        {([["cabinet", "لكل كابينة"], ["tech", "لكل فنى"]] as const).map(([key, label]) => (
+        {([["tech", "لكل فنى"], ["cabinet", "لكل كابينة"]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
