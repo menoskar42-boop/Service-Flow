@@ -1533,7 +1533,7 @@ export async function registerRoutes(
         const iSide = find("complain side name", "side name");
         const iType = find("complain type name", "complain type");
         const iCloseBy = find("close by");
-        const iTimeTillNow1 = find("time till now");
+        const iTimeTillNow1 = find("except 135");
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
@@ -1599,7 +1599,7 @@ export async function registerRoutes(
           // prefer the column whose header is exactly "complain type"
           return exact;
         })();
-        const iTimeTillNow2 = find("time till now");
+        const iTimeTillNow2 = find("except 135");
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
