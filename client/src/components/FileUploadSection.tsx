@@ -595,7 +595,7 @@ export function FileUploadSection() {
           color="border-cyan-200 bg-cyan-50/50"
         />
         <UploadCard
-          label="طلبات FTTH (Order) — تاريخي + حالي + أرشيف سنوي"
+          label="طلبات متعذرات OM — تاريخي + حالي + أرشيف سنوي"
           icon={ClipboardList}
           endpoint="/api/ftth-orders/import"
           queryKey="/api/ftth-orders"
