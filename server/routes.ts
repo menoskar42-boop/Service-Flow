@@ -1515,24 +1515,24 @@ export async function registerRoutes(
       let detailsInserted = 0, detailsTotal = 0;
       let remainingInserted = 0, remainingTotal = 0;
 
-      // ── Sheet: التفاصيل (accumulating, dedup by complain_no) ──
-      const ws1 = wb.Sheets["التفاصيل"];
+      // ── Sheet: التفاصيل / تفاصيل الأعطال (accumulating, dedup by complain_no) ──
+      const ws1 = wb.Sheets["التفاصيل"] || wb.Sheets["تفاصيل الأعطال"];
       if (ws1) {
         const rows1: any[][] = XLSX.utils.sheet_to_json(ws1, { header: 1, defval: "" }) as any[][];
-        const { find, dataRows } = smartSheet(rows1, ["complain no"]);
-        const iNo = find("complain no");
-        const iSector = find("sector");
-        const iRegion = find("region");
-        const iExchange = find("exchange name", "exchange");
-        const iPhone = find("التليفون", "tel no");
-        const iMsan = find("msan id", "msan");
-        const iCabinet = find("cabinet no");
-        const iCloseCode = find("close code");
-        const iComplainTime = find("compalin time", "complain time");
-        const iCloseTime = find("close time");
-        const iSide = find("complain side name", "side name");
-        const iType = find("complain type name", "complain type");
-        const iCloseBy = find("close by");
+        const { find, dataRows } = smartSheet(rows1, ["complain no", "رقم الشكوى"]);
+        const iNo       = find("complain no", "رقم الشكوى");
+        const iSector   = find("sector", "القطاع");
+        const iRegion   = find("region", "المنطقة");
+        const iExchange = find("exchange name", "exchange", "السنترال");
+        const iPhone    = find("التليفون", "tel no", "رقم التليفون");
+        const iMsan     = find("msan id", "msan");
+        const iCabinet  = find("cabinet no", "الكابينة");
+        const iCloseCode    = find("close code", "كود الإغلاق");
+        const iComplainTime = find("compalin time", "complain time", "وقت الشكوى");
+        const iCloseTime    = find("close time", "وقت الإغلاق");
+        const iSide     = find("complain side name", "side name");
+        const iType     = find("complain type name", "complain type", "نوع العطل");
+        const iCloseBy  = find("close by", "أغلق بواسطة");
         const iTimeTillNow1 = find("except 135");
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
