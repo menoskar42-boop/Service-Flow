@@ -3154,16 +3154,18 @@ export async function registerRoutes(
         conds.push(`(ct.cabin_number ILIKE ${p} OR ct.cabin_code ILIKE ${p} OR tn.tech_name ILIKE ${p})`);
       }
       const where = "WHERE " + conds.join(" AND ");
+      // تُجمّع كباين النحاس التى تشترك فى نفس كود الـ MSAN فى صف واحد (مثل 6-2 و6-3)
+      // حتى لا يتكرر حساب الشغال/الأعطال (كلاهما محسوب لكل MSAN مرة واحدة).
       const { rows } = await pool.query(
         `SELECT
-           ct.central_name                         AS "centralName",
-           ct.cabin_number                         AS "cabinNumber",
-           ct.cabin_code                           AS "msanCode",
-           COALESCE(tn.tech_name, 'غير معروف')     AS "techName",
-           -- الشغال ADSL: ثابت من ملف مشتركى FTTH/ADSL حسب كود MSAN
+           MIN(ct.central_name)                                          AS "centralName",
+           string_agg(DISTINCT ct.cabin_number, ' , ' ORDER BY ct.cabin_number) AS "cabinNumber",
+           ct.cabin_code                                                 AS "msanCode",
+           COALESCE(string_agg(DISTINCT tn.tech_name, ' , '), 'غير معروف') AS "techName",
+           -- الشغال ADSL: ثابت من ملف مشتركى FTTH/ADSL حسب كود MSAN (مرة واحدة لكل MSAN)
            COALESCE((SELECT SUM(f.fbb_subs) FROM ftth_subscribers f
-                       WHERE f.msan_gpon_code = ct.cabin_code), 0)::int AS "workingAdsl",
-           -- عدد الأعطال خلال الفترة (مغلقة + متبقية) لكود الكابينة (MSAN)
+                       WHERE f.msan_gpon_code = ct.cabin_code), 0)::int   AS "workingAdsl",
+           -- عدد الأعطال خلال الفترة (مغلقة + متبقية) لكود الكابينة (MSAN) — مرة واحدة
            (SELECT COUNT(*) FROM (
               SELECT cd.complain_no FROM complaint_details cd
                 WHERE cd.msan_id = ct.cabin_code
@@ -3174,11 +3176,12 @@ export async function registerRoutes(
                 WHERE rc.msan_id = ct.cabin_code
                   AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
                   AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
-           ) u)::int                               AS "faultCount"
+           ) u)::int                                                     AS "faultCount"
          FROM cabinet_technicians ct
          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
          ${where}
-         ORDER BY ct.central_name, ct.cabin_number`,
+         GROUP BY ct.cabin_code
+         ORDER BY MIN(ct.central_name), MIN(ct.cabin_number)`,
         params,
       );
       res.json(rows);
