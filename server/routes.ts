@@ -1512,7 +1512,7 @@ export async function registerRoutes(
       if (rows.length < 2) return res.json({ inserted: 0 });
 
       // smart header detection (tolerant of column reorder / leading title rows)
-      const { find, dataRows } = smartSheet(rows, ["رقم أمر الشغل", "رقم امر الشغل", "work order"]);
+      const { find, header, dataRows } = smartSheet(rows, ["رقم أمر الشغل", "رقم امر الشغل", "work order"]);
       const iDate     = find("تاريخ الانشاء", "تاريخ الإنشاء", "creation");
       const iWorkOrder = find("رقم أمر الشغل", "رقم امر الشغل", "work order id", "work order no");
       const iOrg      = find("المؤسسة", "المنظمه", "organization");
@@ -1531,6 +1531,8 @@ export async function registerRoutes(
       // "اسم السنترال" = كود السنترال/رقم الكابينة (مثال GHNAT/7-3) — نستخرج
       // منه رقم الكابينة لربط أمر الشغل بفنى الكابينة فى تقارير التركيبات.
       const iExchName = find("اسم السنترال", "exchange name");
+      // تشخيص: يطبع رؤوس الأعمدة المكتشفة وموضع عمود الموبايل فى سجل Replit
+      console.log(`maintenance-orders import: headers=${JSON.stringify(header)} | iMobile=${iMobile} | iPhone=${iPhone}`);
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
       // build value rows (store ALL centrals; name falls back to the code)
