@@ -585,9 +585,8 @@ export async function ensureSchema() {
     END $$;
   `);
 
-  // ftth_orders — ملف Order (FTTH provisioning). تاريخي + حالي + أرشيف سنوي.
-  // raw jsonb يحفظ كل أعمدة الملف (70 عمود) مع استخراج المهم للعرض/الفلترة.
-  for (const t of ["ftth_orders", "ftth_orders_current", "ftth_orders_archive"]) {
+  // ftth_orders — ملف Order (متعذرات OM). تاريخي + حالي + بداية السنة + أرشيف سنوي.
+  for (const t of ["ftth_orders", "ftth_orders_current", "ftth_orders_soy", "ftth_orders_archive"]) {
     const uniq = t === "ftth_orders" ? `,\n      CONSTRAINT ${t}_uniq UNIQUE (service_order_id)` : "";
     const archCol = t === "ftth_orders_archive" ? "archived_year integer," : "";
     await pool.query(`
@@ -611,11 +610,13 @@ export async function ensureSchema() {
         governorate text,
         line_type text,
         fcc_exchange text,
+        serial_number text,
         raw jsonb,
         uploaded_at timestamptz NOT NULL DEFAULT now(),
         uploaded_by_id integer REFERENCES users(id)${uniq}
       )
     `);
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS serial_number text`);
   }
 
   // phone_ports — منافذ MSAN، مفتاحها رقم التليفون (upsert على كل رفعة)

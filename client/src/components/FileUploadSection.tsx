@@ -602,6 +602,13 @@ export function FileUploadSection() {
           color="border-emerald-200 bg-emerald-50/50"
         />
         <UploadCard
+          label="متعذرات بداية السنة (OM) — يضاف يدوياً (تراكمى)"
+          icon={ClipboardList}
+          endpoint="/api/ftth-orders/import-soy"
+          queryKey="/api/ftth-orders"
+          color="border-teal-200 bg-teal-50/50"
+        />
+        <UploadCard
           label="الفنيين بأرقام الكباين — يستبدل القديم"
           icon={Users}
           endpoint="/api/cabinet-technicians/import"

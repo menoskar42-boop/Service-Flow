@@ -318,13 +318,104 @@ async function writeThreeDestinations(opts: {
   return { hist, current, startOfDay, sodReplaced: firstToday, total: opts.rows.length };
 }
 
-// FTTH-order data columns (shared by historical / current / archive tables).
+// FTTH-order data columns (shared by historical / current / soy / archive tables).
 const FTTH_ORDER_COLS = [
   "service_order_id", "customer_order_id", "product", "service_number", "customer_name",
   "order_status", "order_create_time", "exchange_name", "service_type", "msan_code",
   "area_code", "customer_mobile", "current_activity", "error_name", "governorate",
-  "line_type", "fcc_exchange", "raw",
+  "line_type", "fcc_exchange", "serial_number", "raw",
 ];
+// مؤشرات الأعمدة المفتاحية داخل صف القيم (بترتيب FTTH_ORDER_COLS):
+const FO_SERVICE_ORDER = 0, FO_CUSTOMER_ORDER = 1, FO_MSAN = 9, FO_SERIAL = 17;
+// مفتاح هوية المتعذر = المسلسل + Customer Order ID + Service Order ID
+const foKey = (r: any[]) => `${r[FO_SERIAL] ?? ""}|${r[FO_CUSTOMER_ORDER] ?? ""}|${r[FO_SERVICE_ORDER] ?? ""}`;
+
+// يحلّل ملف "Order" (متعذرات OM) ويُرجع صفوف القيم بترتيب FTTH_ORDER_COLS (deduped by service_order_id).
+function parseFtthOrderRows(buffer: Buffer): any[][] {
+  const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
+  const ws = wb.Sheets["Order"] || wb.Sheets[wb.SheetNames[0]];
+  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const { find, findExact, dataRows, headerRowIdx } = smartSheet(rows, ["service order id", "service number"]);
+  const origHeaders = (rows[headerRowIdx] || []).map((h) => String(h ?? "").trim());
+  const iSO = find("service order id"), iCO = find("customer order id"), iProduct = findExact("product");
+  const iServiceNo = find("service number"), iCustomer = findExact("customer name"), iStatus = findExact("order status");
+  const iCreate = find("order create time"), iExch = findExact("exchange name"), iSvcType = findExact("service type");
+  const iMsan = find("msan code"), iArea = findExact("area code"), iMobile = find("customer mobile number", "customer mobile");
+  const iActivity = findExact("current activity"), iError = find("error name"), iGov = find("governorate");
+  const iLineType = findExact("line type"), iFcc = find("fcc exchange");
+  const iSerial = findExact("serial number");
+  const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+  const byId = new Map<string, any[]>();
+  for (const r of dataRows) {
+    const soId = String(g(r, iSO)).trim();
+    if (!soId) continue;
+    const raw: Record<string, any> = {};
+    origHeaders.forEach((h, idx) => { if (h) raw[h] = r[idx] ?? null; });
+    byId.set(soId, [
+      soId, String(g(r, iCO)) || null, String(g(r, iProduct)) || null, String(g(r, iServiceNo)) || null,
+      String(g(r, iCustomer)) || null, String(g(r, iStatus)) || null, toDate(g(r, iCreate)),
+      String(g(r, iExch)) || null, String(g(r, iSvcType)) || null, String(g(r, iMsan)) || null,
+      String(g(r, iArea)) || null, String(g(r, iMobile)) || null, String(g(r, iActivity)) || null,
+      String(g(r, iError)) || null, String(g(r, iGov)) || null, String(g(r, iLineType)) || null,
+      String(g(r, iFcc)) || null, String(g(r, iSerial)) || null, JSON.stringify(raw),
+    ]);
+  }
+  return Array.from(byId.values());
+}
+
+// يضيف إلى ftth_orders_soy الصفوف التى مفتاحها (مسلسل+order ids) غير موجود مسبقاً. يُرجع عدد المُضاف.
+async function accumulateSoy(rows: any[][], userId: number): Promise<number> {
+  if (!rows.length) return 0;
+  const { rows: ex } = await pool.query(
+    `SELECT serial_number, customer_order_id, service_order_id FROM ftth_orders_soy`,
+  );
+  const seen = new Set(ex.map((r: any) => `${r.serial_number ?? ""}|${r.customer_order_id ?? ""}|${r.service_order_id ?? ""}`));
+  const fresh = rows.filter((r) => !seen.has(foKey(r)));
+  if (!fresh.length) return 0;
+  const allCols = [...FTTH_ORDER_COLS, "uploaded_by_id"];
+  const n = allCols.length;
+  let inserted = 0;
+  const BATCH = 200;
+  for (let s = 0; s < fresh.length; s += BATCH) {
+    const chunk = fresh.slice(s, s + BATCH);
+    const ph = chunk.map((_, ci) => {
+      const o = ci * n;
+      return "(" + Array.from({ length: n }, (_, k) => `$${o + k + 1}`).join(",") + ")";
+    }).join(",");
+    const vals = chunk.flatMap((r) => [...r, userId]);
+    const res = await pool.query(`INSERT INTO ftth_orders_soy (${allCols.join(",")}) VALUES ${ph}`, vals);
+    inserted += res.rowCount ?? 0;
+  }
+  return inserted;
+}
+
+// يملأ كود MSAN فى ftth_orders_soy من الرفعة لكل مسلسل (حيث SOY فارغ والرفعة بها كود). يُرجع عدد المحدَّث.
+async function enrichSoyMsan(rows: any[][]): Promise<number> {
+  const map = new Map<string, string>(); // serial -> msan_code
+  for (const r of rows) {
+    const serial = String(r[FO_SERIAL] ?? "").trim();
+    const msan = String(r[FO_MSAN] ?? "").trim();
+    if (serial && msan && !map.has(serial)) map.set(serial, msan);
+  }
+  if (!map.size) return 0;
+  let updated = 0;
+  const entries = Array.from(map.entries());
+  const BATCH = 500;
+  for (let s = 0; s < entries.length; s += BATCH) {
+    const chunk = entries.slice(s, s + BATCH);
+    const values = chunk.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(",");
+    const params = chunk.flatMap(([serial, msan]) => [serial, msan]);
+    const res = await pool.query(
+      `UPDATE ftth_orders_soy soy SET msan_code = v.msan
+       FROM (VALUES ${values}) AS v(serial, msan)
+       WHERE soy.serial_number = v.serial
+         AND (soy.msan_code IS NULL OR soy.msan_code = '')`,
+      params,
+    );
+    updated += res.rowCount ?? 0;
+  }
+  return updated;
+}
 
 const COMPLAINT_DETAILS_COLS = [
   "complain_no","sector","region","exchange_name","phone_number","msan_id","cabinet_no",
@@ -2491,96 +2582,72 @@ export async function registerRoutes(
     res.json(rows);
   });
 
-  // POST /api/ftth-orders/import — historical (accumulate + yearly archive) + current (replace)
+  // POST /api/ftth-orders/import — رفعة متعذرات OM (الحالى): تستبدل الحالى، تتراكم
+  // تاريخياً، وتُضيف للـSOY أى مفتاح جديد (مسلسل+order ids)، وتُثرى MSAN فى SOY.
   app.post("/api/ftth-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
-      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
-      const ws = wb.Sheets["Order"] || wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
-      const { find, findExact, dataRows, headerRowIdx } = smartSheet(rows, ["service order id", "service number"]);
-      const origHeaders = (rows[headerRowIdx] || []).map((h) => String(h ?? "").trim());
-
-      const iSO = find("service order id");
-      const iCO = find("customer order id");
-      const iProduct = findExact("product");
-      const iServiceNo = find("service number");
-      const iCustomer = findExact("customer name");
-      const iStatus = findExact("order status");
-      const iCreate = find("order create time");
-      const iExch = findExact("exchange name");
-      const iSvcType = findExact("service type");
-      const iMsan = find("msan code");
-      const iArea = findExact("area code");
-      const iMobile = find("customer mobile number", "customer mobile");
-      const iActivity = findExact("current activity");
-      const iError = find("error name");
-      const iGov = find("governorate");
-      const iLineType = findExact("line type");
-      const iFcc = find("fcc exchange");
-      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
-
-      const byId = new Map<string, any[]>();
-      for (const r of dataRows) {
-        const soId = String(g(r, iSO)).trim();
-        if (!soId) continue;
-        const raw: Record<string, any> = {};
-        origHeaders.forEach((h, idx) => { if (h) raw[h] = r[idx] ?? null; });
-        byId.set(soId, [
-          soId,
-          String(g(r, iCO)) || null,
-          String(g(r, iProduct)) || null,
-          String(g(r, iServiceNo)) || null,
-          String(g(r, iCustomer)) || null,
-          String(g(r, iStatus)) || null,
-          toDate(g(r, iCreate)),
-          String(g(r, iExch)) || null,
-          String(g(r, iSvcType)) || null,
-          String(g(r, iMsan)) || null,
-          String(g(r, iArea)) || null,
-          String(g(r, iMobile)) || null,
-          String(g(r, iActivity)) || null,
-          String(g(r, iError)) || null,
-          String(g(r, iGov)) || null,
-          String(g(r, iLineType)) || null,
-          String(g(r, iFcc)) || null,
-          JSON.stringify(raw),
-        ]);
-      }
-      const all = Array.from(byId.values());
+      const all = parseFtthOrderRows(req.file.buffer);
       const userId = (req.user as any).id;
 
-      // archive last year's historical data if the year rolled over
       const archivedYear = await archiveIfNewYear("ftth_orders", "ftth_orders_archive", FTTH_ORDER_COLS);
       const hist = await accumulateTable("ftth_orders", FTTH_ORDER_COLS, "service_order_id", all, userId);
       const current = await replaceTable("ftth_orders_current", FTTH_ORDER_COLS, all, userId);
+      const soyAdded = await accumulateSoy(all, userId);     // مسلسلات جديدة تُضاف لبداية السنة
+      const msanFilled = await enrichSoyMsan(all);           // إثراء كود MSAN فى بداية السنة لكل مسلسل
+      const { rows: c } = await pool.query(`SELECT COUNT(*)::int AS n FROM ftth_orders_soy`);
 
-      res.json({ inserted: hist, hist, current, archivedYear, total: all.length });
+      res.json({ inserted: hist, hist, current, archivedYear, total: all.length, soyAdded, msanFilled, soyTotal: c[0].n });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
   });
 
-  // GET /api/ftth-orders — ?bucket=historical|current|archive & ?year= & ?q= (الغنايم only by default)
+  // POST /api/ftth-orders/import-soy — رفع يدوى لشيت بداية السنة (يتراكم: يضيف المسلسلات الجديدة فقط).
+  app.post("/api/ftth-orders/import-soy", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const all = parseFtthOrderRows(req.file.buffer);
+      const userId = (req.user as any).id;
+      const soyAdded = await accumulateSoy(all, userId);
+      const { rows: c } = await pool.query(`SELECT COUNT(*)::int AS n FROM ftth_orders_soy`);
+      res.json({ ok: true, soyAdded, soyTotal: c[0].n, total: all.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/ftth-orders — ?bucket=historical|current|archive|soy|resolved & ?year= & ?q=
+  //   soy      = متعذرات بداية السنة (التراكمى)
+  //   resolved = متعذرات تم فكها (موجودة فى SOY وغير موجودة فى الحالى بمفتاح المسلسل+order ids)
   app.get("/api/ftth-orders", requireAuth, async (req, res) => {
     const { q, all, bucket, year } = req.query as Record<string, string>;
-    const table = bucket === "current" ? "ftth_orders_current" : bucket === "archive" ? "ftth_orders_archive" : "ftth_orders";
+    const table = bucket === "current" ? "ftth_orders_current"
+                : bucket === "archive" ? "ftth_orders_archive"
+                : (bucket === "soy" || bucket === "resolved") ? "ftth_orders_soy"
+                : "ftth_orders";
     const params: any[] = [];
     const conds: string[] = [];
     if (all !== "true") {
       conds.push(`fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
     }
+    if (bucket === "resolved") {
+      conds.push(`NOT EXISTS (SELECT 1 FROM ftth_orders_current c
+        WHERE COALESCE(c.serial_number,'')      = COALESCE(ftth_orders_soy.serial_number,'')
+          AND COALESCE(c.customer_order_id,'')  = COALESCE(ftth_orders_soy.customer_order_id,'')
+          AND COALESCE(c.service_order_id,'')   = COALESCE(ftth_orders_soy.service_order_id,''))`);
+    }
     if (bucket === "archive" && year) { params.push(parseInt(year)); conds.push(`archived_year = $${params.length}`); }
     if (q?.trim()) {
       params.push(`%${q.trim()}%`);
       const p = `$${params.length}`;
-      conds.push(`(service_order_id ILIKE ${p} OR service_number ILIKE ${p} OR customer_name ILIKE ${p} OR msan_code ILIKE ${p} OR fcc_exchange ILIKE ${p})`);
+      conds.push(`(service_order_id ILIKE ${p} OR serial_number ILIKE ${p} OR customer_order_id ILIKE ${p} OR customer_name ILIKE ${p} OR msan_code ILIKE ${p} OR fcc_exchange ILIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const yearCol = bucket === "archive" ? `archived_year AS "archivedYear",` : "";
     const { rows } = await pool.query(
       `SELECT id, ${yearCol} service_order_id AS "serviceOrderId", customer_order_id AS "customerOrderId",
-              product, service_number AS "serviceNumber", customer_name AS "customerName",
+              product, service_number AS "serviceNumber", serial_number AS "serialNumber", customer_name AS "customerName",
               order_status AS "orderStatus", order_create_time AS "orderCreateTime",
               exchange_name AS "exchangeName", service_type AS "serviceType", msan_code AS "msanCode",
               area_code AS "areaCode", customer_mobile AS "customerMobile",

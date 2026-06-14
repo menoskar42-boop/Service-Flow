@@ -664,6 +664,7 @@ const ftthOrderCols = () => ({
   governorate: text("governorate"),
   lineType: text("line_type"),
   fccExchange: text("fcc_exchange"),
+  serialNumber: text("serial_number"),   // المسلسل (عمود Serial Number)
   raw: jsonb("raw"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
@@ -673,6 +674,7 @@ export const ftthOrders = pgTable("ftth_orders", ftthOrderCols(), (t) => ({
   uniq: unique("ftth_orders_uniq").on(t.serviceOrderId),
 }));
 export const ftthOrdersCurrent = pgTable("ftth_orders_current", ftthOrderCols());
+export const ftthOrdersSoy = pgTable("ftth_orders_soy", ftthOrderCols()); // بداية السنة (يُرفع يدوياً)
 export const ftthOrdersArchive = pgTable("ftth_orders_archive", {
   archivedYear: integer("archived_year"),
   ...ftthOrderCols(),
