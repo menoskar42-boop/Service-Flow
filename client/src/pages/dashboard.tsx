@@ -41,7 +41,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "current-faults",      label: "الأعطال الحالية" },
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
-      { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف لكل كابينة" },
+      { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
       { id: "repetition-stats",    label: "إحصائيات التكرار" },
     ],
