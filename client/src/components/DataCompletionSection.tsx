@@ -129,6 +129,7 @@ export function DataCompletionSection() {
               <SelectContent>
                 <SelectItem value="تركيب" className="text-right">تركيب</SelectItem>
                 <SelectItem value="نقل" className="text-right">نقل</SelectItem>
+                <SelectItem value="صيانة" className="text-right">صيانة</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -201,7 +202,7 @@ export function DataCompletionSection() {
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{en.phoneFull}</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${en.workOrderType === "نقل" ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded font-medium ${en.workOrderType === "نقل" ? "bg-blue-50 text-blue-700" : en.workOrderType === "صيانة" ? "bg-amber-50 text-amber-700" : "bg-green-50 text-green-700"}`}>
                         {en.workOrderType}
                       </span>
                     </TableCell>

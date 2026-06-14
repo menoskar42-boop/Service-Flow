@@ -1412,7 +1412,7 @@ export async function registerRoutes(
     const { phone, workOrderType, cableQuantity } = req.body as Record<string, string>;
     const { local, full } = normalizePhone(phone);
     if (!local || local.length < 5) return res.status(400).json({ message: "رقم تليفون غير صالح" });
-    const type = workOrderType === "نقل" ? "نقل" : "تركيب";
+    const type = ["نقل", "صيانة", "تركيب"].includes(workOrderType) ? workOrderType : "تركيب";
     const qty = String(cableQuantity ?? "").trim();
     if (!/^\d+(\.\d+)?$/.test(qty)) return res.status(400).json({ message: "كمية السلك يجب أن تكون رقماً (يقبل العشرى)" });
     const userId = req.user.id;
