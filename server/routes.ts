@@ -516,6 +516,44 @@ async function queryWfmReport(
   return rows;
 }
 
+// المنتظمة لفترة (تركيبات/معاينات) — تُحسب مباشرة عند فتح التقرير بدون أرشيف يومى:
+// الأمر منتظم = موجود فى maintenance_orders (التاريخى المتراكم) وغير موجود فى
+// wfm_current (الملف الحالى)؛ تُفلتر بتاريخ الإنشاء ضمن [dateFrom, dateTo] (توقيت القاهرة).
+async function queryWfmRegularizedRange(
+  typesLc: string[],
+  opts: { dateFrom?: string; dateTo?: string; central?: string; q?: string },
+) {
+  const { dateFrom = "", dateTo = "", central = "", q = "" } = opts;
+  const params: any[] = [typesLc];
+  const conds: string[] = [
+    `lower(trim(t.work_order_type)) = ANY($1::text[])`,
+    `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
+    `NOT EXISTS (SELECT 1 FROM wfm_current c WHERE c.central_name = t.central_name AND c.work_order_id = t.work_order_id)`,
+  ];
+  if (dateFrom) { params.push(dateFrom); conds.push(`(t.creation_date AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`); }
+  if (dateTo)   { params.push(dateTo);   conds.push(`(t.creation_date AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`); }
+  if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+  if (q.trim()) {
+    params.push(`%${q.trim()}%`);
+    const p = `$${params.length}`;
+    conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
+  }
+  const where = "WHERE " + conds.join(" AND ");
+  const { rows } = await pool.query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (t.central_name, t.work_order_id)
+         ${WFM_REPORT_SELECT}
+       FROM maintenance_orders t
+       ${WFM_REPORT_JOINS}
+       ${where}
+       ORDER BY t.central_name, t.work_order_id, t.id DESC
+     ) x
+     ORDER BY x."creationDate" DESC NULLS LAST`,
+    params,
+  );
+  return rows;
+}
+
 // يحفظ منتظمات يوم محدد فى regularized_daily (مرة واحدة لكل عنصر).
 // dateStr بصيغة YYYY-MM-DD (تاريخ القاهرة). يُستدعى من الـ cron والتعويض.
 async function recordDailySnapshot(dateStr: string) {
@@ -3074,6 +3112,12 @@ export async function registerRoutes(
     try {
       const { category = "faults", dateFrom = "", dateTo = "", central = "", q = "" } =
         req.query as Record<string, string>;
+      // تركيبات/معاينات: تُحسب مباشرة (التاريخى ناقص الحالى) بدل أرشيف الـ11 مساءً.
+      if (category === "installations" || category === "surveys") {
+        const types = category === "installations" ? INSTALL_TYPES_LC : SURVEY_TYPES_LC;
+        const rows = await queryWfmRegularizedRange(types, { dateFrom, dateTo, central, q });
+        return res.json(rows);
+      }
       const params: any[] = [category];
       const conds: string[] = [`category = $1`];
       if (dateFrom) { params.push(dateFrom); conds.push(`snapshot_date >= $${params.length}::date`); }
