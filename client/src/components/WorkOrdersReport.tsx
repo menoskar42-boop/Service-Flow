@@ -101,6 +101,10 @@ export function WorkOrdersReport() {
   // ── PDF export — browser print, 11 rows per A4 landscape page ──
   const ROWS_PER_PAGE = 11;
   const handleExportPDF = () => {
+    // الطباعة تقفل تعديل كميات السلك (استكمال بيانات) — تُعلَّم كل الإدخالات كمطبوعة
+    fetch("/api/cable-entries/mark-printed", { method: "POST", credentials: "include" })
+      .then(() => qc.invalidateQueries({ queryKey: ["/api/cable-entries"] }))
+      .catch(() => {});
     const title = `تقرير أوامر الشغل${dateFrom ? " من " + dateFrom : ""}${dateTo ? " إلى " + dateTo : ""}`;
     const esc = (v: any) =>
       String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

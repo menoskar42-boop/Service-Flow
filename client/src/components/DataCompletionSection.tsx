@@ -9,9 +9,11 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
+import { ROLES } from "@shared/schema";
 import { format } from "date-fns";
-import { Loader2, Plus, Trash2, Cable, Search } from "lucide-react";
+import { Loader2, Plus, Trash2, Cable, Search, Lock, KeyRound } from "lucide-react";
 
 interface CableEntry {
   id: number;
@@ -22,11 +24,17 @@ interface CableEntry {
   createdByName: string;
   createdAt: string;
   updatedAt: string;
+  printedAt: string | null;
+  editUnlockedAt: string | null;
+  locked: boolean;
+  canUnlock: boolean;
 }
 
 export function DataCompletionSection() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const qc = useQueryClient();
+  const isAdmin = user?.role === ROLES.ADMIN;
 
   const [phone, setPhone] = useState("");
   const [workOrderType, setWorkOrderType] = useState("تركيب");
@@ -75,6 +83,32 @@ export function DataCompletionSection() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/cable-entries"] });
       qc.invalidateQueries({ queryKey: ["/api/work-orders"] });
+    },
+    onError: (e: Error) => {
+      let msg = e.message || "حدث خطأ";
+      const m = msg.match(/^\d+:\s*(.*)$/s);
+      if (m) msg = m[1];
+      try { const j = JSON.parse(msg); if (j?.message) msg = j.message; } catch { /* */ }
+      toast({ title: "التعديل مقفل", description: msg, variant: "destructive", duration: 6000 });
+    },
+  });
+
+  // الأدمن يمنح صلاحية تعديل لإدخال مطبوع (خلال 3 أيام من الطباعة)
+  const unlockMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/cable-entries/${id}/unlock`);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/cable-entries"] });
+      toast({ title: "تم منح صلاحية التعديل", duration: 3000 });
+    },
+    onError: (e: Error) => {
+      let msg = e.message || "حدث خطأ";
+      const m = msg.match(/^\d+:\s*(.*)$/s);
+      if (m) msg = m[1];
+      try { const j = JSON.parse(msg); if (j?.message) msg = j.message; } catch { /* */ }
+      toast({ title: "تعذّر منح الصلاحية", description: msg, variant: "destructive", duration: 6000 });
     },
   });
 
@@ -212,15 +246,33 @@ export function DataCompletionSection() {
                       {format(new Date(en.updatedAt), "yyyy/MM/dd HH:mm")}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => deleteMutation.mutate(en.id)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        {en.locked && (
+                          <span className="inline-flex items-center gap-0.5 text-xs text-amber-700" title="مقفل بعد طباعة التقرير">
+                            <Lock className="w-3.5 h-3.5" /> مقفل
+                          </span>
+                        )}
+                        {en.locked && isAdmin && en.canUnlock && (
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            onClick={() => unlockMutation.mutate(en.id)}
+                            disabled={unlockMutation.isPending}
+                            title="منح صلاحية التعديل"
+                          >
+                            <KeyRound className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30"
+                          onClick={() => deleteMutation.mutate(en.id)}
+                          disabled={deleteMutation.isPending || en.locked}
+                          title={en.locked ? "مقفل بعد الطباعة" : "حذف"}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
