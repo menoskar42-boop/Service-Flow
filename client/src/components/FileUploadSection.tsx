@@ -544,21 +544,21 @@ export function FileUploadSection() {
       <Card className="p-4 bg-white border-0 shadow-sm space-y-3">
         <p className="text-sm font-semibold text-muted-foreground">رفع الملفات</p>
         <UploadCard
-          label="أوامر شغل الأعطال (Work_Orders)"
+          label="ملف wfm"
           icon={Wrench}
           endpoint="/api/maintenance-orders/import"
           queryKey="/api/maintenance-orders"
           color="border-orange-200 bg-orange-50/50"
         />
         <UploadCard
-          label="شكاوى DSL/نحاس (TicketQueue)"
+          label="شكاوى DSL/نحاس (fcc)"
           icon={PhoneCall}
           endpoint="/api/ticket-queue/import"
           queryKey="/api/tickets"
           color="border-purple-200 bg-purple-50/50"
         />
         <UploadCard
-          label="شكاوى FTTH (TicketQueue FTTH)"
+          label="شكاوى FTTH (fcc )"
           icon={PhoneCall}
           endpoint="/api/ticket-queue-ftth/import"
           queryKey="/api/tickets"
@@ -581,7 +581,7 @@ export function FileUploadSection() {
           staged="ftth"
         />
         <UploadCard
-          label="حاله 138 (أعطال DSL) — يستبدل القديم"
+          label="قياسات خطوط (أعطال DSL) — يستبدل القديم"
           icon={Gauge}
           endpoint="/api/case-138/import"
           queryKey="/api/case-138"
