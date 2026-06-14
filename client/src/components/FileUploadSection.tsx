@@ -588,7 +588,7 @@ export function FileUploadSection() {
           color="border-amber-200 bg-amber-50/50"
         />
         <UploadCard
-          label="منافذ MSAN (Ports) — تحديث برقم التليفون"
+          label="منافذ MSAN ( Provisional Ports) — تحديث برقم التليفون"
           icon={Network}
           endpoint="/api/phone-ports/import"
           queryKey="/api/phone-ports"
