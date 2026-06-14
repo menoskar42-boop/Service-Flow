@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,8 +10,12 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, FileSpreadsheet, Printer, Clock } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Clock, UserPlus, Pencil, X } from "lucide-react";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { ROLES } from "@shared/schema";
 
 interface StatRow {
   centralName: string | null;
@@ -42,6 +46,7 @@ interface Beyond24Row {
   closeTime: string;
   hours: number;
   closeByName: string;
+  closeByManual?: boolean;
   areaTechName: string;
   lineCabin: string | null;
   lineBox: string | null;
@@ -78,6 +83,25 @@ export function RemovalStatsReport() {
   const [beyond24Open, setBeyond24Open]     = useState(false);
   const [beyond24Data, setBeyond24Data]     = useState<Beyond24Row[] | null>(null);
   const [beyond24Loading, setBeyond24Loading] = useState(false);
+  const [assigningNo, setAssigningNo]       = useState<string | null>(null);
+
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const isAdmin = user?.role === ROLES.ADMIN;
+
+  // قائمة أسماء الفنيين لاختيار فنى الإغلاق يدوياً (تُحمَّل عند فتح حوار التجاوزات)
+  const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => {
+      const res = await fetch("/api/technician-names", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل");
+      return res.json();
+    },
+    enabled: beyond24Open && isAdmin,
+  });
+  const techNames = Array.from(new Set(techList.map(t => t.techName).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "ar"));
 
   const { data, isFetching: fetchingDetails } = useQuery<StatsData>({
     queryKey: ["/api/reports/removal-stats", dateFrom, dateTo],
@@ -258,6 +282,41 @@ export function RemovalStatsReport() {
     const r = await fetch(`/api/reports/removal-beyond24?${p}`, { credentials: "include" });
     setBeyond24Data(r.ok ? await r.json() : []);
     setBeyond24Loading(false);
+  };
+
+  // إعادة تحميل التجاوزات قسراً + تحديث جداول الإحصائيات بعد تعديل فنى الإغلاق
+  const reloadBeyond24 = async () => {
+    setBeyond24Loading(true);
+    const p = new URLSearchParams({ tab: activeTab });
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo)   p.set("dateTo",   dateTo);
+    const r = await fetch(`/api/reports/removal-beyond24?${p}`, { credentials: "include" });
+    setBeyond24Data(r.ok ? await r.json() : []);
+    setBeyond24Loading(false);
+    qc.invalidateQueries({ queryKey: ["/api/reports/combined-stats"] });
+    qc.invalidateQueries({ queryKey: ["/api/reports/removal-stats"] });
+    qc.invalidateQueries({ queryKey: ["/api/reports/remaining-stats"] });
+  };
+
+  const assignCloseBy = async (complainNo: string, techName: string) => {
+    try {
+      await apiRequest("POST", "/api/manual-close-by", { complainNo, techName });
+      setAssigningNo(null);
+      await reloadBeyond24();
+      toast({ title: "تم تعيين فنى الإغلاق", description: `${techName} — شكوى ${complainNo}`, duration: 3500 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر الحفظ", variant: "destructive", duration: 5000 });
+    }
+  };
+
+  const removeCloseBy = async (complainNo: string) => {
+    try {
+      await apiRequest("DELETE", `/api/manual-close-by/${complainNo}`);
+      await reloadBeyond24();
+      toast({ title: "تم إلغاء التعيين اليدوى", description: `شكوى ${complainNo}`, duration: 3000 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر الحذف", variant: "destructive", duration: 5000 });
+    }
   };
 
   const exportBeyond24Excel = () => {
@@ -572,7 +631,44 @@ export function RemovalStatsReport() {
                           {r.hours}
                         </span>
                       </TableCell>
-                      <TableCell>{r.closeByName}</TableCell>
+                      <TableCell>
+                        {assigningNo === r.complainNo ? (
+                          <div className="flex items-center gap-1">
+                            <select
+                              autoFocus
+                              defaultValue=""
+                              onChange={(e) => { if (e.target.value) assignCloseBy(r.complainNo, e.target.value); }}
+                              className="border rounded text-xs px-1 py-1 max-w-[150px] bg-white"
+                            >
+                              <option value="" disabled>اختر الفنى…</option>
+                              {techNames.map((t) => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <button onClick={() => setAssigningNo(null)} className="text-gray-400 hover:text-gray-600" title="إلغاء">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className={r.closeByManual ? "text-blue-700 font-semibold" : r.closeByName === "غير معروف" ? "text-muted-foreground" : ""}>
+                              {r.closeByName}
+                            </span>
+                            {isAdmin && (r.closeByName === "غير معروف" || r.closeByManual) && (
+                              <button
+                                onClick={() => setAssigningNo(r.complainNo)}
+                                className="text-blue-600 hover:text-blue-800"
+                                title={r.closeByManual ? "تعديل فنى الإغلاق" : "تعيين فنى الإغلاق"}
+                              >
+                                {r.closeByManual ? <Pencil className="w-3.5 h-3.5" /> : <UserPlus className="w-4 h-4" />}
+                              </button>
+                            )}
+                            {isAdmin && r.closeByManual && (
+                              <button onClick={() => removeCloseBy(r.complainNo)} className="text-red-500 hover:text-red-700" title="إلغاء التعيين اليدوى">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{r.areaTechName}</TableCell>
                     </TableRow>
                   ))}
