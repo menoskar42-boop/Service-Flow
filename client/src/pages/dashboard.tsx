@@ -20,14 +20,15 @@ import { InstallationsReport } from "@/components/InstallationsReport";
 import { RemovalStatsReport } from "@/components/RemovalStatsReport";
 import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
+import { DataCompletionSection } from "@/components/DataCompletionSection";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
-type AdminTab = "orders" | "reports" | "file-upload";
+type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
 type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
@@ -226,6 +227,20 @@ export default function Dashboard() {
                   <BarChart3 className="w-4 h-4" />
                   التقارير
                 </button>
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
+                  <button
+                    onClick={() => setAdminTab("data-completion")}
+                    data-testid="tab-admin-data-completion"
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      adminTab === "data-completion"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Cable className="w-4 h-4" />
+                    استكمال بيانات
+                  </button>
+                )}
                 {user.role === ROLES.ADMIN && (
                   <button
                     onClick={() => setAdminTab("file-upload")}
@@ -375,6 +390,13 @@ export default function Dashboard() {
               {reportTab === "removal-stats" && <RemovalStatsReport />}
               {reportTab === "repetition-stats" && <RepetitionStatsReport />}
             </div>
+          </div>
+        )}
+
+        {/* ── DATA COMPLETION TAB (Admin & Tech) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "data-completion" && (
+          <div className="space-y-6">
+            <DataCompletionSection />
           </div>
         )}
 
