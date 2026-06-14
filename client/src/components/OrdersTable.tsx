@@ -48,6 +48,17 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
   const [techFilter, setTechFilter] = useState("");
   const [myRejectionsOnly, setMyRejectionsOnly] = useState(false);
+  const [cabinetTechFilter, setCabinetTechFilter] = useState(""); // أدمن: متعذرات فنى منطقة محدد
+
+  // الهدف لفلتر "متعذرات الكابينة": اسم الفنى المسجَّل (للفنى) أو المختار (للأدمن)
+  const cabinetTechTarget = myRejectionsOnly ? (user?.username ?? null) : (cabinetTechFilter || null);
+  // قائمة فنيى الكباين الذين لديهم متعذرات (لدروب ليست الأدمن)
+  const cabinetTechs = Array.from(new Set(
+    orders
+      .filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE || o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE)
+      .map(o => (o as any).cabinetTechName)
+      .filter(Boolean) as string[],
+  )).sort((a, b) => a.localeCompare(b, "ar"));
 
   const techUsers = users?.filter(u => u.role === ROLES.TECH) ?? [];
 
@@ -87,11 +98,11 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   };
 
   const filteredOrders = orders.filter((order) => {
-    // متعذراتى: الطلبات المتعذرة على كابينة/سنترال تابعين للفنى المسجَّل (بصرف النظر عمّن ردّ)
-    if (myRejectionsOnly) {
+    // متعذرات منطقة الفنى: المتعذرة على كابينة تابعة للفنى المستهدف (بصرف النظر عمّن ردّ)
+    if (cabinetTechTarget) {
       const isRejected = order.status === ORDER_STATUS.NOT_FEASIBLE || order.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
       if (!isRejected) return false;
-      if ((order as any).cabinetTechName == null || (order as any).cabinetTechName !== user?.username) return false;
+      if ((order as any).cabinetTechName !== cabinetTechTarget) return false;
     }
 
     if (statusFilter !== "all" && order.status !== statusFilter) return false;
@@ -282,6 +293,20 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               ))}
             </select>
           )}
+          {user?.role === ROLES.ADMIN && cabinetTechs.length > 0 && (
+            <select
+              value={cabinetTechFilter}
+              onChange={(e) => setCabinetTechFilter(e.target.value)}
+              className={`border rounded-md px-3 py-2 text-sm min-w-[150px] ${cabinetTechFilter ? "bg-red-50 border-red-200 text-red-700" : "bg-white"}`}
+              dir="rtl"
+              title="عرض المتعذرات على كباين فنى منطقة محدد"
+            >
+              <option value="">متعذرات فنى…</option>
+              {cabinetTechs.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          )}
           {user?.role === ROLES.TECH && (
             <button
               onClick={() => setMyRejectionsOnly(v => !v)}
@@ -296,7 +321,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
             </button>
           )}
         </div>
-        {(searchQuery || statusFilter !== "all" || contractFilter !== "all" || techFilter) && (
+        {(searchQuery || statusFilter !== "all" || contractFilter !== "all" || techFilter || cabinetTechFilter || myRejectionsOnly) && (
           <p className="text-sm text-muted-foreground mt-2">
             عدد النتائج: {filteredOrders.length} من {orders.length}
           </p>
