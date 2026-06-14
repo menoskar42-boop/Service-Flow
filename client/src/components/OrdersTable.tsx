@@ -47,6 +47,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
   const [techFilter, setTechFilter] = useState("");
+  const [myRejectionsOnly, setMyRejectionsOnly] = useState(false);
 
   const techUsers = users?.filter(u => u.role === ROLES.TECH) ?? [];
 
@@ -86,6 +87,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   };
 
   const filteredOrders = orders.filter((order) => {
+    // متعذراتى: الطلبات المتعذرة على كابينة/سنترال تابعين للفنى المسجَّل (بصرف النظر عمّن ردّ)
+    if (myRejectionsOnly) {
+      const isRejected = order.status === ORDER_STATUS.NOT_FEASIBLE || order.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
+      if (!isRejected) return false;
+      if ((order as any).cabinetTechName == null || (order as any).cabinetTechName !== user?.username) return false;
+    }
+
     if (statusFilter !== "all" && order.status !== statusFilter) return false;
 
     // Tech filter: show orders for selected tech + all pending (unassigned) orders
@@ -273,6 +281,19 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 <option key={t.id} value={t.username}>{t.username}</option>
               ))}
             </select>
+          )}
+          {user?.role === ROLES.TECH && (
+            <button
+              onClick={() => setMyRejectionsOnly(v => !v)}
+              className={`rounded-md px-3 py-2 text-sm font-medium border transition-colors ${
+                myRejectionsOnly
+                  ? "bg-red-600 text-white border-red-600"
+                  : "bg-white text-red-700 border-red-200 hover:bg-red-50"
+              }`}
+              title="عرض المتعذرات على الكباين التابعة لى فقط"
+            >
+              متعذراتى فقط
+            </button>
           )}
         </div>
         {(searchQuery || statusFilter !== "all" || contractFilter !== "all" || techFilter) && (

@@ -356,6 +356,19 @@ const cmpTechBest = (a: any, b: any) =>
 const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
   String(a.centralName ?? "").localeCompare(String(b.centralName ?? ""), "ar") || cmp(a, b);
 
+// يُرفق بكل طلب اسم فنى الكابينة المالك (cabinet_technicians) حسب (السنترال + رقم
+// الكابينة) — بصرف النظر عن من ردّ على الطلب. يُستخدم لفلتر "متعذراتى" للفنى.
+async function attachCabinetTech(orders: any[]): Promise<any[]> {
+  if (!orders.length) return orders;
+  const { rows } = await pool.query(
+    `SELECT ct.central_name AS c, ct.cabin_number AS n, tn.tech_name AS t
+     FROM cabinet_technicians ct JOIN technician_names tn ON tn.worker_code = ct.worker_code`,
+  );
+  const map = new Map<string, string>();
+  for (const r of rows) map.set(`${r.c}|${r.n}`, r.t);
+  return orders.map((o) => ({ ...o, cabinetTechName: map.get(`${o.centralName}|${o.cabinNumber}`) ?? null }));
+}
+
 // Archive a historical table into its archive table when the year (Africa/Cairo)
 // has rolled over since the last upload. Returns the archived year or null.
 async function archiveIfNewYear(histTable: string, archiveTable: string, cols: string[]): Promise<number | null> {
@@ -898,12 +911,12 @@ export async function registerRoutes(
       // Tech sees all orders EXCEPT those in needs_external state
       const allOrders = await storage.getOrders();
       const techOrders = allOrders.filter(o => o.status !== ORDER_STATUS.NEEDS_EXTERNAL);
-      return res.json(techOrders);
+      return res.json(await attachCabinetTech(techOrders));
     }
 
     // Admin sees all orders
     const orders = await storage.getOrders();
-    res.json(orders);
+    res.json(await attachCabinetTech(orders));
   });
 
   app.post(api.orders.create.path, requireAuth, async (req, res) => {
