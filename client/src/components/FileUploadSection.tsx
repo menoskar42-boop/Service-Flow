@@ -313,7 +313,10 @@ function UploadCard({
         desc = `تفاصيل: ${d.details?.inserted ?? 0} جديد (${d.details?.total ?? 0} في الملف) — متبقى: ${d.remaining?.inserted ?? 0} جديد (${d.remaining?.total ?? 0} في الملف)`;
       } else if (d.archivedYear !== undefined) {
         const arch = d.archivedYear ? ` — تمت أرشفة سنة ${d.archivedYear}` : "";
-        desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current}${arch}`;
+        const soy = d.soyTotal !== undefined ? ` — بداية السنة: +${d.soyAdded ?? 0} (إجمالى ${d.soyTotal})` : "";
+        desc = `تاريخي: ${d.hist} جديد — حالي: ${d.current}${arch}${soy}`;
+      } else if (d.soyTotal !== undefined) {
+        desc = `أُضيف ${d.soyAdded ?? 0} مسلسل جديد — إجمالى متعذرات بداية السنة: ${d.soyTotal}`;
       } else if (d.current !== undefined) {
         const sod = d.sodReplaced
           ? `بداية اليوم: ${d.startOfDay} (لقطة جديدة لليوم)`
