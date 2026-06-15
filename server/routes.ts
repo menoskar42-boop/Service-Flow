@@ -96,6 +96,41 @@ function smartSheet(rows: any[][], anchors: string[], scanRows = 25) {
   return { headerRowIdx, header, find, findExact, dataRows };
 }
 
+// بعض ملفات التصدير (خصوصاً ملفات Order/متعذرات OM) تكتب وسم النطاق
+// <dimension ref="A1:BS2"/> بقيمة خاطئة لا تعكس عدد الصفوف الفعلى، فـ SheetJS
+// يثق فى هذا النطاق ويقرأ صفاً واحداً فقط رغم وجود آلاف الصفوف. نعيد حساب
+// النطاق الحقيقى من عناوين الخلايا الفعلية قبل القراءة حتى تُقرأ كل الصفوف.
+function fixSheetRange(ws: any): void {
+  if (!ws) return;
+  let maxR = -1, maxC = -1, minR = Infinity, minC = Infinity;
+  for (const k of Object.keys(ws)) {
+    if (k[0] === "!") continue;
+    const cell = XLSX.utils.decode_cell(k);
+    if (cell.r > maxR) maxR = cell.r;
+    if (cell.c > maxC) maxC = cell.c;
+    if (cell.r < minR) minR = cell.r;
+    if (cell.c < minC) minC = cell.c;
+  }
+  if (maxR < 0 || maxC < 0) return; // ورقة فارغة
+  const real = { s: { r: 0, c: 0 }, e: { r: maxR, c: maxC } };
+  if (!ws["!ref"]) { ws["!ref"] = XLSX.utils.encode_range(real); return; }
+  const cur = XLSX.utils.decode_range(ws["!ref"]);
+  // وسّع النطاق فقط إذا كانت الخلايا الفعلية تتجاوز النطاق المعلن (لا نُقلّصه أبداً).
+  if (maxR > cur.e.r || maxC > cur.e.c || cur.s.r > minR || cur.s.c > minC) {
+    ws["!ref"] = XLSX.utils.encode_range({
+      s: { r: Math.min(cur.s.r, 0), c: Math.min(cur.s.c, 0) },
+      e: { r: Math.max(cur.e.r, maxR), c: Math.max(cur.e.c, maxC) },
+    });
+  }
+}
+
+// قراءة ورقة كصفوف (header:1) بعد تصحيح النطاق — البديل الموحَّد لاستدعاء
+// XLSX.utils.sheet_to_json المباشر فى كل أماكن استيراد الملفات.
+function sheetRows(ws: any): any[][] {
+  fixSheetRange(ws);
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+}
+
 // Duration cell → hours (number) | null.
 // Handles two formats found in 430D:
 //   • Numeric fraction-of-day (تفاصيل متبقى): 0.8285 → 19.9 h
@@ -171,7 +206,7 @@ const SURVEY_TYPES_LC = SURVEY_TYPES.map((s) => s.toLowerCase());
 function parseTicketFile(buffer: Buffer): any[][] {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const rows: any[][] = sheetRows(ws);
   const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain no"]);
   const iTicket   = find("رقم الشكوي", "رقم الشكوى", "complain no");
   const iStatus   = find("status code");
@@ -339,7 +374,7 @@ const foIsGhanaimFv = (r: any[]) =>
 function parseFtthOrderRows(buffer: Buffer): any[][] {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
   const ws = wb.Sheets["Order"] || wb.Sheets[wb.SheetNames[0]];
-  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const rows: any[][] = sheetRows(ws);
   const { find, findExact, dataRows, headerRowIdx } = smartSheet(rows, ["service order id", "service number"]);
   const origHeaders = (rows[headerRowIdx] || []).map((h) => String(h ?? "").trim());
   const iSO = find("service order id"), iCO = find("customer order id"), iProduct = findExact("product");
@@ -1409,7 +1444,7 @@ export async function registerRoutes(
     try {
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const rows: any[][] = sheetRows(ws);
       if (rows.length < 2) return res.status(400).json({ message: "الملف فارغ" });
 
       // Detect column indices from header row by partial (case-insensitive)
@@ -1694,7 +1729,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const rows: any[][] = sheetRows(ws);
       if (rows.length < 2) return res.json({ inserted: 0 });
 
       // smart header detection (tolerant of column reorder / leading title rows)
@@ -1875,7 +1910,7 @@ export async function registerRoutes(
       // ── Sheet: التفاصيل / تفاصيل الأعطال (accumulating, dedup by complain_no) ──
       const ws1 = wb.Sheets["التفاصيل"] || wb.Sheets["تفاصيل الأعطال"];
       if (ws1) {
-        const rows1: any[][] = XLSX.utils.sheet_to_json(ws1, { header: 1, defval: "" }) as any[][];
+        const rows1: any[][] = sheetRows(ws1);
         const { find, dataRows } = smartSheet(rows1, ["complain no", "رقم الشكوى"]);
         const iNo       = find("complain no", "رقم الشكوى");
         const iSector   = find("sector", "القطاع");
@@ -1934,7 +1969,7 @@ export async function registerRoutes(
       // ── Sheet: تفاصيل متبقى (full replace) ──
       const ws2 = wb.Sheets["تفاصيل متبقى"];
       if (ws2) {
-        const rows2: any[][] = XLSX.utils.sheet_to_json(ws2, { header: 1, defval: "" }) as any[][];
+        const rows2: any[][] = sheetRows(ws2);
         const { find, dataRows } = smartSheet(rows2, ["complain no"]);
         const iNo = find("complain no");
         const iSector = find("sector");
@@ -2115,7 +2150,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets["FTTH-Subscibers"] || wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const rows: any[][] = sheetRows(ws);
       const { find, dataRows } = smartSheet(rows, ["fcc code", "msan/gpon", "msan"]);
       const iSector = find("sector");
       const iRegion = find("regoin", "region");
@@ -2239,7 +2274,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets["حاله 138"] || wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const rows: any[][] = sheetRows(ws);
       const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain"]);
       const iCentral = find("field1");
       const iPhoneShort = find("رقم التلفون");
@@ -2355,7 +2390,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const rows: any[][] = sheetRows(ws);
       const { find, dataRows } = smartSheet(rows, ["رقم الكابينة", "رقم الكابينه", "كود العامل"]);
       const iCentral  = find("اسم السنترال");
       const iCabin    = find("رقم الكابينة", "رقم الكابينه");
@@ -2441,7 +2476,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const rows: any[][] = sheetRows(ws);
       const { find, dataRows } = smartSheet(rows, ["Field1", "Field2"]);
       const iName = find("Field1");
       const iCode = find("Field2");
@@ -2501,7 +2536,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const rows: any[][] = sheetRows(ws);
       const { find, dataRows } = smartSheet(rows, ["phone number", "رقم التليفون", "رقم التلفون"]);
       const iPhone = find("phone number", "رقم التليفون", "رقم التلفون");
       const iArea  = find("area code", "كود المنطقة");
