@@ -2599,8 +2599,12 @@ export async function registerRoutes(
       const archivedYear = await archiveIfNewYear("ftth_orders", "ftth_orders_archive", FTTH_ORDER_COLS);
       const hist = await accumulateTable("ftth_orders", FTTH_ORDER_COLS, "service_order_id", all, userId);
       const current = await replaceTable("ftth_orders_current", FTTH_ORDER_COLS, all, userId);
-      const soyAdded = await accumulateSoy(all, userId);     // مسلسلات جديدة تُضاف لبداية السنة
-      const msanFilled = await enrichSoyMsan(all);           // إثراء كود MSAN فى بداية السنة لكل مسلسل
+      // ⏸️ معطّل مؤقتاً للفحص: لا نُحدّث بداية السنة (SOY) من ملف الحالى.
+      // بداية السنة تُدار فقط عبر زر الرفع اليدوى "متعذرات بداية السنة".
+      const soyAdded = 0;
+      const msanFilled = 0;
+      // const soyAdded = await accumulateSoy(all, userId);
+      // const msanFilled = await enrichSoyMsan(all);
       const { rows: c } = await pool.query(`SELECT COUNT(*)::int AS n FROM ftth_orders_soy`);
 
       res.json({ inserted: hist, hist, current, archivedYear, total: all.length, soyAdded, msanFilled, soyTotal: c[0].n });
@@ -2627,6 +2631,12 @@ export async function registerRoutes(
   app.post("/api/ftth-orders/soy-reset", requireAdmin, async (_req, res) => {
     await pool.query(`TRUNCATE ftth_orders_soy`);
     res.json({ ok: true, soyTotal: 0 });
+  });
+
+  // POST /api/ftth-orders/current-reset — تفريغ جدول المتعذرات الحالية (أدمن).
+  app.post("/api/ftth-orders/current-reset", requireAdmin, async (_req, res) => {
+    await pool.query(`TRUNCATE ftth_orders_current`);
+    res.json({ ok: true });
   });
 
   // GET /api/ftth-orders — ?bucket=historical|current|archive|soy|resolved & ?year= & ?q=

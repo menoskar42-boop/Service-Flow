@@ -55,6 +55,17 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     }
   };
 
+  const handleResetCurrent = async () => {
+    if (!window.confirm("تفريغ جدول المتعذرات الحالية بالكامل؟ ستحتاج إعادة رفع ملف الحالى بعدها.")) return;
+    try {
+      await apiRequest("POST", "/api/ftth-orders/current-reset");
+      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+      toast({ title: "تم التفريغ", description: "أعد رفع ملف المتعذرات الحالية الآن", duration: 4000 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر التفريغ", variant: "destructive", duration: 5000 });
+    }
+  };
+
   const { data: rows = [], isFetching } = useQuery<Row[]>({
     queryKey: ["/api/ftth-orders", bucket, q],
     queryFn: async () => {
@@ -156,6 +167,11 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           {bucket === "soy" && isAdmin && (
             <Button variant="outline" size="sm" onClick={handleResetSoy} className="text-red-700 border-red-300 gap-1" title="تفريغ جدول بداية السنة لإعادة بنائه">
               <Trash2 className="w-4 h-4" /> تفريغ بداية السنة
+            </Button>
+          )}
+          {bucket === "current" && isAdmin && (
+            <Button variant="outline" size="sm" onClick={handleResetCurrent} className="text-red-700 border-red-300 gap-1" title="تفريغ جدول المتعذرات الحالية">
+              <Trash2 className="w-4 h-4" /> تفريغ الحالى
             </Button>
           )}
         </div>
