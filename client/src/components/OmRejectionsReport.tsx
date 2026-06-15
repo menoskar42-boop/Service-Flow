@@ -26,6 +26,7 @@ interface Row {
   currentActivity: string | null;
   customerMobile: string | null;
   fccExchange: string | null;
+  techName: string | null;
 }
 
 // الوقت مخزَّن كـ UTC (توقيت الملف) — يُعرض كما هو دون إزاحة المتصفح.
@@ -85,6 +86,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     ["الحالة", (r) => r.orderStatus],
     ["كود MSAN", (r) => r.msanCode],
     ["FCC", (r) => r.fccExchange],
+    ["اسم الفنى", (r) => r.techName],
     ["سبب التعذر", (r) => r.errorName],
     ["النشاط الحالى", (r) => r.currentActivity],
     ["الموبايل", (r) => r.customerMobile],

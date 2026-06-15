@@ -2687,34 +2687,45 @@ export async function registerRoutes(
     const conds: string[] = [];
     if (all !== "true") {
       // متعذرات غنايم المعنية فقط: أكواد غنايم الأربعة + Service Name = FV Survey
-      conds.push(`fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
-      conds.push(`service_name = 'FV Survey'`);
+      conds.push(`fo.fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
+      conds.push(`fo.service_name = 'FV Survey'`);
     }
     if (bucket === "resolved") {
       conds.push(`NOT EXISTS (SELECT 1 FROM ftth_orders_current c
-        WHERE COALESCE(c.serial_number,'')      = COALESCE(ftth_orders_soy.serial_number,'')
-          AND COALESCE(c.customer_order_id,'')  = COALESCE(ftth_orders_soy.customer_order_id,'')
-          AND COALESCE(c.service_order_id,'')   = COALESCE(ftth_orders_soy.service_order_id,''))`);
+        WHERE COALESCE(c.serial_number,'')      = COALESCE(fo.serial_number,'')
+          AND COALESCE(c.customer_order_id,'')  = COALESCE(fo.customer_order_id,'')
+          AND COALESCE(c.service_order_id,'')   = COALESCE(fo.service_order_id,''))`);
     }
-    if (bucket === "archive" && year) { params.push(parseInt(year)); conds.push(`archived_year = $${params.length}`); }
+    if (bucket === "archive" && year) { params.push(parseInt(year)); conds.push(`fo.archived_year = $${params.length}`); }
     if (q?.trim()) {
       params.push(`%${q.trim()}%`);
       const p = `$${params.length}`;
-      conds.push(`(service_order_id ILIKE ${p} OR serial_number ILIKE ${p} OR customer_order_id ILIKE ${p} OR customer_name ILIKE ${p} OR msan_code ILIKE ${p} OR fcc_exchange ILIKE ${p})`);
+      conds.push(`(fo.service_order_id ILIKE ${p} OR fo.serial_number ILIKE ${p} OR fo.customer_order_id ILIKE ${p} OR fo.customer_name ILIKE ${p} OR fo.msan_code ILIKE ${p} OR fo.fcc_exchange ILIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
-    const yearCol = bucket === "archive" ? `archived_year AS "archivedYear",` : "";
+    const yearCol = bucket === "archive" ? `fo.archived_year AS "archivedYear",` : "";
     const { rows } = await pool.query(
-      `SELECT id, ${yearCol} service_order_id AS "serviceOrderId", customer_order_id AS "customerOrderId",
-              product, service_number AS "serviceNumber", serial_number AS "serialNumber",
-              service_name AS "serviceName", customer_name AS "customerName",
-              order_status AS "orderStatus", order_create_time AS "orderCreateTime",
-              exchange_name AS "exchangeName", service_type AS "serviceType", msan_code AS "msanCode",
-              area_code AS "areaCode", customer_mobile AS "customerMobile",
-              current_activity AS "currentActivity", error_name AS "errorName",
-              governorate, line_type AS "lineType", fcc_exchange AS "fccExchange"
-       FROM ${table} ${where}
-       ORDER BY order_create_time DESC NULLS LAST
+      `SELECT fo.id, ${yearCol} fo.service_order_id AS "serviceOrderId", fo.customer_order_id AS "customerOrderId",
+              fo.product, fo.service_number AS "serviceNumber", fo.serial_number AS "serialNumber",
+              fo.service_name AS "serviceName", fo.customer_name AS "customerName",
+              fo.order_status AS "orderStatus", fo.order_create_time AS "orderCreateTime",
+              fo.exchange_name AS "exchangeName", fo.service_type AS "serviceType", fo.msan_code AS "msanCode",
+              fo.area_code AS "areaCode",
+              COALESCE(wfm_mob.mobile, fo.customer_mobile) AS "customerMobile",
+              fo.current_activity AS "currentActivity", fo.error_name AS "errorName",
+              fo.governorate, fo.line_type AS "lineType", fo.fcc_exchange AS "fccExchange",
+              COALESCE(tn.tech_name, 'غير معروف') AS "techName"
+       FROM ${table} fo
+       LEFT JOIN cabinet_technicians ct ON ct.cabin_code = fo.msan_code
+       LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+       LEFT JOIN LATERAL (
+         SELECT mobile FROM maintenance_orders
+         WHERE phone_number = fo.serial_number
+           AND work_order_type ILIKE 'fvmanualsurvey'
+         LIMIT 1
+       ) wfm_mob ON TRUE
+       ${where}
+       ORDER BY fo.order_create_time DESC NULLS LAST
        LIMIT 5000`,
       params,
     );
