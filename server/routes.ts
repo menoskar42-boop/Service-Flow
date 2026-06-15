@@ -400,18 +400,40 @@ function parseFtthOrderRows(buffer: Buffer): any[][] {
       String(g(r, iFcc)) || null, String(g(r, iSerial)) || null, String(g(r, iSvcName)) || null, JSON.stringify(raw),
     ]);
   }
-  return Array.from(byId.values());
+  // منع تكرار المسلسل: نُبقى صفاً واحداً فقط لكل رقم مسلسل (أول ظهور).
+  // الصفوف بدون مسلسل تبقى كما هى (مميَّزة بالفعل بـ service_order_id).
+  const seenSerial = new Set<string>();
+  const deduped: any[][] = [];
+  for (const r of byId.values()) {
+    const serial = String(r[FO_SERIAL] ?? "").trim();
+    if (serial) { if (seenSerial.has(serial)) continue; seenSerial.add(serial); }
+    deduped.push(r);
+  }
+  return deduped;
 }
 
-// يضيف إلى ftth_orders_soy صفوف غنايم (FV Survey) الجديدة فقط. يُرجع عدد المُضاف.
+// هوية الصف لمنع التكرار: رقم المسلسل (إن وُجد) وإلا مفتاح order ids.
+const foIdentity = (serial: any, co: any, so: any) => {
+  const s = String(serial ?? "").trim();
+  return s ? "S|" + s : "K|" + `${co ?? ""}|${so ?? ""}`;
+};
+
+// يضيف إلى ftth_orders_soy صفوف غنايم (FV Survey) الجديدة فقط (بدون تكرار المسلسل). يُرجع عدد المُضاف.
 async function accumulateSoy(rows: any[][], userId: number): Promise<number> {
   rows = rows.filter(foIsGhanaimFv); // بداية السنة: غنايم الأربعة + Service Name = FV Survey فقط
   if (!rows.length) return 0;
   const { rows: ex } = await pool.query(
     `SELECT serial_number, customer_order_id, service_order_id FROM ftth_orders_soy`,
   );
-  const seen = new Set(ex.map((r: any) => `${r.serial_number ?? ""}|${r.customer_order_id ?? ""}|${r.service_order_id ?? ""}`));
-  const fresh = rows.filter((r) => !seen.has(foKey(r)));
+  const seen = new Set(ex.map((r: any) => foIdentity(r.serial_number, r.customer_order_id, r.service_order_id)));
+  // فلترة المُدخلات: نتخطّى أى مسلسل موجود فى SOY أو تكرّر داخل نفس الرفعة.
+  const fresh: any[][] = [];
+  for (const r of rows) {
+    const id = foIdentity(r[FO_SERIAL], r[FO_CUSTOMER_ORDER], r[FO_SERVICE_ORDER]);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    fresh.push(r);
+  }
   if (!fresh.length) return 0;
   const allCols = [...FTTH_ORDER_COLS, "uploaded_by_id"];
   const n = allCols.length;
@@ -456,6 +478,18 @@ async function enrichSoyMsan(rows: any[][]): Promise<number> {
     updated += res.rowCount ?? 0;
   }
   return updated;
+}
+
+// يحذف الصفوف المكرَّرة بنفس رقم المسلسل من جدول متعذرات OM ويُبقى أقدم صف (أصغر id).
+// يُنظّف أى تكرارات قديمة تراكمت قبل تطبيق منع التكرار. (table قيمة داخلية ثابتة.)
+async function dedupBySerial(table: string): Promise<number> {
+  const r = await pool.query(
+    `DELETE FROM ${table} a USING ${table} b
+     WHERE a.id > b.id
+       AND COALESCE(TRIM(a.serial_number), '') <> ''
+       AND TRIM(a.serial_number) = TRIM(b.serial_number)`,
+  );
+  return r.rowCount ?? 0;
 }
 
 const COMPLAINT_DETAILS_COLS = [
@@ -2638,6 +2672,9 @@ export async function registerRoutes(
       // غير موجود فى SOY، ونُثرى كود MSAN الناقص فيها من الرفعة الحالية.
       const soyAdded = await accumulateSoy(all, userId);
       const msanFilled = await enrichSoyMsan(all);
+      // تنظيف أى تكرارات قديمة بنفس المسلسل فى الجدولين (الحالى + بداية الفترة).
+      await dedupBySerial("ftth_orders_current");
+      await dedupBySerial("ftth_orders_soy");
       const { rows: c } = await pool.query(`SELECT COUNT(*)::int AS n FROM ftth_orders_soy`);
 
       res.json({ inserted: hist, hist, current, archivedYear, total: all.length, soyAdded, msanFilled, soyTotal: c[0].n });
@@ -2653,6 +2690,7 @@ export async function registerRoutes(
       const all = parseFtthOrderRows(req.file.buffer);
       const userId = (req.user as any).id;
       const soyAdded = await accumulateSoy(all, userId);
+      await dedupBySerial("ftth_orders_soy");
       const { rows: c } = await pool.query(`SELECT COUNT(*)::int AS n FROM ftth_orders_soy`);
       res.json({ ok: true, soyAdded, soyTotal: c[0].n, total: all.length });
     } catch (e: any) {
@@ -2689,10 +2727,13 @@ export async function registerRoutes(
       conds.push(`fo.service_name = 'FV Survey'`);
     }
     if (bucket === "resolved") {
+      // تم فكها = موجود فى بداية الفترة وغير موجود فى الحالى. الهوية برقم المسلسل
+      // (إن وُجد) وإلا بمفتاح order ids للصفوف بدون مسلسل.
       conds.push(`NOT EXISTS (SELECT 1 FROM ftth_orders_current c
-        WHERE COALESCE(c.serial_number,'')      = COALESCE(fo.serial_number,'')
-          AND COALESCE(c.customer_order_id,'')  = COALESCE(fo.customer_order_id,'')
-          AND COALESCE(c.service_order_id,'')   = COALESCE(fo.service_order_id,''))`);
+        WHERE CASE WHEN COALESCE(TRIM(fo.serial_number),'') <> ''
+          THEN TRIM(c.serial_number) = TRIM(fo.serial_number)
+          ELSE COALESCE(c.customer_order_id,'') = COALESCE(fo.customer_order_id,'')
+           AND COALESCE(c.service_order_id,'')  = COALESCE(fo.service_order_id,'') END)`);
     }
     if (bucket === "archive" && year) { params.push(parseInt(year)); conds.push(`fo.archived_year = $${params.length}`); }
     if (q?.trim()) {
@@ -2753,9 +2794,10 @@ export async function registerRoutes(
             COUNT(*)::int AS soy_total,
             COUNT(*) FILTER (WHERE NOT EXISTS (
               SELECT 1 FROM cur c
-              WHERE COALESCE(c.serial_number,'')     = COALESCE(s.serial_number,'')
-                AND COALESCE(c.customer_order_id,'') = COALESCE(s.customer_order_id,'')
-                AND COALESCE(c.service_order_id,'')  = COALESCE(s.service_order_id,'')
+              WHERE CASE WHEN COALESCE(TRIM(s.serial_number),'') <> ''
+                THEN TRIM(c.serial_number) = TRIM(s.serial_number)
+                ELSE COALESCE(c.customer_order_id,'') = COALESCE(s.customer_order_id,'')
+                 AND COALESCE(c.service_order_id,'')  = COALESCE(s.service_order_id,'') END
             ))::int AS resolved
           FROM soy s GROUP BY 1
         ),
