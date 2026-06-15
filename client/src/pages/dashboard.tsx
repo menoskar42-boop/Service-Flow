@@ -21,6 +21,7 @@ import { RemovalStatsReport } from "@/components/RemovalStatsReport";
 import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
 import { CabinetAdslFaultsReport } from "@/components/CabinetAdslFaultsReport";
 import { OmRejectionsReport } from "@/components/OmRejectionsReport";
+import { OmStatsReport } from "@/components/OmStatsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { DataCompletionSection } from "@/components/DataCompletionSection";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -31,7 +32,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "om-current" | "om-soy" | "om-resolved";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "om-current" | "om-soy" | "om-resolved" | "om-stats";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -54,6 +55,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "om-current",  label: "المتعذرات الحالية" },
       { id: "om-soy",      label: "متعذرات بداية السنة" },
       { id: "om-resolved", label: "متعذرات تم فكها" },
+      { id: "om-stats",    label: "إحصائية متعذرات OM" },
     ],
   },
   {
@@ -405,6 +407,7 @@ export default function Dashboard() {
               {reportTab === "om-current"  && <OmRejectionsReport bucket="current"  title="المتعذرات الحالية (OM)" />}
               {reportTab === "om-soy"      && <OmRejectionsReport bucket="soy"      title="متعذرات بداية السنة (OM)" />}
               {reportTab === "om-resolved" && <OmRejectionsReport bucket="resolved" title="متعذرات تم فكها (OM)" />}
+              {reportTab === "om-stats"    && <OmStatsReport />}
             </div>
           </div>
         )}

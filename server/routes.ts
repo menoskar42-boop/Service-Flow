@@ -2634,12 +2634,10 @@ export async function registerRoutes(
       const archivedYear = await archiveIfNewYear("ftth_orders", "ftth_orders_archive", FTTH_ORDER_COLS);
       const hist = await accumulateTable("ftth_orders", FTTH_ORDER_COLS, "service_order_id", all, userId);
       const current = await replaceTable("ftth_orders_current", FTTH_ORDER_COLS, all, userId);
-      // ⏸️ معطّل مؤقتاً للفحص: لا نُحدّث بداية السنة (SOY) من ملف الحالى.
-      // بداية السنة تُدار فقط عبر زر الرفع اليدوى "متعذرات بداية السنة".
-      const soyAdded = 0;
-      const msanFilled = 0;
-      // const soyAdded = await accumulateSoy(all, userId);
-      // const msanFilled = await enrichSoyMsan(all);
+      // تحديث بداية الفترة (SOY) من ملف الحالى: نضيف أى مفتاح جديد (مسلسل+order ids)
+      // غير موجود فى SOY، ونُثرى كود MSAN الناقص فيها من الرفعة الحالية.
+      const soyAdded = await accumulateSoy(all, userId);
+      const msanFilled = await enrichSoyMsan(all);
       const { rows: c } = await pool.query(`SELECT COUNT(*)::int AS n FROM ftth_orders_soy`);
 
       res.json({ inserted: hist, hist, current, archivedYear, total: all.length, soyAdded, msanFilled, soyTotal: c[0].n });
@@ -2730,6 +2728,93 @@ export async function registerRoutes(
       params,
     );
     res.json(rows);
+  });
+
+  // GET /api/reports/om-stats — إحصائية متعذرات OM (لكل كابينة + لكل فنى)
+  //   بداية الفترة (SOY) / الحالى / تم فكها (موجود فى SOY وغير موجود فى الحالى)
+  //   ونسبة التحقيق = تم فكها ÷ بداية الفترة.
+  app.get("/api/reports/om-stats", requireAuth, async (_req, res) => {
+    try {
+      const FV = `fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT') AND service_name = 'FV Survey'`;
+      // تجميع لكل كود MSAN (كابينة): إجمالى البداية + تم فكها (من SOY) + الحالى.
+      const { rows: byCabinet } = await pool.query(`
+        WITH soy AS (
+          SELECT msan_code, serial_number, customer_order_id, service_order_id
+          FROM ftth_orders_soy WHERE ${FV}
+        ),
+        cur AS (
+          SELECT msan_code, serial_number, customer_order_id, service_order_id
+          FROM ftth_orders_current WHERE ${FV}
+        ),
+        soy_agg AS (
+          SELECT
+            COALESCE(NULLIF(TRIM(msan_code), ''), '—') AS msan,
+            COUNT(*)::int AS soy_total,
+            COUNT(*) FILTER (WHERE NOT EXISTS (
+              SELECT 1 FROM cur c
+              WHERE COALESCE(c.serial_number,'')     = COALESCE(s.serial_number,'')
+                AND COALESCE(c.customer_order_id,'') = COALESCE(s.customer_order_id,'')
+                AND COALESCE(c.service_order_id,'')  = COALESCE(s.service_order_id,'')
+            ))::int AS resolved
+          FROM soy s GROUP BY 1
+        ),
+        cur_agg AS (
+          SELECT COALESCE(NULLIF(TRIM(msan_code), ''), '—') AS msan, COUNT(*)::int AS cur_total
+          FROM cur GROUP BY 1
+        ),
+        m AS (
+          SELECT
+            COALESCE(s.msan, c.msan)          AS msan,
+            COALESCE(s.soy_total, 0)          AS soy_total,
+            COALESCE(s.resolved, 0)           AS resolved,
+            COALESCE(c.cur_total, 0)          AS cur_total
+          FROM soy_agg s FULL JOIN cur_agg c ON s.msan = c.msan
+        )
+        SELECT
+          m.msan                                       AS "msanCode",
+          m.soy_total                                  AS "soyTotal",
+          m.cur_total                                  AS "currentTotal",
+          m.resolved                                   AS "resolved",
+          tech.central_name                            AS "centralName",
+          COALESCE(tech.tech_name, 'غير معروف')        AS "techName"
+        FROM m
+        LEFT JOIN LATERAL (
+          SELECT MIN(ct.central_name)                        AS central_name,
+                 string_agg(DISTINCT tn.tech_name, ' , ')    AS tech_name
+          FROM cabinet_technicians ct
+          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+          WHERE ct.cabin_code = m.msan
+        ) tech ON TRUE
+        ORDER BY m.soy_total DESC, m.msan
+      `);
+
+      // تجميع لكل فنى (مجموع كابيناته) — يُحسب فى JS لضمان تطابق الإجماليات.
+      const techMap = new Map<string, { techName: string; soyTotal: number; currentTotal: number; resolved: number }>();
+      let tSoy = 0, tCur = 0, tRes = 0;
+      for (const r of byCabinet as any[]) {
+        const soy = Number(r.soyTotal), cur = Number(r.currentTotal), res2 = Number(r.resolved);
+        tSoy += soy; tCur += cur; tRes += res2;
+        const key = r.techName || "غير معروف";
+        const e = techMap.get(key) || { techName: key, soyTotal: 0, currentTotal: 0, resolved: 0 };
+        e.soyTotal += soy; e.currentTotal += cur; e.resolved += res2;
+        techMap.set(key, e);
+      }
+      const pct = (resolved: number, soy: number) => (soy > 0 ? Math.round((1000 * resolved) / soy) / 10 : 0);
+      const byCab = (byCabinet as any[]).map((r) => ({
+        ...r,
+        soyTotal: Number(r.soyTotal), currentTotal: Number(r.currentTotal), resolved: Number(r.resolved),
+        pctResolved: pct(Number(r.resolved), Number(r.soyTotal)),
+      }));
+      const byTech = Array.from(techMap.values())
+        .map((e) => ({ ...e, pctResolved: pct(e.resolved, e.soyTotal) }))
+        // الأفضل أولاً: أعلى نسبة تحقيق
+        .sort((a, b) => b.pctResolved - a.pctResolved || b.resolved - a.resolved);
+      const overall = { soyTotal: tSoy, currentTotal: tCur, resolved: tRes, pctResolved: pct(tRes, tSoy) };
+
+      res.json({ byCabinet: byCab, byTech, overall });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
   });
 
   // === External API (token-protected, for other sites) ===
