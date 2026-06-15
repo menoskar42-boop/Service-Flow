@@ -358,7 +358,7 @@ const FTTH_ORDER_COLS = [
   "service_order_id", "customer_order_id", "product", "service_number", "customer_name",
   "order_status", "order_create_time", "exchange_name", "service_type", "msan_code",
   "area_code", "customer_mobile", "current_activity", "error_name", "governorate",
-  "line_type", "fcc_exchange", "serial_number", "service_name", "raw",
+  "line_type", "fcc_exchange", "serial_number", "service_name", "install_address", "raw",
 ];
 // مؤشرات الأعمدة المفتاحية داخل صف القيم (بترتيب FTTH_ORDER_COLS):
 const FO_SERVICE_ORDER = 0, FO_CUSTOMER_ORDER = 1, FO_MSAN = 9, FO_FCC = 16, FO_SERIAL = 17, FO_SERVICE_NAME = 18;
@@ -384,6 +384,7 @@ function parseFtthOrderRows(buffer: Buffer): any[][] {
   const iActivity = findExact("current activity"), iError = find("error name"), iGov = find("governorate");
   const iLineType = findExact("line type"), iFcc = find("fcc exchange");
   const iSerial = findExact("serial number"), iSvcName = findExact("service name");
+  const iInstallAddr = find("install address", "installation address", "customer address", "العنوان");
   const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
   const byId = new Map<string, any[]>();
   for (const r of dataRows) {
@@ -397,7 +398,8 @@ function parseFtthOrderRows(buffer: Buffer): any[][] {
       String(g(r, iExch)) || null, String(g(r, iSvcType)) || null, String(g(r, iMsan)) || null,
       String(g(r, iArea)) || null, String(g(r, iMobile)) || null, String(g(r, iActivity)) || null,
       String(g(r, iError)) || null, String(g(r, iGov)) || null, String(g(r, iLineType)) || null,
-      String(g(r, iFcc)) || null, String(g(r, iSerial)) || null, String(g(r, iSvcName)) || null, JSON.stringify(raw),
+      String(g(r, iFcc)) || null, String(g(r, iSerial)) || null, String(g(r, iSvcName)) || null,
+      String(g(r, iInstallAddr)) || null, JSON.stringify(raw),
     ]);
   }
   // منع تكرار المسلسل: نُبقى صفاً واحداً فقط لكل رقم مسلسل (أول ظهور).
@@ -2781,7 +2783,7 @@ export async function registerRoutes(
               fo.exchange_name AS "exchangeName", fo.service_type AS "serviceType", fo.msan_code AS "msanCode",
               fo.area_code AS "areaCode",
               COALESCE(wfm.mobile, fo.customer_mobile) AS "customerMobile",
-              wfm.address AS "address",
+              COALESCE(fo.install_address, wfm.address) AS "address",
               fo.current_activity AS "currentActivity", fo.error_name AS "errorName",
               fo.governorate, fo.line_type AS "lineType", fo.fcc_exchange AS "fccExchange",
               COALESCE(tn.tech_name, mto.tech_name, 'غير معروف') AS "techName",
