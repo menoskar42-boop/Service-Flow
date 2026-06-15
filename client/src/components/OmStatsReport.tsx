@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, UserPlus, Pencil, X } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { ROLES } from "@shared/schema";
 
 interface TechRow {
   techName: string;
@@ -19,6 +23,7 @@ interface CabinetRow extends Omit<TechRow, "techName"> {
   msanCode: string;
   centralName: string | null;
   techName: string | null;
+  techManual: boolean | null;
 }
 interface Overall {
   soyTotal: number;
@@ -43,6 +48,10 @@ const pctBadge = (pct: number) => {
 
 export function OmStatsReport() {
   const [activeTab, setActiveTab] = useState<"tech" | "cabinet">("tech");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const isAdmin = user?.role === ROLES.ADMIN;
 
   const { data, isFetching } = useQuery<StatsData>({
     queryKey: ["/api/reports/om-stats"],
@@ -54,6 +63,81 @@ export function OmStatsReport() {
   });
 
   const ov = data?.overall;
+
+  // إسناد فنى يدوى لكود كابينة غير معروف (أدمن)
+  const [assigningCode, setAssigningCode] = useState<string | null>(null);
+  const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => {
+      const res = await fetch("/api/technician-names", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل");
+      return res.json();
+    },
+    enabled: isAdmin,
+  });
+  const techNames = Array.from(new Set(techList.map((t) => t.techName).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "ar"));
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["/api/reports/om-stats"] });
+    qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+  };
+  const assignTech = async (msanCode: string, techName: string) => {
+    try {
+      await apiRequest("POST", "/api/msan-tech", { msanCode, techName });
+      setAssigningCode(null);
+      invalidate();
+      toast({ title: "تم إسناد الفنى", description: `${techName} — كابينة ${msanCode}`, duration: 3500 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر الحفظ", variant: "destructive", duration: 5000 });
+    }
+  };
+  const removeTech = async (msanCode: string) => {
+    try {
+      await apiRequest("DELETE", `/api/msan-tech/${encodeURIComponent(msanCode)}`);
+      invalidate();
+      toast({ title: "تم إلغاء الإسناد", description: `كابينة ${msanCode}`, duration: 3000 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر الحذف", variant: "destructive", duration: 5000 });
+    }
+  };
+  const renderTechCell = (r: CabinetRow) => {
+    const code = String(r.msanCode ?? "").trim();
+    const unknown = !r.techName || r.techName === "غير معروف";
+    if (isAdmin && assigningCode === code && code) {
+      return (
+        <div className="flex items-center gap-1">
+          <select autoFocus defaultValue=""
+            onChange={(e) => { if (e.target.value) assignTech(code, e.target.value); }}
+            className="border rounded text-xs px-1 py-1 max-w-[150px] bg-white">
+            <option value="" disabled>اختر الفنى…</option>
+            {techNames.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button onClick={() => setAssigningCode(null)} className="text-gray-400 hover:text-gray-600" title="إلغاء">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className={r.techManual ? "text-blue-700 font-semibold" : unknown ? "text-muted-foreground" : "font-medium"}>
+          {r.techName ?? "غير معروف"}
+        </span>
+        {isAdmin && code && (unknown || r.techManual) && (
+          <button onClick={() => setAssigningCode(code)} className="text-blue-600 hover:text-blue-800"
+            title={r.techManual ? "تعديل الفنى" : "إسناد فنى"}>
+            {r.techManual ? <Pencil className="w-3.5 h-3.5" /> : <UserPlus className="w-4 h-4" />}
+          </button>
+        )}
+        {isAdmin && r.techManual && code && (
+          <button onClick={() => removeTech(code)} className="text-red-500 hover:text-red-700" title="إلغاء الإسناد اليدوى">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const handleExportExcel = () => {
     if (!data) return;
@@ -281,7 +365,7 @@ export function OmStatsReport() {
                   <TableRow key={`${r.msanCode}-${i}`} className="hover:bg-blue-50">
                     <TableCell>{r.centralName ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{r.msanCode}</TableCell>
-                    <TableCell className="font-medium">{r.techName ?? "غير معروف"}</TableCell>
+                    <TableCell>{renderTechCell(r)}</TableCell>
                     <TableCell className="font-bold">{r.soyTotal}</TableCell>
                     <TableCell>{r.currentTotal}</TableCell>
                     <TableCell className="text-green-700 font-bold">{r.resolved}</TableCell>

@@ -461,6 +461,19 @@ export async function ensureSchema() {
     )
   `);
 
+  // msan_tech_overrides — إسناد يدوى لفنى كود كابينة MSAN غير معروف (أدمن)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS msan_tech_overrides (
+      id serial PRIMARY KEY,
+      cabin_code text NOT NULL UNIQUE,
+      tech_name text NOT NULL,
+      assigned_by_id integer REFERENCES users(id),
+      assigned_by_name text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // time_till_now — المدة المحسوبة مسبقاً من ملف 430D (except status 135)
   await pool.query(`ALTER TABLE complaint_details          ADD COLUMN IF NOT EXISTS time_till_now numeric`);
   await pool.query(`ALTER TABLE complaint_details_sod      ADD COLUMN IF NOT EXISTS time_till_now numeric`);
@@ -697,6 +710,18 @@ export async function ensureSchema() {
       uploaded_at timestamptz NOT NULL DEFAULT now(),
       uploaded_by_id integer REFERENCES users(id)
     )
+  `);
+
+  // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
+  // (يُنفَّذ بعد إنشاء cabinet_technicians + technician_names، ولا يستبدل أى إسناد يدوى لاحق.)
+  await pool.query(`
+    INSERT INTO msan_tech_overrides (cabin_code, tech_name, assigned_by_name)
+    SELECT '11-2-26-02', string_agg(DISTINCT tn.tech_name, ' , '), 'system'
+    FROM cabinet_technicians ct
+    JOIN technician_names tn ON tn.worker_code = ct.worker_code
+    WHERE ct.cabin_code = '11-2-26-102'
+    HAVING string_agg(DISTINCT tn.tech_name, ' , ') IS NOT NULL
+    ON CONFLICT (cabin_code) DO NOTHING
   `);
 
   // regularized_daily — الأرشيف اليومى للمنتظمات (أعطال/تركيبات/معاينات).

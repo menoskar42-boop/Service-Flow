@@ -1755,6 +1755,36 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // === إسناد فنى يدوى لكود كابينة MSAN (msan_tech_overrides) — أدمن فقط ===
+
+  // POST /api/msan-tech — تعيين/تحديث فنى كود كابينة غير معروف
+  app.post("/api/msan-tech", requireAdmin, async (req: any, res) => {
+    const { msanCode, techName } = req.body as Record<string, string>;
+    const code = String(msanCode ?? "").trim();
+    const tech = String(techName ?? "").trim();
+    if (!code) return res.status(400).json({ message: "كود الكابينة مطلوب" });
+    if (!tech) return res.status(400).json({ message: "اسم الفنى مطلوب" });
+    await pool.query(
+      `INSERT INTO msan_tech_overrides (cabin_code, tech_name, assigned_by_id, assigned_by_name)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (cabin_code)
+       DO UPDATE SET tech_name = EXCLUDED.tech_name,
+                     assigned_by_id = EXCLUDED.assigned_by_id,
+                     assigned_by_name = EXCLUDED.assigned_by_name,
+                     updated_at = now()`,
+      [code, tech, req.user.id, req.user.username],
+    );
+    res.json({ ok: true });
+  });
+
+  // DELETE /api/msan-tech/:code — إلغاء الإسناد اليدوى
+  app.delete("/api/msan-tech/:code", requireAdmin, async (req, res) => {
+    const code = String(req.params.code ?? "").trim();
+    if (!code) return res.status(400).json({ message: "كود الكابينة مطلوب" });
+    await pool.query(`DELETE FROM msan_tech_overrides WHERE cabin_code = $1`, [code]);
+    res.json({ ok: true });
+  });
+
   // === Multi-file upload section ===
 
   // POST /api/maintenance-orders/import — Work_Orders / wfm (3 destinations)
@@ -2754,10 +2784,12 @@ export async function registerRoutes(
               wfm.address AS "address",
               fo.current_activity AS "currentActivity", fo.error_name AS "errorName",
               fo.governorate, fo.line_type AS "lineType", fo.fcc_exchange AS "fccExchange",
-              COALESCE(tn.tech_name, 'غير معروف') AS "techName"
+              COALESCE(tn.tech_name, mto.tech_name, 'غير معروف') AS "techName",
+              (tn.tech_name IS NULL AND mto.tech_name IS NOT NULL) AS "techManual"
        FROM ${table} fo
        LEFT JOIN cabinet_technicians ct ON ct.cabin_code = fo.msan_code
        LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+       LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = fo.msan_code
        LEFT JOIN LATERAL (
          SELECT mobile, address FROM maintenance_orders
          WHERE phone_number = fo.serial_number
@@ -2819,7 +2851,8 @@ export async function registerRoutes(
           m.cur_total                                  AS "currentTotal",
           m.resolved                                   AS "resolved",
           tech.central_name                            AS "centralName",
-          COALESCE(tech.tech_name, 'غير معروف')        AS "techName"
+          COALESCE(tech.tech_name, mto.tech_name, 'غير معروف') AS "techName",
+          (tech.tech_name IS NULL AND mto.tech_name IS NOT NULL) AS "techManual"
         FROM m
         LEFT JOIN LATERAL (
           SELECT MIN(ct.central_name)                        AS central_name,
@@ -2828,6 +2861,7 @@ export async function registerRoutes(
           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
           WHERE ct.cabin_code = m.msan
         ) tech ON TRUE
+        LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = m.msan
         ORDER BY m.soy_total DESC, m.msan
       `);
 

@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Trash2 } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Trash2, UserPlus, Pencil, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -27,6 +27,7 @@ interface Row {
   customerMobile: string | null;
   fccExchange: string | null;
   techName: string | null;
+  techManual: boolean | null;
   address: string | null;
 }
 
@@ -78,6 +79,84 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       return res.json();
     },
   });
+
+  // إسناد فنى يدوى لكود كابينة غير معروف (أدمن) — نفس أسلوب تجاوزات ٢٤ ساعة
+  const [assigningCode, setAssigningCode] = useState<string | null>(null);
+  const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => {
+      const res = await fetch("/api/technician-names", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل");
+      return res.json();
+    },
+    enabled: isAdmin,
+  });
+  const techNames = Array.from(new Set(techList.map((t) => t.techName).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "ar"));
+
+  const assignTech = async (msanCode: string, techName: string) => {
+    try {
+      await apiRequest("POST", "/api/msan-tech", { msanCode, techName });
+      setAssigningCode(null);
+      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/om-stats"] });
+      toast({ title: "تم إسناد الفنى", description: `${techName} — كابينة ${msanCode}`, duration: 3500 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر الحفظ", variant: "destructive", duration: 5000 });
+    }
+  };
+
+  const removeTech = async (msanCode: string) => {
+    try {
+      await apiRequest("DELETE", `/api/msan-tech/${encodeURIComponent(msanCode)}`);
+      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/om-stats"] });
+      toast({ title: "تم إلغاء الإسناد", description: `كابينة ${msanCode}`, duration: 3000 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر الحذف", variant: "destructive", duration: 5000 });
+    }
+  };
+
+  // خلية اسم الفنى مع إمكانية الإسناد اليدوى للأدمن عند "غير معروف"
+  const renderTechCell = (r: Row) => {
+    const code = String(r.msanCode ?? "").trim();
+    const unknown = !r.techName || r.techName === "غير معروف";
+    if (isAdmin && assigningCode === code && code) {
+      return (
+        <div className="flex items-center gap-1">
+          <select
+            autoFocus defaultValue=""
+            onChange={(e) => { if (e.target.value) assignTech(code, e.target.value); }}
+            className="border rounded text-xs px-1 py-1 max-w-[150px] bg-white"
+          >
+            <option value="" disabled>اختر الفنى…</option>
+            {techNames.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <button onClick={() => setAssigningCode(null)} className="text-gray-400 hover:text-gray-600" title="إلغاء">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className={r.techManual ? "text-blue-700 font-semibold" : unknown ? "text-muted-foreground" : ""}>
+          {r.techName ?? "غير معروف"}
+        </span>
+        {isAdmin && code && (unknown || r.techManual) && (
+          <button onClick={() => setAssigningCode(code)} className="text-blue-600 hover:text-blue-800"
+            title={r.techManual ? "تعديل الفنى" : "إسناد فنى"}>
+            {r.techManual ? <Pencil className="w-3.5 h-3.5" /> : <UserPlus className="w-4 h-4" />}
+          </button>
+        )}
+        {isAdmin && r.techManual && code && (
+          <button onClick={() => removeTech(code)} className="text-red-500 hover:text-red-700" title="إلغاء الإسناد اليدوى">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const cols: [string, (r: Row) => any][] = [
     ["المسلسل", (r) => r.serialNumber],
@@ -201,7 +280,11 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
                 rows.map((r, idx) => (
                   <TableRow key={r.id ?? idx} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
-                    {cols.map(([h, f]) => <TableCell key={h} className="whitespace-nowrap">{f(r) ?? "-"}</TableCell>)}
+                    {cols.map(([h, f]) => (
+                      <TableCell key={h} className="whitespace-nowrap">
+                        {h === "اسم الفنى" ? renderTechCell(r) : (f(r) ?? "-")}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 ))
               )}

@@ -226,6 +226,19 @@ export const manualCloseBy = pgTable("manual_close_by", {
 
 export type ManualCloseBy = typeof manualCloseBy.$inferSelect;
 
+// إسناد يدوى لفنى كود كابينة MSAN غير معروف (تقارير متعذرات OM)
+export const msanTechOverrides = pgTable("msan_tech_overrides", {
+  id: serial("id").primaryKey(),
+  cabinCode: text("cabin_code").notNull().unique(),
+  techName: text("tech_name").notNull(),
+  assignedById: integer("assigned_by_id").references(() => users.id),
+  assignedByName: text("assigned_by_name"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type MsanTechOverride = typeof msanTechOverrides.$inferSelect;
+
 // Schemas
 export const insertUserSchema = createInsertSchema(users);
 export const insertOrderSchema = createInsertSchema(orders).omit({
