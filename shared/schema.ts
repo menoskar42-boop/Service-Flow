@@ -679,6 +679,7 @@ const ftthOrderCols = () => ({
   fccExchange: text("fcc_exchange"),
   serialNumber: text("serial_number"),   // المسلسل (عمود Serial Number)
   serviceName: text("service_name"),     // Service Name (مثل FV Survey)
+  installAddress: text("install_address"), // عنوان التركيب من ملف OM
   raw: jsonb("raw"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
