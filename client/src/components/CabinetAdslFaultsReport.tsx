@@ -10,12 +10,21 @@ import {
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
 import { format } from "date-fns";
 
-interface Row {
+interface CabinetRow {
   centralName: string;
   cabinNumber: string;
   msanCode: string;
   techName: string;
   workingAdsl: number;
+  faultCount: number;
+}
+
+interface BoxRow {
+  centralName: string;
+  cabinNumber: string;
+  boxNumber: string;
+  techName: string;
+  workingLines: number;
   faultCount: number;
 }
 
@@ -28,33 +37,47 @@ export function CabinetAdslFaultsReport() {
   const [dateTo,   setDateTo]   = useState(today);
   const [central, setCentral]   = useState("");
   const [q, setQ]               = useState("");
-  const [minFaults, setMinFaults]       = useState("");  // فلتر: عدد الأعطال أكبر من
-  const [minProjected, setMinProjected] = useState("");  // فلتر: أعطال الألف المتوقع أكبر من
-  const [tab, setTab] = useState<"cabinet" | "tech">("tech");
+  const [minFaults, setMinFaults]       = useState("");
+  const [minProjected, setMinProjected] = useState("");
+  const [tab, setTab] = useState<"tech" | "cabinet" | "box">("tech");
+  const isBox  = tab === "box";
   const isTech = tab === "tech";
 
-  const { data: rows = [], isFetching } = useQuery<Row[]>({
+  const buildParams = () => {
+    const p = new URLSearchParams();
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo)   p.set("dateTo",   dateTo);
+    if (central)  p.set("central",  central);
+    if (q.trim()) p.set("q", q.trim());
+    return p;
+  };
+
+  const { data: cabinetData = [], isFetching: fetchingCabinet } = useQuery<CabinetRow[]>({
     queryKey: ["/api/reports/cabinet-adsl-faults", dateFrom, dateTo, central, q],
     queryFn: async () => {
-      const p = new URLSearchParams();
-      if (dateFrom) p.set("dateFrom", dateFrom);
-      if (dateTo)   p.set("dateTo",   dateTo);
-      if (central)  p.set("central",  central);
-      if (q.trim()) p.set("q", q.trim());
-      const res = await fetch(`/api/reports/cabinet-adsl-faults?${p}`, { credentials: "include" });
+      const res = await fetch(`/api/reports/cabinet-adsl-faults?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
     },
   });
 
-  // عدد أيام الفترة المعروضة بالتقرير (شامل الطرفين)
+  const { data: boxData = [], isFetching: fetchingBox } = useQuery<BoxRow[]>({
+    queryKey: ["/api/reports/box-faults", dateFrom, dateTo, central, q],
+    queryFn: async () => {
+      const res = await fetch(`/api/reports/box-faults?${buildParams()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("فشل التحميل");
+      return res.json();
+    },
+  });
+
+  const isFetching = fetchingCabinet || fetchingBox;
+
+  // حساب أيام الفترة والشهر
   const periodDays = (() => {
     if (!dateFrom || !dateTo) return 31;
     const d = Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
     return d > 0 ? d : 1;
   })();
-  // مُضاعِف الإسقاط لنهاية الشهر: لو الفترة داخل شهر واحد → عدد أيام ذلك الشهر
-  // (30/31/28/29)؛ لو امتدت لأكثر من شهر → 31.
   const monthDays = (() => {
     if (!dateFrom || !dateTo) return 31;
     const [y1, m1] = dateFrom.split("-").map(Number);
@@ -62,31 +85,29 @@ export function CabinetAdslFaultsReport() {
     if (y1 === y2 && m1 === m2) return new Date(y1, m1, 0).getDate();
     return 31;
   })();
-  // عدد الأعطال لكل 1000 مشترك = (الأعطال × 1000 ÷ الشغال) مقرّباً لرقمين عشريين
-  const per1000 = (f: number, w: number) => (Number(w) > 0 ? Math.round((Number(f) * 1000 / Number(w)) * 100) / 100 : 0);
-  // المتوقع بنهاية الشهر = (الأعطال ÷ أيام الفترة) × أيام الشهر × 1000 ÷ الشغال
-  const projected = (f: number, w: number) =>
-    (Number(w) > 0 ? Math.round((Number(f) / periodDays) * monthDays * 1000 / Number(w) * 100) / 100 : 0);
+
+  const per1000   = (f: number, w: number) => (Number(w) > 0 ? Math.round(Number(f) * 1000 / Number(w) * 100) / 100 : 0);
+  const projected = (f: number, w: number) => (Number(w) > 0 ? Math.round(Number(f) / periodDays * monthDays * 1000 / Number(w) * 100) / 100 : 0);
 
   const passMin = (f: number, w: number) => {
-    if (minFaults !== "" && !(Number(f) > Number(minFaults))) return false;
+    if (minFaults    !== "" && !(Number(f) > Number(minFaults)))           return false;
     if (minProjected !== "" && !(projected(f, w) > Number(minProjected))) return false;
     return true;
   };
 
-  // تبويب "لكل كابينة": صفوف كما هى (فلترة + ترتيب)
-  const cabinetRows = rows
+  // تاب لكل كابينة
+  const cabinetRows = cabinetData
     .filter((r) => passMin(r.faultCount, r.workingAdsl))
     .sort((a, b) => per1000(b.faultCount, b.workingAdsl) - per1000(a.faultCount, a.workingAdsl));
 
-  // تبويب "لكل فنى": تجميع الكباين على اسم الفنى (جمع الشغال والأعطال) ثم فلترة + ترتيب
+  // تاب لكل فنى (تجميع من بيانات الكابينة)
   const techRows = (() => {
     const m = new Map<string, { techName: string; workingAdsl: number; faultCount: number }>();
-    for (const r of rows) {
+    for (const r of cabinetData) {
       const key = r.techName || "غير معروف";
       const cur = m.get(key) ?? { techName: key, workingAdsl: 0, faultCount: 0 };
       cur.workingAdsl += Number(r.workingAdsl) || 0;
-      cur.faultCount  += Number(r.faultCount) || 0;
+      cur.faultCount  += Number(r.faultCount)  || 0;
       m.set(key, cur);
     }
     return Array.from(m.values())
@@ -94,45 +115,87 @@ export function CabinetAdslFaultsReport() {
       .sort((a, b) => per1000(b.faultCount, b.workingAdsl) - per1000(a.faultCount, a.workingAdsl));
   })();
 
-  const displayRows: any[] = isTech ? techRows : cabinetRows;
-  const totWorking = displayRows.reduce((s, r) => s + (Number(r.workingAdsl) || 0), 0);
-  const totFaults  = displayRows.reduce((s, r) => s + (Number(r.faultCount) || 0), 0);
-  const totPer1000 = per1000(totFaults, totWorking);
+  // تاب لكل بكس
+  const boxRows = boxData
+    .filter((r) => passMin(r.faultCount, r.workingLines))
+    .sort((a, b) => per1000(b.faultCount, b.workingLines) - per1000(a.faultCount, a.workingLines));
+
+  const displayRows: any[] = isBox ? boxRows : (isTech ? techRows : cabinetRows);
+  const getW = (r: any) => isBox ? Number(r.workingLines) : Number(r.workingAdsl);
+  const totWorking  = displayRows.reduce((s, r) => s + getW(r), 0);
+  const totFaults   = displayRows.reduce((s, r) => s + (Number(r.faultCount) || 0), 0);
+  const totPer1000  = per1000(totFaults, totWorking);
   const totProjected = projected(totFaults, totWorking);
 
   const handleExportExcel = () => {
-    const metric = (r: any) => ({
-      "الشغال ADSL": r.workingAdsl,
-      "عدد الأعطال": r.faultCount,
-      "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
-      "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
-    });
-    const data: any[] = displayRows.map((r, i) => isTech
-      ? { "#": i + 1, "اسم الفنى": r.techName, ...metric(r) }
-      : { "#": i + 1, "السنترال": r.centralName, "رقم الكابينة": r.cabinNumber, "كود الكابينة (MSAN)": r.msanCode, "اسم الفنى": r.techName, ...metric(r) });
-    const totMetric = { "الشغال ADSL": totWorking, "عدد الأعطال": totFaults, "أعطال لكل 1000 مشترك": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected };
-    data.push(isTech
-      ? { "#": "", "اسم الفنى": "إجمالى الإدارة", ...totMetric }
-      : { "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "كود الكابينة (MSAN)": "", "اسم الفنى": "", ...totMetric });
-    const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, isTech ? "بالفنى" : "الكباين");
-    XLSX.writeFile(wb, `cabinet-faults-${isTech ? "tech" : "cabinet"}-${dateFrom}-${dateTo}.xlsx`);
+    const makeSheet = (data: any[], sheetName: string) => {
+      const ws = XLSX.utils.json_to_sheet(data);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    };
+    if (isBox) {
+      const data = boxRows.map((r, i) => ({
+        "#": i + 1, "السنترال": r.centralName, "رقم الكابينة": r.cabinNumber,
+        "رقم البكس": r.boxNumber, "اسم الفنى": r.techName,
+        "عدد الخطوط": r.workingLines, "عدد الأعطال": r.faultCount,
+        "أعطال لكل 1000 خط": per1000(r.faultCount, r.workingLines),
+        "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingLines),
+      }));
+      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "رقم البكس": "", "اسم الفنى": "",
+        "عدد الخطوط": totWorking, "عدد الأعطال": totFaults,
+        "أعطال لكل 1000 خط": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
+      makeSheet(data, "البكسيات");
+    } else if (isTech) {
+      const data = techRows.map((r, i) => ({
+        "#": i + 1, "اسم الفنى": r.techName, "الشغال ADSL": r.workingAdsl,
+        "عدد الأعطال": r.faultCount, "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
+        "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
+      }));
+      data.push({ "#": "", "اسم الفنى": "إجمالى الإدارة", "الشغال ADSL": totWorking,
+        "عدد الأعطال": totFaults, "أعطال لكل 1000 مشترك": totPer1000,
+        "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
+      makeSheet(data, "بالفنى");
+    } else {
+      const data = cabinetRows.map((r, i) => ({
+        "#": i + 1, "السنترال": r.centralName, "رقم الكابينة": r.cabinNumber,
+        "كود الكابينة (MSAN)": r.msanCode, "اسم الفنى": r.techName,
+        "الشغال ADSL": r.workingAdsl, "عدد الأعطال": r.faultCount,
+        "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
+        "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
+      }));
+      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "كود الكابينة (MSAN)": "", "اسم الفنى": "",
+        "الشغال ADSL": totWorking, "عدد الأعطال": totFaults,
+        "أعطال لكل 1000 مشترك": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
+      makeSheet(data, "الكباين");
+    }
+    const suffix = isBox ? "box" : (isTech ? "tech" : "cabinet");
+    XLSX.writeFile(wb, `faults-per-1000-${suffix}-${dateFrom}-${dateTo}.xlsx`);
   };
 
   const handleExportPDF = () => {
-    const title = `تقرير عدد الأعطال فى الألف ${isTech ? "لكل فنى" : "لكل كابينة"} — ${dateFrom} إلى ${dateTo}`;
+    const tabLabel = isBox ? "لكل بكس" : (isTech ? "لكل فنى" : "لكل كابينة");
+    const title = `تقرير عدد الأعطال فى الألف ${tabLabel} — ${dateFrom} إلى ${dateTo}`;
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const head = isTech
-      ? `<th>#</th><th>اسم الفنى</th><th>الشغال ADSL</th><th>عدد الأعطال</th><th>أعطال / 1000</th><th>متوقع نهاية الشهر</th>`
-      : `<th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>كود الكابينة (MSAN)</th><th>اسم الفنى</th><th>الشغال ADSL</th><th>عدد الأعطال</th><th>أعطال / 1000</th><th>متوقع نهاية الشهر</th>`;
+
+    const colSpanTotal = isBox ? 5 : (isTech ? 2 : 5);
+    const workingLabel = isBox ? "عدد الخطوط" : "الشغال ADSL";
+    const per1000Label = isBox ? "أعطال / 1000 خط" : "أعطال / 1000";
+
+    const head = isBox
+      ? `<th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>رقم البكس</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`
+      : isTech
+        ? `<th>#</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`
+        : `<th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>كود الكابينة (MSAN)</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`;
+
     const cells = (r: any, n: number) => {
-      const m = `<td>${esc(r.workingAdsl)}</td><td>${esc(r.faultCount)}</td><td>${esc(per1000(r.faultCount, r.workingAdsl))}</td><td>${esc(projected(r.faultCount, r.workingAdsl))}</td>`;
-      return isTech
-        ? `<td>${n}</td><td>${esc(r.techName)}</td>${m}`
-        : `<td>${n}</td><td>${esc(r.centralName)}</td><td>${esc(r.cabinNumber)}</td><td>${esc(r.msanCode)}</td><td>${esc(r.techName)}</td>${m}`;
+      const w = getW(r);
+      const m = `<td>${esc(w)}</td><td>${esc(r.faultCount)}</td><td>${esc(per1000(r.faultCount, w))}</td><td>${esc(projected(r.faultCount, w))}</td>`;
+      if (isBox)   return `<td>${n}</td><td>${esc(r.centralName)}</td><td>${esc(r.cabinNumber)}</td><td>${esc(r.boxNumber)}</td><td>${esc(r.techName)}</td>${m}`;
+      if (isTech)  return `<td>${n}</td><td>${esc(r.techName)}</td>${m}`;
+      return `<td>${n}</td><td>${esc(r.centralName)}</td><td>${esc(r.cabinNumber)}</td><td>${esc(r.msanCode)}</td><td>${esc(r.techName)}</td>${m}`;
     };
-    const totalRow = `<tr class="total"><td colspan="${isTech ? 2 : 5}">إجمالى الإدارة</td><td>${esc(totWorking)}</td><td>${esc(totFaults)}</td><td>${esc(totPer1000)}</td><td>${esc(totProjected)}</td></tr>`;
+
+    const totalRow = `<tr class="total"><td colspan="${colSpanTotal}">إجمالى الإدارة</td><td>${esc(totWorking)}</td><td>${esc(totFaults)}</td><td>${esc(totPer1000)}</td><td>${esc(totProjected)}</td></tr>`;
     const ROWS_PER_PAGE = 22;
     const total = Math.max(1, Math.ceil(displayRows.length / ROWS_PER_PAGE));
     let pages = "";
@@ -144,10 +207,7 @@ export function CabinetAdslFaultsReport() {
         <section class="page">
           <h2>${esc(title)}</h2>
           <div class="pageno">صفحة ${pg + 1} من ${total}</div>
-          <table>
-            <thead><tr>${head}</tr></thead>
-            <tbody>${body}</tbody>
-          </table>
+          <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
         </section>`;
     }
     const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${esc(title)}</title>
@@ -172,6 +232,9 @@ export function CabinetAdslFaultsReport() {
     const w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
   };
+
+  const countLabel = isBox ? "عدد البكسيات" : (isTech ? "عدد الفنيين" : "عدد الكباين");
+  const workingLabel = isBox ? "إجمالى الخطوط" : "إجمالى الشغال ADSL";
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -198,7 +261,7 @@ export function CabinetAdslFaultsReport() {
             {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <Input
-            placeholder="بحث برقم الكابينة / كود الكابينة / الفنى"
+            placeholder="بحث برقم الكابينة / كود الكابينة / البكس / الفنى"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="w-full sm:max-w-xs text-sm"
@@ -214,22 +277,22 @@ export function CabinetAdslFaultsReport() {
           </div>
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={rows.length === 0} className="text-green-700 border-green-200 gap-1">
+          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={displayRows.length === 0} className="text-green-700 border-green-200 gap-1">
             <FileSpreadsheet className="w-4 h-4" /> Excel
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={rows.length === 0} className="text-red-700 border-red-200 gap-1">
+          <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={displayRows.length === 0} className="text-red-700 border-red-200 gap-1">
             <Printer className="w-4 h-4" /> PDF
           </Button>
         </div>
       </Card>
 
-      {/* تبديل التبويبين */}
-      <div className="flex rounded-lg border overflow-hidden text-sm w-full sm:w-auto">
-        {([["tech", "لكل فنى"], ["cabinet", "لكل كابينة"]] as const).map(([key, label]) => (
+      {/* ثلاث تبويبات */}
+      <div className="flex rounded-lg border overflow-hidden text-sm">
+        {([["tech", "لكل فنى"], ["cabinet", "لكل كابينة"], ["box", "لكل بكس"]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 sm:flex-none px-4 py-2 font-medium transition-colors ${
+            className={`flex-1 px-4 py-2 font-medium transition-colors ${
               tab === key ? "bg-blue-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
             }`}
           >
@@ -242,11 +305,11 @@ export function CabinetAdslFaultsReport() {
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-lg border bg-white p-3 text-center shadow-sm">
           <div className="text-2xl font-bold text-foreground">{displayRows.length}</div>
-          <div className="text-xs text-muted-foreground mt-1">{isTech ? "عدد الفنيين" : "عدد الكباين"}</div>
+          <div className="text-xs text-muted-foreground mt-1">{countLabel}</div>
         </div>
         <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center shadow-sm">
           <div className="text-2xl font-bold text-green-700">{totWorking}</div>
-          <div className="text-xs text-green-700 mt-1">إجمالى الشغال ADSL</div>
+          <div className="text-xs text-green-700 mt-1">{workingLabel}</div>
         </div>
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-center shadow-sm">
           <div className="text-2xl font-bold text-red-700">{totFaults}</div>
@@ -263,39 +326,49 @@ export function CabinetAdslFaultsReport() {
                 <TableHead className="text-right font-bold w-10">#</TableHead>
                 {!isTech && <TableHead className="text-right font-bold">السنترال</TableHead>}
                 {!isTech && <TableHead className="text-right font-bold">رقم الكابينة</TableHead>}
-                {!isTech && <TableHead className="text-right font-bold">كود الكابينة (MSAN)</TableHead>}
+                {tab === "cabinet" && <TableHead className="text-right font-bold">كود الكابينة (MSAN)</TableHead>}
+                {tab === "box"     && <TableHead className="text-right font-bold">رقم البكس</TableHead>}
                 <TableHead className="text-right font-bold">اسم الفنى</TableHead>
-                <TableHead className="text-right font-bold">الشغال ADSL</TableHead>
+                <TableHead className="text-right font-bold">{isBox ? "عدد الخطوط" : "الشغال ADSL"}</TableHead>
                 <TableHead className="text-right font-bold">عدد الأعطال</TableHead>
-                <TableHead className="text-right font-bold">أعطال / ١٠٠٠ مشترك</TableHead>
+                <TableHead className="text-right font-bold">{isBox ? "أعطال / ١٠٠٠ خط" : "أعطال / ١٠٠٠ مشترك"}</TableHead>
                 <TableHead className="text-right font-bold">المتوقع نهاية الشهر</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {displayRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={isTech ? 6 : 9} className="text-center py-14 text-muted-foreground">
-                    {isFetching ? "جاري التحميل..." : "لا توجد بيانات — تأكد من رفع ملف الفنيين بأرقام الكباين وملف مشتركى FTTH/ADSL"}
+                  <TableCell colSpan={isBox || tab === "cabinet" ? 9 : 6} className="text-center py-14 text-muted-foreground">
+                    {isFetching ? "جاري التحميل..." : isBox
+                      ? "لا توجد بيانات — تأكد من رفع ملف بيان التليفونات وملف الأعطال 430D"
+                      : "لا توجد بيانات — تأكد من رفع ملف الفنيين وملف مشتركى FTTH/ADSL"}
                   </TableCell>
                 </TableRow>
               ) : (
                 <>
-                  {displayRows.map((r, idx) => (
-                    <TableRow key={isTech ? r.techName : `${r.centralName}-${r.cabinNumber}-${r.msanCode}-${idx}`} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
-                      {!isTech && <TableCell className="whitespace-nowrap">{r.centralName}</TableCell>}
-                      {!isTech && <TableCell className="font-semibold">{r.cabinNumber}</TableCell>}
-                      {!isTech && <TableCell className="font-mono text-xs">{r.msanCode}</TableCell>}
-                      <TableCell className="whitespace-nowrap">{r.techName}</TableCell>
-                      <TableCell className="text-center font-bold text-green-700">{r.workingAdsl}</TableCell>
-                      <TableCell className="text-center font-bold text-red-700">{r.faultCount}</TableCell>
-                      <TableCell className="text-center font-bold text-blue-700">{per1000(r.faultCount, r.workingAdsl)}</TableCell>
-                      <TableCell className="text-center font-bold text-purple-700">{projected(r.faultCount, r.workingAdsl)}</TableCell>
-                    </TableRow>
-                  ))}
-                  {/* إجمالى الإدارة */}
+                  {displayRows.map((r, idx) => {
+                    const w = getW(r);
+                    const key = isBox
+                      ? `${r.centralName}-${r.cabinNumber}-${r.boxNumber}-${idx}`
+                      : isTech ? r.techName
+                      : `${r.centralName}-${r.cabinNumber}-${r.msanCode}-${idx}`;
+                    return (
+                      <TableRow key={key} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                        {!isTech && <TableCell className="whitespace-nowrap">{r.centralName}</TableCell>}
+                        {!isTech && <TableCell className="font-semibold">{r.cabinNumber}</TableCell>}
+                        {tab === "cabinet" && <TableCell className="font-mono text-xs">{r.msanCode}</TableCell>}
+                        {tab === "box"     && <TableCell className="font-semibold">{r.boxNumber}</TableCell>}
+                        <TableCell className="whitespace-nowrap">{r.techName}</TableCell>
+                        <TableCell className="text-center font-bold text-green-700">{w}</TableCell>
+                        <TableCell className="text-center font-bold text-red-700">{r.faultCount}</TableCell>
+                        <TableCell className="text-center font-bold text-blue-700">{per1000(r.faultCount, w)}</TableCell>
+                        <TableCell className="text-center font-bold text-purple-700">{projected(r.faultCount, w)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                   <TableRow className="bg-blue-900 hover:bg-blue-900">
-                    <TableCell colSpan={isTech ? 2 : 5} className="text-white font-bold text-center">إجمالى الإدارة</TableCell>
+                    <TableCell colSpan={isBox || tab === "cabinet" ? 5 : 2} className="text-white font-bold text-center">إجمالى الإدارة</TableCell>
                     <TableCell className="text-center text-white font-bold">{totWorking}</TableCell>
                     <TableCell className="text-center text-white font-bold">{totFaults}</TableCell>
                     <TableCell className="text-center text-white font-bold">{totPer1000}</TableCell>
