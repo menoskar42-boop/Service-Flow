@@ -20,6 +20,7 @@ import { InstallationsReport } from "@/components/InstallationsReport";
 import { RemovalStatsReport } from "@/components/RemovalStatsReport";
 import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
 import { CabinetAdslFaultsReport } from "@/components/CabinetAdslFaultsReport";
+import { TechPerformanceReport } from "@/components/TechPerformanceReport";
 import { OmRejectionsReport } from "@/components/OmRejectionsReport";
 import { OmStatsReport } from "@/components/OmStatsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
@@ -32,7 +33,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "om-current" | "om-soy" | "om-resolved" | "om-stats";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -46,6 +47,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
       { id: "repetition-stats",    label: "إحصائيات التكرار" },
+      { id: "tech-performance",    label: "تقرير أداء الفنيين" },
     ],
   },
   {
@@ -403,6 +405,7 @@ export default function Dashboard() {
               )}
               {reportTab === "removal-stats" && <RemovalStatsReport />}
               {reportTab === "repetition-stats" && <RepetitionStatsReport />}
+              {reportTab === "tech-performance" && <TechPerformanceReport />}
               {reportTab === "cabinet-adsl-faults" && <CabinetAdslFaultsReport />}
               {reportTab === "om-current"  && <OmRejectionsReport bucket="current"  title="المتعذرات الحالية (OM)" />}
               {reportTab === "om-soy"      && <OmRejectionsReport bucket="soy"      title="متعذرات بداية السنة (OM)" />}
