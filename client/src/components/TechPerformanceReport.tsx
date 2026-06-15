@@ -11,7 +11,8 @@ import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
 import { format } from "date-fns";
 
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
-const REP_TARGET = 4; // مستهدف التكرار 4%
+const REP_TARGET  = 4;  // مستهدف التكرار 4%
+const ADSL_TARGET = 25; // مستهدف أعطال/1000 = 25
 const MAX_OM    = 25;
 const MAX_REP   = 20;
 const MAX_ADSL  = 20;
@@ -33,9 +34,11 @@ function repScore(ratio: number | null): number {
   if (Number(ratio) <= REP_TARGET) return MAX_REP;
   return Math.round(Math.min(MAX_REP, MAX_REP * REP_TARGET / Number(ratio)) * 10) / 10;
 }
-function adslScore(per1000: number | null, maxPer1000: number): number {
-  if (per1000 == null || maxPer1000 <= 0) return 0;
-  return Math.round(Math.max(0, (1 - Number(per1000) / maxPer1000) * MAX_ADSL) * 10) / 10;
+function adslScore(per1000: number | null): number {
+  if (per1000 == null) return 0;
+  if (Number(per1000) <= 0) return MAX_ADSL; // صفر أعطال = ممتاز
+  if (Number(per1000) <= ADSL_TARGET) return MAX_ADSL; // عند المستهدف أو أفضل
+  return Math.round(Math.min(MAX_ADSL, MAX_ADSL * ADSL_TARGET / Number(per1000)) * 10) / 10;
 }
 function remScore(pct24: number | null): number {
   if (pct24 == null) return 0;
@@ -151,8 +154,6 @@ export function TechPerformanceReport() {
         per1000Map.set(name, null);
       }
     }
-    const maxPer1000 = Math.max(0, ...[...per1000Map.values()].filter((v): v is number => v != null));
-
     const result: TechRow[] = [];
     for (const name of allTechs) {
       const omPct   = omMap.get(name) ?? null;
@@ -162,7 +163,7 @@ export function TechPerformanceReport() {
 
       const s_om  = omScore(omPct);
       const s_rep = repScore(repRatio);
-      const s_asl = adslScore(p1000, maxPer1000);
+      const s_asl = adslScore(p1000);
       const s_rem = remScore(pct24h);
 
       result.push({
@@ -187,7 +188,6 @@ export function TechPerformanceReport() {
     const adslWorking = (cabinetData ?? []).reduce((s: number, r: any) => s + (Number(r.workingAdsl) || 0), 0);
     const adslFaults  = (cabinetData ?? []).reduce((s: number, r: any) => s + (Number(r.faultCount)  || 0), 0);
     const overallP1000 = adslWorking > 0 ? Math.round(adslFaults * 1000 / adslWorking * 100) / 100 : null;
-    const maxPer1000 = Math.max(0, ...rows.map(r => r.per1000 ?? 0));
 
     const omPct   = omO  ? Number(omO.pctResolved)  : null;
     const repRatio = repO ? Number(repO.repRatio)    : null;
@@ -196,11 +196,11 @@ export function TechPerformanceReport() {
     return {
       omPct, omScore: omScore(omPct),
       repRatio, repScore: repScore(repRatio),
-      per1000: overallP1000, adslScore: adslScore(overallP1000, maxPer1000),
+      per1000: overallP1000, adslScore: adslScore(overallP1000),
       pct24h, remScore: remScore(pct24h),
-      total: Math.round((omScore(omPct) + repScore(repRatio) + adslScore(overallP1000, maxPer1000) + remScore(pct24h)) * 10) / 10,
+      total: Math.round((omScore(omPct) + repScore(repRatio) + adslScore(overallP1000) + remScore(pct24h)) * 10) / 10,
     };
-  }, [removalData, repData, cabinetData, omData, rows]);
+  }, [removalData, repData, cabinetData, omData]);
 
   const handleExportExcel = () => {
     const data = rows.map((r, i) => ({
@@ -356,7 +356,7 @@ export function TechPerformanceReport() {
         {[
           { label: "المتعذرات OM", max: MAX_OM, note: "مطلق — 100% تحقيق = 25" },
           { label: "التكرار", max: MAX_REP, note: `مستهدف ${REP_TARGET}% = 20 درجة` },
-          { label: "الأعطال فى الألف", max: MAX_ADSL, note: "نسبى — الأقل = الأعلى" },
+          { label: "الأعطال فى الألف", max: MAX_ADSL, note: `مستهدف ${ADSL_TARGET}/ألف = 20 درجة` },
           { label: "نسبة الإزالة 24h", max: MAX_REM, note: "مطلق — 100% = 10 درجات" },
         ].map((item) => (
           <div key={item.label} className="rounded-lg border bg-white p-3 text-center shadow-sm">
