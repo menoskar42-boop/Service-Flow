@@ -611,12 +611,14 @@ export async function ensureSchema() {
         line_type text,
         fcc_exchange text,
         serial_number text,
+        service_name text,
         raw jsonb,
         uploaded_at timestamptz NOT NULL DEFAULT now(),
         uploaded_by_id integer REFERENCES users(id)${uniq}
       )
     `);
     await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS serial_number text`);
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS service_name text`);
   }
 
   // phone_ports — منافذ MSAN، مفتاحها رقم التليفون (upsert على كل رفعة)

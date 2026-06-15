@@ -323,12 +323,17 @@ const FTTH_ORDER_COLS = [
   "service_order_id", "customer_order_id", "product", "service_number", "customer_name",
   "order_status", "order_create_time", "exchange_name", "service_type", "msan_code",
   "area_code", "customer_mobile", "current_activity", "error_name", "governorate",
-  "line_type", "fcc_exchange", "serial_number", "raw",
+  "line_type", "fcc_exchange", "serial_number", "service_name", "raw",
 ];
 // مؤشرات الأعمدة المفتاحية داخل صف القيم (بترتيب FTTH_ORDER_COLS):
-const FO_SERVICE_ORDER = 0, FO_CUSTOMER_ORDER = 1, FO_MSAN = 9, FO_SERIAL = 17;
+const FO_SERVICE_ORDER = 0, FO_CUSTOMER_ORDER = 1, FO_MSAN = 9, FO_FCC = 16, FO_SERIAL = 17, FO_SERVICE_NAME = 18;
 // مفتاح هوية المتعذر = المسلسل + Customer Order ID + Service Order ID
 const foKey = (r: any[]) => `${r[FO_SERIAL] ?? ""}|${r[FO_CUSTOMER_ORDER] ?? ""}|${r[FO_SERVICE_ORDER] ?? ""}`;
+// متعذرات غنايم المعنية: FCC ضمن أكواد غنايم الأربعة + Service Name = FV Survey
+const FO_GHANAIM_FCC = ["GHNAT", "AMZAT", "DRGAT", "NGOAT"];
+const foIsGhanaimFv = (r: any[]) =>
+  FO_GHANAIM_FCC.includes(String(r[FO_FCC] ?? "").trim()) &&
+  String(r[FO_SERVICE_NAME] ?? "").trim() === "FV Survey";
 
 // يحلّل ملف "Order" (متعذرات OM) ويُرجع صفوف القيم بترتيب FTTH_ORDER_COLS (deduped by service_order_id).
 function parseFtthOrderRows(buffer: Buffer): any[][] {
@@ -343,7 +348,7 @@ function parseFtthOrderRows(buffer: Buffer): any[][] {
   const iMsan = find("msan code"), iArea = findExact("area code"), iMobile = find("customer mobile number", "customer mobile");
   const iActivity = findExact("current activity"), iError = find("error name"), iGov = find("governorate");
   const iLineType = findExact("line type"), iFcc = find("fcc exchange");
-  const iSerial = findExact("serial number");
+  const iSerial = findExact("serial number"), iSvcName = findExact("service name");
   const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
   const byId = new Map<string, any[]>();
   for (const r of dataRows) {
@@ -357,14 +362,15 @@ function parseFtthOrderRows(buffer: Buffer): any[][] {
       String(g(r, iExch)) || null, String(g(r, iSvcType)) || null, String(g(r, iMsan)) || null,
       String(g(r, iArea)) || null, String(g(r, iMobile)) || null, String(g(r, iActivity)) || null,
       String(g(r, iError)) || null, String(g(r, iGov)) || null, String(g(r, iLineType)) || null,
-      String(g(r, iFcc)) || null, String(g(r, iSerial)) || null, JSON.stringify(raw),
+      String(g(r, iFcc)) || null, String(g(r, iSerial)) || null, String(g(r, iSvcName)) || null, JSON.stringify(raw),
     ]);
   }
   return Array.from(byId.values());
 }
 
-// يضيف إلى ftth_orders_soy الصفوف التى مفتاحها (مسلسل+order ids) غير موجود مسبقاً. يُرجع عدد المُضاف.
+// يضيف إلى ftth_orders_soy صفوف غنايم (FV Survey) الجديدة فقط. يُرجع عدد المُضاف.
 async function accumulateSoy(rows: any[][], userId: number): Promise<number> {
+  rows = rows.filter(foIsGhanaimFv); // بداية السنة: غنايم الأربعة + Service Name = FV Survey فقط
   if (!rows.length) return 0;
   const { rows: ex } = await pool.query(
     `SELECT serial_number, customer_order_id, service_order_id FROM ftth_orders_soy`,
@@ -2629,7 +2635,9 @@ export async function registerRoutes(
     const params: any[] = [];
     const conds: string[] = [];
     if (all !== "true") {
+      // متعذرات غنايم المعنية فقط: أكواد غنايم الأربعة + Service Name = FV Survey
       conds.push(`fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
+      conds.push(`service_name = 'FV Survey'`);
     }
     if (bucket === "resolved") {
       conds.push(`NOT EXISTS (SELECT 1 FROM ftth_orders_current c
@@ -2647,7 +2655,8 @@ export async function registerRoutes(
     const yearCol = bucket === "archive" ? `archived_year AS "archivedYear",` : "";
     const { rows } = await pool.query(
       `SELECT id, ${yearCol} service_order_id AS "serviceOrderId", customer_order_id AS "customerOrderId",
-              product, service_number AS "serviceNumber", serial_number AS "serialNumber", customer_name AS "customerName",
+              product, service_number AS "serviceNumber", serial_number AS "serialNumber",
+              service_name AS "serviceName", customer_name AS "customerName",
               order_status AS "orderStatus", order_create_time AS "orderCreateTime",
               exchange_name AS "exchangeName", service_type AS "serviceType", msan_code AS "msanCode",
               area_code AS "areaCode", customer_mobile AS "customerMobile",
