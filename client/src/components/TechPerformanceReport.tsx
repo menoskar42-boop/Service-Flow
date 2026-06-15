@@ -13,7 +13,7 @@ import { format } from "date-fns";
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 const REP_TARGET  = 4;  // مستهدف التكرار 4%
 const ADSL_TARGET = 25; // مستهدف أعطال/1000 = 25
-const MAX_OM    = 25;
+const MAX_OM    = 5;
 const MAX_REP   = 20;
 const MAX_ADSL  = 20;
 const MAX_REM   = 10;
