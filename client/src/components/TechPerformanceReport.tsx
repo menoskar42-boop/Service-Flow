@@ -13,10 +13,10 @@ import { format } from "date-fns";
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 const REP_TARGET  = 4;  // مستهدف التكرار 4%
 const ADSL_TARGET = 25; // مستهدف أعطال/1000 = 25
-const MAX_OM    = 5;
-const MAX_REP   = 20;
-const MAX_ADSL  = 20;
-const MAX_REM   = 10;
+const MAX_OM    = 10;
+const MAX_REP   = 35;
+const MAX_ADSL  = 35;
+const MAX_REM   = 20;
 const MAX_TOTAL = MAX_OM + MAX_REP + MAX_ADSL + MAX_REM; // 75
 
 const fmt1 = (v: number | null | undefined) =>
