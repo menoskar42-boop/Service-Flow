@@ -632,6 +632,7 @@ export async function ensureSchema() {
     `);
     await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS serial_number text`);
     await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS service_name text`);
+    await pool.query(`ALTER TABLE ${t} ADD COLUMN IF NOT EXISTS install_address text`);
   }
 
   // phone_ports — منافذ MSAN، مفتاحها رقم التليفون (upsert على كل رفعة)
