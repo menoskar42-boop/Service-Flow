@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Trash2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
+import { ROLES } from "@shared/schema";
 
 interface Row {
   id: number;
@@ -35,6 +39,21 @@ const fmtDt = (d: string | null) => {
 
 export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy" | "resolved"; title: string }) {
   const [q, setQ] = useState("");
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const isAdmin = user?.role === ROLES.ADMIN;
+
+  const handleResetSoy = async () => {
+    if (!window.confirm("تفريغ جدول متعذرات بداية السنة بالكامل؟ ستحتاج إعادة رفع ملف البداية بعدها.")) return;
+    try {
+      await apiRequest("POST", "/api/ftth-orders/soy-reset");
+      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+      toast({ title: "تم التفريغ", description: "أعد رفع ملف بداية السنة الآن", duration: 4000 });
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e?.message || "تعذّر التفريغ", variant: "destructive", duration: 5000 });
+    }
+  };
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
     queryKey: ["/api/ftth-orders", bucket, q],
@@ -134,6 +153,11 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={rows.length === 0} className="text-red-700 border-red-200 gap-1">
             <Printer className="w-4 h-4" /> PDF
           </Button>
+          {bucket === "soy" && isAdmin && (
+            <Button variant="outline" size="sm" onClick={handleResetSoy} className="text-red-700 border-red-300 gap-1" title="تفريغ جدول بداية السنة لإعادة بنائه">
+              <Trash2 className="w-4 h-4" /> تفريغ بداية السنة
+            </Button>
+          )}
         </div>
       </Card>
 

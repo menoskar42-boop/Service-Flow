@@ -2623,6 +2623,12 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/ftth-orders/soy-reset — تفريغ جدول بداية السنة (أدمن) — لإعادة بنائه نظيفاً.
+  app.post("/api/ftth-orders/soy-reset", requireAdmin, async (_req, res) => {
+    await pool.query(`TRUNCATE ftth_orders_soy`);
+    res.json({ ok: true, soyTotal: 0 });
+  });
+
   // GET /api/ftth-orders — ?bucket=historical|current|archive|soy|resolved & ?year= & ?q=
   //   soy      = متعذرات بداية السنة (التراكمى)
   //   resolved = متعذرات تم فكها (موجودة فى SOY وغير موجودة فى الحالى بمفتاح المسلسل+order ids)
