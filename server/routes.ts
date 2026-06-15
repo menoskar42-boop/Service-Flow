@@ -619,8 +619,8 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
          UNION ALL
          SELECT *, 'اختفى من الحالى' AS reg_source FROM ticket_dsl_sod s
          WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)
-           -- الحالات 138/135 لا تُعتبر "اختفى/منتظم" إلا إذا كان لها تاريخ إغلاق فعلى
-           AND NOT (s.status_code ~ '^(135|138)' AND s.close_date IS NULL)
+           -- الحالات 138/135 حالات وسيطة (قيد التنفيذ) لا تُعتبر "اختفى/منتظم" أبداً
+           AND NOT (s.status_code ~ '^(135|138)')
        ) t
        LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
        LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
