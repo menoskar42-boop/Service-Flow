@@ -100,8 +100,8 @@ export function TechPerformanceReport() {
   };
 
   const { data: removalData, isFetching: f1 } = useQuery({
-    queryKey: ["/api/reports/removal-stats", dateFrom, dateTo, central],
-    queryFn: () => fetchJson(`/api/reports/removal-stats?${buildParams()}`),
+    queryKey: ["/api/reports/combined-stats", dateFrom, dateTo, central],
+    queryFn: () => fetchJson(`/api/reports/combined-stats?${buildParams()}`),
   });
   const { data: repData, isFetching: f2 } = useQuery({
     queryKey: ["/api/reports/repetition-combined", dateFrom, dateTo, central],
@@ -310,7 +310,7 @@ export function TechPerformanceReport() {
         .toolbar button{background:#dc2626;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;font-family:inherit}
         @media print{body{background:#fff}.toolbar{display:none}.page{box-shadow:none;margin:0;max-width:none;page-break-after:always}@page{size:A4 landscape;margin:8mm}}
       </style></head><body>
-      <div class="toolbar"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <div class="toolbar"><button onclick="window.print()">🖸️ طباعة / حفظ PDF</button>
         <span>اختر "حفظ بصيغة PDF" كوجهة الطباعة.</span></div>
       ${pages}</body></html>`;
     const w = window.open("", "_blank");

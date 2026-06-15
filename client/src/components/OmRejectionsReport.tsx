@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Trash2, UserPlus, Pencil, X } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, UserPlus, Pencil, X } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -47,27 +47,6 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const qc = useQueryClient();
   const isAdmin = user?.role === ROLES.ADMIN;
 
-  const handleResetSoy = async () => {
-    if (!window.confirm("تفريغ جدول متعذرات بداية السنة بالكامل؟ ستحتاج إعادة رفع ملف البداية بعدها.")) return;
-    try {
-      await apiRequest("POST", "/api/ftth-orders/soy-reset");
-      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
-      toast({ title: "تم التفريغ", description: "أعد رفع ملف بداية السنة الآن", duration: 4000 });
-    } catch (e: any) {
-      toast({ title: "خطأ", description: e?.message || "تعذّر التفريغ", variant: "destructive", duration: 5000 });
-    }
-  };
-
-  const handleResetCurrent = async () => {
-    if (!window.confirm("تفريغ جدول المتعذرات الحالية بالكامل؟ ستحتاج إعادة رفع ملف الحالى بعدها.")) return;
-    try {
-      await apiRequest("POST", "/api/ftth-orders/current-reset");
-      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
-      toast({ title: "تم التفريغ", description: "أعد رفع ملف المتعذرات الحالية الآن", duration: 4000 });
-    } catch (e: any) {
-      toast({ title: "خطأ", description: e?.message || "تعذّر التفريغ", variant: "destructive", duration: 5000 });
-    }
-  };
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
     queryKey: ["/api/ftth-orders", bucket, q],
@@ -219,7 +198,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
         .toolbar button { background: #dc2626; color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
         @media print { body { background: #fff; } .toolbar { display: none; } .page { box-shadow: none; margin: 0; max-width: none; page-break-after: always; } @page { size: A4 landscape; margin: 8mm; } }
       </style></head><body>
-      <div class="toolbar"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+      <div class="toolbar"><button onclick="window.print()">🖸️ طباعة / حفظ PDF</button>
         <span>اختر "حفظ بصيغة PDF" كوجهة الطباعة.</span></div>
       ${pages}</body></html>`;
     const w = window.open("", "_blank");
@@ -247,16 +226,6 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={rows.length === 0} className="text-red-700 border-red-200 gap-1">
             <Printer className="w-4 h-4" /> PDF
           </Button>
-          {bucket === "soy" && isAdmin && (
-            <Button variant="outline" size="sm" onClick={handleResetSoy} className="text-red-700 border-red-300 gap-1" title="تفريغ جدول بداية السنة لإعادة بنائه">
-              <Trash2 className="w-4 h-4" /> تفريغ بداية السنة
-            </Button>
-          )}
-          {bucket === "current" && isAdmin && (
-            <Button variant="outline" size="sm" onClick={handleResetCurrent} className="text-red-700 border-red-300 gap-1" title="تفريغ جدول المتعذرات الحالية">
-              <Trash2 className="w-4 h-4" /> تفريغ الحالى
-            </Button>
-          )}
         </div>
       </Card>
 
