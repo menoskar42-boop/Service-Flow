@@ -3492,6 +3492,60 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/box-faults — لكل بكس: عدد الخطوط (من بيان التليفونات) + عدد الأعطال
+  // (من شيت التفاصيل + تفاصيل المتبقى، ربط برقم التليفون) + أعطال لكل 1000 + المتوقع نهاية الشهر.
+  //   ?dateFrom=YYYY-MM-DD & dateTo=YYYY-MM-DD & central= & q=
+  app.get("/api/reports/box-faults", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom = "", dateTo = "", central = "", q = "" } = req.query as Record<string, string>;
+      const from = dateFrom || "1900-01-01";
+      const to   = dateTo   || "2999-12-31";
+      const params: any[] = [from, to];
+      const conds: string[] = [
+        `(pl.central = 'الغنايم' OR pl.central = 'الغنايم-العزايزة' OR pl.central = 'الغنايم-دير الجنادله' OR pl.central = 'الغنايم-نجع العمدة')`,
+        `COALESCE(pl.box_number, '') <> ''`,
+      ];
+      if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+      if (q.trim()) {
+        params.push(`%${q.trim()}%`);
+        const p = `$${params.length}`;
+        conds.push(`(pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR tn.tech_name ILIKE ${p})`);
+      }
+      const where = "WHERE " + conds.join(" AND ");
+      const { rows } = await pool.query(
+        `WITH fault_union AS (
+           SELECT phone_number, complain_no
+           FROM complaint_details
+           WHERE (complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+             AND (complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+           UNION
+           SELECT phone_number, complain_no
+           FROM remaining_complaints
+           WHERE (complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+             AND (complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+         )
+         SELECT
+           pl.central                                                         AS "centralName",
+           pl.cabin_number                                                    AS "cabinNumber",
+           pl.box_number                                                      AS "boxNumber",
+           COALESCE(string_agg(DISTINCT tn.tech_name, ' , '), 'غير معروف') AS "techName",
+           COUNT(DISTINCT pl.tel_no)::int                                     AS "workingLines",
+           COUNT(DISTINCT fu.complain_no)::int                                AS "faultCount"
+         FROM phone_lines pl
+         LEFT JOIN cabinet_technicians ct ON ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+         LEFT JOIN fault_union fu ON fu.phone_number = pl.tel_no
+         ${where}
+         GROUP BY pl.central, pl.cabin_number, pl.box_number
+         ORDER BY pl.central, pl.cabin_number, pl.box_number`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — يستخدم queryWfmReport.
   const wfmReportHandler = (typesLc: string[], regularized: boolean) =>
     async (req: any, res: any) => {

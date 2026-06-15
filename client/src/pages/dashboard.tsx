@@ -20,6 +20,7 @@ import { InstallationsReport } from "@/components/InstallationsReport";
 import { RemovalStatsReport } from "@/components/RemovalStatsReport";
 import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
 import { CabinetAdslFaultsReport } from "@/components/CabinetAdslFaultsReport";
+import { BoxFaultsReport } from "@/components/BoxFaultsReport";
 import { OmRejectionsReport } from "@/components/OmRejectionsReport";
 import { OmStatsReport } from "@/components/OmStatsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
@@ -32,7 +33,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "om-current" | "om-soy" | "om-resolved" | "om-stats";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "box-faults" | "om-current" | "om-soy" | "om-resolved" | "om-stats";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -43,7 +44,8 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "current-faults",      label: "الأعطال الحالية" },
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
-      { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف" },
+      { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف (كابينة)" },
+      { id: "box-faults",          label: "عدد الأعطال فى الألف (بكس)" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
       { id: "repetition-stats",    label: "إحصائيات التكرار" },
     ],
@@ -404,6 +406,7 @@ export default function Dashboard() {
               {reportTab === "removal-stats" && <RemovalStatsReport />}
               {reportTab === "repetition-stats" && <RepetitionStatsReport />}
               {reportTab === "cabinet-adsl-faults" && <CabinetAdslFaultsReport />}
+              {reportTab === "box-faults" && <BoxFaultsReport />}
               {reportTab === "om-current"  && <OmRejectionsReport bucket="current"  title="المتعذرات الحالية (OM)" />}
               {reportTab === "om-soy"      && <OmRejectionsReport bucket="soy"      title="متعذرات بداية السنة (OM)" />}
               {reportTab === "om-resolved" && <OmRejectionsReport bucket="resolved" title="متعذرات تم فكها (OM)" />}
