@@ -79,6 +79,20 @@ export function TechPerformanceReport() {
     return p.toString();
   };
 
+  // عدد أيام الفترة ومُضاعِف الشهر (لحساب المتوقع بنهاية الشهر)
+  const periodDays = (() => {
+    if (!dateFrom || !dateTo) return 31;
+    const d = Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1;
+    return d > 0 ? d : 1;
+  })();
+  const monthDays = (() => {
+    if (!dateFrom || !dateTo) return 31;
+    const [y1, m1] = dateFrom.split("-").map(Number);
+    const [y2, m2] = dateTo.split("-").map(Number);
+    if (y1 === y2 && m1 === m2) return new Date(y1, m1, 0).getDate();
+    return 31;
+  })();
+
   const fetchJson = async (url: string) => {
     const res = await fetch(url, { credentials: "include" });
     if (!res.ok) throw new Error("فشل التحميل");
@@ -144,12 +158,12 @@ export function TechPerformanceReport() {
     ]);
     allTechs.delete("غير معروف");
 
-    // حساب per1000 لكل فنى ثم max لإيجاد الدرجة النسبية
+    // المتوقع بنهاية الشهر = (أعطال ÷ أيام الفترة) × أيام الشهر × 1000 ÷ الشغال
     const per1000Map = new Map<string, number | null>();
     for (const name of allTechs) {
       const d = adslMap.get(name);
-      if (d && d.working > 0) {
-        per1000Map.set(name, Math.round(d.faults * 1000 / d.working * 100) / 100);
+      if (d && d.working > 0 && periodDays > 0) {
+        per1000Map.set(name, Math.round(d.faults / periodDays * monthDays * 1000 / d.working * 100) / 100);
       } else {
         per1000Map.set(name, null);
       }
@@ -177,7 +191,7 @@ export function TechPerformanceReport() {
     }
 
     return result.sort((a, b) => b.total - a.total);
-  }, [removalData, repData, cabinetData, omData]);
+  }, [removalData, repData, cabinetData, omData, periodDays, monthDays]);
 
   // صف إجمالى الإدارة
   const overall = useMemo(() => {
@@ -187,7 +201,9 @@ export function TechPerformanceReport() {
 
     const adslWorking = (cabinetData ?? []).reduce((s: number, r: any) => s + (Number(r.workingAdsl) || 0), 0);
     const adslFaults  = (cabinetData ?? []).reduce((s: number, r: any) => s + (Number(r.faultCount)  || 0), 0);
-    const overallP1000 = adslWorking > 0 ? Math.round(adslFaults * 1000 / adslWorking * 100) / 100 : null;
+    const overallP1000 = adslWorking > 0 && periodDays > 0
+      ? Math.round(adslFaults / periodDays * monthDays * 1000 / adslWorking * 100) / 100
+      : null;
 
     const omPct   = omO  ? Number(omO.pctResolved)  : null;
     const repRatio = repO ? Number(repO.repRatio)    : null;
@@ -200,7 +216,7 @@ export function TechPerformanceReport() {
       pct24h, remScore: remScore(pct24h),
       total: Math.round((omScore(omPct) + repScore(repRatio) + adslScore(overallP1000) + remScore(pct24h)) * 10) / 10,
     };
-  }, [removalData, repData, cabinetData, omData]);
+  }, [removalData, repData, cabinetData, omData, periodDays, monthDays]);
 
   const handleExportExcel = () => {
     const data = rows.map((r, i) => ({
@@ -210,7 +226,7 @@ export function TechPerformanceReport() {
       [`درجة المتعذرات /${MAX_OM}`]: r.omScore,
       "نسبة التكرار %": r.repRatio ?? "",
       [`درجة التكرار /${MAX_REP}`]: r.repScore,
-      "أعطال / 1000": r.per1000 ?? "",
+      "أعطال/1000 متوقع نهاية الشهر": r.per1000 ?? "",
       [`درجة الأعطال /${MAX_ADSL}`]: r.adslScore,
       "نسبة الإزالة 24h %": r.pct24h ?? "",
       [`درجة الإزالة /${MAX_REM}`]: r.remScore,
@@ -223,7 +239,7 @@ export function TechPerformanceReport() {
       [`درجة المتعذرات /${MAX_OM}`]: overall.omScore,
       "نسبة التكرار %": overall.repRatio ?? "",
       [`درجة التكرار /${MAX_REP}`]: overall.repScore,
-      "أعطال / 1000": overall.per1000 ?? "",
+      "أعطال/1000 متوقع نهاية الشهر": overall.per1000 ?? "",
       [`درجة الأعطال /${MAX_ADSL}`]: overall.adslScore,
       "نسبة الإزالة 24h %": overall.pct24h ?? "",
       [`درجة الإزالة /${MAX_REM}`]: overall.remScore,
@@ -246,7 +262,7 @@ export function TechPerformanceReport() {
     const head = `<th>#</th><th>اسم الفنى</th>
       <th>نسبة تحقيق<br/>المتعذرات %</th><th>درجة المتعذرات<br/>/${MAX_OM}</th>
       <th>نسبة التكرار %</th><th>درجة التكرار<br/>/${MAX_REP}</th>
-      <th>أعطال / 1000</th><th>درجة الأعطال<br/>/${MAX_ADSL}</th>
+      <th>أعطال/1000<br/>(متوقع نهاية الشهر)</th><th>درجة الأعطال<br/>/${MAX_ADSL}</th>
       <th>نسبة الإزالة<br/>24h %</th><th>درجة الإزالة<br/>/${MAX_REM}</th>
       <th>الدرجة النهائية<br/>/${MAX_TOTAL}</th>`;
 
@@ -379,7 +395,7 @@ export function TechPerformanceReport() {
                 <TableHead className="text-white font-bold text-center">درجة<br/>المتعذرات<br/>/{MAX_OM}</TableHead>
                 <TableHead className="text-white font-bold text-center">نسبة<br/>التكرار %</TableHead>
                 <TableHead className="text-white font-bold text-center">درجة<br/>التكرار<br/>/{MAX_REP}</TableHead>
-                <TableHead className="text-white font-bold text-center">أعطال<br/>/ 1000</TableHead>
+                <TableHead className="text-white font-bold text-center">أعطال/1000<br/>(نهاية الشهر)</TableHead>
                 <TableHead className="text-white font-bold text-center">درجة<br/>الأعطال<br/>/{MAX_ADSL}</TableHead>
                 <TableHead className="text-white font-bold text-center">نسبة الإزالة<br/>24h %</TableHead>
                 <TableHead className="text-white font-bold text-center">درجة<br/>الإزالة<br/>/{MAX_REM}</TableHead>
