@@ -2709,7 +2709,8 @@ export async function registerRoutes(
               fo.order_status AS "orderStatus", fo.order_create_time AS "orderCreateTime",
               fo.exchange_name AS "exchangeName", fo.service_type AS "serviceType", fo.msan_code AS "msanCode",
               fo.area_code AS "areaCode",
-              COALESCE(wfm_mob.mobile, fo.customer_mobile) AS "customerMobile",
+              COALESCE(wfm.mobile, fo.customer_mobile) AS "customerMobile",
+              wfm.address AS "address",
               fo.current_activity AS "currentActivity", fo.error_name AS "errorName",
               fo.governorate, fo.line_type AS "lineType", fo.fcc_exchange AS "fccExchange",
               COALESCE(tn.tech_name, 'غير معروف') AS "techName"
@@ -2717,11 +2718,11 @@ export async function registerRoutes(
        LEFT JOIN cabinet_technicians ct ON ct.cabin_code = fo.msan_code
        LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
        LEFT JOIN LATERAL (
-         SELECT mobile FROM maintenance_orders
+         SELECT mobile, address FROM maintenance_orders
          WHERE phone_number = fo.serial_number
            AND work_order_type ILIKE 'fvmanualsurvey'
          LIMIT 1
-       ) wfm_mob ON TRUE
+       ) wfm ON TRUE
        ${where}
        ORDER BY fo.order_create_time DESC NULLS LAST
        LIMIT 5000`,
