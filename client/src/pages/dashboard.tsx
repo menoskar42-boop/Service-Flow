@@ -231,18 +231,20 @@ export default function Dashboard() {
                   <ClipboardList className="w-4 h-4" />
                   الطلبات
                 </button>
-                <button
-                  onClick={() => setAdminTab("reports")}
-                  data-testid="tab-admin-reports"
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    adminTab === "reports"
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <BarChart3 className="w-4 h-4" />
-                  التقارير
-                </button>
+                {user.role === ROLES.ADMIN && (
+                  <button
+                    onClick={() => setAdminTab("reports")}
+                    data-testid="tab-admin-reports"
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      adminTab === "reports"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                    التقارير
+                  </button>
+                )}
                 {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
                   <button
                     onClick={() => setAdminTab("data-completion")}
@@ -281,7 +283,7 @@ export default function Dashboard() {
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
         {/* ── REPORTS TAB (Admin & Tech) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "reports" && (
+        {user.role === ROLES.ADMIN && adminTab === "reports" && (
           <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
             {/* ── زر فتح/قفل القائمة على الموبايل ── */}
             <button
