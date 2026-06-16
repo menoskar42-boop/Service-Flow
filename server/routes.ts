@@ -1638,7 +1638,8 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `SELECT id, phone_local AS "phoneLocal", phone_full AS "phoneFull",
               work_order_type AS "workOrderType", cable_quantity AS "cableQuantity",
-              created_by_name AS "createdByName", created_at AS "createdAt", updated_at AS "updatedAt",
+              created_by_id AS "createdById", created_by_name AS "createdByName",
+              created_at AS "createdAt", updated_at AS "updatedAt",
               printed_at AS "printedAt", edit_unlocked_at AS "editUnlockedAt",
               -- مقفل = طُبع ولم يُمنح صلاحية تعديل
               (printed_at IS NOT NULL AND edit_unlocked_at IS NULL) AS "locked",
@@ -1689,15 +1690,20 @@ export async function registerRoutes(
     }
   });
 
-  // DELETE /api/cable-entries/:id — حذف إدخال (فنى + أدمن)
+  // DELETE /api/cable-entries/:id — حذف إدخال (أدمن أو صاحب الإدخال فقط)
   // مقفل بعد طباعة التقرير (printed_at) ما لم يُمنح صلاحية التعديل (edit_unlocked_at).
-  app.delete("/api/cable-entries/:id", requireTechOrAdmin, async (req, res) => {
+  app.delete("/api/cable-entries/:id", requireTechOrAdmin, async (req: any, res) => {
     const id = parseInt(req.params.id);
     if (!id || isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
     const { rows } = await pool.query(
-      `SELECT printed_at, edit_unlocked_at FROM cable_entries WHERE id = $1`, [id],
+      `SELECT printed_at, edit_unlocked_at, created_by_id FROM cable_entries WHERE id = $1`, [id],
     );
     if (!rows.length) return res.json({ ok: true });
+    const userId: number = req.user.id;
+    const isAdmin: boolean = req.user.role === "admin";
+    if (!isAdmin && rows[0].created_by_id !== userId) {
+      return res.status(403).json({ message: "لا يمكنك حذف إدخال أدخله فنى آخر." });
+    }
     if (rows[0].printed_at && !rows[0].edit_unlocked_at) {
       return res.status(403).json({ message: "تم طباعة التقرير — التعديل مقفل. اطلب من الأدمن منح صلاحية التعديل." });
     }

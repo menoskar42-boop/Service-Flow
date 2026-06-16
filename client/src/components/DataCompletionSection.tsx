@@ -21,6 +21,7 @@ interface CableEntry {
   phoneFull: string;
   workOrderType: string;
   cableQuantity: string;
+  createdById: number;
   createdByName: string;
   createdAt: string;
   updatedAt: string;
@@ -263,15 +264,17 @@ export function DataCompletionSection() {
                             <KeyRound className="w-4 h-4" />
                           </Button>
                         )}
-                        <Button
-                          variant="ghost" size="icon"
-                          className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30"
-                          onClick={() => deleteMutation.mutate(en.id)}
-                          disabled={deleteMutation.isPending || en.locked}
-                          title={en.locked ? "مقفل بعد الطباعة" : "حذف"}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {(isAdmin || user?.id === en.createdById) && (
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-30"
+                            onClick={() => deleteMutation.mutate(en.id)}
+                            disabled={deleteMutation.isPending || en.locked}
+                            title={en.locked ? "مقفل بعد الطباعة" : "حذف"}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
