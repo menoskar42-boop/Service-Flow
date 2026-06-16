@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat } from "lucide-react";
 interface RegularizedFault {
   centralName: string | null;
   phoneShort: string | null;
@@ -48,6 +48,7 @@ export function RegularizedFaultsRangeReport() {
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [repeatedOnly, setRepeatedOnly] = useState(false);
 
   // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
@@ -68,8 +69,13 @@ export function RegularizedFaultsRangeReport() {
     ? `من ${dateFrom || "البداية"} إلى ${dateTo || "النهاية"}`
     : "كل الفترات";
 
+  // عند تفعيل زر "المكرر فقط" نعرض/نصدّر الأعطال المكررة فقط.
+  const displayed = repeatedOnly
+    ? faults.filter((f) => f.repeatStatus === "مكرر")
+    : faults;
+
   const handleExportExcel = () => {
-    const rows = faults.map((f, i) => ({
+    const rows = displayed.map((f, i) => ({
       "#": i + 1,
       "Field1": f.centralName,
       "رقم التلفون": f.phoneShort,
@@ -106,7 +112,7 @@ export function RegularizedFaultsRangeReport() {
     const esc = (v: any) =>
       String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const ROWS_PER_PAGE = 10;
-    const totalPages = Math.max(1, Math.ceil(faults.length / ROWS_PER_PAGE));
+    const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
@@ -115,7 +121,7 @@ export function RegularizedFaultsRangeReport() {
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
-      const chunk = faults.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE);
+      const chunk = displayed.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE);
       const body = chunk.map((f, ci) => `
         <tr class="green">
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
@@ -140,7 +146,7 @@ export function RegularizedFaultsRangeReport() {
       pages += `
         <section class="page">
           <h2>${esc(title)}</h2>
-          <div class="pageno">صفحة ${p + 1} من ${totalPages} — إجمالي: ${faults.length} عطل</div>
+          <div class="pageno">صفحة ${p + 1} من ${totalPages} — إجمالي: ${displayed.length} عطل</div>
           <table><thead>${headRow}</thead><tbody>${body}</tbody></table>
         </section>`;
     }
@@ -224,11 +230,19 @@ export function RegularizedFaultsRangeReport() {
         />
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <span className="text-sm text-muted-foreground">إجمالي: <strong>{faults.length}</strong> عطل</span>
+        <Button
+          variant={repeatedOnly ? "default" : "outline"}
+          size="sm"
+          onClick={() => setRepeatedOnly((v) => !v)}
+          className={`gap-1 ${repeatedOnly ? "bg-orange-600 hover:bg-orange-700 text-white" : "text-orange-700 border-orange-200"}`}
+        >
+          <Repeat className="w-4 h-4" /> {repeatedOnly ? "عرض الكل" : "المكرر فقط"}
+        </Button>
+        <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}
-          disabled={faults.length === 0}
+          disabled={displayed.length === 0}
           className="text-green-700 border-green-200 gap-1"
         >
           <FileSpreadsheet className="w-4 h-4" /> Excel
@@ -236,7 +250,7 @@ export function RegularizedFaultsRangeReport() {
         <Button
           variant="outline" size="sm"
           onClick={handleExportPDF}
-          disabled={faults.length === 0}
+          disabled={displayed.length === 0}
           className="text-red-700 border-red-200 gap-1"
         >
           <Printer className="w-4 h-4" /> PDF
@@ -276,13 +290,17 @@ export function RegularizedFaultsRangeReport() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {faults.length === 0 ? (
+              {displayed.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={24} className="text-center py-16 text-muted-foreground">
-                    {isFetching ? "جاري التحميل..." : "لا توجد أعطال منتظمة في هذه الفترة — حدد التواريخ وتأكد من رفع ملفات شكاوى DSL"}
+                    {isFetching
+                      ? "جاري التحميل..."
+                      : repeatedOnly
+                        ? "لا توجد أعطال مكررة في هذه الفترة"
+                        : "لا توجد أعطال منتظمة في هذه الفترة — حدد التواريخ وتأكد من رفع ملفات شكاوى DSL"}
                   </TableCell>
                 </TableRow>
-              ) : faults.map((f, i) => (
+              ) : displayed.map((f, i) => (
                 <TableRow key={i} className="bg-green-50 hover:bg-green-100">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell>{f.centralName || "-"}</TableCell>
