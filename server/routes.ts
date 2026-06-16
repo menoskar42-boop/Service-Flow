@@ -2615,6 +2615,7 @@ export async function registerRoutes(
       const iVoice = find("voice status");
       const iData  = find("data status");
       const iOper  = find("operator");
+      const iOnu   = find("onu", "onu name", "onu sn", "onu serial", "sn");
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
       // dedup within file by phone (last occurrence wins)
@@ -2634,6 +2635,7 @@ export async function registerRoutes(
           String(g(r, iVoice)) || null,
           String(g(r, iData)) || null,
           String(g(r, iOper)) || null,
+          String(g(r, iOnu)) || null,
         ]);
       }
       const all = Array.from(byPhone.values());
@@ -2643,20 +2645,20 @@ export async function registerRoutes(
       for (let s = 0; s < all.length; s += BATCH) {
         const chunk = all.slice(s, s + BATCH);
         const ph = chunk.map((_, ci) => {
-          const o = ci * 11;
-          return "(" + Array.from({ length: 11 }, (_, k) => `$${o+k+1}`).join(",") + ")";
+          const o = ci * 12;
+          return "(" + Array.from({ length: 12 }, (_, k) => `$${o+k+1}`).join(",") + ")";
         }).join(",");
         const r = await pool.query(
           `INSERT INTO phone_ports
              (phone_number, area_code, msan_code, frame, shelf, slot, port_number,
-              port_type, voice_status, data_status, operator)
+              port_type, voice_status, data_status, operator, onu)
            VALUES ${ph}
            ON CONFLICT (phone_number) DO UPDATE SET
              area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code,
              frame = EXCLUDED.frame, shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
              port_number = EXCLUDED.port_number, port_type = EXCLUDED.port_type,
              voice_status = EXCLUDED.voice_status, data_status = EXCLUDED.data_status,
-             operator = EXCLUDED.operator, uploaded_at = now()`,
+             operator = EXCLUDED.operator, onu = EXCLUDED.onu, uploaded_at = now()`,
           chunk.flat(),
         );
         affected += r.rowCount ?? 0;
@@ -3364,11 +3366,13 @@ export async function registerRoutes(
       const { central = "", q = "", dateFrom = "", dateTo = "" } =
         req.query as Record<string, string>;
       const params: any[] = [];
+      // ملاحظة: cd.central_name فى complaint_details فاضى دائماً — العمود الصحيح
+      // للسنترال هو exchange_name (نفس ما يستخدمه تقرير إحصائيات الإزالة).
       const conds: string[] = [
         `cd.close_time IS NOT NULL`,
-        `(cd.central_name = 'الغنايم' OR cd.central_name = 'الغنايم-العزايزة' OR cd.central_name = 'الغنايم-دير الجنادله' OR cd.central_name = 'الغنايم-نجع العمدة')`,
+        `cd.exchange_name ILIKE '%غنايم%'`,
       ];
-      if (central) { params.push(central); conds.push(`cd.central_name = $${params.length}`); }
+      if (central) { params.push(central); conds.push(`cd.exchange_name = $${params.length}`); }
       if (dateFrom) {
         params.push(dateFrom);
         conds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
@@ -3386,7 +3390,7 @@ export async function registerRoutes(
 
       const { rows } = await pool.query(
         `SELECT
-           cd.central_name          AS "centralName",
+           cd.exchange_name         AS "centralName",
            cd.phone_number          AS "phoneShort",
            CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''
                      AND EXISTS (
@@ -3413,7 +3417,7 @@ export async function registerRoutes(
              ELSE 'المتبقيات'
            END                      AS "regStatus",
            cd.close_time            AS "closeDate",
-           NULL::text               AS "onu",
+           pp.onu                   AS "onu",
            ct.worker_code           AS "workerCode",
            COALESCE(tn.tech_name, mcb.tech_name, cd.close_by) AS "techName",
            ct.haya_karima           AS "hayaKarima",
@@ -3422,11 +3426,18 @@ export async function registerRoutes(
            pp.shelf                 AS "shelf",
            pp.slot                  AS "slot",
            pp.port_number           AS "portNumber",
-           NULL::text               AS "centralCode"
+           -- كود السنترال مُشتق من اسم السنترال (exchange_name)
+           CASE cd.exchange_name
+             WHEN 'الغنايم'              THEN 'GHNAT'
+             WHEN 'الغنايم-العزايزة'     THEN 'AMZAT'
+             WHEN 'الغنايم-دير الجنادله' THEN 'DRGAT'
+             WHEN 'الغنايم-نجع العمدة'   THEN 'NGOAT'
+             ELSE NULL
+           END                      AS "centralCode"
          FROM complaint_details cd
          LEFT JOIN phone_ports pp ON pp.phone_number = cd.phone_number
          LEFT JOIN phone_lines pl ON pl.tel_no = cd.phone_number
-         LEFT JOIN cabinet_technicians ct ON ct.central_name = cd.central_name AND ct.cabin_number = cd.cabinet_no
+         LEFT JOIN cabinet_technicians ct ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
          LEFT JOIN manual_close_by mcb ON mcb.complain_no = cd.complain_no
          ${where}

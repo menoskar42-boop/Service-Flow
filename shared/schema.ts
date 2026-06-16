@@ -575,6 +575,7 @@ export const phonePorts = pgTable("phone_ports", {
   voiceStatus: text("voice_status"),
   dataStatus: text("data_status"),
   operator: text("operator"),
+  onu: text("onu"),                      // ONU من ملف بيانات التليفونات/المنافذ
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });

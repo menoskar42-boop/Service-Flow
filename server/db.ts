@@ -654,6 +654,7 @@ export async function ensureSchema() {
       uploaded_by_id integer REFERENCES users(id)
     )
   `);
+  await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS onu text`);
 
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
