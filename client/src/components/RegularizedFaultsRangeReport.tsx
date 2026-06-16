@@ -8,8 +8,6 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
-import { format } from "date-fns";
-
 interface RegularizedFault {
   centralName: string | null;
   phoneShort: string | null;
@@ -51,16 +49,16 @@ export function RegularizedFaultsRangeReport() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // المصدر: الأرشيف اليومى (regularized_daily) الذى يُحفظ تلقائياً كل ليلة.
+  // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
-    queryKey: ["/api/reports/regularized-daily", "faults", central, q, dateFrom, dateTo],
+    queryKey: ["/api/reports/regularized-faults-range", central, q, dateFrom, dateTo],
     queryFn: async () => {
-      const p = new URLSearchParams({ category: "faults" });
+      const p = new URLSearchParams();
       if (central) p.set("central", central);
       if (q) p.set("q", q);
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
-      const res = await fetch(`/api/reports/regularized-daily?${p}`, { credentials: "include" });
+      const res = await fetch(`/api/reports/regularized-faults-range?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
     },
