@@ -41,7 +41,7 @@ function Block({ title, score, cur, max, when, complainNo }: {
           <div>السرعة الحالية: <strong>{val(cur)}</strong></div>
           <div>أقصى سرعة: <strong>{val(max)}</strong></div>
           {complainNo !== undefined && <div>رقم الشكوى: <strong>{val(complainNo)}</strong></div>}
-          {when !== undefined && <div className="col-span-2">الوقت: {fmtDt(when)}</div>}
+          {when !== undefined && <div className="col-span-2">وقت القياس: {fmtDt(when)}</div>}
         </div>
       ) : (
         <div className="text-xs text-muted-foreground">لا يوجد قياس</div>

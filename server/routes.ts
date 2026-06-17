@@ -619,11 +619,11 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
          c138p.max_speed         AS "lineMaxSpeed",
          c138p.score             AS "lastMeasScore",
          c138p.complain_no       AS "lastMeasComplainNo",
-         c138p.complain_time     AS "lastMeasTime",
+         c138p.uploaded_at     AS "lastMeasTime",
          c138c.score             AS "curMeasScore",
          c138c.current_speed     AS "curMeasCurrentSpeed",
          c138c.max_speed         AS "curMeasMaxSpeed",
-         c138c.complain_time     AS "curMeasTime"
+         c138c.uploaded_at     AS "curMeasTime"
        FROM (
          SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
          WHERE close_date IS NOT NULL
@@ -640,13 +640,13 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
        LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
        -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
        LEFT JOIN LATERAL (
-         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
          FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
          ORDER BY c.id DESC LIMIT 1
        ) c138p ON true
        -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
        LEFT JOIN LATERAL (
-         SELECT c.score, c.current_speed, c.max_speed, c.complain_time
+         SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
          FROM case_138 c WHERE c.complain_no = t.ticket_id
          ORDER BY c.id DESC LIMIT 1
        ) c138c ON true
@@ -1446,7 +1446,7 @@ export async function registerRoutes(
     // ربط بشيت القياسات 138 (آخر قياس لكل رقم) — المطابقة بالتليفون الكامل:
     // case_138.full_phone = phone_lines.full_phone (الاتنين بصيغة 88+رقم).
     const c138Join = `LEFT JOIN LATERAL (
-        SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+        SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
         FROM case_138 c WHERE c.full_phone = pl.full_phone
         ORDER BY c.id DESC LIMIT 1
       ) c138p ON true`;
@@ -1463,7 +1463,7 @@ export async function registerRoutes(
               c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
               c138p.complain_no AS "lastMeasComplainNo",
-              c138p.complain_time AS "lastMeasTime"
+              c138p.uploaded_at AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -3443,11 +3443,11 @@ export async function registerRoutes(
              c138p.max_speed         AS "lineMaxSpeed",
              c138p.score             AS "lastMeasScore",
              c138p.complain_no       AS "lastMeasComplainNo",
-             c138p.complain_time     AS "lastMeasTime",
+             c138p.uploaded_at     AS "lastMeasTime",
              c138c.score             AS "curMeasScore",
              c138c.current_speed     AS "curMeasCurrentSpeed",
              c138c.max_speed         AS "curMeasMaxSpeed",
-             c138c.complain_time     AS "curMeasTime"
+             c138c.uploaded_at     AS "curMeasTime"
            FROM ticket_dsl_current t
            LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
            LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
@@ -3455,13 +3455,13 @@ export async function registerRoutes(
            LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
            -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
            LEFT JOIN LATERAL (
-             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
              FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
              ORDER BY c.id DESC LIMIT 1
            ) c138p ON true
            -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
            LEFT JOIN LATERAL (
-             SELECT c.score, c.current_speed, c.max_speed, c.complain_time
+             SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
              FROM case_138 c WHERE c.complain_no = t.ticket_id
              ORDER BY c.id DESC LIMIT 1
            ) c138c ON true
@@ -3573,11 +3573,11 @@ export async function registerRoutes(
            c138p.max_speed          AS "lineMaxSpeed",
            c138p.score              AS "lastMeasScore",
            c138p.complain_no        AS "lastMeasComplainNo",
-           c138p.complain_time      AS "lastMeasTime",
+           c138p.uploaded_at      AS "lastMeasTime",
            c138c.score              AS "curMeasScore",
            c138c.current_speed      AS "curMeasCurrentSpeed",
            c138c.max_speed          AS "curMeasMaxSpeed",
-           c138c.complain_time      AS "curMeasTime"
+           c138c.uploaded_at      AS "curMeasTime"
          FROM complaint_details cd
          LEFT JOIN phone_ports pp ON pp.phone_number = cd.phone_number
          LEFT JOIN phone_lines pl ON pl.tel_no = cd.phone_number
@@ -3586,13 +3586,13 @@ export async function registerRoutes(
          LEFT JOIN manual_close_by mcb ON mcb.complain_no = cd.complain_no
          -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
          LEFT JOIN LATERAL (
-           SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+           SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
            FROM case_138 c WHERE c.full_phone = '88' || cd.phone_number
            ORDER BY c.id DESC LIMIT 1
          ) c138p ON true
          -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
          LEFT JOIN LATERAL (
-           SELECT c.score, c.current_speed, c.max_speed, c.complain_time
+           SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
            FROM case_138 c WHERE c.complain_no = cd.complain_no
            ORDER BY c.id DESC LIMIT 1
          ) c138c ON true
