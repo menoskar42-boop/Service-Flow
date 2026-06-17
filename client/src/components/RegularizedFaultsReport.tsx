@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Radar } from "lucide-react";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { format } from "date-fns";
 
@@ -46,6 +46,9 @@ const fmtDt = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
+// رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+
 const regBadge = (s: string | null) => {
   if (!s) return null;
   const map: Record<string, string> = {
@@ -74,6 +77,28 @@ export function RegularizedFaultsReport() {
       return res.json();
     },
   });
+
+  // يجمع أرقام الأكونت (يحذف المكرر ويتجاهل اللى مالهاش أكونت) ويفتح تاب DZS
+  // واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
+  const handleMeasureDZS = () => {
+    const accounts = Array.from(
+      new Set(
+        faults
+          .map((f) => (f.accountNo ?? "").toString().trim())
+          .filter((a) => a !== ""),
+      ),
+    );
+    if (accounts.length === 0) {
+      alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
+      return;
+    }
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`, "_blank");
+  };
+
+  // يفتح تاب DZS لرقم أكونت واحد (الزر بجوار كل خط).
+  const openDZSSingle = (account: string) => {
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(account)}`, "_blank");
+  };
 
   const handleExportExcel = () => {
     const rows = faults.map((f, i) => ({
@@ -221,6 +246,15 @@ export function RegularizedFaultsReport() {
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{faults.length}</strong> عطل</span>
         <Button
           variant="outline" size="sm"
+          onClick={handleMeasureDZS}
+          disabled={faults.filter((f) => (f.accountNo ?? "").toString().trim() !== "").length === 0}
+          className="text-blue-700 border-blue-200 gap-1"
+          title="فتح DZS وقياس أرقام الأكونت المعروضة"
+        >
+          <Radar className="w-4 h-4" /> قياس DZS
+        </Button>
+        <Button
+          variant="outline" size="sm"
           onClick={handleExportExcel}
           disabled={faults.length === 0}
           className="text-green-700 border-green-200 gap-1"
@@ -246,8 +280,6 @@ export function RegularizedFaultsReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
-                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
-                <TableHead className="text-right font-bold text-white">قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -259,6 +291,8 @@ export function RegularizedFaultsReport() {
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
+                <TableHead className="text-right font-bold text-white">قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ الإغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
@@ -287,8 +321,6 @@ export function RegularizedFaultsReport() {
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell>{f.centralName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
-                    <TableCell dir="ltr" className="text-left font-mono">{f.accountNo || "-"}</TableCell>
-                    <TableCell><Measurement138Button m={f} /></TableCell>
                     <TableCell>
                       {f.repeatStatus === "مكرر" ? (
                         <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
@@ -304,6 +336,22 @@ export function RegularizedFaultsReport() {
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell>{regBadge(f.regStatus)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
+                    <TableCell dir="ltr" className="text-left font-mono">
+                      {f.accountNo ? (
+                        <span className="inline-flex items-center gap-1">
+                          {f.accountNo}
+                          <button
+                            type="button"
+                            onClick={() => openDZSSingle(f.accountNo!)}
+                            title="فتح DZS وقياس هذا الرقم"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Radar className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell><Measurement138Button m={f} /></TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.closeDate)}</TableCell>
                     <TableCell>{f.onu || "-"}</TableCell>
                     <TableCell>{f.workerCode || "-"}</TableCell>

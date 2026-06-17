@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar } from "lucide-react";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 interface RegularizedFault extends Measurement138 {
   centralName: string | null;
@@ -44,6 +44,9 @@ const fmtDt = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
+// رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+
 export function RegularizedFaultsRangeReport() {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
@@ -74,6 +77,28 @@ export function RegularizedFaultsRangeReport() {
   const displayed = repeatedOnly
     ? faults.filter((f) => f.repeatStatus === "مكرر")
     : faults;
+
+  // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
+  // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
+  const handleMeasureDZS = () => {
+    const accounts = Array.from(
+      new Set(
+        displayed
+          .map((f) => (f.accountNo ?? "").toString().trim())
+          .filter((a) => a !== ""),
+      ),
+    );
+    if (accounts.length === 0) {
+      alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
+      return;
+    }
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`, "_blank");
+  };
+
+  // يفتح تاب DZS لرقم أكونت واحد (الزر بجوار كل خط).
+  const openDZSSingle = (account: string) => {
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(account)}`, "_blank");
+  };
 
   const handleExportExcel = () => {
     const rows = displayed.map((f, i) => ({
@@ -248,6 +273,15 @@ export function RegularizedFaultsRangeReport() {
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
         <Button
           variant="outline" size="sm"
+          onClick={handleMeasureDZS}
+          disabled={displayed.filter((f) => (f.accountNo ?? "").toString().trim() !== "").length === 0}
+          className="text-blue-700 border-blue-200 gap-1"
+          title="فتح DZS وقياس أرقام الأكونت المعروضة"
+        >
+          <Radar className="w-4 h-4" /> قياس DZS
+        </Button>
+        <Button
+          variant="outline" size="sm"
           onClick={handleExportExcel}
           disabled={displayed.length === 0}
           className="text-green-700 border-green-200 gap-1"
@@ -273,8 +307,6 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
-                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
-                <TableHead className="text-right font-bold text-white">قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -289,6 +321,8 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
+                <TableHead className="text-right font-bold text-white">قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">حياة كريمة</TableHead>
                 <TableHead className="text-right font-bold text-white">Voice</TableHead>
                 <TableHead className="text-right font-bold text-white">Data</TableHead>
@@ -314,8 +348,6 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell>{f.centralName || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
-                  <TableCell dir="ltr" className="text-left font-mono">{f.accountNo || "-"}</TableCell>
-                  <TableCell><Measurement138Button m={f} /></TableCell>
                   <TableCell>
                     {f.repeatStatus === "مكرر" ? (
                       <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
@@ -338,6 +370,22 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell>{f.onu || "-"}</TableCell>
                   <TableCell>{f.workerCode || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono">
+                    {f.accountNo ? (
+                      <span className="inline-flex items-center gap-1">
+                        {f.accountNo}
+                        <button
+                          type="button"
+                          onClick={() => openDZSSingle(f.accountNo!)}
+                          title="فتح DZS وقياس هذا الرقم"
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          <Radar className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    ) : "-"}
+                  </TableCell>
+                  <TableCell><Measurement138Button m={f} /></TableCell>
                   <TableCell className="max-w-[100px] truncate">{f.hayaKarima || "-"}</TableCell>
                   <TableCell className="text-xs">{f.voiceStatus || "-"}</TableCell>
                   <TableCell className="text-xs">{f.dataStatus || "-"}</TableCell>

@@ -306,8 +306,6 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
-                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
-                <TableHead className="text-right font-bold text-white">قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -319,6 +317,8 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">تصنيف</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
+                <TableHead className="text-right font-bold text-white">قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
                 <TableHead className="text-right font-bold text-white">حياة كريمة</TableHead>
@@ -352,6 +352,21 @@ export function CurrentFaultsReport() {
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell>{f.centralName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
+                    <TableCell>
+                      {f.repeatStatus === "مكرر" ? (
+                        <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
+                      ) : ""}
+                    </TableCell>
+                    <TableCell className="max-w-[140px] truncate">{f.statusCode || "-"}</TableCell>
+                    <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
+                    <TableCell>{f.frame || "-"}</TableCell>
+                    <TableCell>{f.cabinetNo || "-"}</TableCell>
+                    <TableCell>{f.boxNo || "-"}</TableCell>
+                    <TableCell>{f.dpTerminal || "-"}</TableCell>
+                    <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
+                    <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
+                    <TableCell>{faultBadge(f.faultClass)}</TableCell>
+                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">
                       {f.accountNo ? (
                         <span className="inline-flex items-center gap-1">
@@ -368,21 +383,6 @@ export function CurrentFaultsReport() {
                       ) : "-"}
                     </TableCell>
                     <TableCell><Measurement138Button m={f} /></TableCell>
-                    <TableCell>
-                      {f.repeatStatus === "مكرر" ? (
-                        <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
-                      ) : ""}
-                    </TableCell>
-                    <TableCell className="max-w-[140px] truncate">{f.statusCode || "-"}</TableCell>
-                    <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
-                    <TableCell>{f.frame || "-"}</TableCell>
-                    <TableCell>{f.cabinetNo || "-"}</TableCell>
-                    <TableCell>{f.boxNo || "-"}</TableCell>
-                    <TableCell>{f.dpTerminal || "-"}</TableCell>
-                    <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
-                    <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
-                    <TableCell>{faultBadge(f.faultClass)}</TableCell>
-                    <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>
                     <TableCell>{f.onu || "-"}</TableCell>
                     <TableCell>{f.workerCode || "-"}</TableCell>
                     <TableCell className="max-w-[100px] truncate">{f.hayaKarima || "-"}</TableCell>
