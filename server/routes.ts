@@ -2406,23 +2406,28 @@ export async function registerRoutes(
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
       const toInt = (v: any) => { const n = parseInt(String(v)); return isNaN(n) ? null : n; };
 
-      // Dedup by رقم الشكوى (complain_no) — keep the LAST row for each (Map.set overwrites).
-      // Rows without a complain number keep a unique key so they are not merged.
-      const byComplain = new Map<string, any[]>();
+      // مفتاح الدمج: رقم الشكوى لو موجود، وإلا التليفون الكامل (88+الرقم)، وإلا مفتاح فريد.
+      // Map.set يحتفظ بآخر صف لكل مفتاح (يتغلب على المكرر داخل نفس الملف).
+      const byKey = new Map<string, any[]>();
       let noKeySeq = 0;
       for (const r of dataRows) {
         const complainNo = String(g(r, iComplainNo)).trim();
         const central = String(g(r, iCentral)).trim();
         if (!complainNo && !central) continue;
-        const key = complainNo || `__no_complain_${noKeySeq++}`;
-        byComplain.set(key, [
+        const phoneShort = String(g(r, iPhoneShort)).trim();
+        let fullPhone = String(g(r, iFullPhone)).trim();
+        if (!fullPhone && phoneShort) fullPhone = "88" + phoneShort;
+        const key = complainNo
+          ? "c:" + complainNo
+          : (fullPhone ? "p:" + fullPhone : `__no_key_${noKeySeq++}`);
+        byKey.set(key, [
           central || null,
-          String(g(r, iPhoneShort)) || null,
+          phoneShort || null,
           complainNo || null,
           toInt(g(r, iScore)),
           String(g(r, iCurSpeed)) || null,
           String(g(r, iMaxSpeed)) || null,
-          String(g(r, iFullPhone)) || null,
+          fullPhone || null,
           String(g(r, iAccount)) || null,
           String(g(r, iStatus)) || null,
           String(g(r, iCabinet)) || null,
@@ -2437,19 +2442,31 @@ export async function registerRoutes(
           String(g(r, iFault)) || null,
         ]);
       }
-      const inserts = Array.from(byComplain.values());
+      const inserts = Array.from(byKey.values());
 
-      // دمج بدل المسح الكامل: نمسح فقط الشكاوى الموجودة فى الملف الجديد (لتُستبدل بأحدث
-      // بياناتها)، ونحافظ على باقى الصفوف — زى قياسات DZS التلقائية لشكاوى ليست فى الملف.
-      // (complain_no هو العمود رقم 2 فى كل صف inserts.)
+      // دمج بدل المسح الكامل (complain_no عمود 2، full_phone عمود 6):
+      const DEL_BATCH = 1000;
+      // (1) امسح الشكاوى الموجودة فى الملف (لتُستبدل بأحدث بياناتها).
       const complainNos = Array.from(
         new Set(inserts.map((r) => r[2]).filter((c) => c != null && String(c).trim() !== "")),
       );
-      const DEL_BATCH = 1000;
       for (let s = 0; s < complainNos.length; s += DEL_BATCH) {
         const chunk = complainNos.slice(s, s + DEL_BATCH);
         const ph = chunk.map((_, i) => `$${i + 1}`).join(",");
         await pool.query(`DELETE FROM case_138 WHERE complain_no IN (${ph})`, chunk);
+      }
+      // (2) للصفوف بدون رقم شكوى: امسح صفوف نفس التليفون الكامل التى لا شكوى لها فقط
+      //     (حتى لا نمس صفوف الشكاوى لنفس الرقم) — وندخّل القراية الجديدة بدلها.
+      const noComplainPhones = Array.from(
+        new Set(inserts.filter((r) => !r[2]).map((r) => r[6]).filter((p) => p != null && String(p).trim() !== "")),
+      );
+      for (let s = 0; s < noComplainPhones.length; s += DEL_BATCH) {
+        const chunk = noComplainPhones.slice(s, s + DEL_BATCH);
+        const ph = chunk.map((_, i) => `$${i + 1}`).join(",");
+        await pool.query(
+          `DELETE FROM case_138 WHERE full_phone IN (${ph}) AND (complain_no IS NULL OR complain_no = '')`,
+          chunk,
+        );
       }
       let inserted = 0;
       const BATCH = 200;

@@ -54,6 +54,12 @@ const fmtDt = (d: string | null) => {
 // (يشيل كلمة "هوائية" ويصغّر الكود المضاعف 160160→160) لتصغير عرض العمود.
 const shortStatusCode = (s: string | null) => {
   if (!s) return s;
+  // كود السنترال: رقم مضاعف (160160→160) أو أول رقم 3 خانات (مثل 173 فى "Re-open TTS 173").
+  const doubled = s.match(/(\d{3})\1/);
+  const three = s.match(/\b(\d{3})\b/);
+  const code = doubled ? doubled[1] : three ? three[1] : "";
+  if (code) return `DSL-${code}`;
+  // fallback: شيل "هوائية" وصغّر أى كود مضاعف.
   return s
     .split("-")
     .map((p) => p.trim())
