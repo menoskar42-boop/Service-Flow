@@ -207,19 +207,19 @@ function parseTicketFile(buffer: Buffer): any[][] {
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows: any[][] = sheetRows(ws);
-  const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain no"]);
-  const iTicket   = find("رقم الشكوي", "رقم الشكوى", "complain no");
-  const iStatus   = find("status code");
-  const iOrg      = find("كود السنترال", "exch code", "exchange code", "exch");
-  const iTime     = find("وقت الشكوي", "وقت الشكوى", "complain time");
-  const iTech     = find("كود الفنى", "كود الفني", "repman code", "repman");
+  const { find, dataRows } = smartSheet(rows, ["رقم الشكوي", "رقم الشكوى", "complain no", "ticket"]);
+  const iTicket   = find("رقم الشكوي", "رقم الشكوى", "complain no", "complainno", "ticket no", "ticketno");
+  const iStatus   = find("status code", "statuscode", "status_code");
+  const iOrg      = find("كود السنترال", "exch code", "exchange code", "exch", "central code", "centralcode");
+  const iTime     = find("وقت الشكوي", "وقت الشكوى", "complain time", "complaintime", "complain_time");
+  const iTech     = find("كود الفنى", "كود الفني", "repman code", "repman", "tech code", "technician");
   const iLineType = find("line type");
-  const iPhone    = find("رقم التلفون", "رقم التليفون", "tel no");
-  const iCabinet  = find("cabinet no", "رقم الكابينة", "رقم الكابينه");
-  const iPriority = find("كود الأولوية", "كود الاولويه", "priority", "customer segment");
-  const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق", "close date");
-  const iOperation = find("نوع العملية", "نوع العمليه", "process type");
-  const iType     = find("complaintypename", "نوع العطل", "complain type");
+  const iPhone    = find("رقم التلفون", "رقم التليفون", "tel no", "telno", "phone no", "phone number");
+  const iCabinet  = find("cabinet no", "رقم الكابينة", "رقم الكابينه", "cabinetno", "cabinet");
+  const iPriority = find("كود الأولوية", "كود الاولويه", "priority", "customer segment", "segment");
+  const iCloseDate = find("تاريخ الإغلاق", "تاريخ الاغلاق", "close date", "closing date", "closedate", "close_date");
+  const iOperation = find("نوع العملية", "نوع العمليه", "process type", "operation type", "processtype", "operationtype");
+  const iType     = find("complaintypename", "نوع العطل", "complain type", "complaint type", "complaint type name");
   const iOnu      = find("onu");
   const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
@@ -1841,14 +1841,14 @@ export async function registerRoutes(
 
       // smart header detection (tolerant of column reorder / leading title rows)
       const { find, header, dataRows } = smartSheet(rows, ["رقم أمر الشغل", "رقم امر الشغل", "work order"]);
-      const iDate     = find("تاريخ الانشاء", "تاريخ الإنشاء", "creation");
+      const iDate     = find("تاريخ الانشاء", "تاريخ الإنشاء", "creation", "initiate date", "initiate");
       const iWorkOrder = find("رقم أمر الشغل", "رقم امر الشغل", "work order id", "work order no");
       const iOrg      = find("المؤسسة", "المنظمه", "organization");
-      const iPhone    = find("رقم الخدمة", "رقم الخدمه", "service no", "التليفون", "tel no");
-      const iType     = find("نوع أمر الشغل", "نوع امر الشغل", "work order type");
+      const iPhone    = find("رقم الخدمة", "رقم الخدمه", "service no", "home service", "التليفون", "tel no");
+      const iType     = find("نوع أمر الشغل", "نوع امر الشغل", "work order type", "request type");
       const iStage    = find("المرحلة", "stage");
       const iStatus   = find("الحالة", "status");
-      const iPriority = find("الأهمية", "الاهميه", "priority");
+      const iPriority = find("الأهمية", "الاهميه", "priority", "customer segment");
       const iWorkspec = find("currentworkspec", "workspec");
       const iNotes    = find("notes", "ملاحظات");
       const iDesc     = find("الوصف", "description");
