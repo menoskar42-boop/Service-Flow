@@ -2491,6 +2491,46 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // === DZS Tampermonkey → تحديث شيت القياسات 138 تلقائياً ===
+  // يُستدعى cross-origin من صفحة DZS (10.42.x.x) فلازم CORS + توكن مشترك.
+  // التوكن: env DZS_INGEST_TOKEN (وله قيمة افتراضية) — لازم يطابق التوكن فى سكربت التامبر منكى.
+  const DZS_INGEST_TOKEN = process.env.DZS_INGEST_TOKEN || "sf-dzs-138-ingest-2026";
+  const setDzsCors = (res: any) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-DZS-Token");
+  };
+  app.options("/api/case-138/measurements", (_req, res) => { setDzsCors(res); res.sendStatus(204); });
+  app.post("/api/case-138/measurements", async (req: any, res) => {
+    setDzsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) {
+      return res.status(401).json({ message: "invalid token" });
+    }
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) return res.json({ inserted: 0 });
+    const toInt = (v: any) =>
+      v != null && /^\d+$/.test(String(v).trim()) ? parseInt(String(v).trim(), 10) : null;
+    let inserted = 0;
+    for (const it of items) {
+      const phoneShort = (it.phoneShort ?? "").toString().trim() || null;
+      const complainNo = (it.complainNo ?? "").toString().trim() || null;
+      const accountNo = (it.accountNo ?? "").toString().trim() || null;
+      let fullPhone = (it.fullPhone ?? "").toString().trim() || null;
+      if (!fullPhone && phoneShort) fullPhone = "88" + phoneShort;
+      // لا بد من مفتاح ربط واحد على الأقل
+      if (!phoneShort && !complainNo && !accountNo) continue;
+      await pool.query(
+        `INSERT INTO case_138
+           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, complain_time)
+         VALUES ($1,$2,$3,$4,$5,$6,$7, now())`,
+        [phoneShort, complainNo, toInt(it.score), (it.currentSpeed ?? "").toString().trim() || null,
+         (it.maxSpeed ?? "").toString().trim() || null, fullPhone, accountNo],
+      );
+      inserted++;
+    }
+    res.json({ inserted });
+  });
+
   // POST /api/cabinet-technicians/import — الفنيين بأرقام الكباين (full replace each upload)
   app.post("/api/cabinet-technicians/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
@@ -3326,6 +3366,7 @@ export async function registerRoutes(
       const { rows } = await pool.query(
         `SELECT * FROM (
            SELECT DISTINCT ON (t.ticket_id)
+             t.ticket_id             AS "ticketId",
              t.central_name          AS "centralName",
              t.phone_number          AS "phoneShort",
              -- مكرر: الرقم موجود في شيت التفاصيل (430D) وتاريخ الإغلاق (Close Time)
@@ -3453,6 +3494,7 @@ export async function registerRoutes(
 
       const { rows } = await pool.query(
         `SELECT
+           cd.complain_no           AS "ticketId",
            cd.exchange_name         AS "centralName",
            cd.phone_number          AS "phoneShort",
            CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''

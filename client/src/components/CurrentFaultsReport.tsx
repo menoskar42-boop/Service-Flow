@@ -12,6 +12,7 @@ import { Measurement138Button, type Measurement138 } from "@/components/Measurem
 import { format } from "date-fns";
 
 interface CurrentFault extends Measurement138 {
+  ticketId: string | null;
   centralName: string | null;
   phoneShort: string | null;
   repeatStatus: string;
@@ -70,6 +71,17 @@ const shortStatusCode = (s: string | null) => {
 // localStorage محجوز لكل origin لوحده).
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
+// يبنى رابط DZS: sf_accounts = أرقام الأكونت (lineIds للقياس)، sf_meta = خريطة
+// أكونت~شكوى~تليفون~تليفون-كامل ليكتبها الـ Tampermonkey فى الشيت بنفس ترتيب 138.
+type DZSItem = { account: string; complaint?: string | null; short?: string | null; full?: string | null };
+const buildDZSUrl = (items: DZSItem[]) => {
+  const accounts = items.map((it) => it.account);
+  const meta = items
+    .map((it) => [it.account, it.complaint ?? "", it.short ?? "", it.full ?? ""].join("~"))
+    .join(";");
+  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}&sf_meta=${encodeURIComponent(meta)}`;
+};
+
 const faultBadge = (cls: string | null) => {
   if (!cls) return null;
   const map: Record<string, string> = {
@@ -107,25 +119,28 @@ export function CurrentFaultsReport() {
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
+  const toItem = (f: CurrentFault): DZSItem => ({
+    account: (f.accountNo ?? "").toString().trim(),
+    complaint: f.ticketId ?? "",
+    short: f.phoneShort ?? "",
+    full: f.phoneShort ? "88" + f.phoneShort : "",
+  });
+
   const handleMeasureDZS = () => {
-    const accounts = Array.from(
-      new Set(
-        displayed
-          .map((f) => (f.accountNo ?? "").toString().trim())
-          .filter((a) => a !== ""),
-      ),
-    );
-    if (accounts.length === 0) {
+    const seen = new Set<string>();
+    const items = displayed
+      .map(toItem)
+      .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
+    if (items.length === 0) {
       alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
       return;
     }
-    const url = `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
-    window.open(url, "_blank");
+    window.open(buildDZSUrl(items), "_blank");
   };
 
-  // يفتح تاب DZS لرقم أكونت واحد (الزر بجوار كل خط).
-  const openDZSSingle = (account: string) => {
-    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(account)}`, "_blank");
+  // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
+  const openDZSSingle = (f: CurrentFault) => {
+    window.open(buildDZSUrl([toItem(f)]), "_blank");
   };
 
   const handleExportExcel = () => {
@@ -389,7 +404,7 @@ export function CurrentFaultsReport() {
                           {f.accountNo}
                           <button
                             type="button"
-                            onClick={() => openDZSSingle(f.accountNo!)}
+                            onClick={() => openDZSSingle(f)}
                             title="فتح DZS وقياس هذا الرقم"
                             className="text-blue-600 hover:text-blue-800"
                           >

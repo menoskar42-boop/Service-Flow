@@ -19,6 +19,17 @@ import { Measurement138Button, type Measurement138 } from "@/components/Measurem
 // رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
+// sf_accounts = أرقام الأكونت (lineIds)، sf_meta = أكونت~شكوى~تليفون~تليفون-كامل.
+// (بيان التليفونات مالوش رقم شكوى → يُترك فارغاً.)
+type DZSItem = { account: string; complaint?: string | null; short?: string | null; full?: string | null };
+const buildDZSUrl = (items: DZSItem[]) => {
+  const accounts = items.map((it) => it.account);
+  const meta = items
+    .map((it) => [it.account, it.complaint ?? "", it.short ?? "", it.full ?? ""].join("~"))
+    .join(";");
+  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}&sf_meta=${encodeURIComponent(meta)}`;
+};
+
 interface PhoneLine extends Measurement138 {
   telNo: string;
   central: string;
@@ -80,24 +91,28 @@ export function PhoneLinesReport() {
 
   // يجمع أرقام الأكونت من الصفحة المعروضة (يحذف المكرر ويتجاهل اللى مالهاش أكونت)
   // ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
+  const toItem = (r: PhoneLine): DZSItem => ({
+    account: (r.accountNo ?? "").toString().trim(),
+    complaint: "", // بيان التليفونات مالوش رقم شكوى
+    short: r.telNo ?? "",
+    full: r.fullPhone ?? "",
+  });
+
   const handleMeasureDZS = () => {
-    const accounts = Array.from(
-      new Set(
-        (data?.data ?? [])
-          .map((r) => (r.accountNo ?? "").toString().trim())
-          .filter((a) => a !== ""),
-      ),
-    );
-    if (accounts.length === 0) {
+    const seen = new Set<string>();
+    const items = (data?.data ?? [])
+      .map(toItem)
+      .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
+    if (items.length === 0) {
       alert("لا توجد أرقام أكونت فى الصفحة المعروضة — لا شىء للقياس");
       return;
     }
-    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`, "_blank");
+    window.open(buildDZSUrl(items), "_blank");
   };
 
-  // يفتح تاب DZS لرقم أكونت واحد (الزر بجوار كل خط).
-  const openDZSSingle = (account: string) => {
-    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(account)}`, "_blank");
+  // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
+  const openDZSSingle = (r: PhoneLine) => {
+    window.open(buildDZSUrl([toItem(r)]), "_blank");
   };
 
   const handleExport = async () => {
@@ -249,7 +264,7 @@ export function PhoneLinesReport() {
                             {r.accountNo}
                             <button
                               type="button"
-                              onClick={() => openDZSSingle(r.accountNo!)}
+                              onClick={() => openDZSSingle(r)}
                               title="فتح DZS وقياس هذا الرقم"
                               className="text-blue-600 hover:text-blue-800"
                             >
