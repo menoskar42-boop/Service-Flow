@@ -978,6 +978,20 @@ export async function registerRoutes(
     res.status(403).json({ message: "Data Manager access required" });
   };
 
+  // === Cross-origin auto-upload (Tampermonkey) ===
+  const UPLOAD_TOKEN = process.env.UPLOAD_TOKEN || "sf-auto-upload-2026";
+  const setUploadCors = (res: any) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Upload-Token");
+  };
+  // Allows either admin session OR shared token (for Tampermonkey auto-upload)
+  const requireAdminOrToken = (req: any, res: any, next: any) => {
+    if (req.headers["x-upload-token"] === UPLOAD_TOKEN) { setUploadCors(res); return next(); }
+    if (req.isAuthenticated() && req.user.role === ROLES.ADMIN) return next();
+    res.status(403).json({ message: "Admin access required" });
+  };
+
   // === User Management Routes ===
   app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
     const userList = await storage.getUsers();
@@ -1831,7 +1845,8 @@ export async function registerRoutes(
   // === Multi-file upload section ===
 
   // POST /api/maintenance-orders/import — Work_Orders / wfm (3 destinations)
-  app.post("/api/maintenance-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+  app.options("/api/maintenance-orders/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.post("/api/maintenance-orders/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
@@ -1893,9 +1908,12 @@ export async function registerRoutes(
         ]);
       }
 
+      const userId = req.user
+        ? (req.user as any).id
+        : ((await pool.query("SELECT id FROM users WHERE role = $1 LIMIT 1", [ROLES.ADMIN])).rows[0]?.id ?? 1);
       const r = await writeThreeDestinations({
         histTable: "maintenance_orders", sodTable: "wfm_sod", curTable: "wfm_current",
-        cols: WFM_COLS, conflict: "central_name, work_order_id", rows: wfmRows, userId: (req.user as any).id,
+        cols: WFM_COLS, conflict: "central_name, work_order_id", rows: wfmRows, userId,
       });
       res.json({ inserted: r.hist, ...r });
     } catch (e: any) {
@@ -1904,13 +1922,17 @@ export async function registerRoutes(
   });
 
   // POST /api/ticket-queue/import — DSL/copper TicketQueue (3 destinations)
-  app.post("/api/ticket-queue/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+  app.options("/api/ticket-queue/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.post("/api/ticket-queue/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const rows = parseTicketFile(req.file.buffer);
+      const userId = req.user
+        ? (req.user as any).id
+        : ((await pool.query("SELECT id FROM users WHERE role = $1 LIMIT 1", [ROLES.ADMIN])).rows[0]?.id ?? 1);
       const r = await writeThreeDestinations({
         histTable: "ticket_queue", sodTable: "ticket_dsl_sod", curTable: "ticket_dsl_current",
-        cols: TICKET_COLS, conflict: "ticket_id, status_code", rows, userId: (req.user as any).id,
+        cols: TICKET_COLS, conflict: "ticket_id, status_code", rows, userId,
       });
       res.json({ inserted: r.hist, ...r });
     } catch (e: any) {
