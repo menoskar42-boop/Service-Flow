@@ -8,7 +8,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, Repeat } from "lucide-react";
-interface RegularizedFault {
+import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
+interface RegularizedFault extends Measurement138 {
   centralName: string | null;
   phoneShort: string | null;
   repeatStatus: string;
@@ -79,6 +80,11 @@ export function RegularizedFaultsRangeReport() {
       "#": i + 1,
       "Field1": f.centralName,
       "رقم التلفون": f.phoneShort,
+      "رقم الأكونت": f.accountNo,
+      "القياس الحالى (نفس الشكوى)": f.curMeasScore,
+      "آخر قياس للرقم": f.lastMeasScore,
+      "السرعة الحالية": f.lineCurrentSpeed,
+      "أقصى سرعة": f.lineMaxSpeed,
       "موقف التكرار": f.repeatStatus,
       "Status Code": f.statusCode,
       "MSAN Code": f.msanCode,
@@ -114,7 +120,7 @@ export function RegularizedFaultsRangeReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>التليفون</th><th>تكرار</th><th>Status</th>
+      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>سرعة حالية</th><th>أقصى سرعة</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>حالة الانتظام</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
@@ -127,6 +133,11 @@ export function RegularizedFaultsRangeReport() {
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
           <td>${esc(f.centralName)}</td>
           <td>${esc(f.phoneShort)}</td>
+          <td>${esc(f.accountNo)}</td>
+          <td>${esc(f.curMeasScore)}</td>
+          <td>${esc(f.lastMeasScore)}</td>
+          <td>${esc(f.lineCurrentSpeed)}</td>
+          <td>${esc(f.lineMaxSpeed)}</td>
           <td>${esc(f.repeatStatus)}</td>
           <td style="font-size:9px">${esc(f.statusCode)}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
@@ -266,6 +277,10 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
+                <TableHead className="text-right font-bold text-white">قياس</TableHead>
+                <TableHead className="text-right font-bold text-white">السرعة الحالية</TableHead>
+                <TableHead className="text-right font-bold text-white">أقصى سرعة</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -292,7 +307,7 @@ export function RegularizedFaultsRangeReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={24} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={28} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
                       : repeatedOnly
@@ -305,6 +320,10 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell>{f.centralName || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono">{f.accountNo || "-"}</TableCell>
+                  <TableCell><Measurement138Button m={f} /></TableCell>
+                  <TableCell className="text-center">{f.lineCurrentSpeed ?? "-"}</TableCell>
+                  <TableCell className="text-center">{f.lineMaxSpeed ?? "-"}</TableCell>
                   <TableCell>
                     {f.repeatStatus === "مكرر" ? (
                       <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>

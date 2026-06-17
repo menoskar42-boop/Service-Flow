@@ -613,7 +613,17 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
          pp.shelf                AS "shelf",
          pp.slot                 AS "slot",
          pp.port_number          AS "portNumber",
-         t.central_code          AS "centralCode"
+         t.central_code          AS "centralCode",
+         c138p.account_no        AS "accountNo",
+         c138p.current_speed     AS "lineCurrentSpeed",
+         c138p.max_speed         AS "lineMaxSpeed",
+         c138p.score             AS "lastMeasScore",
+         c138p.complain_no       AS "lastMeasComplainNo",
+         c138p.complain_time     AS "lastMeasTime",
+         c138c.score             AS "curMeasScore",
+         c138c.current_speed     AS "curMeasCurrentSpeed",
+         c138c.max_speed         AS "curMeasMaxSpeed",
+         c138c.complain_time     AS "curMeasTime"
        FROM (
          SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
          WHERE close_date IS NOT NULL
@@ -628,6 +638,18 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
        LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
        LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
        LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+       -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
+       LEFT JOIN LATERAL (
+         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+         FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
+         ORDER BY c.id DESC LIMIT 1
+       ) c138p ON true
+       -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
+       LEFT JOIN LATERAL (
+         SELECT c.score, c.current_speed, c.max_speed, c.complain_time
+         FROM case_138 c WHERE c.complain_no = t.ticket_id
+         ORDER BY c.id DESC LIMIT 1
+       ) c138c ON true
        ${where}
        ORDER BY t.ticket_id, t.id DESC
      ) x
@@ -3332,12 +3354,34 @@ export async function registerRoutes(
              pp.shelf                AS "shelf",
              pp.slot                 AS "slot",
              pp.port_number          AS "portNumber",
-             t.central_code          AS "centralCode"
+             t.central_code          AS "centralCode",
+             c138p.account_no        AS "accountNo",
+             c138p.current_speed     AS "lineCurrentSpeed",
+             c138p.max_speed         AS "lineMaxSpeed",
+             c138p.score             AS "lastMeasScore",
+             c138p.complain_no       AS "lastMeasComplainNo",
+             c138p.complain_time     AS "lastMeasTime",
+             c138c.score             AS "curMeasScore",
+             c138c.current_speed     AS "curMeasCurrentSpeed",
+             c138c.max_speed         AS "curMeasMaxSpeed",
+             c138c.complain_time     AS "curMeasTime"
            FROM ticket_dsl_current t
            LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
            LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
            LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
            LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+           -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
+           LEFT JOIN LATERAL (
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+             FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
+             ORDER BY c.id DESC LIMIT 1
+           ) c138p ON true
+           -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
+           LEFT JOIN LATERAL (
+             SELECT c.score, c.current_speed, c.max_speed, c.complain_time
+             FROM case_138 c WHERE c.complain_no = t.ticket_id
+             ORDER BY c.id DESC LIMIT 1
+           ) c138c ON true
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x
@@ -3439,13 +3483,35 @@ export async function registerRoutes(
              WHEN 'الغنايم-دير الجنادله' THEN 'DRGAT'
              WHEN 'الغنايم-نجع العمدة'   THEN 'NGOAT'
              ELSE NULL
-           END                      AS "centralCode"
+           END                      AS "centralCode",
+           c138p.account_no         AS "accountNo",
+           c138p.current_speed      AS "lineCurrentSpeed",
+           c138p.max_speed          AS "lineMaxSpeed",
+           c138p.score              AS "lastMeasScore",
+           c138p.complain_no        AS "lastMeasComplainNo",
+           c138p.complain_time      AS "lastMeasTime",
+           c138c.score              AS "curMeasScore",
+           c138c.current_speed      AS "curMeasCurrentSpeed",
+           c138c.max_speed          AS "curMeasMaxSpeed",
+           c138c.complain_time      AS "curMeasTime"
          FROM complaint_details cd
          LEFT JOIN phone_ports pp ON pp.phone_number = cd.phone_number
          LEFT JOIN phone_lines pl ON pl.tel_no = cd.phone_number
          LEFT JOIN cabinet_technicians ct ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
          LEFT JOIN manual_close_by mcb ON mcb.complain_no = cd.complain_no
+         -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
+         LEFT JOIN LATERAL (
+           SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+           FROM case_138 c WHERE c.full_phone = '88' || cd.phone_number
+           ORDER BY c.id DESC LIMIT 1
+         ) c138p ON true
+         -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
+         LEFT JOIN LATERAL (
+           SELECT c.score, c.current_speed, c.max_speed, c.complain_time
+           FROM case_138 c WHERE c.complain_no = cd.complain_no
+           ORDER BY c.id DESC LIMIT 1
+         ) c138c ON true
          ${where}
          ORDER BY cd.close_time ASC NULLS LAST`,
         params,
