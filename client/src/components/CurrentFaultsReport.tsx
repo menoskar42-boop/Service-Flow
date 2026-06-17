@@ -107,6 +107,11 @@ export function CurrentFaultsReport() {
     window.open(url, "_blank");
   };
 
+  // يفتح تاب DZS لرقم أكونت واحد (الزر بجوار كل خط).
+  const openDZSSingle = (account: string) => {
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(account)}`, "_blank");
+  };
+
   const handleExportExcel = () => {
     const rows = displayed.map((f, i) => ({
       "#": i + 1,
@@ -347,7 +352,21 @@ export function CurrentFaultsReport() {
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell>{f.centralName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
-                    <TableCell dir="ltr" className="text-left font-mono">{f.accountNo || "-"}</TableCell>
+                    <TableCell dir="ltr" className="text-left font-mono">
+                      {f.accountNo ? (
+                        <span className="inline-flex items-center gap-1">
+                          {f.accountNo}
+                          <button
+                            type="button"
+                            onClick={() => openDZSSingle(f.accountNo!)}
+                            title="فتح DZS وقياس هذا الرقم"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Radar className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      ) : "-"}
+                    </TableCell>
                     <TableCell><Measurement138Button m={f} /></TableCell>
                     <TableCell>
                       {f.repeatStatus === "مكرر" ? (
