@@ -2375,7 +2375,8 @@ export async function registerRoutes(
     res.json(rows);
   });
 
-  // POST /api/case-138/import — full replace from حاله 138 sheet
+  // POST /api/case-138/import — merge from حاله 138 sheet
+  // (دمج: يحدّث فقط الشكاوى الموجودة فى الملف ويحافظ على باقى الصفوف — زى قياسات DZS التلقائية)
   app.post("/api/case-138/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
@@ -2438,7 +2439,18 @@ export async function registerRoutes(
       }
       const inserts = Array.from(byComplain.values());
 
-      await pool.query("DELETE FROM case_138");
+      // دمج بدل المسح الكامل: نمسح فقط الشكاوى الموجودة فى الملف الجديد (لتُستبدل بأحدث
+      // بياناتها)، ونحافظ على باقى الصفوف — زى قياسات DZS التلقائية لشكاوى ليست فى الملف.
+      // (complain_no هو العمود رقم 2 فى كل صف inserts.)
+      const complainNos = Array.from(
+        new Set(inserts.map((r) => r[2]).filter((c) => c != null && String(c).trim() !== "")),
+      );
+      const DEL_BATCH = 1000;
+      for (let s = 0; s < complainNos.length; s += DEL_BATCH) {
+        const chunk = complainNos.slice(s, s + DEL_BATCH);
+        const ph = chunk.map((_, i) => `$${i + 1}`).join(",");
+        await pool.query(`DELETE FROM case_138 WHERE complain_no IN (${ph})`, chunk);
+      }
       let inserted = 0;
       const BATCH = 200;
       for (let s = 0; s < inserts.length; s += BATCH) {
