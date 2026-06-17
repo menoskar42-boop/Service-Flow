@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar } from "lucide-react";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { format } from "date-fns";
 
@@ -49,6 +49,11 @@ const fmtDt = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
+// رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash
+// (cross-origin: الـ Tampermonkey script فى تاب DZS يقرأ location.hash لأن
+// localStorage محجوز لكل origin لوحده).
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+
 const faultBadge = (cls: string | null) => {
   if (!cls) return null;
   const map: Record<string, string> = {
@@ -83,6 +88,24 @@ export function CurrentFaultsReport() {
   const displayed = repeatedOnly
     ? faults.filter((f) => f.repeatStatus === "مكرر")
     : faults;
+
+  // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
+  // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
+  const handleMeasureDZS = () => {
+    const accounts = Array.from(
+      new Set(
+        displayed
+          .map((f) => (f.accountNo ?? "").toString().trim())
+          .filter((a) => a !== ""),
+      ),
+    );
+    if (accounts.length === 0) {
+      alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
+      return;
+    }
+    const url = `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
+    window.open(url, "_blank");
+  };
 
   const handleExportExcel = () => {
     const rows = displayed.map((f, i) => ({
@@ -242,6 +265,15 @@ export function CurrentFaultsReport() {
         <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-800">
           المتبقيات: <strong>{displayed.filter((f) => f.faultClass === "المتبقيات").length}</strong>
         </span>
+        <Button
+          variant="outline" size="sm"
+          onClick={handleMeasureDZS}
+          disabled={displayed.filter((f) => (f.accountNo ?? "").toString().trim() !== "").length === 0}
+          className="text-blue-700 border-blue-200 gap-1"
+          title="فتح DZS وقياس أرقام الأكونت المعروضة"
+        >
+          <Radar className="w-4 h-4" /> قياس DZS
+        </Button>
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}
