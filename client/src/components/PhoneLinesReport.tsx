@@ -11,11 +11,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 
-interface PhoneLine {
+// رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+
+interface PhoneLine extends Measurement138 {
   telNo: string;
   central: string;
   iduNo: string;
@@ -74,6 +78,28 @@ export function PhoneLinesReport() {
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
 
+  // يجمع أرقام الأكونت من الصفحة المعروضة (يحذف المكرر ويتجاهل اللى مالهاش أكونت)
+  // ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
+  const handleMeasureDZS = () => {
+    const accounts = Array.from(
+      new Set(
+        (data?.data ?? [])
+          .map((r) => (r.accountNo ?? "").toString().trim())
+          .filter((a) => a !== ""),
+      ),
+    );
+    if (accounts.length === 0) {
+      alert("لا توجد أرقام أكونت فى الصفحة المعروضة — لا شىء للقياس");
+      return;
+    }
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`, "_blank");
+  };
+
+  // يفتح تاب DZS لرقم أكونت واحد (الزر بجوار كل خط).
+  const openDZSSingle = (account: string) => {
+    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(account)}`, "_blank");
+  };
+
   const handleExport = async () => {
     const params = new URLSearchParams({ page: "1", limit: "20000" });
     if (central) params.set("central", central);
@@ -83,6 +109,10 @@ export function PhoneLinesReport() {
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
       "رقم التليفون الكامل": r.fullPhone,
+      "رقم الأكونت": r.accountNo,
+      "آخر قياس": r.lastMeasScore,
+      "السرعة الحالية": r.lineCurrentSpeed,
+      "أقصى سرعة": r.lineMaxSpeed,
       "السنترال": r.central,
       "رقم الكابينه": r.cabinNumber,
       "رقم البكس": r.boxNumber,
@@ -115,9 +145,10 @@ export function PhoneLinesReport() {
     const all = json.data as PhoneLine[];
     printTablePDF({
       title: "تقرير بيان أرقام التليفونات",
-      columns: ["#", "التليفون الكامل", "السنترال", "الكابينه", "البكس", "التليفون",
+      columns: ["#", "التليفون الكامل", "الأكونت", "سرعة حالية", "أقصى سرعة", "السنترال", "الكابينه", "البكس", "التليفون",
         "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN"],
-      rows: all.map((r, i) => [i + 1, r.fullPhone, r.central, r.cabinNumber, r.boxNumber,
+      rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
+        r.central, r.cabinNumber, r.boxNumber,
         r.telNo, r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len]),
     });
   };
@@ -166,6 +197,9 @@ export function PhoneLinesReport() {
               className="w-full sm:w-36 text-sm"
             />
 
+            <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
+              <Radar className="w-4 h-4" /> قياس DZS
+            </Button>
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
@@ -186,6 +220,8 @@ export function PhoneLinesReport() {
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
@@ -207,6 +243,22 @@ export function PhoneLinesReport() {
                   {data?.data.map((r, idx) => (
                     <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono font-semibold text-blue-700">{r.fullPhone || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left font-mono">
+                        {r.accountNo ? (
+                          <span className="inline-flex items-center gap-1">
+                            {r.accountNo}
+                            <button
+                              type="button"
+                              onClick={() => openDZSSingle(r.accountNo!)}
+                              title="فتح DZS وقياس هذا الرقم"
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <Radar className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        ) : "-"}
+                      </TableCell>
+                      <TableCell><Measurement138Button m={r} /></TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>

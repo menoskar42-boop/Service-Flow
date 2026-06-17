@@ -1443,6 +1443,13 @@ export async function registerRoutes(
 
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
+    // ربط بشيت القياسات 138 (آخر قياس لكل رقم) — المطابقة بالتليفون الكامل:
+    // case_138.full_phone = phone_lines.full_phone (الاتنين بصيغة 88+رقم).
+    const c138Join = `LEFT JOIN LATERAL (
+        SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time
+        FROM case_138 c WHERE c.full_phone = pl.full_phone
+        ORDER BY c.id DESC LIMIT 1
+      ) c138p ON true`;
     const dataRes = await pool.query(
       `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
@@ -1450,8 +1457,14 @@ export async function registerRoutes(
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
-              pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone"
-       ${joinClause} ${where}
+              pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone",
+              c138p.account_no AS "accountNo",
+              c138p.current_speed AS "lineCurrentSpeed",
+              c138p.max_speed AS "lineMaxSpeed",
+              c138p.score AS "lastMeasScore",
+              c138p.complain_no AS "lastMeasComplainNo",
+              c138p.complain_time AS "lastMeasTime"
+       ${joinClause} ${c138Join} ${where}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
