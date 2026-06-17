@@ -44,6 +44,22 @@ const fmtDt = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
+// يختصر الـ status code: "DSL-هوائية-160160" → "DSL-160"
+// (يشيل كلمة "هوائية" ويصغّر الكود المضاعف 160160→160) لتصغير عرض العمود.
+const shortStatusCode = (s: string | null) => {
+  if (!s) return s;
+  return s
+    .split("-")
+    .map((p) => p.trim())
+    .filter((p) => p && p !== "هوائية")
+    .map((p) =>
+      /^\d+$/.test(p) && p.length % 2 === 0 && p.slice(0, p.length / 2) === p.slice(p.length / 2)
+        ? p.slice(0, p.length / 2)
+        : p,
+    )
+    .join("-");
+};
+
 // رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
@@ -353,7 +369,7 @@ export function RegularizedFaultsRangeReport() {
                       <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
                     ) : ""}
                   </TableCell>
-                  <TableCell className="max-w-[140px] truncate">{f.statusCode || "-"}</TableCell>
+                  <TableCell className="max-w-[140px] truncate">{shortStatusCode(f.statusCode) || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
                   <TableCell>{f.frame || "-"}</TableCell>
                   <TableCell>{f.cabinetNo || "-"}</TableCell>
