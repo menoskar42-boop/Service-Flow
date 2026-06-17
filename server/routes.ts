@@ -2825,11 +2825,14 @@ export async function registerRoutes(
 
   // POST /api/ftth-orders/import — رفعة متعذرات OM (الحالى): تستبدل الحالى، تتراكم
   // تاريخياً، وتُضيف للـSOY أى مفتاح جديد (مسلسل+order ids)، وتُثرى MSAN فى SOY.
-  app.post("/api/ftth-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+  app.options("/api/ftth-orders/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.post("/api/ftth-orders/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const all = parseFtthOrderRows(req.file.buffer);
-      const userId = (req.user as any).id;
+      const userId = req.user
+        ? (req.user as any).id
+        : ((await pool.query("SELECT id FROM users WHERE role = $1 LIMIT 1", [ROLES.ADMIN])).rows[0]?.id ?? 1);
 
       const archivedYear = await archiveIfNewYear("ftth_orders", "ftth_orders_archive", FTTH_ORDER_COLS);
       const hist = await accumulateTable("ftth_orders", FTTH_ORDER_COLS, "service_order_id", all, userId);
