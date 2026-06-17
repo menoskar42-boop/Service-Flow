@@ -98,16 +98,43 @@ export function PhoneLinesReport() {
     full: r.fullPhone ?? "",
   });
 
-  const handleMeasureDZS = () => {
-    const seen = new Set<string>();
-    const items = (data?.data ?? [])
-      .map(toItem)
-      .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
-    if (items.length === 0) {
-      alert("لا توجد أرقام أكونت فى الصفحة المعروضة — لا شىء للقياس");
+  // القياس يشتغل على النطاق المفلتر بالكامل (السنترال/الكابينة/البكس المحدد) —
+  // مش الصفحة الظاهرة فقط — فنجيب كل الصفوف المطابقة للفلتر (limit كبير).
+  const handleMeasureDZS = async () => {
+    if (!central && !cabin && !box) {
+      alert("اختر سنترال أو كابينة أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط وليس كل الجدول");
       return;
     }
-    window.open(buildDZSUrl(items), "_blank");
+    // افتح التاب فوراً (قبل await) لتفادى حظر المتصفح للـ popup
+    const win = window.open("", "_blank");
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "20000" });
+      if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (box) params.set("box", box);
+      const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
+      const json = await res.json();
+      const all = (json.data as PhoneLine[]) ?? [];
+      const seen = new Set<string>();
+      const items = all
+        .map(toItem)
+        .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
+      if (items.length === 0) {
+        if (win) win.close();
+        alert("لا توجد أرقام أكونت فى النطاق المحدد — لا شىء للقياس");
+        return;
+      }
+      if (items.length > 150 &&
+          !confirm(`سيتم فتح DZS لقياس ${items.length} رقم فى هذا النطاق — متأكد؟`)) {
+        if (win) win.close();
+        return;
+      }
+      const url = buildDZSUrl(items);
+      if (win) win.location.href = url; else window.open(url, "_blank");
+    } catch {
+      if (win) win.close();
+      alert("تعذّر تحميل بيانات النطاق للقياس");
+    }
   };
 
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
