@@ -13,7 +13,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { ROLES } from "@shared/schema";
 import { format } from "date-fns";
-import { Loader2, Plus, Trash2, Cable, Search, Lock, KeyRound } from "lucide-react";
+import { Loader2, Plus, Trash2, Cable, Search, Lock, KeyRound, FileSpreadsheet, Printer } from "lucide-react";
+import * as XLSX from "xlsx";
+import { printTablePDF } from "@/lib/print-pdf";
 
 interface CableEntry {
   id: number;
@@ -129,6 +131,32 @@ export function DataCompletionSection() {
     if (canSubmit) saveMutation.mutate();
   };
 
+  const handleExportExcel = () => {
+    const rows = entries.map((en, i) => ({
+      "#": i + 1,
+      "رقم التليفون": en.phoneFull,
+      "نوع امر الشغل": en.workOrderType,
+      "كمية السلك (متر)": en.cableQuantity,
+      "بواسطة": en.createdByName,
+      "آخر تحديث": format(new Date(en.updatedAt), "yyyy/MM/dd HH:mm"),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "كمية السلك");
+    XLSX.writeFile(wb, `cable-entries-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+  };
+
+  const handleExportPDF = () => {
+    printTablePDF({
+      title: "استكمال بيانات — كمية السلك",
+      columns: ["#", "رقم التليفون", "نوع امر الشغل", "كمية السلك (متر)", "بواسطة", "آخر تحديث"],
+      rows: entries.map((en, i) => [
+        i + 1, en.phoneFull, en.workOrderType, en.cableQuantity, en.createdByName,
+        format(new Date(en.updatedAt), "yyyy/MM/dd HH:mm"),
+      ]),
+    });
+  };
+
   return (
     <div className="space-y-5" dir="rtl">
       {/* نموذج الإدخال */}
@@ -200,15 +228,33 @@ export function DataCompletionSection() {
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             <span>إجمالي: <strong className="text-foreground">{entries.length}</strong> إدخال</span>
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="بحث برقم التليفون"
-              className="text-sm pr-8"
-              dir="rtl"
-            />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline" size="sm"
+              onClick={handleExportExcel}
+              disabled={entries.length === 0}
+              className="text-green-700 border-green-200 gap-1"
+            >
+              <FileSpreadsheet className="w-4 h-4" /> Excel
+            </Button>
+            <Button
+              variant="outline" size="sm"
+              onClick={handleExportPDF}
+              disabled={entries.length === 0}
+              className="text-red-700 border-red-200 gap-1"
+            >
+              <Printer className="w-4 h-4" /> PDF
+            </Button>
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="بحث برقم التليفون"
+                className="text-sm pr-8"
+                dir="rtl"
+              />
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto">
