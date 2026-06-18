@@ -142,7 +142,7 @@ export function RegularizedFaultsRangeReport() {
   const handleExportExcel = () => {
     const rows = displayed.map((f, i) => ({
       "#": i + 1,
-      "المصدر": f.dataSource,
+      "المصدر": f.dataSource === "متبقى" ? "تحت الفحص" : "مؤرشفة",
       "Field1": f.centralName,
       "رقم التلفون": f.phoneShort,
       "رقم الأكونت": f.accountNo,
@@ -194,7 +194,7 @@ export function RegularizedFaultsRangeReport() {
       const body = chunk.map((f, ci) => `
         <tr class="green">
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
-          <td style="font-size:9px;color:${f.dataSource === 'متبقى' ? '#92400e' : '#1e40af'}">${esc(f.dataSource)}</td>
+          <td style="font-size:9px;color:${f.dataSource === 'متبقى' ? '#92400e' : '#166534'}">${esc(f.dataSource === 'متبقى' ? 'تحت الفحص' : 'مؤرشفة')}</td>
           <td>${esc(f.centralName)}</td>
           <td>${esc(f.phoneShort)}</td>
           <td>${esc(f.accountNo)}</td>
@@ -392,8 +392,10 @@ export function RegularizedFaultsRangeReport() {
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                       f.dataSource === "متبقى"
                         ? "bg-amber-100 text-amber-800"
-                        : "bg-blue-100 text-blue-800"
-                    }`}>{f.dataSource}</span>
+                        : "bg-green-100 text-green-800"
+                    }`}>
+                      {f.dataSource === "متبقى" ? "تحت الفحص" : "مؤرشفة"}
+                    </span>
                   </TableCell>
                   <TableCell>{f.centralName || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
