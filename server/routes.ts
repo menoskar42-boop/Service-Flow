@@ -571,9 +571,13 @@ async function archiveIfNewYear(histTable: string, archiveTable: string, cols: s
 // الـ endpoints وجدولة الحفظ اليومى.
 
 // الأعطال المنتظمة اليوم — تُرجع الصفوف (مع ticketId للمفتاح الفريد).
-async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
-  const { central = "", q = "" } = opts;
+async function queryRegularizedFaults(opts: { central?: string; q?: string; date?: string }) {
+  const { central = "", q = "", date = "" } = opts;
   const params: any[] = [];
+  // الفلترة بتاريخ الإغلاق: لو date محدد يُستخدم، وإلا اليوم الحالى بتوقيت القاهرة.
+  let dateExpr: string;
+  if (date) { params.push(date); dateExpr = `$${params.length}::date`; }
+  else { dateExpr = `(now() AT TIME ZONE 'Africa/Cairo')::date`; }
   const conds: string[] = [
     `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
     `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
@@ -633,7 +637,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string }) {
        FROM (
          SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
          WHERE close_date IS NOT NULL
-           AND (close_date AT TIME ZONE 'Africa/Cairo')::date = (now() AT TIME ZONE 'Africa/Cairo')::date
+           AND (close_date AT TIME ZONE 'Africa/Cairo')::date = ${dateExpr}
          UNION ALL
          SELECT *, 'اختفى من الحالى' AS reg_source FROM ticket_dsl_sod s
          WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)
@@ -3540,8 +3544,8 @@ export async function registerRoutes(
   // نفس فلاتر تقرير الأعطال الحالية (السنترالات + أكواد الأعطال).
   app.get("/api/reports/regularized-faults", requireAuth, async (req, res) => {
     try {
-      const { central = "", q = "" } = req.query as Record<string, string>;
-      const rows = await queryRegularizedFaults({ central, q });
+      const { central = "", q = "", date = "" } = req.query as Record<string, string>;
+      const rows = await queryRegularizedFaults({ central, q, date });
       res.json(rows);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -3575,12 +3579,12 @@ export async function registerRoutes(
       if (dateFrom) {
         params.push(dateFrom);
         cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
-        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
+        rcConds.push(`COALESCE(rc.close_time, rc.complain_time)::date >= $${params.length}::date`);
       }
       if (dateTo) {
         params.push(dateTo);
         cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
-        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
+        rcConds.push(`COALESCE(rc.close_time, rc.complain_time)::date <= $${params.length}::date`);
       }
       if (q.trim()) {
         params.push(`%${q.trim()}%`);

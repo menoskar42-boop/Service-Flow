@@ -99,13 +99,15 @@ const regBadge = (s: string | null) => {
 export function RegularizedFaultsReport() {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
 
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
-    queryKey: ["/api/reports/regularized-faults", central, q],
+    queryKey: ["/api/reports/regularized-faults", central, q, date],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (central) p.set("central", central);
       if (q) p.set("q", q);
+      if (date) p.set("date", date);
       const res = await fetch(`/api/reports/regularized-faults?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -278,6 +280,13 @@ export function RegularizedFaultsReport() {
           onChange={(e) => setQ(e.target.value)}
           className="w-full sm:max-w-xs text-sm"
           dir="rtl"
+        />
+        <Input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+          className="text-sm w-auto"
+          dir="ltr"
         />
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
