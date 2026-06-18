@@ -256,10 +256,15 @@
   function findGovSelect(doc){let s=doc.getElementById('governorateQ');if(s&&s.tagName==='SELECT')return s;const labs=Array.from(doc.querySelectorAll('label,span,div,td,p,th,dt,b,font')).filter(el=>el.children.length===0&&/^governorate$/i.test(norm(el.textContent)));for(const lab of labs){const sel=selectForLabel(lab);if(sel)return sel;}return Array.from(doc.querySelectorAll('select')).find(sel=>findGovOption(sel))||null;}
 
   function captureOSS(downloadAnchor, ossOrigin) {
-    const onclick = downloadAnchor.getAttribute('onclick') || ''; let dlUrl = null, m;
+    const onclick = downloadAnchor.getAttribute('onclick') || '';
+    const href = downloadAnchor.getAttribute('href') || '';
+    log('OSS anchor — onclick:', onclick.slice(0, 220));
+    log('OSS anchor — href:', href.slice(0, 120));
+    let dlUrl = null, m;
     m = onclick.match(/window\.open\s*\(\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1];
     if (!dlUrl) { m = onclick.match(/(?:window\.)?location(?:\.href)?\s*=\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1]; }
     if (!dlUrl) { m = onclick.match(/['"]([^'"]*(?:download|export|\.xlsx?)[^'"]*)['"]/i); if (m) dlUrl = m[1]; }
+    if (!dlUrl && href && !/^(javascript|#)/i.test(href)) dlUrl = href;
     if (dlUrl) {
       const absUrl = dlUrl.startsWith('http') ? dlUrl : ossOrigin + dlUrl;
       log('OSS GET →', absUrl.slice(0, 100));
@@ -267,9 +272,9 @@
         const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
         log('OSS resp:', res.status, '| bytes:', buf.byteLength, '| magic:', (u8[0]||0).toString(16) + (u8[1]||0).toString(16));
         if (res.status === 200 && buf.byteLength > 100 && looksExcel(u8)) { uploadToSF(new Blob([buf]), 'oss_om' + (isXlsExt(u8) ? '.xls' : '.xlsx'), '/api/ftth-orders/import'); }
-        else log('❌ OSS resp ليس ملف Excel.');
+        else log('❌ OSS resp ليس ملف Excel (status ' + res.status + ').');
       }).catch(e => log('OSS fetch err:', e.message));
-    } else { armCapture('oss_om.xlsx', '/api/ftth-orders/import', 'OSS'); log('OSS: لا URL مباشر. onclick:', onclick.slice(0, 200)); }
+    } else { log('OSS: لا URL في onclick/href.'); }
   }
 
   async function runOSS() {
