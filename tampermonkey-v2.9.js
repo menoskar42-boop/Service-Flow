@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.8
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.8: intercept the site's own form.submit() to capture the EXACT export request (no JSF guessing) + parallel fetch upload.
+// @version      2.9
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.9: explicit @connect (no permission prompt) + form.submit capture + magic-byte sniffing.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -12,6 +12,12 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
+// @connect      service-flow--menoskar42.replit.app
+// @connect      replit.app
+// @connect      replit.dev
+// @connect      oss.te.eg
+// @connect      fcc.te.eg
+// @connect      wfm.te.eg
 // @connect      *
 // ==/UserScript==
 
@@ -19,13 +25,13 @@
   'use strict';
 
   /* ================================================================
-     ⚙️ CONFIG — عدّل السطرين دول بس
+     ⚙️ CONFIG — لو رابط موقعك اتغير عدّله هنا فقط (من غير / في الآخر)
      ================================================================ */
-  const SF_URL          = 'https://YOUR-SERVICE-FLOW-REPLIT-URL';
+  const SF_URL          = 'https://service-flow--menoskar42.replit.app';
   const SF_UPLOAD_TOKEN = 'sf-auto-upload-2026';
   /* ================================================================ */
 
-  /* ---------- on-screen logger (early, used by hooks too) ---------- */
+  /* ---------- on-screen logger ---------- */
   const log = (() => {
     let box;
     return (...a) => {
@@ -39,43 +45,39 @@
         }
         const line = document.createElement('div');
         line.textContent = a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ');
-        box.appendChild(line);
-        box.scrollTop = box.scrollHeight;
+        box.appendChild(line); box.scrollTop = box.scrollHeight;
       } catch (e) {}
     };
   })();
 
-  /* ================================================================
-     📤 Service-Flow upload + capture helpers
-     ================================================================ */
+  /* ---------- Service-Flow upload ---------- */
   function uploadToSF(blob, filename, endpoint) {
     if (!SF_URL || SF_URL.includes('YOUR-SERVICE-FLOW')) { log('⚠️ SF_URL غير مضبوط'); return; }
     log('📤 رفع إلى SF:', endpoint, '(' + Math.round(blob.size / 1024) + ' KB)');
-    const fd = new FormData();
-    fd.append('file', blob, filename);
+    const fd = new FormData(); fd.append('file', blob, filename);
     GM_xmlhttpRequest({
       method: 'POST', url: SF_URL + endpoint,
       headers: { 'X-Upload-Token': SF_UPLOAD_TOKEN },
       data: fd, timeout: 60000,
       onload: r => { try { log('✅ SF:', JSON.stringify(JSON.parse(r.responseText))); } catch (e) { log('✅ SF', r.status, (r.responseText || '').slice(0, 120)); } },
-      onerror: r => log('❌ SF error — status:', (r && r.status), '| ' + (r && (r.error || r.statusText || r.finalUrl)) || 'فشل الاتصال (وافق على إذن Tampermonkey للدومين)'),
-      ontimeout: () => log('❌ SF timeout (السيرفر لم يرد خلال 60ث)'),
+      onerror: r => log('❌ SF error — status:', (r && r.status), '|', (r && (r.error || r.statusText || r.finalUrl)) || 'فشل الاتصال'),
+      ontimeout: () => log('❌ SF timeout (60s)'),
     });
   }
 
   function isFileHeaders(cd, ct) {
     const s = ((cd || '') + ' ' + (ct || '')).toLowerCase();
-    return s.includes('attachment') || s.includes('vnd.ms-excel') ||
-           s.includes('vnd.openxmlformats') || s.includes('octet-stream') ||
-           s.includes('application/xls') || s.includes('spreadsheet');
+    return s.includes('attachment') || s.includes('vnd.ms-excel') || s.includes('vnd.openxmlformats') || s.includes('octet-stream') || s.includes('application/xls') || s.includes('spreadsheet');
   }
+  // فحص أول بايتات الملف: xlsx يبدأ بـ PK (50 4B)، xls القديم بـ D0 CF
+  function looksExcel(u8) { return (u8[0] === 0x50 && u8[1] === 0x4B) || (u8[0] === 0xD0 && u8[1] === 0xCF); }
+  function isXlsExt(u8) { return u8[0] === 0xD0 && u8[1] === 0xCF; }
 
-  /* ---- capture arming: set right before we trigger the site's export ---- */
-  let armed = null; // { filename, endpoint, label }
+  /* ---------- capture arming ---------- */
+  let armed = null;
   function armCapture(filename, endpoint, label) {
-    armed = { filename, endpoint, label };
-    log('🔫 armed capture:', label);
-    setTimeout(() => { if (armed && armed.label === label) { armed = null; log('⏱ capture disarmed (timeout):', label); } }, 12000);
+    armed = { filename, endpoint, label }; log('🔫 armed capture:', label);
+    setTimeout(() => { if (armed && armed.label === label) { armed = null; log('⏱ disarmed (timeout):', label); } }, 12000);
   }
 
   function serializeForm(form) {
@@ -92,47 +94,29 @@
   function captureFromForm(form) {
     const cap = armed; armed = null;
     let params, action;
-    try {
-      params = serializeForm(form); // مهم: نقرأ قبل ما native submit يشيل hidden inputs
-      action = form.getAttribute('action') || form.action || location.href;
-    } catch (e) { log('serialize error:', e.message); return; }
+    try { params = serializeForm(form); action = form.getAttribute('action') || form.action || location.href; }
+    catch (e) { log('serialize error:', e.message); return; }
     log('📸 captured submit →', String(action).slice(0, 80), '| params:', Array.from(params.keys()).length);
-
     (async () => {
       try {
-        const res = await fetch(action, {
-          method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: params.toString(), redirect: 'follow',
-        });
-        const cd = res.headers.get('Content-Disposition') || '';
-        const ct = res.headers.get('Content-Type') || '';
+        const res = await fetch(action, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString(), redirect: 'follow' });
+        const cd = res.headers.get('Content-Disposition') || '', ct = res.headers.get('Content-Type') || '';
         log('📥 resp:', res.status, '| CT:', ct.slice(0, 40), '| CD:', cd.slice(0, 50));
-
-        // إما headers تدل على ملف، أو نفحص أول بايتات الجسم (PK=xlsx, D0CF=xls)
-        const buf = await res.arrayBuffer();
-        const u8 = new Uint8Array(buf);
-        const looksExcel = (u8[0] === 0x50 && u8[1] === 0x4B) || (u8[0] === 0xD0 && u8[1] === 0xCF);
-        if (res.status === 200 && (isFileHeaders(cd, ct) || (looksExcel && buf.byteLength > 100))) {
-          log('✅ got blob:', buf.byteLength, 'bytes', looksExcel ? '(magic)' : '(headers)');
-          uploadToSF(new Blob([buf]), cap.filename, cap.endpoint);
-          return;
+        const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
+        if (res.status === 200 && (isFileHeaders(cd, ct) || (looksExcel(u8) && buf.byteLength > 100))) {
+          log('✅ got blob:', buf.byteLength, 'bytes', looksExcel(u8) ? '(magic)' : '(headers)');
+          uploadToSF(new Blob([buf]), cap.filename, cap.endpoint); return;
         }
-        // JSF/redirect fallback
         const text = new TextDecoder('utf-8', { fatal: false }).decode(u8);
-        const redir = text.match(/<redirect\s+url="([^"]+)"/i) ||
-                      text.match(/href="([^"]*(?:download|export|\.xls)[^"]*)"/i);
+        const redir = text.match(/<redirect\s+url="([^"]+)"/i) || text.match(/href="([^"]*(?:download|export|\.xls)[^"]*)"/i);
         if (redir) {
-          const u = redir[1].replace(/&amp;/g, '&');
-          const u2 = u.startsWith('http') ? u : location.origin + u;
+          const u = redir[1].replace(/&amp;/g, '&'); const u2 = u.startsWith('http') ? u : location.origin + u;
           log('↪ follow:', u2.slice(0, 80));
           const r2 = await fetch(u2, { credentials: 'include' });
-          const cd2 = r2.headers.get('Content-Disposition') || '';
-          const ct2 = r2.headers.get('Content-Type') || '';
-          if (isFileHeaders(cd2, ct2)) {
-            const b = await r2.blob(); log('✅ blob after redirect:', b.size);
-            uploadToSF(b, cap.filename, cap.endpoint);
-          } else { log('❌ redirect ليس ملفاً. CT:', ct2.slice(0, 40)); }
+          const b2 = await r2.arrayBuffer(); const v2 = new Uint8Array(b2);
+          if (r2.status === 200 && (isFileHeaders(r2.headers.get('Content-Disposition') || '', r2.headers.get('Content-Type') || '') || (looksExcel(v2) && b2.byteLength > 100))) {
+            log('✅ blob after redirect:', b2.byteLength); uploadToSF(new Blob([b2]), cap.filename, cap.endpoint);
+          } else log('❌ redirect ليس ملفاً.');
           return;
         }
         log('❌ لا ملف ولا redirect. preview:', text.replace(/\s+/g, ' ').slice(0, 180));
@@ -140,7 +124,7 @@
     })();
   }
 
-  /* ---- install hooks at document-start (before site scripts run) ---- */
+  /* ---------- hooks (document-start) ---------- */
   (function installHooks() {
     try {
       const wrapSubmit = orig => function () {
@@ -148,24 +132,18 @@
         return orig.apply(this, arguments);
       };
       HTMLFormElement.prototype.submit = wrapSubmit(HTMLFormElement.prototype.submit);
-      if (HTMLFormElement.prototype.requestSubmit) {
-        HTMLFormElement.prototype.requestSubmit = wrapSubmit(HTMLFormElement.prototype.requestSubmit);
-      }
+      if (HTMLFormElement.prototype.requestSubmit) HTMLFormElement.prototype.requestSubmit = wrapSubmit(HTMLFormElement.prototype.requestSubmit);
     } catch (e) {}
-
-    // window.open hook (بعض أنظمة OSS تفتح ملف عبر window.open)
     try {
       const origOpen = window.open;
       window.open = function (url) {
         if (armed && url && /download|export|\.xls/i.test(String(url))) {
-          const cap = armed; armed = null;
-          const u = String(url);
-          const u2 = u.startsWith('http') ? u : location.origin + u;
+          const cap = armed; armed = null; const u = String(url); const u2 = u.startsWith('http') ? u : location.origin + u;
           log('📸 captured window.open →', u2.slice(0, 80));
           fetch(u2, { credentials: 'include' }).then(async r => {
-            const cd = r.headers.get('Content-Disposition') || '', ct = r.headers.get('Content-Type') || '';
-            if (isFileHeaders(cd, ct)) { const b = await r.blob(); log('✅ blob via open:', b.size); uploadToSF(b, cap.filename, cap.endpoint); }
-            else log('❌ window.open URL ليس ملفاً. CT:', ct.slice(0, 40));
+            const b = await r.arrayBuffer(); const v = new Uint8Array(b);
+            if (r.status === 200 && (isFileHeaders(r.headers.get('Content-Disposition') || '', r.headers.get('Content-Type') || '') || (looksExcel(v) && b.byteLength > 100))) { log('✅ blob via open:', b.byteLength); uploadToSF(new Blob([b]), cap.filename, cap.endpoint); }
+            else log('❌ window.open URL ليس ملفاً.');
           }).catch(e => log('❌ open fetch:', e.message));
         }
         return origOpen.apply(this, arguments);
@@ -174,113 +152,30 @@
   })();
 
   /* ---------- anti-devtool guard ---------- */
-  (function hardenAgainstDevtoolGuard() {
-    try {
-      const _alert = window.alert ? window.alert.bind(window) : null;
-      window.alert = function (m) {
-        const s = String(m == null ? '' : m).toLowerCase();
-        if (s.includes('console') || s.includes('devtool') || s.includes('prohibit')) return;
-        return _alert ? _alert(m) : undefined;
-      };
-    } catch (e) {}
+  (function () {
+    try { const _alert = window.alert ? window.alert.bind(window) : null; window.alert = function (m) { const s = String(m == null ? '' : m).toLowerCase(); if (s.includes('console') || s.includes('devtool') || s.includes('prohibit')) return; return _alert ? _alert(m) : undefined; }; } catch (e) {}
     try { console.clear = function () {}; } catch (e) {}
-    setInterval(function () {
-      try {
-        const lays = document.querySelectorAll('.layui-layer');
-        for (let i = 0; i < lays.length; i++) {
-          const lay = lays[i]; const t = (lay.textContent || '').toLowerCase();
-          if (t.includes('console') || t.includes('devtool') || t.includes('prohibit')) {
-            const ok = lay.querySelector('.layui-layer-btn0') || lay.querySelector('.layui-layer-close');
-            if (ok) { try { ok.click(); } catch (e) {} } else { try { lay.remove(); } catch (e) {} }
-          }
-        }
-      } catch (e) {}
-    }, 1000);
+    setInterval(function () { try { const lays = document.querySelectorAll('.layui-layer'); for (let i = 0; i < lays.length; i++) { const lay = lays[i]; const t = (lay.textContent || '').toLowerCase(); if (t.includes('console') || t.includes('devtool') || t.includes('prohibit')) { const ok = lay.querySelector('.layui-layer-btn0') || lay.querySelector('.layui-layer-close'); if (ok) { try { ok.click(); } catch (e) {} } else { try { lay.remove(); } catch (e) {} } } } } catch (e) {} }, 1000);
   })();
 
-  const CREDS = {
-    'fcc.te.eg':       { user: 'mena.haleem', pass: 'Mon_oskar352' },
-    'wfm.te.eg':       { user: 'mina109756',  pass: 'Mon_oskar11' },
-    'oss.te.eg:15204': { user: 'MENA.HALEEM', pass: 'Mon_oskar352' },
-  };
-  const LOGIN_URL = {
-    'fcc.te.eg':       'https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf',
-    'wfm.te.eg':       'https://wfm.te.eg/WorkOrder/faces/security/pages/Login.jsf',
-    'oss.te.eg:15201': 'https://oss.te.eg:15201/om',
-    'oss.te.eg:15204': 'https://oss.te.eg:15201/om',
-  };
+  const CREDS = { 'fcc.te.eg': { user: 'mena.haleem', pass: 'Mon_oskar352' }, 'wfm.te.eg': { user: 'mina109756', pass: 'Mon_oskar11' }, 'oss.te.eg:15204': { user: 'MENA.HALEEM', pass: 'Mon_oskar352' } };
+  const LOGIN_URL = { 'fcc.te.eg': 'https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf', 'wfm.te.eg': 'https://wfm.te.eg/WorkOrder/faces/security/pages/Login.jsf', 'oss.te.eg:15201': 'https://oss.te.eg:15201/om', 'oss.te.eg:15204': 'https://oss.te.eg:15201/om' };
 
-  /* ---------- helpers ---------- */
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const norm  = s  => (s || '').replace(/\s+/g, ' ').trim();
-
-  async function waitFor(predicate, { timeout = 30000, interval = 400, label = '' } = {}) {
-    const start = Date.now();
-    while (Date.now() - start < timeout) {
-      let v; try { v = predicate(); } catch (e) { v = null; }
-      if (v) return v;
-      await sleep(interval);
-    }
-    throw new Error('waitFor timeout: ' + label);
-  }
-
-  function byText(root, selector, text, { exact = true, ci = true } = {}) {
-    let t = norm(text); if (ci) t = t.toLowerCase();
-    return Array.from(root.querySelectorAll(selector)).find(el => {
-      let c = norm(el.textContent || el.value || ''); if (ci) c = c.toLowerCase();
-      return exact ? c === t : c.includes(t);
-    });
-  }
-  function bestText(root, selector, needle) {
-    const n = norm(needle).toLowerCase(); let best = null, bestLen = Infinity;
-    Array.from(root.querySelectorAll(selector)).forEach(el => {
-      const txt = norm(el.textContent).toLowerCase();
-      if (txt.includes(n) && txt.length < bestLen) { best = el; bestLen = txt.length; }
-    });
-    return best;
-  }
+  async function waitFor(predicate, { timeout = 30000, interval = 400, label = '' } = {}) { const start = Date.now(); while (Date.now() - start < timeout) { let v; try { v = predicate(); } catch (e) { v = null; } if (v) return v; await sleep(interval); } throw new Error('waitFor timeout: ' + label); }
+  function byText(root, selector, text, { exact = true, ci = true } = {}) { let t = norm(text); if (ci) t = t.toLowerCase(); return Array.from(root.querySelectorAll(selector)).find(el => { let c = norm(el.textContent || el.value || ''); if (ci) c = c.toLowerCase(); return exact ? c === t : c.includes(t); }); }
+  function bestText(root, selector, needle) { const n = norm(needle).toLowerCase(); let best = null, bestLen = Infinity; Array.from(root.querySelectorAll(selector)).forEach(el => { const txt = norm(el.textContent).toLowerCase(); if (txt.includes(n) && txt.length < bestLen) { best = el; bestLen = txt.length; } }); return best; }
   function fire(el, type) { try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true })); } catch (e) {} }
-  function realClick(el) {
-    if (!el) return false;
-    try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
-    try { ['mousedown', 'mouseup', 'click'].forEach(t => fire(el, t)); } catch (e) { try { el.click(); } catch (e2) {} }
-    return true;
-  }
-  function setField(el, value) {
-    if (!el) return;
-    try { el.focus(); } catch (e) {}
-    try { const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value); } catch (e) { el.value = value; }
-    ['input', 'change', 'blur', 'keyup'].forEach(t => el.dispatchEvent(new Event(t, { bubbles: true })));
-  }
-  function looksBroken() {
-    const t = norm(document.body ? document.body.textContent : '').toLowerCase();
-    return /internal server error|http status 500|error 500|the server encountered an unexpected/.test(t);
-  }
-  async function activate(el, done) {
-    const ok = () => done ? done() : false;
-    let card = el, clickable = null;
-    for (let i = 0; i < 6 && card; i++) { clickable = card.querySelector('a[href], a[onclick], a[role="button"], a, [onclick], [role="button"]'); if (clickable) break; card = card.parentElement; }
-    const targets = []; if (clickable) targets.push(clickable); targets.push(el);
-    if (card && card !== el && targets.indexOf(card) === -1) targets.push(card);
-    for (const t of targets) {
-      if (ok()) return true;
-      try { t.click(); } catch (e) {} await sleep(1700); if (ok()) return true;
-      realClick(t); await sleep(1700); if (ok()) return true;
-      fire(t, 'dblclick'); await sleep(1500); if (ok()) return true;
-    }
-    return ok();
-  }
+  function realClick(el) { if (!el) return false; try { el.scrollIntoView({ block: 'center' }); } catch (e) {} try { ['mousedown', 'mouseup', 'click'].forEach(t => fire(el, t)); } catch (e) { try { el.click(); } catch (e2) {} } return true; }
+  function setField(el, value) { if (!el) return; try { el.focus(); } catch (e) {} try { const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value); } catch (e) { el.value = value; } ['input', 'change', 'blur', 'keyup'].forEach(t => el.dispatchEvent(new Event(t, { bubbles: true }))); }
+  function looksBroken() { const t = norm(document.body ? document.body.textContent : '').toLowerCase(); return /internal server error|http status 500|error 500|the server encountered an unexpected/.test(t); }
+  async function activate(el, done) { const ok = () => done ? done() : false; let card = el, clickable = null; for (let i = 0; i < 6 && card; i++) { clickable = card.querySelector('a[href], a[onclick], a[role="button"], a, [onclick], [role="button"]'); if (clickable) break; card = card.parentElement; } const targets = []; if (clickable) targets.push(clickable); targets.push(el); if (card && card !== el && targets.indexOf(card) === -1) targets.push(card); for (const t of targets) { if (ok()) return true; try { t.click(); } catch (e) {} await sleep(1700); if (ok()) return true; realClick(t); await sleep(1700); if (ok()) return true; fire(t, 'dblclick'); await sleep(1500); if (ok()) return true; } return ok(); }
 
-  // التقاط زر له href مباشر (GET)
   function captureGetHref(el, filename, endpoint) {
-    const href = (el.href || '').trim();
-    if (!href || /^(javascript|#|about:)/i.test(href)) return false;
+    const href = (el.href || '').trim(); if (!href || /^(javascript|#|about:)/i.test(href)) return false;
     log('Trying GET href:', href.slice(0, 80));
-    fetch(href, { credentials: 'include', redirect: 'follow' }).then(async res => {
-      const cd = res.headers.get('Content-Disposition') || '', ct = res.headers.get('Content-Type') || '';
-      if (isFileHeaders(cd, ct)) { const b = await res.blob(); log('✅ blob via href:', b.size); uploadToSF(b, filename, endpoint); }
-      else { log('GET href ليس ملفاً → سنعتمد على hook الـ submit'); }
-    }).catch(e => log('GET href err:', e.message));
+    fetch(href, { credentials: 'include', redirect: 'follow' }).then(async res => { const b = await res.arrayBuffer(); const v = new Uint8Array(b); if (res.status === 200 && (isFileHeaders(res.headers.get('Content-Disposition') || '', res.headers.get('Content-Type') || '') || (looksExcel(v) && b.byteLength > 100))) { log('✅ blob via href:', b.byteLength); uploadToSF(new Blob([b]), filename, endpoint); } else log('GET href ليس ملفاً → نعتمد على hook الـ submit'); }).catch(e => log('GET href err:', e.message));
     return true;
   }
 
@@ -288,10 +183,7 @@
   async function doLogin() {
     const onLogin = () => /Login\.jsf/i.test(location.href) || /\/cas\//i.test(location.href);
     const c = CREDS[location.host];
-    if (c && c.pass) {
-      const pw = await waitFor(() => document.querySelector('input[type=password]'), { timeout: 15000, interval: 300, label: 'password' }).catch(() => null);
-      if (pw) { const scope = pw.closest('form') || document; const userEl = scope.querySelector('input[type=text]') || document.querySelector('input[type=text]'); setField(userEl, c.user); setField(pw, c.pass); log('filled credentials:', c.user); await sleep(400); }
-    }
+    if (c && c.pass) { const pw = await waitFor(() => document.querySelector('input[type=password]'), { timeout: 15000, interval: 300, label: 'password' }).catch(() => null); if (pw) { const scope = pw.closest('form') || document; const userEl = scope.querySelector('input[type=text]') || document.querySelector('input[type=text]'); setField(userEl, c.user); setField(pw, c.pass); log('filled credentials:', c.user); await sleep(400); } }
     const TERMS = ['login','log in','log on','logon','sign in','signin','تسجيل الدخول','تسجيل دخول','دخول','الدخول'];
     const labelOf = el => norm(el.value)||norm(el.textContent)||norm(el.alt)||norm(el.getAttribute('aria-label'))||norm(el.title);
     const isLogin = el => { const l = labelOf(el).toLowerCase(); return l.length > 0 && l.length <= 24 && TERMS.some(t => l.includes(t)); };
@@ -302,30 +194,25 @@
     log('STILL on login.');
   }
 
-  function chainTo(key, url) {
-    try { const last = GM_getValue(key, 0); if (Date.now() - last > 60000) { GM_setValue(key, Date.now()); GM_openInTab(url, { active: true, setParent: true }); log('opening', url); } } catch (e) { log('chain error:', e.message); }
-  }
+  function chainTo(key, url) { try { const last = GM_getValue(key, 0); if (Date.now() - last > 60000) { GM_setValue(key, Date.now()); GM_openInTab(url, { active: true, setParent: true }); log('opening', url); } } catch (e) { log('chain error:', e.message); } }
 
   /* =======================================================================
-     FCC
+     FCC  (Ticket Queue)
      ===================================================================== */
   const fccHasSearch = () => document.querySelector('[id$="SearchOptions:_search"], [id$=":_search"]');
   async function runFCC() {
     log('FCC flow');
     if (/Login\.jsf/i.test(location.href)) { await doLogin(); return; }
-    if (/\/faces\/Home/i.test(location.href) && !fccHasSearch()) {
-      const TILE_SEL = 'a,button,span,td,div,h1,h2,h3,h4,p';
-      let tile;
+    if (/\/faces\/(Home|UIShell)/i.test(location.href) && !fccHasSearch()) {
+      const TILE_SEL = 'a,button,span,td,div,h1,h2,h3,h4,p'; let tile;
       try { tile = await waitFor(() => bestText(document, TILE_SEL, 'قائمة الشكاو') || bestText(document, TILE_SEL, 'ticket queue') || bestText(document, TILE_SEL, 'قائمة') || bestText(document, TILE_SEL, 'ticket') || bestText(document, TILE_SEL, 'queue'), { label: 'Ticket Queue tile', timeout: 20000 }); } catch (e) { log('tile not found:', e.message); }
-      if (tile) { log('tile ->', tile.tagName, norm(tile.textContent).slice(0, 24)); const opened = await activate(tile, () => !/\/faces\/Home/i.test(location.href) || fccHasSearch()); if (!opened) { log('tile did NOT open.'); return; } }
+      if (tile) { log('tile ->', tile.tagName, norm(tile.textContent).slice(0, 24)); const opened = await activate(tile, () => fccHasSearch()); if (!opened) log('tile did NOT open.'); }
     }
     const searchWrap = await waitFor(() => document.querySelector('[id$="SearchOptions:_search"]') || document.querySelector('[id$=":_search"]'), { label: 'search button', timeout: 25000 });
     realClick(searchWrap.querySelector('a[role="button"], a') || searchWrap);
     log('search clicked'); await sleep(4000);
     const exportLink = await waitFor(() => byText(document, 'a', 'تصدير', { exact: true }) || byText(document, 'a,button,input[type=submit]', 'Export', { exact: false }), { label: 'export button', timeout: 25000 });
     log('export — href:', (exportLink.href||'').slice(0,60), '| onclick:', (exportLink.getAttribute('onclick')||'—').slice(0,90));
-
-    // 1) لو فيه href مباشر جرّبه. 2) سلّح الـ hook قبل النقر علشان نلتقط form.submit الحقيقى.
     captureGetHref(exportLink, 'fcc_ticket_queue.xls', '/api/ticket-queue/import');
     armCapture('fcc_ticket_queue.xls', '/api/ticket-queue/import', 'FCC');
     realClick(exportLink);
@@ -334,20 +221,13 @@
   }
 
   /* =======================================================================
-     WFM
+     WFM  (Maintenance Orders)
      ===================================================================== */
   async function runWFM() {
     log('WFM flow');
-    if (/Login\.jsf/i.test(location.href)) {
-      const goHome = Array.from(document.querySelectorAll('a, button, input[type=button], input[type=submit]')).find(el => /go\s*to\s*home|homepage/i.test(norm(el.textContent || el.value || '')));
-      if (goHome) { log('WFM: already logged in → Go to Home'); realClick(goHome); return; }
-      await doLogin(); return;
-    }
+    if (/Login\.jsf/i.test(location.href)) { const goHome = Array.from(document.querySelectorAll('a, button, input[type=button], input[type=submit]')).find(el => /go\s*to\s*home|homepage/i.test(norm(el.textContent || el.value || ''))); if (goHome) { log('WFM: already logged in → Go to Home'); realClick(goHome); return; } await doLogin(); return; }
     const opsMenu = () => bestText(document,'a,div,span,td,button,li','العمليات') || bestText(document,'a,div,span,td,button,li','operations');
-    if (!opsMenu()) {
-      let wo; try { wo = await waitFor(() => bestText(document,'a,button,span,td,div,h1,h2,h3,h4,p','طلبات العمل') || bestText(document,'a,button,span,td,div,h1,h2,h3,h4,p','work order'), { label:'Work Orders tile', timeout:15000 }); } catch (e) { log('Work Orders not found:', e.message); }
-      if (wo) { log('WO ->',wo.tagName,norm(wo.textContent).slice(0,24)); await activate(wo, opsMenu); }
-    }
+    if (!opsMenu()) { let wo; try { wo = await waitFor(() => bestText(document,'a,button,span,td,div,h1,h2,h3,h4,p','طلبات العمل') || bestText(document,'a,button,span,td,div,h1,h2,h3,h4,p','work order'), { label:'Work Orders tile', timeout:15000 }); } catch (e) { log('Work Orders not found:', e.message); } if (wo) { log('WO ->',wo.tagName,norm(wo.textContent).slice(0,24)); await activate(wo, opsMenu); } }
     const ops = await waitFor(opsMenu, { label:'Operations menu', timeout:20000 });
     realClick(ops); const opsLink = ops.closest('a')||ops.querySelector('a'); if (opsLink && opsLink!==ops) realClick(opsLink); await sleep(1300);
     const excel = await waitFor(() => bestText(document,'[role="menuitem"],a,div,span,td,li','تحميل اكسل') || bestText(document,'[role="menuitem"],a,div,span,td,li','اكسل') || bestText(document,'[role="menuitem"],a,div,span,td,li','excel'), { label:'Download Excel item', timeout:15000 });
@@ -363,7 +243,7 @@
   }
 
   /* =======================================================================
-     OSS
+     OSS  (Abnormal WO / متعذرات OM)
      ===================================================================== */
   function getAbnormalDoc(){for(let i=0;i<window.frames.length;i++){try{const d=window.frames[i].document;if(/exception_wotask\.jsp/i.test(d.URL))return{win:window.frames[i],doc:d};for(let j=0;j<window.frames[i].frames.length;j++){try{const dd=window.frames[i].frames[j].document;if(/exception_wotask\.jsp/i.test(dd.URL))return{win:window.frames[i].frames[j],doc:dd};}catch(e){}}}catch(e){}}return null;}
   function collectDocs(){const docs=[document];for(let i=0;i<window.frames.length;i++){try{if(window.frames[i].document)docs.push(window.frames[i].document);}catch(e){}try{for(let j=0;j<window.frames[i].frames.length;j++){try{if(window.frames[i].frames[j].document)docs.push(window.frames[i].frames[j].document);}catch(e){}}}catch(e){}}return docs;}
@@ -376,48 +256,32 @@
   function findGovSelect(doc){let s=doc.getElementById('governorateQ');if(s&&s.tagName==='SELECT')return s;const labs=Array.from(doc.querySelectorAll('label,span,div,td,p,th,dt,b,font')).filter(el=>el.children.length===0&&/^governorate$/i.test(norm(el.textContent)));for(const lab of labs){const sel=selectForLabel(lab);if(sel)return sel;}return Array.from(doc.querySelectorAll('select')).find(sel=>findGovOption(sel))||null;}
 
   function captureOSS(downloadAnchor, ossOrigin) {
-    const onclick = downloadAnchor.getAttribute('onclick') || '';
-    let dlUrl = null, m;
+    const onclick = downloadAnchor.getAttribute('onclick') || ''; let dlUrl = null, m;
     m = onclick.match(/window\.open\s*\(\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1];
     if (!dlUrl) { m = onclick.match(/(?:window\.)?location(?:\.href)?\s*=\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1]; }
     if (!dlUrl) { m = onclick.match(/['"]([^'"]*(?:download|export|\.xlsx?)[^'"]*)['"]/i); if (m) dlUrl = m[1]; }
     if (dlUrl) {
       const absUrl = dlUrl.startsWith('http') ? dlUrl : ossOrigin + dlUrl;
       log('OSS GET →', absUrl.slice(0, 100));
-      // السيرفر يقدّم الملف بدون Content-Type/attachment، فنفحص أول بايتات الملف
-      // نفسها: xlsx يبدأ بـ PK (50 4B) و xls القديم يبدأ بـ D0 CF.
       fetch(absUrl, { credentials: 'include' }).then(async res => {
-        const buf = await res.arrayBuffer();
-        const u8 = new Uint8Array(buf);
-        const isXlsx = u8[0] === 0x50 && u8[1] === 0x4B;          // PK
-        const isXls  = u8[0] === 0xD0 && u8[1] === 0xCF;          // OLE
-        log('OSS resp:', res.status, '| bytes:', buf.byteLength,
-            '| magic:', (u8[0] || 0).toString(16) + (u8[1] || 0).toString(16));
-        if (res.status === 200 && buf.byteLength > 100 && (isXlsx || isXls)) {
-          uploadToSF(new Blob([buf]), 'oss_om' + (isXls ? '.xls' : '.xlsx'), '/api/ftth-orders/import');
-        } else {
-          log('❌ OSS resp ليس ملف Excel.');
-        }
+        const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
+        log('OSS resp:', res.status, '| bytes:', buf.byteLength, '| magic:', (u8[0]||0).toString(16) + (u8[1]||0).toString(16));
+        if (res.status === 200 && buf.byteLength > 100 && looksExcel(u8)) { uploadToSF(new Blob([buf]), 'oss_om' + (isXlsExt(u8) ? '.xls' : '.xlsx'), '/api/ftth-orders/import'); }
+        else log('❌ OSS resp ليس ملف Excel.');
       }).catch(e => log('OSS fetch err:', e.message));
-    } else {
-      // fallback: سلّح الـ hook (لو الـ onclick بيستدعى form.submit)
-      armCapture('oss_om.xlsx', '/api/ftth-orders/import', 'OSS');
-      log('OSS: لا URL مباشر في onclick — اعتمدنا على hook. onclick:', onclick.slice(0, 200));
-    }
+    } else { armCapture('oss_om.xlsx', '/api/ftth-orders/import', 'OSS'); log('OSS: لا URL مباشر. onclick:', onclick.slice(0, 200)); }
   }
 
   async function runOSS() {
     log('OSS flow');
     if (/\/cas\//i.test(location.href)) { await doLogin(); return; }
-    const opened = await openAbnormalTab();
-    if (!opened) log('Auto-open failed. Click "Abnormal WO" manually.');
+    const opened = await openAbnormalTab(); if (!opened) log('Auto-open failed. Click "Abnormal WO" manually.');
     const frame = await waitFor(getAbnormalDoc, { label:'OSS Abnormal frame', timeout:120000, interval:800 });
     const d = frame.doc; await sleep(1500); log('Abnormal frame found');
     const moreSearch = await waitFor(() => d.getElementById('moresearch'), { label:'OSS More Search', timeout:20000 });
     realClick(moreSearch); await sleep(1200); log('More Search expanded');
     let govSel=null;
-    try { await waitFor(()=>{govSel=findGovSelect(d);return!!govSel;},{label:'OSS Governorate select',timeout:30000,interval:600}); }
-    catch(e){log('Governorate not found:',Array.from(d.querySelectorAll('select')).map(s=>'#'+(s.id||'?')).join(' '));throw e;}
+    try { await waitFor(()=>{govSel=findGovSelect(d);return!!govSel;},{label:'OSS Governorate select',timeout:30000,interval:600}); } catch(e){log('Governorate not found:',Array.from(d.querySelectorAll('select')).map(s=>'#'+(s.id||'?')).join(' '));throw e;}
     log('gov select #'+(govSel.id||'?')+' located');
     let govOpt=null,loggedOpts=false,prompted=false;const gStart=Date.now();
     while(Date.now()-gStart<25000){openSelect(govSel);govOpt=findGovOption(govSel);if(govOpt)break;const nOpts=govSel.options?govSel.options.length:0;if(!loggedOpts&&nOpts>0){loggedOpts=true;log('gov opts:',Array.from(govSel.options).slice(0,14).map(o=>(o.value||'')+'="'+norm(o.textContent)+'"').join(' | ').slice(0,300));}if(!prompted&&Date.now()-gStart>12000){prompted=true;try{govSel.scrollIntoView({block:'center'});}catch(e){}log('(optional) click Governorate dropdown; else Assiut injected.');}await sleep(700);}
@@ -445,15 +309,10 @@
     log('page:',location.host,location.pathname,isTop?'[top]':'[frame]');
     if(looksBroken()){const home=LOGIN_URL[location.host]||LOGIN_URL['fcc.te.eg'];let last=0;try{last=GM_getValue('recover_at',0);}catch(e){}if(Date.now()-last>8000){try{GM_setValue('recover_at',Date.now());}catch(e){}log('500 detected, restarting...');location.href=home;}else{log('500; just redirected.');}return;}
     const host=location.host;
-    try {
-      if      (host.startsWith('fcc.te.eg')) await runFCC();
-      else if (host.startsWith('wfm.te.eg')) await runWFM();
-      else if (host.startsWith('oss.te.eg')) await runOSS();
-    } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
+    try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.8 loaded on', location.host);
-  // hooks مثبّتة عند document-start؛ نبدأ الـ flow بعد تحميل الصفحة
+  log('TE FCC + WFM + OSS Export v2.9 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
