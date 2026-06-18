@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.11
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.11: OSS fetch→GM_xmlhttpRequest (fixes cookie missing in sandbox) + full btn_download log.
+// @version      2.12
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.12: OSS captures real downloadOrderExcel.ilf via task-window form.submit hook (CSRF token) + fallback GET.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -255,54 +255,92 @@
   function selectForLabel(lab){const tries=[];if(lab.parentElement)tries.push(lab.parentElement);let n=lab.nextElementSibling,c=0;while(n&&c<4){tries.push(n);n=n.nextElementSibling;c++;}const cell=lab.parentElement;if(cell){let m=cell.nextElementSibling,k=0;while(m&&k<3){tries.push(m);m=m.nextElementSibling;k++;}}for(const el of tries){if(el.tagName==='SELECT')return el;const s=el.querySelector&&el.querySelector('select');if(s)return s;}return null;}
   function findGovSelect(doc){let s=doc.getElementById('governorateQ');if(s&&s.tagName==='SELECT')return s;const labs=Array.from(doc.querySelectorAll('label,span,div,td,p,th,dt,b,font')).filter(el=>el.children.length===0&&/^governorate$/i.test(norm(el.textContent)));for(const lab of labs){const sel=selectForLabel(lab);if(sel)return sel;}return Array.from(doc.querySelectorAll('select')).find(sel=>findGovOption(sel))||null;}
 
+  // ModuleName mapping من مصدر btn_download (taskModuleName → ModuleName)
+  const OSS_MODMAP = {
+    ordertask_query1: 'Order Query1', ordertask_query2: 'Order Query2',
+    ordertask_monitor1: 'Order Monitor1', ordertask_monitor2: 'Order Monitor2',
+    exception_wotask: 'Abnormal Query',
+  };
+
   function captureOSS(downloadAnchor, taskWin, ossOrigin) {
     const onclick = downloadAnchor.getAttribute('onclick') || '';
     log('OSS anchor — onclick:', onclick.slice(0, 220));
-    // Log btn_download source so we can see the real download URL pattern
-    try { if (taskWin && taskWin.btn_download) log('btn_download src:', String(taskWin.btn_download).replace(/\s+/g,' ').slice(0, 2000)); } catch(e) { log('btn_download read err:', e.message); }
-    const mPath = onclick.match(/btn_download\s*\(\s*['"]([^'"]+)['"]/i);
-    const filePath = mPath ? mPath[1] : null;
+    // btn_download → formfortoken(contextPath+"/service/eoms/ordermgt/downloadOrderExcel.ilf?filePath="+filePath+"&ModuleName="+ModuleName)
+    // أى أنه يبنى form ويضيف CSRF token ثم submit. نلتقط ذلك الـ submit من نافذة الـ task.
+    const mArgs = onclick.match(/btn_download\s*\(\s*['"]([^'"]+)['"]\s*,\s*['"]([^'"]+)['"]/i);
+    const filePath = mArgs ? mArgs[1] : null;
+    const taskModule = mArgs ? mArgs[2] : 'exception_wotask';
+    const moduleName = OSS_MODMAP[taskModule] || 'Abnormal Query';
     const filename = filePath ? filePath.split('/').pop() : ('oss_om_' + Date.now() + '.xlsx');
     if (!filePath) { log('OSS: لا filePath في onclick'); return; }
-    log('OSS filePath:', filePath, '| filename:', filename);
-    const enc = encodeURIComponent(filePath), encN = encodeURIComponent(filename);
-    const candidates = [
-      ossOrigin + '/om/toDownload?filePath=' + enc,
-      ossOrigin + '/om/toDownload?fileName=' + encN,
-      ossOrigin + '/om/download?filePath=' + enc,
-      ossOrigin + '/om/download?fileName=' + encN,
-      ossOrigin + '/om/exportDownload?filePath=' + enc,
-      ossOrigin + '/om/file/download?filePath=' + enc,
-      ossOrigin + '/om/FileDownload?filePath=' + enc,
-      ossOrigin + '/om/downloadFile?filePath=' + enc,
-    ];
-    // GM_xmlhttpRequest sends OSS session cookies (fetch in sandbox does NOT)
-    function gmGet(url) {
+    log('OSS filePath:', filePath, '| module:', moduleName);
+
+    let done = false;
+    function gmReq(opts) {
       return new Promise((resolve) => {
-        GM_xmlhttpRequest({
-          method: 'GET', url, responseType: 'arraybuffer',
-          onload: (r) => resolve({ status: r.status, buf: r.response }),
+        GM_xmlhttpRequest(Object.assign({
+          responseType: 'arraybuffer', timeout: 60000,
+          onload: (r) => resolve({ status: r.status, buf: r.response || new ArrayBuffer(0) }),
           onerror: () => resolve({ status: 0, buf: new ArrayBuffer(0) }),
           ontimeout: () => resolve({ status: 0, buf: new ArrayBuffer(0) }),
-          timeout: 30000,
-        });
+        }, opts));
       });
     }
-    (async () => {
-      for (const url of candidates) {
-        try {
-          const ep = url.replace(ossOrigin, '');
-          log('OSS try:', ep.slice(0, 100));
-          const { status, buf } = await gmGet(url);
-          const u8 = new Uint8Array(buf);
-          log('  → status:', status, '| bytes:', buf.byteLength, '| magic:', u8[0].toString(16).padStart(2,'0') + u8[1].toString(16).padStart(2,'0'));
-          if (status === 200 && buf.byteLength > 100 && looksExcel(u8)) {
-            log('✅ OSS file via:', ep.split('?')[0]);
-            uploadToSF(new Blob([buf]), filename, '/api/ftth-orders/import'); return;
-          }
-        } catch(e) { log('OSS err:', e.message); }
+    function handle(status, buf, via) {
+      if (done) return false;
+      const u8 = new Uint8Array(buf);
+      log('  ['+via+'] status:', status, '| bytes:', buf.byteLength, '| magic:', (u8[0]||0).toString(16).padStart(2,'0')+(u8[1]||0).toString(16).padStart(2,'0'));
+      if (status === 200 && buf.byteLength > 100 && looksExcel(u8)) {
+        done = true; log('✅ OSS file via', via);
+        uploadToSF(new Blob([buf]), filename, '/api/ftth-orders/import'); return true;
       }
-      log('❌ All OSS endpoints failed — check btn_download src above for real URL.');
+      return false;
+    }
+
+    // (1) hook form.submit فى نافذة الـ task — يلتقط الـ action + التوكن الحقيقى
+    try {
+      const proto = taskWin.HTMLFormElement.prototype;
+      const orig = proto.submit;
+      const restore = () => { try { proto.submit = orig; } catch(e){} };
+      setTimeout(restore, 60000);
+      proto.submit = function () {
+        let action = '', method = 'GET', body = '';
+        try {
+          action = this.action || (this.getAttribute && this.getAttribute('action')) || '';
+          method = (this.method || 'GET').toUpperCase();
+          const params = new URLSearchParams();
+          Array.from(this.querySelectorAll('input,select,textarea')).forEach(inp => {
+            if (!inp.name || inp.type === 'file') return;
+            if ((inp.type === 'checkbox' || inp.type === 'radio') && !inp.checked) return;
+            params.append(inp.name, inp.value || '');
+          });
+          body = params.toString();
+        } catch(e) { log('OSS hook serialize err:', e.message); }
+        restore(); // one-shot
+        log('📸 OSS form →', String(action).slice(0, 90), '|', method, '| fields:', body ? body.split('&').length : 0);
+        (async () => {
+          const opts = method === 'POST'
+            ? { method: 'POST', url: action, data: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+            : { method: 'GET', url: action + (body ? (action.indexOf('?') >= 0 ? '&' : '?') + body : '') };
+          const { status, buf } = await gmReq(opts);
+          handle(status, buf, 'form-hook');
+        })();
+        // نترك الـ submit الأصلى يكمل (تحميل للديسك كـ backup)
+        return orig.apply(this, arguments);
+      };
+      log('OSS form-submit hook installed');
+    } catch(e) { log('OSS hook install err:', e.message); }
+
+    // (2) fallback GET مباشر على الـ endpoint الموثّق (لو الـ hook لم يُطلَق)
+    (async () => {
+      await sleep(5000);
+      if (done) return;
+      const url = ossOrigin + '/om/service/eoms/ordermgt/downloadOrderExcel.ilf?filePath='
+        + encodeURIComponent(filePath) + '&ModuleName=' + encodeURIComponent(moduleName);
+      log('OSS fallback GET:', '/om/service/eoms/ordermgt/downloadOrderExcel.ilf');
+      const { status, buf } = await gmReq({ method: 'GET', url });
+      if (!handle(status, buf, 'fallback-GET') && !done)
+        log('❌ OSS لم يُلتقَط — راجع سطر "📸 OSS form" أو الـ fallback أعلاه.');
     })();
   }
 
@@ -346,7 +384,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.11 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.12 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
