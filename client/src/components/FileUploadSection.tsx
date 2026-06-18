@@ -275,8 +275,23 @@ async function importFtthStaged(file: File): Promise<{ inserted: number; skipped
   return { inserted, skipped: data.length - inserted, sheet: sheetName };
 }
 
+function fmtUploadTime(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth()    === now.getMonth()    &&
+    d.getDate()     === now.getDate();
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (sameDay) return `اليوم ${time}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${time}`;
+}
+
 function UploadCard({
-  label, icon: Icon, endpoint, queryKey, color, extraKeys = [], staged,
+  label, icon: Icon, endpoint, queryKey, color, extraKeys = [], staged, lastUpload,
 }: {
   label: string;
   icon: any;
@@ -285,6 +300,7 @@ function UploadCard({
   color: string;
   extraKeys?: string[];
   staged?: "ftth";
+  lastUpload?: string | null;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -327,7 +343,7 @@ function UploadCard({
         if (d.sheet) desc += ` — من شيت «${d.sheet}»`;
       }
       toast({ title: "تم الاستيراد", description: desc, duration: 4500 });
-      [queryKey, ...extraKeys].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      [queryKey, ...extraKeys, "/api/upload-times"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
     },
     onError: (e: Error) => {
       toast({ title: "خطأ", description: e.message, variant: "destructive", duration: 5000 });
@@ -340,7 +356,7 @@ function UploadCard({
       <div className="flex-1">
         <p className="font-medium text-sm">{label}</p>
         <p className="text-xs text-muted-foreground">
-          {mut.isPending ? "جاري الاستيراد..." : "اختر ملف Excel"}
+          {mut.isPending ? "جاري الاستيراد..." : lastUpload ? `آخر رفع: ${fmtUploadTime(lastUpload)}` : "لم يُرفع بعد"}
         </p>
       </div>
       <input
@@ -378,6 +394,14 @@ export function FileUploadSection() {
   const [searchQ, setSearchQ] = useState("");
   // bucket for tables that keep 3 snapshots: تاريخي / بداية اليوم / حالي
   const [bucket, setBucket] = useState<"historical" | "sod" | "current">("historical");
+
+  const { data: uploadTimes = {} } = useQuery<Record<string, string | null>>({
+    queryKey: ["/api/upload-times"],
+    queryFn: () => fetch("/api/upload-times", { credentials: "include" }).then(r => r.json()),
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+  const ut = (ep: string) => uploadTimes[ep];
 
   const { data: maintenance = [], isFetching: fetchM } = useQuery<MaintenanceOrder[]>({
     queryKey: ["/api/maintenance-orders", dateFrom, dateTo, bucket],
@@ -563,6 +587,7 @@ export function FileUploadSection() {
           endpoint="/api/maintenance-orders/import"
           queryKey="/api/maintenance-orders"
           color="border-orange-200 bg-orange-50/50"
+          lastUpload={ut("/api/maintenance-orders/import")}
         />
         <UploadCard
           label="شكاوى DSL/نحاس (fcc)"
@@ -570,6 +595,7 @@ export function FileUploadSection() {
           endpoint="/api/ticket-queue/import"
           queryKey="/api/tickets"
           color="border-purple-200 bg-purple-50/50"
+          lastUpload={ut("/api/ticket-queue/import")}
         />
         <UploadCard
           label="شكاوى FTTH (fcc )"
@@ -577,6 +603,7 @@ export function FileUploadSection() {
           endpoint="/api/ticket-queue-ftth/import"
           queryKey="/api/tickets"
           color="border-fuchsia-200 bg-fuchsia-50/50"
+          lastUpload={ut("/api/ticket-queue-ftth/import")}
         />
         <UploadCard
           label="تفاصيل الأعطال (430D_Trial) — التفاصيل تتراكم / المتبقى يُستبدل (مع تسجيل تاريخي)"
@@ -585,6 +612,7 @@ export function FileUploadSection() {
           queryKey="/api/complaint-details"
           extraKeys={["/api/remaining-complaints"]}
           color="border-teal-200 bg-teal-50/50"
+          lastUpload={ut("/api/complaint-details/import")}
         />
         <UploadCard
           label="طلبات متعذرات OM — تاريخي + حالي + أرشيف سنوي"
@@ -592,6 +620,7 @@ export function FileUploadSection() {
           endpoint="/api/ftth-orders/import"
           queryKey="/api/ftth-orders"
           color="border-emerald-200 bg-emerald-50/50"
+          lastUpload={ut("/api/ftth-orders/import")}
         />
         <UploadCard
           label="متعذرات بداية السنة (OM) — يضاف يدوياً (تراكمى)"
@@ -599,6 +628,7 @@ export function FileUploadSection() {
           endpoint="/api/ftth-orders/import-soy"
           queryKey="/api/ftth-orders"
           color="border-teal-200 bg-teal-50/50"
+          lastUpload={ut("/api/ftth-orders/import-soy")}
         />
         <UploadCard
           label="مشتركين FTTH / ADSL — يستبدل القديم (رفع على مراحل)"
@@ -607,6 +637,7 @@ export function FileUploadSection() {
           queryKey="/api/ftth-subscribers"
           color="border-indigo-200 bg-indigo-50/50"
           staged="ftth"
+          lastUpload={ut("/api/ftth-subscribers/import")}
         />
         <UploadCard
           label="قياسات خطوط (أعطال DSL) — يستبدل القديم"
@@ -614,6 +645,7 @@ export function FileUploadSection() {
           endpoint="/api/case-138/import"
           queryKey="/api/case-138"
           color="border-amber-200 bg-amber-50/50"
+          lastUpload={ut("/api/case-138/import")}
         />
         <UploadCard
           label="منافذ MSAN ( Provisional Ports) — تحديث برقم التليفون"
@@ -621,6 +653,7 @@ export function FileUploadSection() {
           endpoint="/api/phone-ports/import"
           queryKey="/api/phone-ports"
           color="border-cyan-200 bg-cyan-50/50"
+          lastUpload={ut("/api/phone-ports/import")}
         />
         <UploadCard
           label="الفنيين بأرقام الكباين — يستبدل القديم"
@@ -628,6 +661,7 @@ export function FileUploadSection() {
           endpoint="/api/cabinet-technicians/import"
           queryKey="/api/cabinet-technicians"
           color="border-lime-200 bg-lime-50/50"
+          lastUpload={ut("/api/cabinet-technicians/import")}
         />
         <UploadCard
           label="أسماء الفنيين (كود العامل + الاسم) — يستبدل القديم"
@@ -635,6 +669,7 @@ export function FileUploadSection() {
           endpoint="/api/technician-names/import"
           queryKey="/api/technician-names"
           color="border-violet-200 bg-violet-50/50"
+          lastUpload={ut("/api/technician-names/import")}
         />
       </Card>
 

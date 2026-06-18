@@ -2646,6 +2646,31 @@ export async function registerRoutes(
   });
 
   // GET /api/cabinet-technicians — list with search
+  // GET /api/upload-times — آخر وقت رفع لكل جدول (للعرض بجانب كل بطاقة رفع)
+  app.get("/api/upload-times", requireAuth, async (_req, res) => {
+    const tables: { key: string; table: string }[] = [
+      { key: "/api/maintenance-orders/import",  table: "maintenance_orders" },
+      { key: "/api/ticket-queue/import",        table: "ticket_queue" },
+      { key: "/api/ticket-queue-ftth/import",   table: "ticket_ftth" },
+      { key: "/api/complaint-details/import",   table: "complaint_details" },
+      { key: "/api/ftth-orders/import",         table: "ftth_orders" },
+      { key: "/api/ftth-orders/import-soy",     table: "ftth_orders_soy" },
+      { key: "/api/ftth-subscribers/import",    table: "ftth_subscribers" },
+      { key: "/api/case-138/import",            table: "case_138" },
+      { key: "/api/phone-ports/import",         table: "phone_ports" },
+      { key: "/api/cabinet-technicians/import", table: "cabinet_technicians" },
+      { key: "/api/technician-names/import",    table: "technician_names" },
+    ];
+    const result: Record<string, string | null> = {};
+    for (const { key, table } of tables) {
+      try {
+        const { rows } = await pool.query(`SELECT MAX(uploaded_at) AS t FROM ${table}`);
+        result[key] = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
+      } catch { result[key] = null; }
+    }
+    res.json(result);
+  });
+
   app.get("/api/cabinet-technicians", requireAuth, async (req, res) => {
     const { q } = req.query as Record<string, string>;
     const params: any[] = [];
