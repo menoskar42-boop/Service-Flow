@@ -3549,111 +3549,196 @@ export async function registerRoutes(
   });
 
   // GET /api/reports/regularized-faults-range — الأعطال المنتظمة خلال فترة من/إلى
-  // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
+  // المصدر 1: complaint_details (شيت التفاصيل) — كل السجلات المغلقة منتظمة.
+  // المصدر 2: remaining_complaints (شيت المتبقى) — فقط status_code 138 و 135 منتظمة.
   app.get("/api/reports/regularized-faults-range", requireAuth, async (req, res) => {
     try {
       const { central = "", q = "", dateFrom = "", dateTo = "" } =
         req.query as Record<string, string>;
       const params: any[] = [];
-      // ملاحظة: cd.central_name فى complaint_details فاضى دائماً — العمود الصحيح
-      // للسنترال هو exchange_name (نفس ما يستخدمه تقرير إحصائيات الإزالة).
-      const conds: string[] = [
+
+      // نبنى شرطين منفصلين بنفس أرقام البارامترات — يُشاركان $1..$n فى الـ UNION
+      const cdConds: string[] = [
         `cd.close_time IS NOT NULL`,
         `cd.exchange_name ILIKE '%غنايم%'`,
       ];
-      if (central) { params.push(central); conds.push(`cd.exchange_name = $${params.length}`); }
+      const rcConds: string[] = [
+        `rc.status_code IN ('138', '135')`,
+        `rc.exchange_name ILIKE '%غنايم%'`,
+      ];
+
+      if (central) {
+        params.push(central);
+        cdConds.push(`cd.exchange_name = $${params.length}`);
+        rcConds.push(`rc.exchange_name = $${params.length}`);
+      }
       if (dateFrom) {
         params.push(dateFrom);
-        conds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
+        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
+        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
       }
       if (dateTo) {
         params.push(dateTo);
-        conds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
+        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
+        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
       }
       if (q.trim()) {
         params.push(`%${q.trim()}%`);
         const p = `$${params.length}`;
-        conds.push(`(cd.phone_number ILIKE ${p} OR cd.cabinet_no ILIKE ${p} OR cd.close_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
+        cdConds.push(`(cd.phone_number ILIKE ${p} OR cd.cabinet_no ILIKE ${p} OR cd.close_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
+        rcConds.push(`(rc.phone_number ILIKE ${p} OR rc.cabinet_no ILIKE ${p} OR rc.status_code ILIKE ${p})`);
       }
-      const where = "WHERE " + conds.join(" AND ");
+      const cdWhere = "WHERE " + cdConds.join(" AND ");
+      const rcWhere = "WHERE " + rcConds.join(" AND ");
 
-      const { rows } = await pool.query(
-        `SELECT
-           cd.complain_no           AS "ticketId",
-           cd.exchange_name         AS "centralName",
-           cd.phone_number          AS "phoneShort",
-           CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''
-                     AND EXISTS (
-                       SELECT 1 FROM complaint_details cd2
-                       WHERE cd2.complain_no <> cd.complain_no
-                         AND cd2.close_time IS NOT NULL
-                         AND cd2.phone_number = cd.phone_number
-                         AND date_trunc('month', cd2.close_time AT TIME ZONE 'Africa/Cairo')
-                           = date_trunc('month', cd.close_time AT TIME ZONE 'Africa/Cairo')
-                     )
-                THEN 'مكرر' ELSE '' END AS "repeatStatus",
-           cd.close_code            AS "statusCode",
-           COALESCE(cd.msan_id, ct.cabin_code) AS "msanCode",
-           pp.frame                 AS "frame",
-           cd.cabinet_no            AS "cabinetNo",
-           pl.box_number            AS "boxNo",
-           pl.dp_terminal           AS "dpTerminal",
-           cd.complain_time         AS "complainTime",
-           cd.complain_type_name    AS "complainTypeName",
-           CASE
-             WHEN cd.complain_time IS NULL THEN 'مغلق'
-             WHEN (cd.close_time - cd.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
-             WHEN (cd.close_time - cd.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
-             ELSE 'المتبقيات'
-           END                      AS "regStatus",
-           cd.close_time            AS "closeDate",
-           pp.onu                   AS "onu",
-           ct.worker_code           AS "workerCode",
-           COALESCE(tn.tech_name, mcb.tech_name, cd.close_by) AS "techName",
-           ct.haya_karima           AS "hayaKarima",
-           pp.voice_status          AS "voiceStatus",
-           pp.data_status           AS "dataStatus",
-           pp.shelf                 AS "shelf",
-           pp.slot                  AS "slot",
-           pp.port_number           AS "portNumber",
-           -- كود السنترال مُشتق من اسم السنترال (exchange_name)
-           CASE cd.exchange_name
+      // ماكرو مشترك لكود السنترال
+      const centralCodeCase = (col: string) => `CASE ${col}
              WHEN 'الغنايم'              THEN 'GHNAT'
              WHEN 'الغنايم-العزايزة'     THEN 'AMZAT'
              WHEN 'الغنايم-دير الجنادله' THEN 'DRGAT'
              WHEN 'الغنايم-نجع العمدة'   THEN 'NGOAT'
-             ELSE NULL
-           END                      AS "centralCode",
-           c138p.account_no         AS "accountNo",
-           c138p.current_speed      AS "lineCurrentSpeed",
-           c138p.max_speed          AS "lineMaxSpeed",
-           c138p.score              AS "lastMeasScore",
-           c138p.complain_no        AS "lastMeasComplainNo",
-           c138p.uploaded_at      AS "lastMeasTime",
-           c138c.score              AS "curMeasScore",
-           c138c.current_speed      AS "curMeasCurrentSpeed",
-           c138c.max_speed          AS "curMeasMaxSpeed",
-           c138c.uploaded_at      AS "curMeasTime"
-         FROM complaint_details cd
-         LEFT JOIN phone_ports pp ON pp.phone_number = cd.phone_number
-         LEFT JOIN phone_lines pl ON pl.tel_no = cd.phone_number
-         LEFT JOIN cabinet_technicians ct ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
-         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
-         LEFT JOIN manual_close_by mcb ON mcb.complain_no = cd.complain_no
-         -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
-         LEFT JOIN LATERAL (
-           SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
-           FROM case_138 c WHERE c.full_phone = '88' || cd.phone_number
-           ORDER BY c.id DESC LIMIT 1
-         ) c138p ON true
-         -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
-         LEFT JOIN LATERAL (
-           SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
-           FROM case_138 c WHERE c.complain_no = cd.complain_no
-           ORDER BY c.id DESC LIMIT 1
-         ) c138c ON true
-         ${where}
-         ORDER BY cd.close_time ASC NULLS LAST`,
+             ELSE NULL END`;
+
+      const { rows } = await pool.query(
+        `(
+           -- ===== شيت التفاصيل: كل الأعطال المغلقة منتظمة =====
+           SELECT
+             cd.complain_no           AS "ticketId",
+             cd.exchange_name         AS "centralName",
+             cd.phone_number          AS "phoneShort",
+             CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''
+                       AND EXISTS (
+                         SELECT 1 FROM complaint_details cd2
+                         WHERE cd2.complain_no <> cd.complain_no
+                           AND cd2.close_time IS NOT NULL
+                           AND cd2.phone_number = cd.phone_number
+                           AND date_trunc('month', cd2.close_time AT TIME ZONE 'Africa/Cairo')
+                             = date_trunc('month', cd.close_time AT TIME ZONE 'Africa/Cairo')
+                       )
+                  THEN 'مكرر' ELSE '' END AS "repeatStatus",
+             cd.close_code            AS "statusCode",
+             COALESCE(cd.msan_id, ct.cabin_code) AS "msanCode",
+             pp.frame                 AS "frame",
+             cd.cabinet_no            AS "cabinetNo",
+             pl.box_number            AS "boxNo",
+             pl.dp_terminal           AS "dpTerminal",
+             cd.complain_time         AS "complainTime",
+             cd.complain_type_name    AS "complainTypeName",
+             CASE
+               WHEN cd.complain_time IS NULL THEN 'مغلق'
+               WHEN (cd.close_time - cd.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
+               WHEN (cd.close_time - cd.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
+               ELSE 'المتبقيات'
+             END                      AS "regStatus",
+             cd.close_time            AS "closeDate",
+             pp.onu                   AS "onu",
+             ct.worker_code           AS "workerCode",
+             COALESCE(tn.tech_name, mcb.tech_name, cd.close_by) AS "techName",
+             ct.haya_karima           AS "hayaKarima",
+             pp.voice_status          AS "voiceStatus",
+             pp.data_status           AS "dataStatus",
+             pp.shelf                 AS "shelf",
+             pp.slot                  AS "slot",
+             pp.port_number           AS "portNumber",
+             ${centralCodeCase("cd.exchange_name")} AS "centralCode",
+             c138p.account_no         AS "accountNo",
+             c138p.current_speed      AS "lineCurrentSpeed",
+             c138p.max_speed          AS "lineMaxSpeed",
+             c138p.score              AS "lastMeasScore",
+             c138p.complain_no        AS "lastMeasComplainNo",
+             c138p.uploaded_at        AS "lastMeasTime",
+             c138c.score              AS "curMeasScore",
+             c138c.current_speed      AS "curMeasCurrentSpeed",
+             c138c.max_speed          AS "curMeasMaxSpeed",
+             c138c.uploaded_at        AS "curMeasTime",
+             'تفاصيل'                 AS "dataSource"
+           FROM complaint_details cd
+           LEFT JOIN phone_ports pp       ON pp.phone_number = cd.phone_number
+           LEFT JOIN phone_lines pl       ON pl.tel_no = cd.phone_number
+           LEFT JOIN cabinet_technicians ct ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
+           LEFT JOIN technician_names tn  ON tn.worker_code = ct.worker_code
+           LEFT JOIN manual_close_by mcb  ON mcb.complain_no = cd.complain_no
+           LEFT JOIN LATERAL (
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+             FROM case_138 c WHERE c.full_phone = '88' || cd.phone_number
+             ORDER BY c.id DESC LIMIT 1
+           ) c138p ON true
+           LEFT JOIN LATERAL (
+             SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
+             FROM case_138 c WHERE c.complain_no = cd.complain_no
+             ORDER BY c.id DESC LIMIT 1
+           ) c138c ON true
+           ${cdWhere}
+         )
+         UNION ALL
+         (
+           -- ===== شيت المتبقى: فقط 138 و 135 منتظمة =====
+           SELECT
+             rc.complain_no           AS "ticketId",
+             rc.exchange_name         AS "centralName",
+             rc.phone_number          AS "phoneShort",
+             CASE WHEN rc.phone_number IS NOT NULL AND rc.phone_number <> ''
+                       AND EXISTS (
+                         SELECT 1 FROM remaining_complaints rc2
+                         WHERE rc2.complain_no <> rc.complain_no
+                           AND rc2.status_code IN ('138', '135')
+                           AND rc2.phone_number = rc.phone_number
+                       )
+                  THEN 'مكرر' ELSE '' END AS "repeatStatus",
+             rc.status_code           AS "statusCode",
+             COALESCE(rc.msan_id, ct2.cabin_code) AS "msanCode",
+             pp2.frame                AS "frame",
+             rc.cabinet_no            AS "cabinetNo",
+             pl2.box_number           AS "boxNo",
+             pl2.dp_terminal          AS "dpTerminal",
+             rc.complain_time         AS "complainTime",
+             rc.complain_type         AS "complainTypeName",
+             CASE
+               WHEN rc.complain_time IS NULL THEN 'مغلق'
+               WHEN (COALESCE(rc.close_time, NOW()) - rc.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
+               WHEN (COALESCE(rc.close_time, NOW()) - rc.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
+               ELSE 'المتبقيات'
+             END                      AS "regStatus",
+             rc.close_time            AS "closeDate",
+             pp2.onu                  AS "onu",
+             ct2.worker_code          AS "workerCode",
+             COALESCE(tn2.tech_name, rc.close_by) AS "techName",
+             ct2.haya_karima          AS "hayaKarima",
+             pp2.voice_status         AS "voiceStatus",
+             pp2.data_status          AS "dataStatus",
+             pp2.shelf                AS "shelf",
+             pp2.slot                 AS "slot",
+             pp2.port_number          AS "portNumber",
+             ${centralCodeCase("rc.exchange_name")} AS "centralCode",
+             rc138p.account_no        AS "accountNo",
+             rc138p.current_speed     AS "lineCurrentSpeed",
+             rc138p.max_speed         AS "lineMaxSpeed",
+             rc138p.score             AS "lastMeasScore",
+             rc138p.complain_no       AS "lastMeasComplainNo",
+             rc138p.uploaded_at       AS "lastMeasTime",
+             rc138c.score             AS "curMeasScore",
+             rc138c.current_speed     AS "curMeasCurrentSpeed",
+             rc138c.max_speed         AS "curMeasMaxSpeed",
+             rc138c.uploaded_at       AS "curMeasTime",
+             'متبقى'                  AS "dataSource"
+           FROM remaining_complaints rc
+           LEFT JOIN phone_ports pp2        ON pp2.phone_number = rc.phone_number
+           LEFT JOIN phone_lines pl2        ON pl2.tel_no = rc.phone_number
+           LEFT JOIN cabinet_technicians ct2 ON ct2.central_name = rc.exchange_name AND ct2.cabin_number = rc.cabinet_no
+           LEFT JOIN technician_names tn2   ON tn2.worker_code = ct2.worker_code
+           LEFT JOIN LATERAL (
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+             FROM case_138 c WHERE c.full_phone = '88' || rc.phone_number
+             ORDER BY c.id DESC LIMIT 1
+           ) rc138p ON true
+           LEFT JOIN LATERAL (
+             SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
+             FROM case_138 c WHERE c.complain_no = rc.complain_no
+             ORDER BY c.id DESC LIMIT 1
+           ) rc138c ON true
+           ${rcWhere}
+         )
+         ORDER BY "closeDate" ASC NULLS LAST`,
         params,
       );
       res.json(rows);

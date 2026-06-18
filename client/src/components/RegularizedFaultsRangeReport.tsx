@@ -34,6 +34,7 @@ interface RegularizedFault extends Measurement138 {
   slot: string | null;
   portNumber: string | null;
   centralCode: string | null;
+  dataSource: "تفاصيل" | "متبقى";
 }
 
 // الأوقات من ملف TicketQueue مخزَّنة كـ UTC — تُعرض كما هى دون إزاحة المتصفح.
@@ -141,6 +142,7 @@ export function RegularizedFaultsRangeReport() {
   const handleExportExcel = () => {
     const rows = displayed.map((f, i) => ({
       "#": i + 1,
+      "المصدر": f.dataSource,
       "Field1": f.centralName,
       "رقم التلفون": f.phoneShort,
       "رقم الأكونت": f.accountNo,
@@ -181,7 +183,7 @@ export function RegularizedFaultsRangeReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
+      <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>حالة الانتظام</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
@@ -192,6 +194,7 @@ export function RegularizedFaultsRangeReport() {
       const body = chunk.map((f, ci) => `
         <tr class="green">
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
+          <td style="font-size:9px;color:${f.dataSource === 'متبقى' ? '#92400e' : '#1e40af'}">${esc(f.dataSource)}</td>
           <td>${esc(f.centralName)}</td>
           <td>${esc(f.phoneShort)}</td>
           <td>${esc(f.accountNo)}</td>
@@ -343,6 +346,7 @@ export function RegularizedFaultsRangeReport() {
             <TableHeader className="bg-blue-900">
               <TableRow>
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
+                <TableHead className="text-right font-bold text-white">المصدر</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
@@ -373,7 +377,7 @@ export function RegularizedFaultsRangeReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={26} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={27} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
                       : repeatedOnly
@@ -384,6 +388,13 @@ export function RegularizedFaultsRangeReport() {
               ) : displayed.map((f, i) => (
                 <TableRow key={i} className="bg-green-50 hover:bg-green-100">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                  <TableCell>
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      f.dataSource === "متبقى"
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}>{f.dataSource}</span>
+                  </TableCell>
                   <TableCell>{f.centralName || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
                   <TableCell>
