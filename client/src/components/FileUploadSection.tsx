@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -543,6 +543,17 @@ export function FileUploadSection() {
 
   return (
     <div className="space-y-5" dir="rtl">
+      {/* زر تشغيل التقارير اليومية */}
+      <div className="flex justify-end">
+        <Button
+          onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank")}
+          className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+        >
+          <RefreshCw className="w-4 h-4" />
+          حدث التقارير اليومية
+        </Button>
+      </div>
+
       {/* Upload Cards */}
       <Card className="p-4 bg-white border-0 shadow-sm space-y-3">
         <p className="text-sm font-semibold text-muted-foreground">رفع الملفات</p>
