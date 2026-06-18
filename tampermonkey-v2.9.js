@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.10
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.10: OSS servlet probe (btn_download logged + 8 URL patterns tried) + arm timeout 45s.
+// @version      2.11
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.11: OSS fetch→GM_xmlhttpRequest (fixes cookie missing in sandbox) + full btn_download log.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -259,7 +259,7 @@
     const onclick = downloadAnchor.getAttribute('onclick') || '';
     log('OSS anchor — onclick:', onclick.slice(0, 220));
     // Log btn_download source so we can see the real download URL pattern
-    try { if (taskWin && taskWin.btn_download) log('btn_download src:', String(taskWin.btn_download).replace(/\s+/g,' ').slice(0, 500)); } catch(e) { log('btn_download read err:', e.message); }
+    try { if (taskWin && taskWin.btn_download) log('btn_download src:', String(taskWin.btn_download).replace(/\s+/g,' ').slice(0, 2000)); } catch(e) { log('btn_download read err:', e.message); }
     const mPath = onclick.match(/btn_download\s*\(\s*['"]([^'"]+)['"]/i);
     const filePath = mPath ? mPath[1] : null;
     const filename = filePath ? filePath.split('/').pop() : ('oss_om_' + Date.now() + '.xlsx');
@@ -276,19 +276,31 @@
       ossOrigin + '/om/FileDownload?filePath=' + enc,
       ossOrigin + '/om/downloadFile?filePath=' + enc,
     ];
+    // GM_xmlhttpRequest sends OSS session cookies (fetch in sandbox does NOT)
+    function gmGet(url) {
+      return new Promise((resolve) => {
+        GM_xmlhttpRequest({
+          method: 'GET', url, responseType: 'arraybuffer',
+          onload: (r) => resolve({ status: r.status, buf: r.response }),
+          onerror: () => resolve({ status: 0, buf: new ArrayBuffer(0) }),
+          ontimeout: () => resolve({ status: 0, buf: new ArrayBuffer(0) }),
+          timeout: 30000,
+        });
+      });
+    }
     (async () => {
       for (const url of candidates) {
         try {
           const ep = url.replace(ossOrigin, '');
           log('OSS try:', ep.slice(0, 100));
-          const res = await fetch(url, { credentials: 'include' });
-          const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
-          log('  → status:', res.status, '| bytes:', buf.byteLength, '| magic:', (u8[0]||0).toString(16)+(u8[1]||0).toString(16));
-          if (res.status === 200 && buf.byteLength > 100 && looksExcel(u8)) {
+          const { status, buf } = await gmGet(url);
+          const u8 = new Uint8Array(buf);
+          log('  → status:', status, '| bytes:', buf.byteLength, '| magic:', u8[0].toString(16).padStart(2,'0') + u8[1].toString(16).padStart(2,'0'));
+          if (status === 200 && buf.byteLength > 100 && looksExcel(u8)) {
             log('✅ OSS file via:', ep.split('?')[0]);
             uploadToSF(new Blob([buf]), filename, '/api/ftth-orders/import'); return;
           }
-        } catch(e) { log('OSS fetch err:', e.message); }
+        } catch(e) { log('OSS err:', e.message); }
       }
       log('❌ All OSS endpoints failed — check btn_download src above for real URL.');
     })();
@@ -334,7 +346,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.10 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.11 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
