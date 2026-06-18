@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.9
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.9: explicit @connect (no permission prompt) + form.submit capture + magic-byte sniffing.
+// @version      2.10
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.10: OSS servlet probe (btn_download logged + 8 URL patterns tried) + arm timeout 45s.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -77,7 +77,7 @@
   let armed = null;
   function armCapture(filename, endpoint, label) {
     armed = { filename, endpoint, label }; log('🔫 armed capture:', label);
-    setTimeout(() => { if (armed && armed.label === label) { armed = null; log('⏱ disarmed (timeout):', label); } }, 12000);
+    setTimeout(() => { if (armed && armed.label === label) { armed = null; log('⏱ disarmed (timeout):', label); } }, 45000);
   }
 
   function serializeForm(form) {
@@ -255,26 +255,43 @@
   function selectForLabel(lab){const tries=[];if(lab.parentElement)tries.push(lab.parentElement);let n=lab.nextElementSibling,c=0;while(n&&c<4){tries.push(n);n=n.nextElementSibling;c++;}const cell=lab.parentElement;if(cell){let m=cell.nextElementSibling,k=0;while(m&&k<3){tries.push(m);m=m.nextElementSibling;k++;}}for(const el of tries){if(el.tagName==='SELECT')return el;const s=el.querySelector&&el.querySelector('select');if(s)return s;}return null;}
   function findGovSelect(doc){let s=doc.getElementById('governorateQ');if(s&&s.tagName==='SELECT')return s;const labs=Array.from(doc.querySelectorAll('label,span,div,td,p,th,dt,b,font')).filter(el=>el.children.length===0&&/^governorate$/i.test(norm(el.textContent)));for(const lab of labs){const sel=selectForLabel(lab);if(sel)return sel;}return Array.from(doc.querySelectorAll('select')).find(sel=>findGovOption(sel))||null;}
 
-  function captureOSS(downloadAnchor, ossOrigin) {
+  function captureOSS(downloadAnchor, taskWin, ossOrigin) {
     const onclick = downloadAnchor.getAttribute('onclick') || '';
-    const href = downloadAnchor.getAttribute('href') || '';
     log('OSS anchor — onclick:', onclick.slice(0, 220));
-    log('OSS anchor — href:', href.slice(0, 120));
-    let dlUrl = null, m;
-    m = onclick.match(/window\.open\s*\(\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1];
-    if (!dlUrl) { m = onclick.match(/(?:window\.)?location(?:\.href)?\s*=\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1]; }
-    if (!dlUrl) { m = onclick.match(/['"]([^'"]*(?:download|export|\.xlsx?)[^'"]*)['"]/i); if (m) dlUrl = m[1]; }
-    if (!dlUrl && href && !/^(javascript|#)/i.test(href)) dlUrl = href;
-    if (dlUrl) {
-      const absUrl = dlUrl.startsWith('http') ? dlUrl : ossOrigin + dlUrl;
-      log('OSS GET →', absUrl.slice(0, 100));
-      fetch(absUrl, { credentials: 'include' }).then(async res => {
-        const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
-        log('OSS resp:', res.status, '| bytes:', buf.byteLength, '| magic:', (u8[0]||0).toString(16) + (u8[1]||0).toString(16));
-        if (res.status === 200 && buf.byteLength > 100 && looksExcel(u8)) { uploadToSF(new Blob([buf]), 'oss_om' + (isXlsExt(u8) ? '.xls' : '.xlsx'), '/api/ftth-orders/import'); }
-        else log('❌ OSS resp ليس ملف Excel (status ' + res.status + ').');
-      }).catch(e => log('OSS fetch err:', e.message));
-    } else { log('OSS: لا URL في onclick/href.'); }
+    // Log btn_download source so we can see the real download URL pattern
+    try { if (taskWin && taskWin.btn_download) log('btn_download src:', String(taskWin.btn_download).replace(/\s+/g,' ').slice(0, 500)); } catch(e) { log('btn_download read err:', e.message); }
+    const mPath = onclick.match(/btn_download\s*\(\s*['"]([^'"]+)['"]/i);
+    const filePath = mPath ? mPath[1] : null;
+    const filename = filePath ? filePath.split('/').pop() : ('oss_om_' + Date.now() + '.xlsx');
+    if (!filePath) { log('OSS: لا filePath في onclick'); return; }
+    log('OSS filePath:', filePath, '| filename:', filename);
+    const enc = encodeURIComponent(filePath), encN = encodeURIComponent(filename);
+    const candidates = [
+      ossOrigin + '/om/toDownload?filePath=' + enc,
+      ossOrigin + '/om/toDownload?fileName=' + encN,
+      ossOrigin + '/om/download?filePath=' + enc,
+      ossOrigin + '/om/download?fileName=' + encN,
+      ossOrigin + '/om/exportDownload?filePath=' + enc,
+      ossOrigin + '/om/file/download?filePath=' + enc,
+      ossOrigin + '/om/FileDownload?filePath=' + enc,
+      ossOrigin + '/om/downloadFile?filePath=' + enc,
+    ];
+    (async () => {
+      for (const url of candidates) {
+        try {
+          const ep = url.replace(ossOrigin, '');
+          log('OSS try:', ep.slice(0, 100));
+          const res = await fetch(url, { credentials: 'include' });
+          const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
+          log('  → status:', res.status, '| bytes:', buf.byteLength, '| magic:', (u8[0]||0).toString(16)+(u8[1]||0).toString(16));
+          if (res.status === 200 && buf.byteLength > 100 && looksExcel(u8)) {
+            log('✅ OSS file via:', ep.split('?')[0]);
+            uploadToSF(new Blob([buf]), filename, '/api/ftth-orders/import'); return;
+          }
+        } catch(e) { log('OSS fetch err:', e.message); }
+      }
+      log('❌ All OSS endpoints failed — check btn_download src above for real URL.');
+    })();
   }
 
   async function runOSS() {
@@ -303,7 +320,7 @@
     await sleep(20000);
     const downloadAnchor=await waitFor(()=>{const rb=task.doc.getElementById('btn_refresh');if(rb)realClick(rb);const rows=Array.from(task.doc.querySelectorAll('table tr'));for(const tr of rows){const tds=tr.querySelectorAll('td');if(tds.length>=6){const name=norm(tds[2].textContent),status=norm(tds[4].textContent);if(name==='claude'&&/Completed/i.test(status)){const a=tds[5].querySelector('a[onclick]');if(a)return a;}}}return null;},{label:'OSS completed claude row',timeout:300000,interval:10000});
     log('OSS downloading:',norm(downloadAnchor.textContent));
-    captureOSS(downloadAnchor,'https://oss.te.eg:15201');
+    captureOSS(downloadAnchor, task.win, 'https://oss.te.eg:15201');
     realClick(downloadAnchor); log('OSS download triggered. DONE.');
   }
 
@@ -317,7 +334,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.9 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.10 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
