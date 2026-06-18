@@ -56,9 +56,10 @@
     GM_xmlhttpRequest({
       method: 'POST', url: SF_URL + endpoint,
       headers: { 'X-Upload-Token': SF_UPLOAD_TOKEN },
-      data: fd,
-      onload: r => { try { log('✅ SF:', JSON.stringify(JSON.parse(r.responseText))); } catch (e) { log('✅ SF', r.status, r.responseText.slice(0, 100)); } },
-      onerror: e => log('❌ SF error:', String(e)),
+      data: fd, timeout: 60000,
+      onload: r => { try { log('✅ SF:', JSON.stringify(JSON.parse(r.responseText))); } catch (e) { log('✅ SF', r.status, (r.responseText || '').slice(0, 120)); } },
+      onerror: r => log('❌ SF error — status:', (r && r.status), '| ' + (r && (r.error || r.statusText || r.finalUrl)) || 'فشل الاتصال (وافق على إذن Tampermonkey للدومين)'),
+      ontimeout: () => log('❌ SF timeout (السيرفر لم يرد خلال 60ث)'),
     });
   }
 
