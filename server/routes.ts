@@ -200,6 +200,12 @@ const SURVEY_TYPES = [
 ];
 const SURVEY_TYPES_LC = SURVEY_TYPES.map((s) => s.toLowerCase());
 
+// Normalize FCC status codes to short canonical form (e.g. "173Re-open TTS" → "173-DSL")
+function normalizeStatusCode(raw: string): string {
+  if (/^173|re-open\s*tts|tts\s*173/i.test(raw)) return "173-DSL";
+  return raw;
+}
+
 // Parse a TicketQueue sheet (Arabic OR English headers) into value arrays
 // matching TICKET_COLS. Stores ALL centrals (name falls back to the code).
 // Deduplicated by (ticket_id, status_code) for the historical unique key.
@@ -228,7 +234,7 @@ function parseTicketFile(buffer: Buffer): any[][] {
   for (const r of dataRows) {
     const ticketId = String(g(r, iTicket)).trim();
     if (!ticketId) continue;
-    const status = String(g(r, iStatus)).trim();
+    const status = normalizeStatusCode(String(g(r, iStatus)).trim());
     const key = ticketId + "|" + status;
     if (seen.has(key)) continue;
     seen.add(key);
