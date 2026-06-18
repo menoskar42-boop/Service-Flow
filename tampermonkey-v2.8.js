@@ -108,14 +108,17 @@
         const ct = res.headers.get('Content-Type') || '';
         log('📥 resp:', res.status, '| CT:', ct.slice(0, 40), '| CD:', cd.slice(0, 50));
 
-        if (isFileHeaders(cd, ct)) {
-          const blob = await res.blob();
-          log('✅ got blob:', blob.size, 'bytes');
-          uploadToSF(blob, cap.filename, cap.endpoint);
+        // إما headers تدل على ملف، أو نفحص أول بايتات الجسم (PK=xlsx, D0CF=xls)
+        const buf = await res.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        const looksExcel = (u8[0] === 0x50 && u8[1] === 0x4B) || (u8[0] === 0xD0 && u8[1] === 0xCF);
+        if (res.status === 200 && (isFileHeaders(cd, ct) || (looksExcel && buf.byteLength > 100))) {
+          log('✅ got blob:', buf.byteLength, 'bytes', looksExcel ? '(magic)' : '(headers)');
+          uploadToSF(new Blob([buf]), cap.filename, cap.endpoint);
           return;
         }
         // JSF/redirect fallback
-        const text = await res.text();
+        const text = new TextDecoder('utf-8', { fatal: false }).decode(u8);
         const redir = text.match(/<redirect\s+url="([^"]+)"/i) ||
                       text.match(/href="([^"]*(?:download|export|\.xls)[^"]*)"/i);
         if (redir) {
@@ -376,14 +379,24 @@
     let dlUrl = null, m;
     m = onclick.match(/window\.open\s*\(\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1];
     if (!dlUrl) { m = onclick.match(/(?:window\.)?location(?:\.href)?\s*=\s*['"]([^'"]+)['"]/i); if (m) dlUrl = m[1]; }
-    if (!dlUrl) { m = onclick.match(/['"]([^'"]*(?:download|export)[^'"]*)['"]/i); if (m) dlUrl = m[1]; }
+    if (!dlUrl) { m = onclick.match(/['"]([^'"]*(?:download|export|\.xlsx?)[^'"]*)['"]/i); if (m) dlUrl = m[1]; }
     if (dlUrl) {
       const absUrl = dlUrl.startsWith('http') ? dlUrl : ossOrigin + dlUrl;
       log('OSS GET →', absUrl.slice(0, 100));
+      // السيرفر يقدّم الملف بدون Content-Type/attachment، فنفحص أول بايتات الملف
+      // نفسها: xlsx يبدأ بـ PK (50 4B) و xls القديم يبدأ بـ D0 CF.
       fetch(absUrl, { credentials: 'include' }).then(async res => {
-        const cd = res.headers.get('Content-Disposition') || '', ct = res.headers.get('Content-Type') || '';
-        if (isFileHeaders(cd, ct)) { const b = await res.blob(); uploadToSF(b, 'oss_om.xlsx', '/api/ftth-orders/import'); }
-        else log('OSS resp ليس ملفاً. CT:', ct.slice(0, 40));
+        const buf = await res.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        const isXlsx = u8[0] === 0x50 && u8[1] === 0x4B;          // PK
+        const isXls  = u8[0] === 0xD0 && u8[1] === 0xCF;          // OLE
+        log('OSS resp:', res.status, '| bytes:', buf.byteLength,
+            '| magic:', (u8[0] || 0).toString(16) + (u8[1] || 0).toString(16));
+        if (res.status === 200 && buf.byteLength > 100 && (isXlsx || isXls)) {
+          uploadToSF(new Blob([buf]), 'oss_om' + (isXls ? '.xls' : '.xlsx'), '/api/ftth-orders/import');
+        } else {
+          log('❌ OSS resp ليس ملف Excel.');
+        }
       }).catch(e => log('OSS fetch err:', e.message));
     } else {
       // fallback: سلّح الـ hook (لو الـ onclick بيستدعى form.submit)
