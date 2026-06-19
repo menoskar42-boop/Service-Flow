@@ -2518,6 +2518,18 @@ export async function registerRoutes(
         );
         inserted += r.rowCount ?? 0;
       }
+      // مزامنة أرقام الأكونت مع line_accounts — للخطوط الغير موجودة فيه فقط (لا تُعيد الكتابة على الإدخال اليدوى)
+      const withAccount = inserts.filter(r => r[6] && r[7] && String(r[6]).trim() && String(r[7]).trim());
+      for (let s = 0; s < withAccount.length; s += BATCH) {
+        const chunk = withAccount.slice(s, s + BATCH);
+        const ph = chunk.map((_, ci) => `($${ci*2+1}, $${ci*2+2}, 'case_138')`).join(",");
+        await pool.query(
+          `INSERT INTO line_accounts (full_phone, account_no, source)
+           VALUES ${ph}
+           ON CONFLICT (full_phone) DO NOTHING`,
+          chunk.flatMap(r => [String(r[6]).trim(), String(r[7]).trim()])
+        );
+      }
       res.json({ inserted, total: inserts.length });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });

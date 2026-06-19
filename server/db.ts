@@ -759,4 +759,28 @@ export async function ensureSchema() {
       )
     LIMIT 1
   `);
+
+  // line_accounts — أرقام الأكونت للخطوط (مزامنة من شيت 138 + إدخال يدوى)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_accounts (
+      id serial PRIMARY KEY,
+      full_phone text NOT NULL UNIQUE,
+      account_no text NOT NULL,
+      source text NOT NULL DEFAULT 'manual',
+      updated_by_id integer REFERENCES users(id),
+      updated_by_name text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  // بذر مبدئى من case_138 الموجودة — للخطوط الغير موجودة فى line_accounts فقط
+  await pool.query(`
+    INSERT INTO line_accounts (full_phone, account_no, source)
+    SELECT DISTINCT ON (full_phone) full_phone, account_no, 'case_138'
+    FROM case_138
+    WHERE full_phone IS NOT NULL AND full_phone != ''
+      AND account_no IS NOT NULL AND account_no != ''
+    ORDER BY full_phone, id DESC
+    ON CONFLICT (full_phone) DO NOTHING
+  `);
 }

@@ -696,6 +696,20 @@ export const ftthOrdersArchive = pgTable("ftth_orders_archive", {
   ...ftthOrderCols(),
 });
 
+// line_accounts — أرقام الأكونت للخطوط (مزامنة من شيت 138 + إدخال يدوى)
+export const lineAccounts = pgTable("line_accounts", {
+  id: serial("id").primaryKey(),
+  fullPhone: text("full_phone").notNull().unique(),
+  accountNo: text("account_no").notNull(),
+  source: text("source").notNull().default("manual"), // 'case_138' | 'manual'
+  updatedById: integer("updated_by_id").references(() => users.id),
+  updatedByName: text("updated_by_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type LineAccount = typeof lineAccounts.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',
