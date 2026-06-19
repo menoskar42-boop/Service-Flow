@@ -13,6 +13,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 interface CabinetAvgRow {
   centralName: string;
   cabinNumber: string;
+  msanCode: string | null;
   lineCount: number;
   measuredCount: number;
   avgScore: number | null;
@@ -22,8 +23,8 @@ interface CabinetAvgRow {
 
 interface FilterOptions {
   centrals: string[];
-  cabins: Record<string, string[]>;
-  boxes: Record<string, string[]>;
+  copperCabins: Record<string, string[]>;
+  msanCabins: Record<string, string[]>;
 }
 
 type SortKey = keyof CabinetAvgRow;
@@ -41,23 +42,30 @@ const scoreBadge = (v: number | null | undefined) => {
 
 export function CabinetScoreReport() {
   const [central, setCentral] = useState("");
+  const [cabin, setCabin] = useState("");
+  const [msan, setMsan] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { data: filterOptions } = useQuery({
-    queryKey: ["/api/phone-lines/filter-options"],
+    queryKey: ["/api/reports/cabinet-score-avg/options"],
     queryFn: async () => {
-      const res = await fetch("/api/phone-lines/filter-options", { credentials: "include" });
+      const res = await fetch("/api/reports/cabinet-score-avg/options", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch filter options");
       return res.json() as Promise<FilterOptions>;
     },
   });
 
+  const copperCabins = central && filterOptions ? (filterOptions.copperCabins[central] ?? []) : [];
+  const msanCabins = central && filterOptions ? (filterOptions.msanCabins[central] ?? []) : [];
+
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/reports/cabinet-score-avg", central],
+    queryKey: ["/api/reports/cabinet-score-avg", central, cabin, msan],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (msan) params.set("msan", msan);
       const res = await fetch(`/api/reports/cabinet-score-avg?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: CabinetAvgRow[] }>;
@@ -96,11 +104,12 @@ export function CabinetScoreReport() {
     const rows = sorted.map((r) => ({
       "السنترال": r.centralName,
       "رقم الكابينه": r.cabinNumber,
+      "كود MSAN": r.msanCode ?? "—",
       "عدد الخطوط": r.lineCount,
       "خطوط مقاسة": r.measuredCount,
-      "متوسط الاسكور": r.avgScore,
-      "متوسط السرعة الحالية (Kbps)": r.avgCurrentSpeed,
-      "متوسط أقصى سرعة (Kbps)": r.avgMaxSpeed,
+      "متوسط الاسكور": r.measuredCount > 0 ? r.avgScore : "لا توجد خطوط مقاسة",
+      "متوسط السرعة الحالية (Kbps)": r.measuredCount > 0 ? r.avgCurrentSpeed : "",
+      "متوسط أقصى سرعة (Kbps)": r.measuredCount > 0 ? r.avgMaxSpeed : "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -111,11 +120,14 @@ export function CabinetScoreReport() {
   const handleExportPDF = () => {
     printTablePDF({
       title: "متوسط القياسات لكل كابينة",
-      columns: ["السنترال", "الكابينة", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة"],
-      rows: sorted.map((r) => [
-        r.centralName, r.cabinNumber, r.lineCount, r.measuredCount,
-        r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—",
-      ]),
+      columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة"],
+      rows: sorted.map((r) =>
+        r.measuredCount > 0
+          ? [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, r.measuredCount,
+             r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—"]
+          : [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, 0,
+             "لا توجد خطوط مقاسة داخل هذه الكابينة", "", ""],
+      ),
     });
   };
 
@@ -135,10 +147,28 @@ export function CabinetScoreReport() {
             <SearchableCombobox
               options={filterOptions?.centrals ?? []}
               value={central}
-              onChange={(v) => setCentral(v)}
+              onChange={(v) => { setCentral(v); setCabin(""); setMsan(""); }}
               placeholder="كل السنترالات"
               searchPlaceholder="ابحث في السنترالات..."
               className="w-full sm:w-44 text-sm"
+            />
+            <SearchableCombobox
+              options={copperCabins}
+              value={cabin}
+              onChange={(v) => setCabin(v)}
+              placeholder="كل الكباين النحاسية"
+              searchPlaceholder="ابحث في الكباين النحاسية..."
+              disabled={!central}
+              className="w-full sm:w-44 text-sm"
+            />
+            <SearchableCombobox
+              options={msanCabins}
+              value={msan}
+              onChange={(v) => setMsan(v)}
+              placeholder="كل كباين MSAN"
+              searchPlaceholder="ابحث في كباين MSAN..."
+              disabled={!central}
+              className="w-full sm:w-40 text-sm"
             />
             <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200">
               تصدير Excel
@@ -164,6 +194,9 @@ export function CabinetScoreReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("cabinNumber")}>
                     رقم الكابينه <SortIcon k="cabinNumber" />
                   </TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("msanCode")}>
+                    كود MSAN <SortIcon k="msanCode" />
+                  </TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("lineCount")}>
                     الخطوط <SortIcon k="lineCount" />
                   </TableHead>
@@ -186,21 +219,30 @@ export function CabinetScoreReport() {
                   <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="whitespace-nowrap">{r.centralName}</TableCell>
                     <TableCell className="font-medium">{r.cabinNumber}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.msanCode ?? "—"}</TableCell>
                     <TableCell>{r.lineCount}</TableCell>
                     <TableCell>{r.measuredCount}</TableCell>
-                    <TableCell>{scoreBadge(r.avgScore)}</TableCell>
-                    <TableCell>
-                      {r.avgCurrentSpeed != null ? Number(r.avgCurrentSpeed).toLocaleString("ar-EG") : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {r.avgMaxSpeed != null ? Number(r.avgMaxSpeed).toLocaleString("ar-EG") : "—"}
-                    </TableCell>
+                    {r.measuredCount > 0 ? (
+                      <>
+                        <TableCell>{scoreBadge(r.avgScore)}</TableCell>
+                        <TableCell>
+                          {r.avgCurrentSpeed != null ? Number(r.avgCurrentSpeed).toLocaleString("ar-EG") : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {r.avgMaxSpeed != null ? Number(r.avgMaxSpeed).toLocaleString("ar-EG") : "—"}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <TableCell colSpan={3} className="text-center text-amber-600 text-xs">
+                        لا توجد خطوط مقاسة داخل هذه الكابينة
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {sorted.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      لا توجد بيانات — لا يوجد خطوط لها أكونت وقياسات مسجلة
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      لا توجد بيانات — لا يوجد خطوط لها أكونت فى النطاق المحدد
                     </TableCell>
                   </TableRow>
                 )}

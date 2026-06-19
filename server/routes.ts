@@ -1752,33 +1752,81 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // GET /api/reports/cabinet-score-avg/options — فلاتر التقرير: السنترالات + الكباين النحاسية + كباين MSAN
+  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (_req, res) => {
+    // السنترالات + الكباين النحاسية من بيان التليفونات
+    const { rows: plRows } = await pool.query(`
+      SELECT DISTINCT central, cabin_number
+      FROM phone_lines
+      WHERE central IS NOT NULL AND central <> ''
+    `);
+    // كباين MSAN (cabin_code) لكل سنترال من جدول الفنيين
+    const { rows: msanRows } = await pool.query(`
+      SELECT DISTINCT central_name AS central, cabin_code
+      FROM cabinet_technicians
+      WHERE central_name IS NOT NULL AND central_name <> ''
+        AND cabin_code IS NOT NULL AND cabin_code <> ''
+    `);
+    const centralSet = new Set<string>();
+    const copperMap = new Map<string, Set<string>>();
+    const msanMap = new Map<string, Set<string>>();
+    for (const r of plRows) {
+      const c = r.central || ""; const cab = r.cabin_number || "";
+      if (c) centralSet.add(c);
+      if (c && cab) { if (!copperMap.has(c)) copperMap.set(c, new Set()); copperMap.get(c)!.add(cab); }
+    }
+    for (const r of msanRows) {
+      const c = r.central || ""; const code = r.cabin_code || "";
+      if (c) centralSet.add(c);
+      if (c && code) { if (!msanMap.has(c)) msanMap.set(c, new Set()); msanMap.get(c)!.add(code); }
+    }
+    const arSort = (a: string, b: string) => a.localeCompare(b, "ar", { numeric: true });
+    const centrals = Array.from(centralSet).sort(arSort);
+    const copperCabins: Record<string, string[]> = {};
+    for (const [c, set] of copperMap) copperCabins[c] = Array.from(set).sort(arSort);
+    const msanCabins: Record<string, string[]> = {};
+    for (const [c, set] of msanMap) msanCabins[c] = Array.from(set).sort(arSort);
+    res.json({ centrals, copperCabins, msanCabins });
+  });
+
   // GET /api/reports/cabinet-score-avg — متوسط القياسات لكل كابينة (خطوط لها أكونت فقط)
+  // current_speed/max_speed مخزّنة كـ text → نُنظّفها لأرقام قبل المتوسط.
   app.get("/api/reports/cabinet-score-avg", requireAuth, async (req: any, res) => {
-    const { central } = req.query as Record<string, string>;
+    const { central, cabin, msan } = req.query as Record<string, string>;
     const params: any[] = [];
     const conds: string[] = [];
-    if (central) { params.push(central); conds.push(`pl.central_name = $${params.length}`); }
+    if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+    if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
+    if (msan)    { params.push(msan);    conds.push(`ctm.cabin_code = $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    // تعبير آمن لتحويل عمود السرعة النصى لرقم (تجاهل أى رمز غير رقمى)
+    const numSpeed = (col: string) =>
+      `NULLIF(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), '')::numeric`;
     const { rows } = await pool.query(
       `SELECT
-         COALESCE(pl.central_name, '—') AS "centralName",
-         COALESCE(pl.cabin_number, '—')  AS "cabinNumber",
+         COALESCE(pl.central, '—')      AS "centralName",
+         COALESCE(pl.cabin_number, '—') AS "cabinNumber",
+         ctm.cabin_code                 AS "msanCode",
          COUNT(DISTINCT pl.full_phone)::int AS "lineCount",
          COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
-         ROUND(AVG(c138p.score)::numeric, 1)         AS "avgScore",
-         ROUND(AVG(c138p.current_speed)::numeric, 0) AS "avgCurrentSpeed",
-         ROUND(AVG(c138p.max_speed)::numeric, 0)     AS "avgMaxSpeed"
+         ROUND(AVG(c138p.score)::numeric, 1)            AS "avgScore",
+         ROUND(AVG(${numSpeed("c138p.current_speed")}), 0) AS "avgCurrentSpeed",
+         ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed"
        FROM line_accounts la
        JOIN phone_lines pl ON pl.full_phone = la.full_phone
+       LEFT JOIN LATERAL (
+         SELECT ct.cabin_code FROM cabinet_technicians ct
+         WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+         LIMIT 1
+       ) ctm ON true
        LEFT JOIN LATERAL (
          SELECT c.score, c.current_speed, c.max_speed
          FROM case_138 c WHERE c.full_phone = la.full_phone
          ORDER BY c.id DESC LIMIT 1
        ) c138p ON true
        ${where}
-       GROUP BY pl.central_name, pl.cabin_number
-       HAVING COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END) > 0
-       ORDER BY pl.central_name, pl.cabin_number`,
+       GROUP BY pl.central, pl.cabin_number, ctm.cabin_code
+       ORDER BY pl.central, pl.cabin_number`,
       params,
     );
     res.json({ data: rows });
