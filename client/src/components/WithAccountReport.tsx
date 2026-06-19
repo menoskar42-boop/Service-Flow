@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table,
@@ -11,10 +12,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, Pencil, Save, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
@@ -62,6 +65,12 @@ export function WithAccountReport() {
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
   const [page, setPage] = useState(1);
+  const [editingPhone, setEditingPhone] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const canEdit = user?.role !== ROLES.SALES;
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -87,6 +96,34 @@ export function WithAccountReport() {
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
+
+  const startEdit = (r: PhoneLine) => {
+    setEditingPhone(r.fullPhone);
+    setEditDraft(r.accountNo ?? "");
+  };
+
+  const cancelEdit = () => setEditingPhone(null);
+
+  const handleSave = async (fullPhone: string) => {
+    if (!editDraft.trim()) return;
+    setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
+    try {
+      const res = await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ accountNo: editDraft.trim() }),
+      });
+      if (!res.ok) throw new Error("فشل الحفظ");
+      setSaveState((s) => ({ ...s, [fullPhone]: "saved" }));
+      setEditingPhone(null);
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
+      setTimeout(() => setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; }), 2000);
+    } catch {
+      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+    }
+  };
 
   const toItem = (r: PhoneLine): DZSItem => ({
     account: (r.accountNo ?? "").toString().trim(),
@@ -267,17 +304,60 @@ export function WithAccountReport() {
                     <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono font-semibold text-blue-700">{r.fullPhone || "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left font-mono">
-                        <span className="inline-flex items-center gap-1">
-                          {r.accountNo}
-                          <button
-                            type="button"
-                            onClick={() => openDZSSingle(r)}
-                            title="فتح DZS وقياس هذا الرقم"
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            <Radar className="w-3.5 h-3.5" />
-                          </button>
-                        </span>
+                        {editingPhone === r.fullPhone ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Input
+                              value={editDraft}
+                              onChange={(e) => setEditDraft(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") handleSave(r.fullPhone); if (e.key === "Escape") cancelEdit(); }}
+                              className="h-7 w-28 text-xs px-1"
+                              dir="ltr"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSave(r.fullPhone)}
+                              disabled={saveState[r.fullPhone] === "saving"}
+                              title="حفظ"
+                              className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                            >
+                              {saveState[r.fullPhone] === "saving"
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <Save className="w-3.5 h-3.5" />}
+                            </button>
+                            <button type="button" onClick={cancelEdit} title="إلغاء" className="text-gray-400 hover:text-gray-700">
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            {r.accountNo}
+                            <button
+                              type="button"
+                              onClick={() => openDZSSingle(r)}
+                              title="فتح DZS وقياس هذا الرقم"
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <Radar className="w-3.5 h-3.5" />
+                            </button>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => startEdit(r)}
+                                title="تعديل رقم الأكونت"
+                                className="text-amber-500 hover:text-amber-700"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                            {saveState[r.fullPhone] === "saved" && (
+                              <span className="text-[10px] text-green-600">✓ حُفظ</span>
+                            )}
+                            {saveState[r.fullPhone] === "error" && (
+                              <span className="text-[10px] text-red-600">خطأ</span>
+                            )}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {r.accountSource === "manual" ? (
