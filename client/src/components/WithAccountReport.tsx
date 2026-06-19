@@ -60,6 +60,17 @@ interface FilterOptions {
 
 const PAGE_SIZE = 50;
 
+const scoreBadge = (v: string | number | null | undefined) => {
+  if (v == null || v === "") return <span className="text-gray-400">-</span>;
+  const n = Number(v);
+  if (isNaN(n)) return <span>{String(v)}</span>;
+  const cls =
+    n >= 70 ? "bg-green-100 text-green-800" :
+    n >= 40 ? "bg-amber-100 text-amber-700" :
+              "bg-red-100 text-red-800";
+  return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
+};
+
 export function WithAccountReport() {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
@@ -284,6 +295,9 @@ export function WithAccountReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">المصدر</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
@@ -367,6 +381,9 @@ export function WithAccountReport() {
                         )}
                       </TableCell>
                       <TableCell><Measurement138Button m={r} /></TableCell>
+                      <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>
+                      <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>
+                      <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
