@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.12
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.12: OSS captures real downloadOrderExcel.ilf via task-window form.submit hook (CSRF token) + fallback GET.
+// @version      2.13
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.13: block real form.submit so fetch wins the ADF token race; trigger browser download via <a download> after upload.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -90,12 +90,26 @@
     return params;
   }
 
-  // يُستدعى من hook الـ submit — يلتقط الطلب الحقيقى بالمعاملات الصحيحة
+  // يُنزّل الـ blob للديسك يدوياً بدل الـ form submit الأصلى (بعد ما نرفعه لـ SF)
+  function saveToDisk(buf, filename) {
+    try {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([buf]));
+      a.download = filename; a.style.display = 'none';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(a.href); } catch(e){} }, 2000);
+      log('💾 saved to disk:', filename);
+    } catch(e) { log('disk save err:', e.message); }
+  }
+
+  // يُستدعى من hook الـ submit — يلتقط الطلب الحقيقى ويوقف الـ submit الأصلى
+  // (نمنع التنافس على ADF token: نحن نأخذه، ونُنزّل الملف يدوياً بعدين)
+  // يرجع true لو التقط الطلب، false لو يجب السماح للـ submit الأصلى بالمرور.
   function captureFromForm(form) {
     const cap = armed; armed = null;
     let params, action;
     try { params = serializeForm(form); action = form.getAttribute('action') || form.action || location.href; }
-    catch (e) { log('serialize error:', e.message); return; }
+    catch (e) { log('serialize error:', e.message); return false; }
     log('📸 captured submit →', String(action).slice(0, 80), '| params:', Array.from(params.keys()).length);
     (async () => {
       try {
@@ -105,7 +119,9 @@
         const buf = await res.arrayBuffer(); const u8 = new Uint8Array(buf);
         if (res.status === 200 && (isFileHeaders(cd, ct) || (looksExcel(u8) && buf.byteLength > 100))) {
           log('✅ got blob:', buf.byteLength, 'bytes', looksExcel(u8) ? '(magic)' : '(headers)');
-          uploadToSF(new Blob([buf]), cap.filename, cap.endpoint); return;
+          uploadToSF(new Blob([buf]), cap.filename, cap.endpoint);
+          saveToDisk(buf, cap.filename);
+          return;
         }
         const text = new TextDecoder('utf-8', { fatal: false }).decode(u8);
         const redir = text.match(/<redirect\s+url="([^"]+)"/i) || text.match(/href="([^"]*(?:download|export|\.xls)[^"]*)"/i);
@@ -115,20 +131,27 @@
           const r2 = await fetch(u2, { credentials: 'include' });
           const b2 = await r2.arrayBuffer(); const v2 = new Uint8Array(b2);
           if (r2.status === 200 && (isFileHeaders(r2.headers.get('Content-Disposition') || '', r2.headers.get('Content-Type') || '') || (looksExcel(v2) && b2.byteLength > 100))) {
-            log('✅ blob after redirect:', b2.byteLength); uploadToSF(new Blob([b2]), cap.filename, cap.endpoint);
+            log('✅ blob after redirect:', b2.byteLength);
+            uploadToSF(new Blob([b2]), cap.filename, cap.endpoint);
+            saveToDisk(b2, cap.filename);
           } else log('❌ redirect ليس ملفاً.');
           return;
         }
         log('❌ لا ملف ولا redirect. preview:', text.replace(/\s+/g, ' ').slice(0, 180));
       } catch (e) { log('❌ capture fetch error:', e.message); }
     })();
+    return true; // التقطنا — لا تُشغّل الـ submit الأصلى
   }
 
   /* ---------- hooks (document-start) ---------- */
   (function installHooks() {
     try {
       const wrapSubmit = orig => function () {
-        if (armed) { try { captureFromForm(this); } catch (e) { log('hook err:', e.message); } }
+        if (armed) {
+          let handled = false;
+          try { handled = captureFromForm(this); } catch (e) { log('hook err:', e.message); }
+          if (handled) return; // نحن نتحكم في الـ download — لا تُشغّل الـ submit الأصلى
+        }
         return orig.apply(this, arguments);
       };
       HTMLFormElement.prototype.submit = wrapSubmit(HTMLFormElement.prototype.submit);
@@ -323,10 +346,9 @@
             ? { method: 'POST', url: action, data: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
             : { method: 'GET', url: action + (body ? (action.indexOf('?') >= 0 ? '&' : '?') + body : '') };
           const { status, buf } = await gmReq(opts);
-          handle(status, buf, 'form-hook');
+          if (handle(status, buf, 'form-hook')) saveToDisk(buf, filename);
         })();
-        // نترك الـ submit الأصلى يكمل (تحميل للديسك كـ backup)
-        return orig.apply(this, arguments);
+        // لا نُشغّل الـ submit الأصلى — نحن نضمن التحميل عبر saveToDisk بعد نجاح الـ gmReq
       };
       log('OSS form-submit hook installed');
     } catch(e) { log('OSS hook install err:', e.message); }
@@ -384,7 +406,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.12 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.13 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
