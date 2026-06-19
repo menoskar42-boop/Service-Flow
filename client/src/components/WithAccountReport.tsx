@@ -79,6 +79,8 @@ export function WithAccountReport() {
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
+  const [dzsChunks, setDzsChunks] = useState<DZSItem[][]>([]);
+  const [dzsLoading, setDzsLoading] = useState(false);
   const qc = useQueryClient();
   const { user } = useAuth();
   const canEdit = user?.role !== ROLES.SALES;
@@ -143,26 +145,14 @@ export function WithAccountReport() {
     full: r.fullPhone ?? "",
   });
 
+  // يحضّر قائمة الدفعات — كل ضغطة على زر دفعة تفتح تاب واحد فقط
   const handleMeasureDZS = async () => {
     if (!central && !cabin && !box) {
       alert("اختر سنترال أو كابينة أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط");
       return;
     }
-    // نفتح التابات (فارغة) دلوقتى وإحنا لسه جوه ضغطة المستخدم، عشان مانع
-    // النوافذ المنبثقة ميمنعش فتح أكتر من تاب. العدد تقديرى من إجمالى النطاق.
-    const estimated = data?.total ?? 0;
-    const numTabs = Math.max(1, Math.ceil(estimated / DZS_BATCH_SIZE));
-    if (
-      estimated > DZS_BATCH_SIZE &&
-      !confirm(
-        `النطاق فيه ~${estimated} رقم — هيتفتح ${numTabs} تاب على دفعات (${DZS_BATCH_SIZE} رقم لكل تاب) ` +
-          `لأن بوابة DZS بتقفل لو العدد كبير.\nتأكد إن المتصفح مسموح له يفتح النوافذ المنبثقة لهذا الموقع. متابعة؟`,
-      )
-    ) {
-      return;
-    }
-    const wins: (Window | null)[] = [];
-    for (let i = 0; i < numTabs; i++) wins.push(window.open("", "_blank"));
+    setDzsLoading(true);
+    setDzsChunks([]);
     try {
       const params = new URLSearchParams({ page: "1", limit: "20000" });
       if (central) params.set("central", central);
@@ -175,26 +165,19 @@ export function WithAccountReport() {
       const items = all
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
-      if (items.length === 0) {
-        wins.forEach((w) => { try { w?.close(); } catch {} });
-        alert("لا توجد أرقام أكونت فى النطاق المحدد");
-        return;
-      }
-      // نقسّم الأرقام لدفعات ونوزّعها على التابات المفتوحة
+      if (items.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
       const chunks: DZSItem[][] = [];
       for (let i = 0; i < items.length; i += DZS_BATCH_SIZE) chunks.push(items.slice(i, i + DZS_BATCH_SIZE));
-      chunks.forEach((chunk, i) => {
-        const url = buildDZSUrl(chunk);
-        if (wins[i]) wins[i]!.location.href = url;
-        else window.open(url, "_blank");
-      });
-      // نقفل أى تابات زيادة فُتحت بالتقدير ومش محتاجينها
-      for (let i = chunks.length; i < wins.length; i++) { try { wins[i]?.close(); } catch {} }
+      setDzsChunks(chunks);
     } catch {
-      wins.forEach((w) => { try { w?.close(); } catch {} });
       alert("تعذّر تحميل بيانات النطاق للقياس");
+    } finally {
+      setDzsLoading(false);
     }
   };
+
+  // كل زرار دفعة = ضغطة مباشرة → window.open مسموح بيه بدون popup blocker
+  const openDzsBatch = (chunk: DZSItem[]) => window.open(buildDZSUrl(chunk), "_blank");
 
   const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)]), "_blank");
 
@@ -299,7 +282,27 @@ export function WithAccountReport() {
           </div>
         </div>
 
-        {isLoading ? (
+        {dzsChunks.length > 0 && (
+          <div className="px-4 py-2 border-b bg-blue-50 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-blue-700 font-semibold">
+              {dzsChunks.length === 1
+                ? `قياس DZS — ${dzsChunks[0].length} رقم:`
+                : `قياس DZS — ${dzsChunks.reduce((s, c) => s + c.length, 0)} رقم على ${dzsChunks.length} دفعات (${DZS_BATCH_SIZE} رقم/دفعة):`}
+            </span>
+            {dzsChunks.map((chunk, i) => (
+              <Button key={i} size="sm" variant="outline"
+                className="text-blue-700 border-blue-300 bg-white hover:bg-blue-100"
+                onClick={() => openDzsBatch(chunk)}>
+                دفعة {i + 1} ({chunk.length})
+              </Button>
+            ))}
+            <button onClick={() => setDzsChunks([])} className="text-gray-400 hover:text-gray-600 mr-auto" title="إغلاق">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {isLoading || dzsLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
