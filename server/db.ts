@@ -783,4 +783,25 @@ export async function ensureSchema() {
     ORDER BY full_phone, id DESC
     ON CONFLICT (full_phone) DO NOTHING
   `);
+
+  // line_account_edits — سجل تاريخى لكل تعديل على رقم الأكونت
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_account_edits (
+      id serial PRIMARY KEY,
+      full_phone text NOT NULL,
+      old_account_no text,
+      new_account_no text NOT NULL,
+      edited_by_id integer REFERENCES users(id),
+      edited_by_name text,
+      edited_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS line_account_edits_full_phone_idx
+      ON line_account_edits (full_phone)
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS line_account_edits_edited_at_idx
+      ON line_account_edits (edited_at DESC)
+  `);
 }

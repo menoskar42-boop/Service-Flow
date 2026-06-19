@@ -1629,6 +1629,13 @@ export async function registerRoutes(
     if (!accountNo || !accountNo.trim()) {
       return res.status(400).json({ message: "رقم الأكونت مطلوب" });
     }
+    const newNo = accountNo.trim();
+    // fetch old value before upsert (for audit log)
+    const { rows: existing } = await pool.query(
+      `SELECT account_no FROM line_accounts WHERE full_phone = $1`,
+      [fullPhone],
+    );
+    const oldNo: string | null = existing[0]?.account_no ?? null;
     await pool.query(
       `INSERT INTO line_accounts (full_phone, account_no, source, updated_by_id, updated_by_name, updated_at)
        VALUES ($1, $2, 'manual', $3, $4, now())
@@ -1638,9 +1645,40 @@ export async function registerRoutes(
              updated_by_id = EXCLUDED.updated_by_id,
              updated_by_name = EXCLUDED.updated_by_name,
              updated_at = now()`,
-      [fullPhone, accountNo.trim(), req.user.id, req.user.username],
+      [fullPhone, newNo, req.user.id, req.user.username],
+    );
+    // write audit log entry
+    await pool.query(
+      `INSERT INTO line_account_edits (full_phone, old_account_no, new_account_no, edited_by_id, edited_by_name)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [fullPhone, oldNo, newNo, req.user.id, req.user.username],
     );
     res.json({ ok: true });
+  });
+
+  // GET /api/reports/account-edits — سجل تعديلات أرقام الأكونت
+  app.get("/api/reports/account-edits", requireAuth, async (req: any, res) => {
+    const { phone, editor } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (phone?.trim()) { params.push(`%${phone.trim()}%`); conds.push(`e.full_phone ILIKE $${params.length}`); }
+    if (editor?.trim()) { params.push(`%${editor.trim()}%`); conds.push(`e.edited_by_name ILIKE $${params.length}`); }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const { rows } = await pool.query(
+      `SELECT
+         e.id,
+         e.full_phone AS "fullPhone",
+         e.old_account_no AS "oldAccountNo",
+         e.new_account_no AS "newAccountNo",
+         e.edited_by_name AS "editedByName",
+         (e.edited_at AT TIME ZONE 'Africa/Cairo') AS "editedAt"
+       FROM line_account_edits e
+       ${where}
+       ORDER BY e.edited_at DESC
+       LIMIT 2000`,
+      params,
+    );
+    res.json(rows);
   });
 
   // GET /api/reports/cabinet-score-avg — متوسط القياسات لكل كابينة (خطوط لها أكونت فقط)

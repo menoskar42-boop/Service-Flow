@@ -710,6 +710,19 @@ export const lineAccounts = pgTable("line_accounts", {
 
 export type LineAccount = typeof lineAccounts.$inferSelect;
 
+// line_account_edits — سجل تاريخى لكل تعديل على رقم الأكونت
+export const lineAccountEdits = pgTable("line_account_edits", {
+  id: serial("id").primaryKey(),
+  fullPhone: text("full_phone").notNull(),
+  oldAccountNo: text("old_account_no"),
+  newAccountNo: text("new_account_no").notNull(),
+  editedById: integer("edited_by_id").references(() => users.id),
+  editedByName: text("edited_by_name"),
+  editedAt: timestamp("edited_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type LineAccountEdit = typeof lineAccountEdits.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',
