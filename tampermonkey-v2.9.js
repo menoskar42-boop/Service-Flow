@@ -380,7 +380,7 @@
       log('OSS submit-event listener installed');
     } catch(e) { log('OSS submit-event install err:', e.message); }
 
-    // (2) fallback GET مباشر على الـ endpoint الموثّق (لو الـ hook لم يُطلَق)
+    // (3) fallback GET مباشر على الـ endpoint الموثّق (لو الـ hook لم يُطلَق)
     (async () => {
       await sleep(5000);
       if (done) return;
