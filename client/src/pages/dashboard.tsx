@@ -14,6 +14,8 @@ import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
 import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
+import { WithAccountReport } from "@/components/WithAccountReport";
+import { WithoutAccountReport } from "@/components/WithoutAccountReport";
 import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
 import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRangeReport";
 import { InstallationsReport } from "@/components/InstallationsReport";
@@ -33,7 +35,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -84,6 +86,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "box-summary",  label: "ملخص البكسيات" },
+    ],
+  },
+  {
+    label: "القياسات",
+    icon: Cable,
+    items: [
+      { id: "with-account",    label: "خطوط لها رقم أكونت" },
+      { id: "without-account", label: "خطوط بدون رقم أكونت" },
     ],
   },
   {
@@ -413,6 +423,8 @@ export default function Dashboard() {
               {reportTab === "om-soy"      && <OmRejectionsReport bucket="soy"      title="متعذرات بداية السنة (OM)" />}
               {reportTab === "om-resolved" && <OmRejectionsReport bucket="resolved" title="متعذرات تم فكها (OM)" />}
               {reportTab === "om-stats"    && <OmStatsReport />}
+              {reportTab === "with-account"    && <WithAccountReport />}
+              {reportTab === "without-account" && <WithoutAccountReport />}
             </div>
           </div>
         )}
