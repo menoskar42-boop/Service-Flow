@@ -40,8 +40,11 @@ const fmtDt = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
+type YearFilter = "all" | "current" | "previous";
+
 export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy" | "resolved"; title: string }) {
   const [q, setQ] = useState("");
+  const [yearFilter, setYearFilter] = useState<YearFilter>("all");
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -49,10 +52,11 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
 
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
-    queryKey: ["/api/ftth-orders", bucket, q],
+    queryKey: ["/api/ftth-orders", bucket, q, yearFilter],
     queryFn: async () => {
       const p = new URLSearchParams({ bucket });
       if (q.trim()) p.set("q", q.trim());
+      if (yearFilter !== "all") p.set("yearFilter", yearFilter);
       const res = await fetch(`/api/ftth-orders?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -217,6 +221,16 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             className="w-full sm:max-w-xs text-sm"
             dir="rtl"
           />
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value as YearFilter)}
+            className="border rounded-md text-sm px-2 py-2 bg-white"
+            title="فلتر حسب سنة إنشاء الطلب"
+          >
+            <option value="all">الكل</option>
+            <option value="current">متعذرات العام</option>
+            <option value="previous">متعذرات سنوات سابقة</option>
+          </select>
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           <span className="text-sm text-muted-foreground">إجمالي: <strong className="text-foreground">{rows.length}</strong> متعذر</span>

@@ -3232,13 +3232,21 @@ export async function registerRoutes(
   //   soy      = متعذرات بداية السنة (التراكمى)
   //   resolved = متعذرات تم فكها (موجودة فى SOY وغير موجودة فى الحالى بمفتاح المسلسل+order ids)
   app.get("/api/ftth-orders", requireAuth, async (req, res) => {
-    const { q, all, bucket, year } = req.query as Record<string, string>;
+    const { q, all, bucket, year, yearFilter } = req.query as Record<string, string>;
     const table = bucket === "current" ? "ftth_orders_current"
                 : bucket === "archive" ? "ftth_orders_archive"
                 : (bucket === "soy" || bucket === "resolved") ? "ftth_orders_soy"
                 : "ftth_orders";
     const params: any[] = [];
     const conds: string[] = [];
+    // فلتر السنة حسب تاريخ إنشاء الطلب (order_create_time مخزَّن UTC ويُعرض UTC):
+    //   current = العام الحالى | previous = سنوات سابقة | (فارغ/all) = الكل
+    if (yearFilter === "current" || yearFilter === "previous") {
+      const nowYear = new Date().getUTCFullYear();
+      params.push(nowYear);
+      const op = yearFilter === "current" ? "=" : "<";
+      conds.push(`EXTRACT(YEAR FROM fo.order_create_time AT TIME ZONE 'UTC') ${op} $${params.length}`);
+    }
     if (all !== "true") {
       // متعذرات غنايم المعنية فقط: أكواد غنايم الأربعة + Service Name = FV Survey
       conds.push(`fo.fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
