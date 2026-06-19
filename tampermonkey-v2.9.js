@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.13
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.13: block real form.submit so fetch wins the ADF token race; trigger browser download via <a download> after upload.
+// @version      2.14
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.14: OSS now captures BOTH native form.submit() AND the submit event (jQuery/button) so formfortoken's CSRF download is intercepted reliably; only the downloadOrderExcel form is replayed.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -320,38 +320,65 @@
       return false;
     }
 
-    // (1) hook form.submit فى نافذة الـ task — يلتقط الـ action + التوكن الحقيقى
+    // يُسلسل أى form (action + الحقول بما فيها التوكن) ثم يعيد إرساله عبر GM_xmlhttpRequest
+    // (يحمل الكوكيز) — فنلتقط نفس الملف الذى يحمّله الـ form الأصلى ونرفعه للموقع.
+    let formHandled = false;
+    function replayForm(formEl, via) {
+      if (formHandled || done) return false;
+      let action = '', method = 'GET', body = '';
+      try {
+        action = formEl.action || (formEl.getAttribute && formEl.getAttribute('action')) || '';
+        method = (formEl.method || 'GET').toUpperCase();
+        const params = new URLSearchParams();
+        Array.from(formEl.querySelectorAll('input,select,textarea')).forEach(inp => {
+          if (!inp.name || inp.type === 'file') return;
+          if ((inp.type === 'checkbox' || inp.type === 'radio') && !inp.checked) return;
+          params.append(inp.name, inp.value || '');
+        });
+        body = params.toString();
+      } catch(e) { log('OSS serialize err:', e.message); }
+      // لا نلتقط إلا فورم التحميل (downloadOrderExcel.ilf)
+      if (!/downloadOrderExcel|\.ilf/i.test(String(action))) { log('OSS skip non-download form:', String(action).slice(0,60)); return false; }
+      formHandled = true;
+      log('📸 OSS form ['+via+'] →', String(action).slice(0, 90), '|', method, '| fields:', body ? body.split('&').length : 0);
+      (async () => {
+        const opts = method === 'POST'
+          ? { method: 'POST', url: action, data: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+          : { method: 'GET', url: action + (body ? (action.indexOf('?') >= 0 ? '&' : '?') + body : '') };
+        const { status, buf } = await gmReq(opts);
+        if (handle(status, buf, via)) saveToDisk(buf, filename);
+        else formHandled = false; // افسح المجال لمسار آخر لو فشل
+      })();
+      return true;
+    }
+
+    // (1) hook native form.submit() فى نافذة الـ task — يلتقط الـ submit المبرمَج
     try {
       const proto = taskWin.HTMLFormElement.prototype;
       const orig = proto.submit;
       const restore = () => { try { proto.submit = orig; } catch(e){} };
-      setTimeout(restore, 60000);
+      setTimeout(restore, 90000);
       proto.submit = function () {
-        let action = '', method = 'GET', body = '';
-        try {
-          action = this.action || (this.getAttribute && this.getAttribute('action')) || '';
-          method = (this.method || 'GET').toUpperCase();
-          const params = new URLSearchParams();
-          Array.from(this.querySelectorAll('input,select,textarea')).forEach(inp => {
-            if (!inp.name || inp.type === 'file') return;
-            if ((inp.type === 'checkbox' || inp.type === 'radio') && !inp.checked) return;
-            params.append(inp.name, inp.value || '');
-          });
-          body = params.toString();
-        } catch(e) { log('OSS hook serialize err:', e.message); }
-        restore(); // one-shot
-        log('📸 OSS form →', String(action).slice(0, 90), '|', method, '| fields:', body ? body.split('&').length : 0);
-        (async () => {
-          const opts = method === 'POST'
-            ? { method: 'POST', url: action, data: body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-            : { method: 'GET', url: action + (body ? (action.indexOf('?') >= 0 ? '&' : '?') + body : '') };
-          const { status, buf } = await gmReq(opts);
-          if (handle(status, buf, 'form-hook')) saveToDisk(buf, filename);
-        })();
-        // لا نُشغّل الـ submit الأصلى — نحن نضمن التحميل عبر saveToDisk بعد نجاح الـ gmReq
+        const handled = replayForm(this, 'submit-hook');
+        if (handled) return; // نمنع الـ submit الأصلى — نضمن التحميل عبر saveToDisk
+        return orig.apply(this, arguments);
       };
-      log('OSS form-submit hook installed');
-    } catch(e) { log('OSS hook install err:', e.message); }
+      log('OSS native submit hook installed');
+    } catch(e) { log('OSS submit-hook install err:', e.message); }
+
+    // (2) capture-phase submit EVENT — يلتقط jQuery .submit()/زر submit
+    // (الـ event لا يُطلَق عند native .submit() والعكس صحيح، فنغطّى الحالتين).
+    try {
+      const onSubmit = (e) => {
+        const f = e.target;
+        if (f && f.tagName === 'FORM' && replayForm(f, 'submit-event')) {
+          e.preventDefault(); e.stopImmediatePropagation();
+        }
+      };
+      taskWin.document.addEventListener('submit', onSubmit, true);
+      setTimeout(() => { try { taskWin.document.removeEventListener('submit', onSubmit, true); } catch(e){} }, 90000);
+      log('OSS submit-event listener installed');
+    } catch(e) { log('OSS submit-event install err:', e.message); }
 
     // (2) fallback GET مباشر على الـ endpoint الموثّق (لو الـ hook لم يُطلَق)
     (async () => {
@@ -406,7 +433,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.13 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.14 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
