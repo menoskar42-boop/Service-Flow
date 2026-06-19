@@ -2784,9 +2784,9 @@ export async function registerRoutes(
   // GET /api/upload-times — آخر وقت رفع لكل جدول (للعرض بجانب كل بطاقة رفع)
   app.get("/api/upload-times", requireAuth, async (_req, res) => {
     const tables: { key: string; table: string }[] = [
-      { key: "/api/maintenance-orders/import",  table: "maintenance_orders" },
-      { key: "/api/ticket-queue/import",        table: "ticket_queue" },
-      { key: "/api/ticket-queue-ftth/import",   table: "ticket_ftth" },
+      { key: "/api/maintenance-orders/import",  table: "wfm_current" },
+      { key: "/api/ticket-queue/import",        table: "ticket_dsl_current" },
+      { key: "/api/ticket-queue-ftth/import",   table: "ticket_ftth_current" },
       { key: "/api/complaint-details/import",   table: "complaint_details" },
       { key: "/api/ftth-orders/import",         table: "ftth_orders" },
       { key: "/api/ftth-orders/import-soy",     table: "ftth_orders_soy" },
