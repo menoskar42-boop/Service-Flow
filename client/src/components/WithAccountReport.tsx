@@ -56,6 +56,9 @@ interface FilterOptions {
 }
 
 const PAGE_SIZE = 50;
+// بوابة DZS بتقفل التاب لو استقبلت عدد كبير من الأرقام مرة واحدة، فنقسّم
+// القياس على دفعات وكل دفعة فى تاب لوحده. لو 50 لسه بتتقفل قلّل الرقم ده.
+const DZS_BATCH_SIZE = 50;
 
 const scoreBadge = (v: string | number | null | undefined) => {
   if (v == null || v === "") return <span className="text-gray-400">-</span>;
@@ -145,7 +148,21 @@ export function WithAccountReport() {
       alert("اختر سنترال أو كابينة أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط");
       return;
     }
-    const win = window.open("", "_blank");
+    // نفتح التابات (فارغة) دلوقتى وإحنا لسه جوه ضغطة المستخدم، عشان مانع
+    // النوافذ المنبثقة ميمنعش فتح أكتر من تاب. العدد تقديرى من إجمالى النطاق.
+    const estimated = data?.total ?? 0;
+    const numTabs = Math.max(1, Math.ceil(estimated / DZS_BATCH_SIZE));
+    if (
+      estimated > DZS_BATCH_SIZE &&
+      !confirm(
+        `النطاق فيه ~${estimated} رقم — هيتفتح ${numTabs} تاب على دفعات (${DZS_BATCH_SIZE} رقم لكل تاب) ` +
+          `لأن بوابة DZS بتقفل لو العدد كبير.\nتأكد إن المتصفح مسموح له يفتح النوافذ المنبثقة لهذا الموقع. متابعة؟`,
+      )
+    ) {
+      return;
+    }
+    const wins: (Window | null)[] = [];
+    for (let i = 0; i < numTabs; i++) wins.push(window.open("", "_blank"));
     try {
       const params = new URLSearchParams({ page: "1", limit: "20000" });
       if (central) params.set("central", central);
@@ -159,18 +176,22 @@ export function WithAccountReport() {
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
       if (items.length === 0) {
-        if (win) win.close();
+        wins.forEach((w) => { try { w?.close(); } catch {} });
         alert("لا توجد أرقام أكونت فى النطاق المحدد");
         return;
       }
-      if (items.length > 150 && !confirm(`سيتم فتح DZS لقياس ${items.length} رقم — متأكد؟`)) {
-        if (win) win.close();
-        return;
-      }
-      const url = buildDZSUrl(items);
-      if (win) win.location.href = url; else window.open(url, "_blank");
+      // نقسّم الأرقام لدفعات ونوزّعها على التابات المفتوحة
+      const chunks: DZSItem[][] = [];
+      for (let i = 0; i < items.length; i += DZS_BATCH_SIZE) chunks.push(items.slice(i, i + DZS_BATCH_SIZE));
+      chunks.forEach((chunk, i) => {
+        const url = buildDZSUrl(chunk);
+        if (wins[i]) wins[i]!.location.href = url;
+        else window.open(url, "_blank");
+      });
+      // نقفل أى تابات زيادة فُتحت بالتقدير ومش محتاجينها
+      for (let i = chunks.length; i < wins.length; i++) { try { wins[i]?.close(); } catch {} }
     } catch {
-      if (win) win.close();
+      wins.forEach((w) => { try { w?.close(); } catch {} });
       alert("تعذّر تحميل بيانات النطاق للقياس");
     }
   };
