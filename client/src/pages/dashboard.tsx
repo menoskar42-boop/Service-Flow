@@ -53,6 +53,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
+    label: "القياسات",
+    icon: Cable,
+    items: [
+      { id: "with-account",    label: "خطوط لها رقم أكونت" },
+      { id: "without-account", label: "خطوط بدون رقم أكونت" },
+    ],
+  },
+  {
     label: "متعذرات OM",
     icon: FileText,
     items: [
@@ -86,14 +94,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "box-summary",  label: "ملخص البكسيات" },
-    ],
-  },
-  {
-    label: "القياسات",
-    icon: Cable,
-    items: [
-      { id: "with-account",    label: "خطوط لها رقم أكونت" },
-      { id: "without-account", label: "خطوط بدون رقم أكونت" },
     ],
   },
   {
