@@ -629,11 +629,11 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
          c138p.max_speed         AS "lineMaxSpeed",
          c138p.score             AS "lastMeasScore",
          c138p.complain_no       AS "lastMeasComplainNo",
-         c138p.uploaded_at     AS "lastMeasTime",
+         (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
          c138c.score             AS "curMeasScore",
          c138c.current_speed     AS "curMeasCurrentSpeed",
          c138c.max_speed         AS "curMeasMaxSpeed",
-         c138c.uploaded_at     AS "curMeasTime"
+         (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime"
        FROM (
          SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
          WHERE close_date IS NOT NULL
@@ -1487,7 +1487,7 @@ export async function registerRoutes(
               c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
               c138p.complain_no AS "lastMeasComplainNo",
-              c138p.uploaded_at AS "lastMeasTime"
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -1566,7 +1566,7 @@ export async function registerRoutes(
               la.account_no AS "accountNo", la.source AS "accountSource",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
-              c138p.uploaded_at AS "lastMeasTime"
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -1610,7 +1610,7 @@ export async function registerRoutes(
               pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
-              c138p.uploaded_at AS "lastMeasTime"
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -3628,11 +3628,11 @@ export async function registerRoutes(
              c138p.max_speed         AS "lineMaxSpeed",
              c138p.score             AS "lastMeasScore",
              c138p.complain_no       AS "lastMeasComplainNo",
-             c138p.uploaded_at     AS "lastMeasTime",
+             (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
              c138c.score             AS "curMeasScore",
              c138c.current_speed     AS "curMeasCurrentSpeed",
              c138c.max_speed         AS "curMeasMaxSpeed",
-             c138c.uploaded_at     AS "curMeasTime"
+             (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime"
            FROM ticket_dsl_current t
            LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
            LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
@@ -3775,11 +3775,11 @@ export async function registerRoutes(
              c138p.max_speed          AS "lineMaxSpeed",
              c138p.score              AS "lastMeasScore",
              c138p.complain_no        AS "lastMeasComplainNo",
-             c138p.uploaded_at        AS "lastMeasTime",
+             (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
              c138c.score              AS "curMeasScore",
              c138c.current_speed      AS "curMeasCurrentSpeed",
              c138c.max_speed          AS "curMeasMaxSpeed",
-             c138c.uploaded_at        AS "curMeasTime",
+             (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
              'تفاصيل'                 AS "dataSource"
            FROM complaint_details cd
            LEFT JOIN phone_ports pp       ON pp.phone_number = cd.phone_number
@@ -3844,11 +3844,11 @@ export async function registerRoutes(
              rc138p.max_speed         AS "lineMaxSpeed",
              rc138p.score             AS "lastMeasScore",
              rc138p.complain_no       AS "lastMeasComplainNo",
-             rc138p.uploaded_at       AS "lastMeasTime",
+             (rc138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
              rc138c.score             AS "curMeasScore",
              rc138c.current_speed     AS "curMeasCurrentSpeed",
              rc138c.max_speed         AS "curMeasMaxSpeed",
-             rc138c.uploaded_at       AS "curMeasTime",
+             (rc138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
              'متبقى'                  AS "dataSource"
            FROM remaining_complaints rc
            LEFT JOIN phone_ports pp2        ON pp2.phone_number = rc.phone_number
