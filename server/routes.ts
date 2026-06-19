@@ -1811,7 +1811,9 @@ export async function registerRoutes(
          COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
          ROUND(AVG(c138p.score)::numeric, 1)            AS "avgScore",
          ROUND(AVG(${numSpeed("c138p.current_speed")}), 0) AS "avgCurrentSpeed",
-         ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed"
+         ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed",
+         MIN(c138dates.oldest_at) AS "oldestMeasTime",
+         MAX(c138dates.newest_at) AS "newestMeasTime"
        FROM line_accounts la
        JOIN phone_lines pl ON pl.full_phone = la.full_phone
        LEFT JOIN LATERAL (
@@ -1824,6 +1826,11 @@ export async function registerRoutes(
          FROM case_138 c WHERE c.full_phone = la.full_phone
          ORDER BY c.id DESC LIMIT 1
        ) c138p ON true
+       LEFT JOIN LATERAL (
+         SELECT MIN(c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS oldest_at,
+                MAX(c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS newest_at
+         FROM case_138 c WHERE c.full_phone = la.full_phone
+       ) c138dates ON true
        ${where}
        GROUP BY pl.central, pl.cabin_number, ctm.cabin_code
        ORDER BY pl.central, pl.cabin_number`,

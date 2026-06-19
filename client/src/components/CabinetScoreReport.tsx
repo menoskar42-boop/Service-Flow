@@ -19,6 +19,8 @@ interface CabinetAvgRow {
   avgScore: number | null;
   avgCurrentSpeed: number | null;
   avgMaxSpeed: number | null;
+  oldestMeasTime: string | null;
+  newestMeasTime: string | null;
 }
 
 interface FilterOptions {
@@ -29,6 +31,14 @@ interface FilterOptions {
 
 type SortKey = keyof CabinetAvgRow;
 type SortDir = "asc" | "desc";
+
+const fmtDt = (d: string | null | undefined) => {
+  if (!d) return "لا يوجد";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "لا يوجد";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
 
 const scoreBadge = (v: number | null | undefined) => {
   if (v == null) return <span className="text-gray-400">—</span>;
@@ -110,6 +120,8 @@ export function CabinetScoreReport() {
       "متوسط الاسكور": r.measuredCount > 0 ? r.avgScore : "لا توجد خطوط مقاسة",
       "متوسط السرعة الحالية (Kbps)": r.measuredCount > 0 ? r.avgCurrentSpeed : "",
       "متوسط أقصى سرعة (Kbps)": r.measuredCount > 0 ? r.avgMaxSpeed : "",
+      "أقدم تاريخ قياس": fmtDt(r.oldestMeasTime),
+      "أحدث تاريخ قياس": fmtDt(r.newestMeasTime),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -120,13 +132,14 @@ export function CabinetScoreReport() {
   const handleExportPDF = () => {
     printTablePDF({
       title: "متوسط القياسات لكل كابينة",
-      columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة"],
+      columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
           ? [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, r.measuredCount,
-             r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—"]
+             r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—",
+             fmtDt(r.oldestMeasTime), fmtDt(r.newestMeasTime)]
           : [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, 0,
-             "لا توجد خطوط مقاسة داخل هذه الكابينة", "", ""],
+             "لا توجد خطوط مقاسة داخل هذه الكابينة", "", "", "لا يوجد", "لا يوجد"],
       ),
     });
   };
@@ -212,6 +225,12 @@ export function CabinetScoreReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("avgMaxSpeed")}>
                     متوسط أقصى سرعة <SortIcon k="avgMaxSpeed" />
                   </TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("oldestMeasTime")}>
+                    أقدم تاريخ قياس <SortIcon k="oldestMeasTime" />
+                  </TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap cursor-pointer select-none" onClick={() => toggleSort("newestMeasTime")}>
+                    أحدث تاريخ قياس <SortIcon k="newestMeasTime" />
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -237,11 +256,13 @@ export function CabinetScoreReport() {
                         لا توجد خطوط مقاسة داخل هذه الكابينة
                       </TableCell>
                     )}
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.oldestMeasTime)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.newestMeasTime)}</TableCell>
                   </TableRow>
                 ))}
                 {sorted.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                       لا توجد بيانات — لا يوجد خطوط لها أكونت فى النطاق المحدد
                     </TableCell>
                   </TableRow>

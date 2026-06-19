@@ -24,10 +24,7 @@ const DZS_URL = "https://10.42.187.101:8080/expresse/";
 type DZSItem = { account: string; complaint?: string | null; short?: string | null; full?: string | null };
 const buildDZSUrl = (items: DZSItem[]) => {
   const accounts = items.map((it) => it.account);
-  const meta = items
-    .map((it) => [it.account, it.complaint ?? "", it.short ?? "", it.full ?? ""].join("~"))
-    .join(";");
-  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}&sf_meta=${encodeURIComponent(meta)}`;
+  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
 };
 
 interface PhoneLine extends Measurement138 {
