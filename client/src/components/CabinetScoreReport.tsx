@@ -131,7 +131,7 @@ export function CabinetScoreReport() {
 
   const handleExportPDF = () => {
     printTablePDF({
-      title: "متوسط القياسات لكل كابينة",
+      title: "متوسط قياسات الكباين",
       columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
@@ -149,7 +149,7 @@ export function CabinetScoreReport() {
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-base">متوسط القياسات لكل كابينة</h3>
+            <h3 className="font-semibold text-base">متوسط قياسات الكباين</h3>
             {data && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {sorted.length.toLocaleString("ar-EG")} كابينة — خطوط لها رقم أكونت فقط

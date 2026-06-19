@@ -60,7 +60,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "with-account",        label: "خطوط لها رقم أكونت" },
       { id: "without-account",     label: "خطوط بدون رقم أكونت" },
-      { id: "cabinet-score-avg",   label: "متوسط قياسات الكابينات" },
+      { id: "cabinet-score-avg",   label: "متوسط قياسات الكباين" },
       { id: "account-edits",       label: "تعديلات الأكونت" },
     ],
   },
