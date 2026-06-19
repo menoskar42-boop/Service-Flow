@@ -1577,7 +1577,7 @@ export async function registerRoutes(
 
   // GET /api/phone-lines/without-account — lines with no entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/without-account", requireAuth, async (req, res) => {
-    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50", complaintThisMonth = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
@@ -1591,6 +1591,23 @@ export async function registerRoutes(
       params.push(`%${q}%`);
       const p = `$${params.length}`;
       conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
+    }
+    // فلتر: الأرقام التى نزلت لها شكوى خلال الشهر الحالى (شيت التفاصيل أو المتبقى) — المطابقة برقم التليفون
+    if (complaintThisMonth === "1" || complaintThisMonth === "true") {
+      conds.push(`(
+        EXISTS (
+          SELECT 1 FROM complaint_details cd
+          WHERE cd.phone_number = pl.tel_no
+            AND date_trunc('month', cd.complain_time AT TIME ZONE 'Africa/Cairo')
+                = date_trunc('month', now() AT TIME ZONE 'Africa/Cairo')
+        )
+        OR EXISTS (
+          SELECT 1 FROM remaining_complaints rc
+          WHERE rc.phone_number = pl.tel_no
+            AND date_trunc('month', rc.complain_time AT TIME ZONE 'Africa/Cairo')
+                = date_trunc('month', now() AT TIME ZONE 'Africa/Cairo')
+        )
+      )`);
     }
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
@@ -1654,6 +1671,60 @@ export async function registerRoutes(
       [fullPhone, oldNo, newNo, req.user.id, req.user.username],
     );
     res.json({ ok: true });
+  });
+
+  // POST /api/line-accounts/bulk — حفظ عدة أرقام أكونت دفعة واحدة (كل الأدوار عدا المبيعات)
+  app.post("/api/line-accounts/bulk", requireAuth, async (req: any, res) => {
+    if (req.user.role === ROLES.SALES) {
+      return res.status(403).json({ message: "غير مصرح" });
+    }
+    const { entries } = req.body as { entries: { fullPhone: string; accountNo: string }[] };
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({ message: "لا توجد بيانات للحفظ" });
+    }
+    // تنقية المدخلات الصالحة فقط
+    const clean = entries
+      .map((e) => ({ fullPhone: String(e.fullPhone || "").trim(), accountNo: String(e.accountNo || "").trim() }))
+      .filter((e) => e.fullPhone && e.accountNo);
+    if (clean.length === 0) {
+      return res.status(400).json({ message: "لا توجد أرقام أكونت صالحة" });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      let saved = 0;
+      for (const e of clean) {
+        const { rows: existing } = await client.query(
+          `SELECT account_no FROM line_accounts WHERE full_phone = $1`,
+          [e.fullPhone],
+        );
+        const oldNo: string | null = existing[0]?.account_no ?? null;
+        await client.query(
+          `INSERT INTO line_accounts (full_phone, account_no, source, updated_by_id, updated_by_name, updated_at)
+           VALUES ($1, $2, 'manual', $3, $4, now())
+           ON CONFLICT (full_phone) DO UPDATE
+             SET account_no = EXCLUDED.account_no,
+                 source = 'manual',
+                 updated_by_id = EXCLUDED.updated_by_id,
+                 updated_by_name = EXCLUDED.updated_by_name,
+                 updated_at = now()`,
+          [e.fullPhone, e.accountNo, req.user.id, req.user.username],
+        );
+        await client.query(
+          `INSERT INTO line_account_edits (full_phone, old_account_no, new_account_no, edited_by_id, edited_by_name)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [e.fullPhone, oldNo, e.accountNo, req.user.id, req.user.username],
+        );
+        saved++;
+      }
+      await client.query("COMMIT");
+      res.json({ ok: true, saved });
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      res.status(500).json({ message: err.message });
+    } finally {
+      client.release();
+    }
   });
 
   // GET /api/reports/account-edits — سجل تعديلات أرقام الأكونت

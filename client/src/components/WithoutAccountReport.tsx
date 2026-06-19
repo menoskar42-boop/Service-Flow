@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Save } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -59,10 +59,13 @@ export function WithoutAccountReport() {
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
   const [page, setPage] = useState(1);
+  // فلتر: عرض فقط الأرقام التى نزلت لها شكوى خلال الشهر الحالى
+  const [complaintThisMonth, setComplaintThisMonth] = useState(false);
   // map of fullPhone → draft account number being typed
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   // map of fullPhone → "saving" | "saved" | "error"
   const [saveState, setSaveState] = useState<Record<string, string>>({});
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -73,7 +76,7 @@ export function WithoutAccountReport() {
     },
   });
 
-  const queryKey = ["/api/phone-lines/without-account", central, cabin, box, page];
+  const queryKey = ["/api/phone-lines/without-account", central, cabin, box, page, complaintThisMonth];
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
@@ -81,6 +84,7 @@ export function WithoutAccountReport() {
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (complaintThisMonth) params.set("complaintThisMonth", "1");
       const res = await fetch(`/api/phone-lines/without-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
@@ -111,6 +115,49 @@ export function WithoutAccountReport() {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
     }
   };
+
+  // حفظ كل أرقام الأكونت المكتوبة دفعة واحدة
+  const handleSaveAll = async () => {
+    const entries = Object.entries(drafts)
+      .map(([fullPhone, accountNo]) => ({ fullPhone, accountNo: (accountNo ?? "").trim() }))
+      .filter((e) => e.accountNo);
+    if (entries.length === 0) {
+      alert("لا توجد أرقام أكونت مكتوبة للحفظ");
+      return;
+    }
+    setBulkSaving(true);
+    setSaveState((s) => {
+      const n = { ...s };
+      entries.forEach((e) => { n[e.fullPhone] = "saving"; });
+      return n;
+    });
+    try {
+      const res = await fetch(`/api/line-accounts/bulk`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const json = await res.json();
+      setDrafts({});
+      setSaveState({});
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+      alert(`تم حفظ ${json.saved ?? entries.length} رقم أكونت`);
+    } catch {
+      setSaveState((s) => {
+        const n = { ...s };
+        entries.forEach((e) => { n[e.fullPhone] = "error"; });
+        return n;
+      });
+      alert("تعذّر الحفظ — حاول مرة أخرى");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const draftCount = Object.values(drafts).filter((v) => (v ?? "").trim()).length;
 
   const handleExport = async () => {
     const params = new URLSearchParams({ page: "1", limit: "20000" });
@@ -195,6 +242,28 @@ export function WithoutAccountReport() {
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
+            <Button
+              variant={complaintThisMonth ? "default" : "outline"}
+              size="sm"
+              onClick={() => { setComplaintThisMonth((v) => !v); setPage(1); }}
+              className={complaintThisMonth ? "gap-1 bg-amber-600 hover:bg-amber-700" : "gap-1 text-amber-700 border-amber-200"}
+              title="عرض فقط الأرقام التى نزلت لها شكوى خلال الشهر الحالى"
+            >
+              <CalendarClock className="w-4 h-4" /> شكوى هذا الشهر
+            </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveAll}
+                disabled={draftCount === 0 || bulkSaving}
+                className="gap-1 text-blue-700 border-blue-200 disabled:opacity-40"
+                title="حفظ كل أرقام الأكونت المكتوبة دفعة واحدة"
+              >
+                {bulkSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <SaveAll className="w-4 h-4" />}
+                حفظ الكل{draftCount > 0 ? ` (${draftCount})` : ""}
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
