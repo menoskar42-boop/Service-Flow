@@ -2899,6 +2899,15 @@ export async function registerRoutes(
       const accountNo = (it.accountNo ?? "").toString().trim() || null;
       let fullPhone = (it.fullPhone ?? "").toString().trim() || null;
       if (!fullPhone && phoneShort) fullPhone = "88" + phoneShort;
+      // لو السكربت بعت رقم الأكونت فقط (URL قصير بدون sf_meta) — نحوّله للتليفون
+      // الكامل من line_accounts حتى تربط التقارير القياس بالخط (join على full_phone).
+      if (!fullPhone && accountNo) {
+        const { rows: la } = await pool.query(
+          `SELECT full_phone FROM line_accounts WHERE account_no = $1 LIMIT 1`,
+          [accountNo],
+        );
+        if (la[0]?.full_phone) fullPhone = String(la[0].full_phone).trim();
+      }
       // لا بد من مفتاح ربط واحد على الأقل
       if (!phoneShort && !complainNo && !accountNo) continue;
       await pool.query(
