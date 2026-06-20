@@ -3248,7 +3248,7 @@ export async function registerRoutes(
   //   soy      = متعذرات بداية السنة (التراكمى)
   //   resolved = متعذرات تم فكها (موجودة فى SOY وغير موجودة فى الحالى بمفتاح المسلسل+order ids)
   app.get("/api/ftth-orders", requireAuth, async (req, res) => {
-    const { q, all, bucket, year, yearFilter } = req.query as Record<string, string>;
+    const { q, all, bucket, year, yearFilter, msanFilter, fccFilter, dateFrom, dateTo } = req.query as Record<string, string>;
     const table = bucket === "current" ? "ftth_orders_current"
                 : bucket === "archive" ? "ftth_orders_archive"
                 : (bucket === "soy" || bucket === "resolved") ? "ftth_orders_soy"
@@ -3282,6 +3282,22 @@ export async function registerRoutes(
       params.push(`%${q.trim()}%`);
       const p = `$${params.length}`;
       conds.push(`(fo.service_order_id ILIKE ${p} OR fo.serial_number ILIKE ${p} OR fo.customer_order_id ILIKE ${p} OR fo.customer_name ILIKE ${p} OR fo.msan_code ILIKE ${p} OR fo.fcc_exchange ILIKE ${p})`);
+    }
+    if (msanFilter?.trim()) {
+      params.push(`%${msanFilter.trim()}%`);
+      conds.push(`fo.msan_code ILIKE $${params.length}`);
+    }
+    if (fccFilter?.trim()) {
+      params.push(fccFilter.trim());
+      conds.push(`fo.fcc_exchange = $${params.length}`);
+    }
+    if (dateFrom?.trim()) {
+      params.push(dateFrom.trim());
+      conds.push(`fo.order_create_time >= $${params.length}::date`);
+    }
+    if (dateTo?.trim()) {
+      params.push(dateTo.trim());
+      conds.push(`fo.order_create_time < ($${params.length}::date + INTERVAL '1 day')::timestamptz`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const yearCol = bucket === "archive" ? `fo.archived_year AS "archivedYear",` : "";

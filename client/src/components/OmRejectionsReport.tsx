@@ -45,18 +45,25 @@ type YearFilter = "all" | "current" | "previous";
 export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy" | "resolved"; title: string }) {
   const [q, setQ] = useState("");
   const [yearFilter, setYearFilter] = useState<YearFilter>("all");
+  const [msanFilter, setMsanFilter] = useState("");
+  const [fccFilter, setFccFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const isAdmin = user?.role === ROLES.ADMIN;
 
-
   const { data: rows = [], isFetching } = useQuery<Row[]>({
-    queryKey: ["/api/ftth-orders", bucket, q, yearFilter],
+    queryKey: ["/api/ftth-orders", bucket, q, yearFilter, msanFilter, fccFilter, dateFrom, dateTo],
     queryFn: async () => {
       const p = new URLSearchParams({ bucket });
       if (q.trim()) p.set("q", q.trim());
       if (yearFilter !== "all") p.set("yearFilter", yearFilter);
+      if (msanFilter.trim()) p.set("msanFilter", msanFilter.trim());
+      if (fccFilter.trim()) p.set("fccFilter", fccFilter.trim());
+      if (dateFrom) p.set("dateFrom", dateFrom);
+      if (dateTo) p.set("dateTo", dateTo);
       const res = await fetch(`/api/ftth-orders?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -212,15 +219,34 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   return (
     <div className="space-y-4" dir="rtl">
       <Card className="p-4 bg-white border-0 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-bold">{title}</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-bold w-full sm:w-auto">{title}</h2>
           <Input
             placeholder="بحث بالمسلسل / Order ID / العميل / MSAN"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="w-full sm:max-w-xs text-sm"
+            className="w-full sm:w-56 text-sm"
             dir="rtl"
           />
+          <Input
+            placeholder="كود الكابينة (MSAN)"
+            value={msanFilter}
+            onChange={(e) => setMsanFilter(e.target.value)}
+            className="w-full sm:w-36 text-sm"
+            dir="ltr"
+          />
+          <select
+            value={fccFilter}
+            onChange={(e) => setFccFilter(e.target.value)}
+            className="border rounded-md text-sm px-2 py-2 bg-white"
+            title="فلتر حسب كود السنترال"
+          >
+            <option value="">كل السنترالات</option>
+            <option value="GHNAT">GHNAT</option>
+            <option value="AMZAT">AMZAT</option>
+            <option value="DRGAT">DRGAT</option>
+            <option value="NGOAT">NGOAT</option>
+          </select>
           <select
             value={yearFilter}
             onChange={(e) => setYearFilter(e.target.value as YearFilter)}
@@ -231,6 +257,18 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             <option value="current">متعذرات العام</option>
             <option value="previous">متعذرات سنوات سابقة</option>
           </select>
+          <label className="text-xs text-muted-foreground whitespace-nowrap">من:</label>
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+            className="border rounded-md text-sm px-2 py-1.5 bg-white" />
+          <label className="text-xs text-muted-foreground whitespace-nowrap">إلى:</label>
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+            className="border rounded-md text-sm px-2 py-1.5 bg-white" />
+          {(msanFilter || fccFilter || dateFrom || dateTo) && (
+            <button
+              onClick={() => { setMsanFilter(""); setFccFilter(""); setDateFrom(""); setDateTo(""); }}
+              className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
+            >مسح الفلاتر</button>
+          )}
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           <span className="text-sm text-muted-foreground">إجمالي: <strong className="text-foreground">{rows.length}</strong> متعذر</span>
