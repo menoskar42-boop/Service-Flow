@@ -142,7 +142,7 @@ export default function Dashboard() {
     if (!authLoading && !user) {
       setLocation("/login");
     } else if (!authLoading && user?.role === ROLES.DATA_MANAGER) {
-      setLocation("/phone-lines");
+      setAdminTab("reports");
     }
   }, [authLoading, user, setLocation]);
 
@@ -228,8 +228,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tab Navigation — Admin & Tech */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
+        {/* Tab Navigation — Admin, Tech & Data Manager */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && (
           <div className="border-t bg-white">
             <div className="container mx-auto px-4">
               <div className="flex" dir="rtl">
@@ -245,7 +245,7 @@ export default function Dashboard() {
                   <ClipboardList className="w-4 h-4" />
                   الطلبات
                 </button>
-                {user.role === ROLES.ADMIN && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && (
                   <button
                     onClick={() => setAdminTab("reports")}
                     data-testid="tab-admin-reports"
@@ -296,8 +296,8 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
-        {/* ── REPORTS TAB (Admin & Tech) ── */}
-        {user.role === ROLES.ADMIN && adminTab === "reports" && (
+        {/* ── REPORTS TAB (Admin & Data Manager) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && adminTab === "reports" && (
           <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
             {/* ── زر فتح/قفل القائمة على الموبايل ── */}
             <button

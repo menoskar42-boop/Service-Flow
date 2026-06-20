@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,17 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const techNames = Array.from(new Set(techList.map((t) => t.techName).filter(Boolean)))
     .sort((a, b) => a.localeCompare(b, "ar"));
 
+  // فلتر السنة client-side — يضمن الصحة بغض النظر عن الـ DB timezone
+  const displayRows = useMemo(() => {
+    if (yearFilter === "all") return rows;
+    const nowYear = new Date().getFullYear();
+    return rows.filter((r) => {
+      if (!r.orderCreateTime) return yearFilter === "previous";
+      const yr = new Date(r.orderCreateTime).getFullYear();
+      return yearFilter === "current" ? yr === nowYear : yr < nowYear;
+    });
+  }, [rows, yearFilter]);
+
   const assignTech = async (msanCode: string, techName: string) => {
     try {
       await apiRequest("POST", "/api/msan-tech", { msanCode, techName });
@@ -165,7 +176,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   ];
 
   const handleExportExcel = () => {
-    const data = rows.map((r, i) => {
+    const data = displayRows.map((r, i) => {
       const o: Record<string, any> = { "#": i + 1 };
       cols.forEach(([h, f]) => { o[h] = f(r) ?? ""; });
       return o;
@@ -179,17 +190,17 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const handleExportPDF = () => {
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const ROWS_PER_PAGE = 20;
-    const total = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
+    const total = Math.max(1, Math.ceil(displayRows.length / ROWS_PER_PAGE));
     const head = `<th>#</th>` + cols.map(([h]) => `<th>${esc(h)}</th>`).join("");
     let pages = "";
     for (let pg = 0; pg < total; pg++) {
-      const chunk = rows.slice(pg * ROWS_PER_PAGE, (pg + 1) * ROWS_PER_PAGE);
+      const chunk = displayRows.slice(pg * ROWS_PER_PAGE, (pg + 1) * ROWS_PER_PAGE);
       const body = chunk.map((r, ci) =>
         `<tr><td>${pg * ROWS_PER_PAGE + ci + 1}</td>` + cols.map(([, f]) => `<td>${esc(f(r))}</td>`).join("") + `</tr>`,
       ).join("");
       pages += `
         <section class="page">
-          <h2>${esc(title)} — ${rows.length} متعذر</h2>
+          <h2>${esc(title)} — ${displayRows.length} متعذر</h2>
           <div class="pageno">صفحة ${pg + 1} من ${total}</div>
           <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
         </section>`;
@@ -271,11 +282,11 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           )}
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-          <span className="text-sm text-muted-foreground">إجمالي: <strong className="text-foreground">{rows.length}</strong> متعذر</span>
-          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={rows.length === 0} className="text-green-700 border-green-200 gap-1">
+          <span className="text-sm text-muted-foreground">إجمالي: <strong className="text-foreground">{displayRows.length}</strong> متعذر</span>
+          <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={displayRows.length === 0} className="text-green-700 border-green-200 gap-1">
             <FileSpreadsheet className="w-4 h-4" /> Excel
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={rows.length === 0} className="text-red-700 border-red-200 gap-1">
+          <Button variant="outline" size="sm" onClick={handleExportPDF} disabled={displayRows.length === 0} className="text-red-700 border-red-200 gap-1">
             <Printer className="w-4 h-4" /> PDF
           </Button>
         </div>
@@ -291,14 +302,14 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 ? (
+              {displayRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={cols.length + 1} className="text-center py-14 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد بيانات — تأكد من رفع ملفات متعذرات OM (الحالى + بداية السنة)"}
                   </TableCell>
                 </TableRow>
               ) : (
-                rows.map((r, idx) => (
+                displayRows.map((r, idx) => (
                   <TableRow key={r.id ?? idx} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                     {cols.map(([h, f]) => (
