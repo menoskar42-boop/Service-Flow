@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.1 (Service-Flow 138 sheet + auto-upload + 50-batch/400s)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.1: يقيس على دفعات 50 خط، وبعد كل دفعة ينتظر 400 ثانية قبل بدء الدفعة التالية (يتجنّب حد الـ popups).
-// @version      10.1.0
+// @name         DZS Expresse Continuous Flow v10.2 (Service-Flow 138 sheet + auto-upload + 140-batch/400s)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.2: يقيس على دفعات 140 خط، وبعد كل دفعة ينتظر 400 ثانية قبل بدء الدفعة التالية (يتجنّب حد الـ popups).
+// @version      10.2.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -21,8 +21,8 @@
   const SF_INGEST_TOKEN = "sf-dzs-138-ingest-2026"; // ← لازم يطابق DZS_INGEST_TOKEN فى السيرفر
   const SF_AUTO_UPLOAD = true; // false لو عايزه CSV فقط من غير رفع تلقائى
 
-  // 🆕 القياس على دفعات: 50 خط لكل دفعة، وبعد كل دفعة انتظار 400 ثانية قبل الدفعة التالية
-  const DZS_BATCH_SIZE = 50;
+  // 🆕 القياس على دفعات: 140 خط لكل دفعة، وبعد كل دفعة انتظار 400 ثانية قبل الدفعة التالية
+  const DZS_BATCH_SIZE = 140;
   const DZS_BATCH_PAUSE_MS = 400 * 1000; // 400 ثانية
 
   const SF_ACCOUNTS_KEY = "DZS_SF_ACCOUNTS";

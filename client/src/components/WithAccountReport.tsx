@@ -285,7 +285,7 @@ export function WithAccountReport() {
         {dzsCount != null && (
           <div className="px-4 py-2 border-b bg-blue-50 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-blue-700 font-semibold">
-              فُتح قياس DZS لـ {dzsCount} رقم — السكريبت بيقيس على دفعات 50 خط، وبعد كل دفعة بينتظر 400 ثانية ويكمّل تلقائياً ويرفع النتائج لشيت 138.
+              فُتح قياس DZS لـ {dzsCount} رقم — السكريبت بيقيس على دفعات 140 خط، وبعد كل دفعة بينتظر 400 ثانية ويكمّل تلقائياً ويرفع النتائج لشيت 138.
             </span>
             <button onClick={() => setDzsCount(null)} className="text-gray-400 hover:text-gray-600 mr-auto" title="إغلاق">
               <X className="w-4 h-4" />
