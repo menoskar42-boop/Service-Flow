@@ -1532,7 +1532,7 @@ export async function registerRoutes(
 
   // GET /api/phone-lines/with-account — lines that have an entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/with-account", requireAuth, async (req, res) => {
-    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50", scoreGt = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
@@ -1550,8 +1550,14 @@ export async function registerRoutes(
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
     const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
+    // فلتر اختيارى على الاسكور (تقرير الأسكور الأعلى من 100) — يحتاج c138Join فى عدّ الإجمالى أيضاً
+    let scoreWhere = "";
+    if (scoreGt !== "" && !isNaN(parseInt(scoreGt))) {
+      params.push(parseInt(scoreGt));
+      scoreWhere = ` AND c138p.score > $${params.length}`;
+    }
 
-    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${scoreWhere}`, params);
     const total = totalRes.rows[0].c as number;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
@@ -1567,7 +1573,7 @@ export async function registerRoutes(
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
-       ${joinClause} ${c138Join} ${where}
+       ${joinClause} ${c138Join} ${where}${scoreWhere}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
@@ -1725,6 +1731,191 @@ export async function registerRoutes(
     } finally {
       client.release();
     }
+  });
+
+  // GET /api/phone-lines/needs-speed — أرقام محتاجة رفع سرعة (تقريرا 2 و 4)
+  // المعيار: نستبعد الخطوط غير المتزامنة (السرعة الحالية وأقصى سرعة < 200 معاً)، ثم نعتبر الخط
+  //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).
+  // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
+  app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+    if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
+    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+
+    const joinClause = `FROM phone_lines pl
+      LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+      LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+      LEFT JOIN LATERAL (
+        SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+               NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
+               NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
+        FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
+      ) c138p ON true
+      LEFT JOIN LATERAL (
+        SELECT u.complain_no, u.complain_time FROM (
+          SELECT complain_no, complain_time FROM complaint_details WHERE phone_number = pl.tel_no
+          UNION ALL
+          SELECT complain_no, complain_time FROM remaining_complaints WHERE phone_number = pl.tel_no
+        ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
+      ) cpl ON true`;
+
+    // معيار رفع السرعة
+    conds.push(`c138p.score IS NOT NULL`);
+    conds.push(`NOT (COALESCE(c138p.cur_n, 0) < 200 AND COALESCE(c138p.mx_n, 0) < 200)`);
+    conds.push(`(
+       (c138p.mx_n > 0 AND c138p.cur_n / c138p.mx_n < 0.6 AND c138p.score > 15 AND c138p.score < 101)
+       OR (c138p.score < 16 AND c138p.cur_n < 10000)
+    )`);
+    if (requireComplaint === "1" || requireComplaint === "true") {
+      conds.push(`(
+        EXISTS (SELECT 1 FROM complaint_details cd WHERE cd.phone_number = pl.tel_no
+                AND cd.complain_time >= now() - interval '1 month')
+        OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE rc.phone_number = pl.tel_no
+                AND rc.complain_time >= now() - interval '1 month')
+      )`);
+    }
+    const where = `WHERE ${conds.join(" AND ")}`;
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
+    const total = totalRes.rows[0].c as number;
+    const offset = (pageNum - 1) * pageSize;
+    params.push(pageSize); params.push(offset);
+    const dataRes = await pool.query(
+      `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+              pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
+              COALESCE(pp.frame, pl.port) AS port, pl.len, pl.full_phone AS "fullPhone",
+              la.account_no AS "accountNo", la.source AS "accountSource",
+              c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
+              c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              cpl.complain_no AS "complaintNo",
+              (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime"
+       ${joinClause} ${where}
+       ORDER BY c138p.score DESC NULLS LAST, pl.id
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+  });
+
+  // GET /api/reports/regularized-no-account — الأعطال المنتظمة خلال فترة التى ليس لها رقم أكونت (تقرير 1)
+  // المصدر: نفس مصدر تقرير الأعطال المنتظمة لفترة (التفاصيل المغلقة + المتبقى 138/135، سنترالات غنايم)،
+  //   مطابقة برقم التليفون مع phone_lines، ثم استبعاد الأرقام التى لها رقم أكونت.
+  app.get("/api/reports/regularized-no-account", requireAuth, async (req, res) => {
+    const { dateFrom = "", dateTo = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    // افتراضى: من أول الشهر الحالى إلى اليوم
+    const today = new Date();
+    const from = dateFrom || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+    const to = dateTo || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const params: any[] = [from, to];
+    const plConds: string[] = ["la.full_phone IS NULL"];
+    if (central) { params.push(central); plConds.push(`pl.central = $${params.length}`); }
+    if (cabin) { params.push(cabin); plConds.push(`pl.cabin_number = $${params.length}`); }
+    if (box) { params.push(box); plConds.push(`pl.box_number = $${params.length}`); }
+
+    const regCte = `WITH reg AS (
+       SELECT cd.phone_number AS short FROM complaint_details cd
+         WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
+           AND (cd.close_time AT TIME ZONE 'Africa/Cairo')::date BETWEEN $1::date AND $2::date
+       UNION
+       SELECT rc.phone_number FROM remaining_complaints rc
+         WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
+           AND COALESCE(rc.close_time, rc.complain_time)::date BETWEEN $1::date AND $2::date
+    )`;
+    const joinClause = `FROM phone_lines pl
+       JOIN reg ON reg.short = pl.tel_no
+       LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+       LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone`;
+    const where = `WHERE ${plConds.join(" AND ")}`;
+
+    const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT pl.full_phone)::int AS c ${joinClause} ${where}`, params);
+    const total = totalRes.rows[0].c as number;
+    const offset = (pageNum - 1) * pageSize;
+    params.push(pageSize); params.push(offset);
+    const dataRes = await pool.query(
+      `${regCte}
+       SELECT DISTINCT ON (pl.full_phone)
+              pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+              pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
+              pl.cabinet_in AS "cabinetIn", pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
+              pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
+              COALESCE(pp.frame, pl.port) AS port, pl.len, pl.full_phone AS "fullPhone"
+       ${joinClause} ${where}
+       ORDER BY pl.full_phone, pl.id
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize, dateFrom: from, dateTo: to });
+  });
+
+  // GET /api/reports/complaint-no-measure — أرقام لها شكوى منتظمة خلال فترة، لها رقم أكونت، وليس لها قياس بعد تاريخ الشكوى (تقرير 5)
+  app.get("/api/reports/complaint-no-measure", requireAuth, async (req, res) => {
+    const { dateFrom = "", dateTo = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const today = new Date();
+    const from = dateFrom || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+    const to = dateTo || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const params: any[] = [from, to];
+    const plConds: string[] = [];
+    if (central) { params.push(central); plConds.push(`pl.central = $${params.length}`); }
+    if (cabin) { params.push(cabin); plConds.push(`pl.cabin_number = $${params.length}`); }
+    if (box) { params.push(box); plConds.push(`pl.box_number = $${params.length}`); }
+    // لا قياس بعد تاريخ الشكوى المرجعى لكل رقم
+    plConds.push(`NOT EXISTS (
+       SELECT 1 FROM case_138 c WHERE c.full_phone = pl.full_phone AND c.uploaded_at > regm.ref_time
+    )`);
+
+    const regCte = `WITH reg AS (
+       SELECT cd.phone_number AS short, MAX(cd.close_time) AS ref_time FROM complaint_details cd
+         WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
+           AND (cd.close_time AT TIME ZONE 'Africa/Cairo')::date BETWEEN $1::date AND $2::date
+         GROUP BY cd.phone_number
+       UNION ALL
+       SELECT rc.phone_number, MAX(COALESCE(rc.close_time, rc.complain_time)) FROM remaining_complaints rc
+         WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
+           AND COALESCE(rc.close_time, rc.complain_time)::date BETWEEN $1::date AND $2::date
+         GROUP BY rc.phone_number
+    ), regm AS (
+       SELECT short, MAX(ref_time) AS ref_time FROM reg GROUP BY short
+    )`;
+    const joinClause = `FROM phone_lines pl
+       JOIN regm ON regm.short = pl.tel_no
+       JOIN line_accounts la ON la.full_phone = pl.full_phone
+       LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+       LEFT JOIN LATERAL (
+         SELECT c.current_speed, c.max_speed, c.score, c.uploaded_at
+         FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
+       ) c138p ON true`;
+    const where = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
+
+    const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT pl.full_phone)::int AS c ${joinClause} ${where}`, params);
+    const total = totalRes.rows[0].c as number;
+    const offset = (pageNum - 1) * pageSize;
+    params.push(pageSize); params.push(offset);
+    const dataRes = await pool.query(
+      `${regCte}
+       SELECT DISTINCT ON (pl.full_phone)
+              pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+              pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
+              COALESCE(pp.frame, pl.port) AS port, pl.len, pl.full_phone AS "fullPhone",
+              la.account_no AS "accountNo", la.source AS "accountSource",
+              (regm.ref_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
+              c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
+              c138p.score AS "lastMeasScore",
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
+       ${joinClause} ${where}
+       ORDER BY pl.full_phone, pl.id
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize, dateFrom: from, dateTo: to });
   });
 
   // GET /api/reports/account-edits — سجل تعديلات أرقام الأكونت
