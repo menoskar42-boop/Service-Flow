@@ -65,7 +65,8 @@ const scoreBadge = (v: string | number | null | undefined) => {
   const n = Number(v);
   if (isNaN(n)) return <span>{String(v)}</span>;
   const cls =
-    n > 15 ? "bg-red-100 text-red-800" :
+    n > 33 ? "bg-red-100 text-red-800" :
+    n > 15 ? "bg-amber-100 text-amber-700" :
              "bg-green-100 text-green-800";
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
 };
