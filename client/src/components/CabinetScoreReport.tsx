@@ -44,9 +44,8 @@ const scoreBadge = (v: number | null | undefined) => {
   if (v == null) return <span className="text-gray-400">—</span>;
   const n = Number(v);
   const cls =
-    n >= 70 ? "bg-green-100 text-green-800" :
-    n >= 40 ? "bg-amber-100 text-amber-700" :
-              "bg-red-100 text-red-800";
+    n > 15 ? "bg-red-100 text-red-800" :
+             "bg-green-100 text-green-800";
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
 };
 
