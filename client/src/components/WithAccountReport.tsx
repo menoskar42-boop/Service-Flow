@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,9 +22,12 @@ import { ROLES } from "@shared/schema";
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
 type DZSItem = { account: string; complaint?: string | null; short?: string | null; full?: string | null };
-const buildDZSUrl = (items: DZSItem[]) => {
+// bust: باراميتر اختيارى لإجبار إعادة تحميل الصفحة عند تغيير الـ hash فقط
+// (لازم لأن تغيير الـ hash وحده لا يعيد التحميل — نضيف query param مختلف لكل دفعة)
+const buildDZSUrl = (items: DZSItem[], bust?: number) => {
   const accounts = items.map((it) => it.account);
-  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
+  const q = bust != null ? `?sfb=${bust}` : "";
+  return `${DZS_URL}${q}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
 };
 
 interface PhoneLine extends Measurement138 {
@@ -59,6 +62,8 @@ const PAGE_SIZE = 50;
 // بوابة DZS بتقفل التاب لو استقبلت عدد كبير من الأرقام مرة واحدة، فنقسّم
 // القياس على دفعات وكل دفعة فى تاب لوحده. لو 50 لسه بتتقفل قلّل الرقم ده.
 const DZS_BATCH_SIZE = 50;
+// الفاصل الزمنى بين الدفعات فى القياس التلقائى — 400 ثانية
+const DZS_BATCH_INTERVAL_MS = 400_000;
 
 const scoreBadge = (v: string | number | null | undefined) => {
   if (v == null || v === "") return <span className="text-gray-400">-</span>;
@@ -81,6 +86,10 @@ export function WithAccountReport() {
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
   const [dzsChunks, setDzsChunks] = useState<DZSItem[][]>([]);
   const [dzsLoading, setDzsLoading] = useState(false);
+  // القياس التلقائى على دفعات: نفتح أول دفعة، وكل 400 ثانية ننقل نفس التاب للدفعة التالية
+  const [dzsAuto, setDzsAuto] = useState<{ total: number; done: number } | null>(null);
+  const dzsWinRef = useRef<Window | null>(null);
+  const dzsTimersRef = useRef<number[]>([]);
   const qc = useQueryClient();
   const { user } = useAuth();
   const canEdit = user?.role !== ROLES.SALES;
@@ -145,14 +154,28 @@ export function WithAccountReport() {
     full: r.fullPhone ?? "",
   });
 
-  // يحضّر قائمة الدفعات — كل ضغطة على زر دفعة تفتح تاب واحد فقط
+  // إلغاء كل المؤقتات المجدوَلة للدفعات التالية
+  const clearDzsTimers = () => {
+    dzsTimersRef.current.forEach((t) => clearTimeout(t));
+    dzsTimersRef.current = [];
+  };
+
+  // إيقاف القياس التلقائى يدوياً
+  const stopDzsAuto = () => { clearDzsTimers(); setDzsAuto(null); };
+
+  // القياس التلقائى: يفتح أول 50 رقم فى تاب، وكل 400 ثانية ينقل نفس التاب للدفعة التالية
   const handleMeasureDZS = async () => {
     if (!central && !cabin && !box) {
       alert("اختر سنترال أو كابينة أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط");
       return;
     }
+    // افتح التاب فوراً وبشكل متزامن داخل ضغطة الزر (قبل أى await) — وإلا يحجبه الـ popup blocker
+    const w = window.open("about:blank", "dzs_measure");
+    dzsWinRef.current = w;
     setDzsLoading(true);
     setDzsChunks([]);
+    setDzsAuto(null);
+    clearDzsTimers();
     try {
       const params = new URLSearchParams({ page: "1", limit: "20000" });
       if (central) params.set("central", central);
@@ -165,10 +188,26 @@ export function WithAccountReport() {
       const items = all
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
-      if (items.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
       const chunks: DZSItem[][] = [];
       for (let i = 0; i < items.length; i += DZS_BATCH_SIZE) chunks.push(items.slice(i, i + DZS_BATCH_SIZE));
       setDzsChunks(chunks);
+
+      // انقل التاب المفتوح للدفعة الأولى
+      if (w) w.location.href = buildDZSUrl(chunks[0]);
+      setDzsAuto({ total: chunks.length, done: 1 });
+
+      // جدوِل باقى الدفعات: كل 400 ثانية ننقل نفس التاب (الذى نملك مرجعه) للدفعة التالية
+      // — تغيير location على تاب نملكه مسموح cross-origin، والـ query param يجبر إعادة التحميل
+      for (let i = 1; i < chunks.length; i++) {
+        const t = window.setTimeout(() => {
+          const win = dzsWinRef.current;
+          if (!win || win.closed) { stopDzsAuto(); return; }
+          win.location.href = buildDZSUrl(chunks[i], i);
+          setDzsAuto({ total: chunks.length, done: i + 1 });
+        }, i * DZS_BATCH_INTERVAL_MS);
+        dzsTimersRef.current.push(t);
+      }
     } catch {
       alert("تعذّر تحميل بيانات النطاق للقياس");
     } finally {
@@ -176,8 +215,11 @@ export function WithAccountReport() {
     }
   };
 
-  // كل زرار دفعة = ضغطة مباشرة → window.open مسموح بيه بدون popup blocker
+  // فتح دفعة يدوياً (احتياطى) = ضغطة مباشرة → window.open مسموح بدون popup blocker
   const openDzsBatch = (chunk: DZSItem[]) => window.open(buildDZSUrl(chunk), "_blank");
+
+  // تنظيف المؤقتات عند مغادرة الصفحة
+  useEffect(() => () => clearDzsTimers(), []);
 
   const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)]), "_blank");
 
@@ -283,22 +325,42 @@ export function WithAccountReport() {
         </div>
 
         {dzsChunks.length > 0 && (
-          <div className="px-4 py-2 border-b bg-blue-50 flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-blue-700 font-semibold">
-              {dzsChunks.length === 1
-                ? `قياس DZS — ${dzsChunks[0].length} رقم:`
-                : `قياس DZS — ${dzsChunks.reduce((s, c) => s + c.length, 0)} رقم على ${dzsChunks.length} دفعات (${DZS_BATCH_SIZE} رقم/دفعة):`}
-            </span>
-            {dzsChunks.map((chunk, i) => (
-              <Button key={i} size="sm" variant="outline"
-                className="text-blue-700 border-blue-300 bg-white hover:bg-blue-100"
-                onClick={() => openDzsBatch(chunk)}>
-                دفعة {i + 1} ({chunk.length})
-              </Button>
-            ))}
-            <button onClick={() => setDzsChunks([])} className="text-gray-400 hover:text-gray-600 mr-auto" title="إغلاق">
-              <X className="w-4 h-4" />
-            </button>
+          <div className="px-4 py-2 border-b bg-blue-50 flex flex-col gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-blue-700 font-semibold">
+                {dzsChunks.length === 1
+                  ? `قياس DZS — ${dzsChunks[0].length} رقم:`
+                  : `قياس DZS — ${dzsChunks.reduce((s, c) => s + c.length, 0)} رقم على ${dzsChunks.length} دفعات (${DZS_BATCH_SIZE} رقم/دفعة):`}
+              </span>
+              {dzsAuto && dzsAuto.total > 1 && (
+                <span className="text-green-700 bg-green-100 rounded px-2 py-0.5 font-semibold">
+                  تلقائى: دفعة {dzsAuto.done} من {dzsAuto.total}
+                  {dzsAuto.done < dzsAuto.total ? ` — التالية بعد ${DZS_BATCH_INTERVAL_MS / 1000} ثانية` : " — اكتمل ✓"}
+                </span>
+              )}
+              {dzsAuto && dzsAuto.done < dzsAuto.total && (
+                <Button size="sm" variant="outline"
+                  className="text-red-700 border-red-300 bg-white hover:bg-red-50"
+                  onClick={stopDzsAuto}>
+                  إيقاف التلقائى
+                </Button>
+              )}
+              <button onClick={() => { stopDzsAuto(); setDzsChunks([]); }} className="text-gray-400 hover:text-gray-600 mr-auto" title="إغلاق">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {dzsChunks.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500">فتح يدوى (احتياطى لو التاب اتقفل):</span>
+                {dzsChunks.map((chunk, i) => (
+                  <Button key={i} size="sm" variant="outline"
+                    className="text-blue-700 border-blue-300 bg-white hover:bg-blue-100"
+                    onClick={() => openDzsBatch(chunk)}>
+                    دفعة {i + 1} ({chunk.length})
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
