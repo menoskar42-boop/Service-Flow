@@ -71,7 +71,13 @@ const scoreBadge = (v: string | number | null | undefined) => {
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
 };
 
-export function WithAccountReport() {
+interface WithAccountReportProps {
+  /** فلتر اختيارى: عرض فقط الخطوط التى أسكورها أعلى من هذه القيمة (تقرير الأسكور > 100) */
+  scoreGt?: number;
+  title?: string;
+}
+
+export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {}) {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -95,12 +101,13 @@ export function WithAccountReport() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page, scoreGt ?? ""],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
@@ -161,6 +168,7 @@ export function WithAccountReport() {
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -236,7 +244,7 @@ export function WithAccountReport() {
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-base">الخطوط التى لها رقم أكونت</h3>
+            <h3 className="font-semibold text-base">{title ?? "الخطوط التى لها رقم أكونت"}</h3>
             {data && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {data.total.toLocaleString("ar-EG")} سجل

@@ -16,6 +16,9 @@ import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { WithAccountReport } from "@/components/WithAccountReport";
 import { WithoutAccountReport } from "@/components/WithoutAccountReport";
+import { RegularizedNoAccountReport } from "@/components/RegularizedNoAccountReport";
+import { NeedsSpeedReport } from "@/components/NeedsSpeedReport";
+import { ComplaintNoMeasureReport } from "@/components/ComplaintNoMeasureReport";
 import { CabinetScoreReport } from "@/components/CabinetScoreReport";
 import { AccountEditsReport } from "@/components/AccountEditsReport";
 import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
@@ -37,7 +40,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits" | "regularized-no-account" | "needs-speed-complaint" | "high-score" | "needs-speed-all" | "complaint-no-measure";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -60,6 +63,11 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "with-account",        label: "خطوط لها رقم أكونت" },
       { id: "without-account",     label: "خطوط بدون رقم أكونت" },
+      { id: "regularized-no-account", label: "أعطال منتظمة بدون أكونت" },
+      { id: "needs-speed-complaint",  label: "محتاجة رفع سرعة (لها شكوى)" },
+      { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
+      { id: "needs-speed-all",     label: "محتاجة رفع سرعة (الكل)" },
+      { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
       { id: "cabinet-score-avg",   label: "متوسط قياسات الكباين" },
       { id: "account-edits",       label: "تعديلات الأكونت" },
     ],
@@ -428,7 +436,12 @@ export default function Dashboard() {
               {reportTab === "om-resolved" && <OmRejectionsReport bucket="resolved" title="متعذرات تم فكها (OM)" />}
               {reportTab === "om-stats"    && <OmStatsReport />}
               {reportTab === "with-account"        && <WithAccountReport />}
+              {reportTab === "high-score"          && <WithAccountReport scoreGt={100} title="الخطوط التى أسكورها أعلى من 100" />}
               {reportTab === "without-account"     && <WithoutAccountReport />}
+              {reportTab === "regularized-no-account" && <RegularizedNoAccountReport />}
+              {reportTab === "needs-speed-complaint"  && <NeedsSpeedReport requireComplaint title="أرقام لها شكوى ومحتاجة رفع سرعة" />}
+              {reportTab === "needs-speed-all"        && <NeedsSpeedReport title="أرقام محتاجة رفع سرعة" />}
+              {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
               {reportTab === "cabinet-score-avg"   && <CabinetScoreReport />}
               {reportTab === "account-edits"       && <AccountEditsReport />}
             </div>
