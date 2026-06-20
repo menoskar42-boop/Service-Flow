@@ -2000,7 +2000,7 @@ export async function registerRoutes(
          ctm.cabin_code                 AS "msanCode",
          COUNT(DISTINCT pl.full_phone)::int AS "lineCount",
          COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
-         ROUND(AVG(c138p.score)::numeric, 1)            AS "avgScore",
+         ROUND(AVG(CASE WHEN c138p.score <= 100 THEN c138p.score END)::numeric, 1) AS "avgScore",
          ROUND(AVG(${numSpeed("c138p.current_speed")}), 0) AS "avgCurrentSpeed",
          ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed",
          MIN(c138dates.oldest_at) AS "oldestMeasTime",
