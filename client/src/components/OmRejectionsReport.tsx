@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, UserPlus, Pencil, X } from "lucide-react";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -66,6 +67,18 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       if (dateTo) p.set("dateTo", dateTo);
       const res = await fetch(`/api/ftth-orders?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
+      return res.json();
+    },
+  });
+
+  // قائمة أكواد الكباين المميزة للدروب ليست (مستقلة عن فلتر الكابينة نفسه)
+  const { data: msanCodes = [] } = useQuery<string[]>({
+    queryKey: ["/api/ftth-orders/msan-codes", bucket, fccFilter],
+    queryFn: async () => {
+      const p = new URLSearchParams({ bucket });
+      if (fccFilter.trim()) p.set("fccFilter", fccFilter.trim());
+      const res = await fetch(`/api/ftth-orders/msan-codes?${p}`, { credentials: "include" });
+      if (!res.ok) throw new Error("فشل تحميل أكواد الكباين");
       return res.json();
     },
   });
@@ -239,13 +252,17 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             className="w-full sm:w-56 text-sm"
             dir="rtl"
           />
-          <Input
-            placeholder="كود الكابينة (MSAN)"
-            value={msanFilter}
-            onChange={(e) => setMsanFilter(e.target.value)}
-            className="w-full sm:w-36 text-sm"
-            dir="ltr"
-          />
+          <div className="w-full sm:w-44">
+            <SearchableCombobox
+              options={msanCodes}
+              value={msanFilter}
+              onChange={setMsanFilter}
+              placeholder="كود الكابينة (MSAN)"
+              searchPlaceholder="ابحث بكود الكابينة..."
+              emptyText="لا توجد أكواد"
+              className="h-9 text-sm"
+            />
+          </div>
           <select
             value={fccFilter}
             onChange={(e) => setFccFilter(e.target.value)}

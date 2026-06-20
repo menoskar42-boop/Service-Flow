@@ -3284,8 +3284,8 @@ export async function registerRoutes(
       conds.push(`(fo.service_order_id ILIKE ${p} OR fo.serial_number ILIKE ${p} OR fo.customer_order_id ILIKE ${p} OR fo.customer_name ILIKE ${p} OR fo.msan_code ILIKE ${p} OR fo.fcc_exchange ILIKE ${p})`);
     }
     if (msanFilter?.trim()) {
-      params.push(`%${msanFilter.trim()}%`);
-      conds.push(`fo.msan_code ILIKE $${params.length}`);
+      params.push(msanFilter.trim());
+      conds.push(`fo.msan_code = $${params.length}`);
     }
     if (fccFilter?.trim()) {
       params.push(fccFilter.trim());
@@ -3330,6 +3330,43 @@ export async function registerRoutes(
       params,
     );
     res.json(rows);
+  });
+
+  // GET /api/ftth-orders/msan-codes — قائمة أكواد الكباين المميزة للـ bucket (لفلتر الدروب ليست)
+  app.get("/api/ftth-orders/msan-codes", requireAuth, async (req, res) => {
+    const { bucket, all, fccFilter } = req.query as Record<string, string>;
+    const table = bucket === "current" ? "ftth_orders_current"
+                : bucket === "archive" ? "ftth_orders_archive"
+                : (bucket === "soy" || bucket === "resolved") ? "ftth_orders_soy"
+                : "ftth_orders";
+    const params: any[] = [];
+    const conds: string[] = [`fo.msan_code IS NOT NULL`, `TRIM(fo.msan_code) <> ''`];
+    if (all !== "true") {
+      conds.push(`fo.fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')`);
+      conds.push(`fo.service_name = 'FV Survey'`);
+    }
+    if (bucket === "resolved") {
+      conds.push(`NOT EXISTS (SELECT 1 FROM ftth_orders_current c
+        WHERE CASE WHEN COALESCE(TRIM(fo.serial_number),'') <> ''
+          THEN TRIM(c.serial_number) = TRIM(fo.serial_number)
+          ELSE COALESCE(c.customer_order_id,'') = COALESCE(fo.customer_order_id,'')
+           AND COALESCE(c.service_order_id,'')  = COALESCE(fo.service_order_id,'') END)`);
+    }
+    if (fccFilter?.trim()) {
+      params.push(fccFilter.trim());
+      conds.push(`fo.fcc_exchange = $${params.length}`);
+    }
+    const where = "WHERE " + conds.join(" AND ");
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT fo.msan_code AS "msanCode" FROM ${table} fo ${where}
+         ORDER BY fo.msan_code`,
+        params,
+      );
+      res.json(rows.map((r) => r.msanCode));
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "فشل تحميل أكواد الكباين" });
+    }
   });
 
   // GET /api/reports/om-stats — إحصائية متعذرات OM (لكل كابينة + لكل فنى)
