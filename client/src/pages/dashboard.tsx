@@ -278,7 +278,7 @@ export default function Dashboard() {
                     التقارير
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
                   <button
                     onClick={() => setAdminTab("data-completion")}
                     data-testid="tab-admin-data-completion"
@@ -292,7 +292,7 @@ export default function Dashboard() {
                     استكمال بيانات
                   </button>
                 )}
-                {user.role === ROLES.ADMIN && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && (
                   <button
                     onClick={() => setAdminTab("file-upload")}
                     data-testid="tab-admin-file-upload"
@@ -460,14 +460,14 @@ export default function Dashboard() {
         )}
 
         {/* ── DATA COMPLETION TAB (Admin & Tech) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && adminTab === "data-completion" && (
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "data-completion" && (
           <div className="space-y-6">
             <DataCompletionSection />
           </div>
         )}
 
         {/* ── FILE UPLOAD TAB (Admin only) ── */}
-        {user.role === ROLES.ADMIN && adminTab === "file-upload" && (
+        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && adminTab === "file-upload" && (
           <div className="space-y-6">
             <FileUploadSection />
           </div>
