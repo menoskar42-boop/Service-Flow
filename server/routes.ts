@@ -491,13 +491,20 @@ async function enrichSoyMsan(rows: any[][]): Promise<number> {
 // يحذف الصفوف المكرَّرة بنفس رقم المسلسل من جدول متعذرات OM ويُبقى أقدم صف (أصغر id).
 // يُنظّف أى تكرارات قديمة تراكمت قبل تطبيق منع التكرار. (table قيمة داخلية ثابتة.)
 async function dedupBySerial(table: string): Promise<number> {
-  const r = await pool.query(
+  // إزالة التكرار بالمسلسل (serial) ثم بـ Service Order ID — الاثنان معرّفان فريدان للطلب.
+  const r1 = await pool.query(
     `DELETE FROM ${table} a USING ${table} b
      WHERE a.id > b.id
        AND COALESCE(TRIM(a.serial_number), '') <> ''
        AND TRIM(a.serial_number) = TRIM(b.serial_number)`,
   );
-  return r.rowCount ?? 0;
+  const r2 = await pool.query(
+    `DELETE FROM ${table} a USING ${table} b
+     WHERE a.id > b.id
+       AND COALESCE(TRIM(a.service_order_id), '') <> ''
+       AND TRIM(a.service_order_id) = TRIM(b.service_order_id)`,
+  );
+  return (r1.rowCount ?? 0) + (r2.rowCount ?? 0);
 }
 
 const COMPLAINT_DETAILS_COLS = [
@@ -3506,9 +3513,19 @@ export async function registerRoutes(
               COALESCE(tn.tech_name, mto.tech_name, 'غير معروف') AS "techName",
               (tn.tech_name IS NULL AND mto.tech_name IS NOT NULL) AS "techManual"
        FROM ${table} fo
-       LEFT JOIN cabinet_technicians ct ON ct.cabin_code = fo.msan_code
-       LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
-       LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = fo.msan_code
+       LEFT JOIN LATERAL (
+         SELECT tn.tech_name
+         FROM cabinet_technicians ct
+         JOIN technician_names tn ON tn.worker_code = ct.worker_code
+         WHERE ct.cabin_code = fo.msan_code
+         LIMIT 1
+       ) tn ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT mto.tech_name
+         FROM msan_tech_overrides mto
+         WHERE mto.cabin_code = fo.msan_code
+         LIMIT 1
+       ) mto ON TRUE
        LEFT JOIN LATERAL (
          SELECT mobile, address FROM maintenance_orders
          WHERE phone_number = fo.serial_number
