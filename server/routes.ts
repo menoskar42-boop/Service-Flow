@@ -1688,6 +1688,14 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // DELETE /api/line-accounts/:fullPhone — حذف رقم الأكونت (يرجع الخط لتقرير بدون أكونت)
+  app.delete("/api/line-accounts/:fullPhone", requireAuth, async (req: any, res) => {
+    if (req.user.role === ROLES.SALES) return res.status(403).json({ message: "غير مصرح" });
+    const { fullPhone } = req.params;
+    await pool.query(`DELETE FROM line_accounts WHERE full_phone = $1`, [fullPhone]);
+    res.json({ ok: true });
+  });
+
   // POST /api/line-accounts/bulk — حفظ عدة أرقام أكونت دفعة واحدة (كل الأدوار عدا المبيعات)
   app.post("/api/line-accounts/bulk", requireAuth, async (req: any, res) => {
     if (req.user.role === ROLES.SALES) {

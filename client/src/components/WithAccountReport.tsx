@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, Pencil, Save, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, Pencil, Save, X, Ban } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -140,6 +140,26 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
       setTimeout(() => setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; }), 2000);
+    } catch {
+      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+    }
+  };
+
+  // تحويل خط من "لها أكونت" إلى "ليس له أكونت": حذف الأكونت + إخفاء من التقريرين
+  const handleMarkNoAccount = async (fullPhone: string) => {
+    if (!confirm("تأكيد: سيتم حذف رقم الأكونت وإخفاء هذا الخط من التقريرين؟")) return;
+    setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
+    try {
+      await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      await fetch(`/api/lines-no-account/${encodeURIComponent(fullPhone)}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
     } catch {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
     }
@@ -375,14 +395,25 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
                               <Radar className="w-3.5 h-3.5" />
                             </button>
                             {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => startEdit(r)}
-                                title="تعديل رقم الأكونت"
-                                className="text-amber-500 hover:text-amber-700"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(r)}
+                                  title="تعديل رقم الأكونت"
+                                  className="text-amber-500 hover:text-amber-700"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMarkNoAccount(r.fullPhone)}
+                                  disabled={saveState[r.fullPhone] === "saving"}
+                                  title="ليس له رقم أكونت — حذف الأكونت وإخفاء الخط"
+                                  className="text-orange-500 hover:text-orange-700 disabled:opacity-40"
+                                >
+                                  <Ban className="w-3 h-3" />
+                                </button>
+                              </>
                             )}
                             {saveState[r.fullPhone] === "saved" && (
                               <span className="text-[10px] text-green-600">✓ حُفظ</span>
