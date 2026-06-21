@@ -278,7 +278,7 @@ export default function Dashboard() {
                     التقارير
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && (
                   <button
                     onClick={() => setAdminTab("data-completion")}
                     data-testid="tab-admin-data-completion"
@@ -460,7 +460,7 @@ export default function Dashboard() {
         )}
 
         {/* ── DATA COMPLETION TAB (Admin & Tech) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "data-completion" && (
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && adminTab === "data-completion" && (
           <div className="space-y-6">
             <DataCompletionSection />
           </div>
