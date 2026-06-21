@@ -139,6 +139,11 @@ export default function Dashboard() {
   });
   const toggleGroup = (label: string) =>
     setOpenGroups((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
+
+  // مجموعات التقارير المعروضة حسب الدور — مسئول البيانات يرى فقط مجموعة القياسات
+  const visibleGroups = REPORT_GROUPS.filter(
+    (g) => user?.role !== ROLES.DATA_MANAGER || g.label === "القياسات",
+  );
   // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
   const [navOpen, setNavOpen] = useState(false);
   const currentReportLabel =
@@ -151,6 +156,12 @@ export default function Dashboard() {
       setLocation("/login");
     } else if (!authLoading && user?.role === ROLES.DATA_MANAGER) {
       setAdminTab("reports");
+      // افتح تلقائياً مجموعة القياسات وابدأ بأول تقرير فيها
+      const measGroup = REPORT_GROUPS.find((g) => g.label === "القياسات");
+      if (measGroup) {
+        setOpenGroups([measGroup.label]);
+        setReportTab(measGroup.items[0].id);
+      }
     }
   }, [authLoading, user, setLocation]);
 
@@ -267,7 +278,7 @@ export default function Dashboard() {
                     التقارير
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && (
                   <button
                     onClick={() => setAdminTab("data-completion")}
                     data-testid="tab-admin-data-completion"
@@ -320,7 +331,7 @@ export default function Dashboard() {
             {/* ── Sidebar ── */}
             <aside className={`${navOpen ? "block" : "hidden"} lg:block w-full lg:w-52 shrink-0`}>
               <nav className="lg:sticky lg:top-4 bg-white rounded-xl border shadow-sm overflow-hidden lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto sidebar-scroll">
-                {REPORT_GROUPS.map((group) => {
+                {visibleGroups.map((group) => {
                   const isOpen = openGroups.includes(group.label);
                   return (
                     <div key={group.label}>
@@ -449,7 +460,7 @@ export default function Dashboard() {
         )}
 
         {/* ── DATA COMPLETION TAB (Admin & Tech) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "data-completion" && (
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && adminTab === "data-completion" && (
           <div className="space-y-6">
             <DataCompletionSection />
           </div>
