@@ -82,8 +82,14 @@ const buildDZSUrl = (items: DZSItem[]) => {
 export function RegularizedFaultsRangeReport() {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
   const [repeatedOnly, setRepeatedOnly] = useState(false);
 
   // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
