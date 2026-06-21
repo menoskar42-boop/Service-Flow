@@ -81,40 +81,66 @@ export function WithoutAccountReport() {
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       if (rows.length === 0) { alert("الملف فارغ أو لا توجد بيانات"); return; }
 
-      // flexible column detection — Arabic or English headers
+      // flexible column detection — matches رقم الخط / رقم التليفون الكامل / full_phone
       const headers = Object.keys(rows[0]);
       const phoneCol = headers.find((h) =>
-        h === "رقم التليفون الكامل" || /full.?phone/i.test(h)
+        h === "رقم الخط" || h === "رقم التليفون الكامل" || /full.?phone/i.test(h)
       );
       const accountCol = headers.find((h) =>
-        h === "رقم الأكونت" || /account.?no/i.test(h)
+        h === "Account No" || h === "رقم الأكونت" || /account.?no/i.test(h)
       );
       if (!phoneCol || !accountCol) {
-        alert(`لم يتم العثور على الأعمدة المطلوبة.\nالمطلوب: "رقم التليفون الكامل" و "رقم الأكونت"\nالموجود: ${headers.join(", ")}`);
+        alert(`لم يتم العثور على الأعمدة المطلوبة.\nالمطلوب: "رقم الخط" و "Account No"\nالموجود: ${headers.join(", ")}`);
         return;
       }
 
-      const entries = rows
+      const allRows = rows
         .map((r) => ({
           fullPhone: String(r[phoneCol] ?? "").trim(),
           accountNo: String(r[accountCol] ?? "").trim(),
         }))
-        .filter((e) => e.fullPhone && e.accountNo);
+        .filter((e) => e.fullPhone);
 
-      if (entries.length === 0) { alert("لا توجد صفوف صالحة (رقم تليفون + رقم أكونت)"); return; }
+      // rows with real account numbers
+      const accountRows = allRows.filter((e) => e.accountNo && e.accountNo !== "غير موجود");
+      // rows explicitly marked as غير موجود → add to lines_no_account
+      const noAccountRows = allRows.filter((e) => e.accountNo === "غير موجود");
 
-      const res = await fetch("/api/line-accounts/bulk", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entries }),
-      });
-      if (!res.ok) throw new Error("failed");
-      const json = await res.json();
+      let savedCount = 0;
+      let noAccountCount = 0;
+
+      if (accountRows.length > 0) {
+        const res = await fetch("/api/line-accounts/bulk", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entries: accountRows }),
+        });
+        if (!res.ok) throw new Error("failed");
+        const json = await res.json();
+        savedCount = json.saved ?? accountRows.length;
+      }
+
+      if (noAccountRows.length > 0) {
+        await Promise.all(
+          noAccountRows.map((e) =>
+            fetch(`/api/lines-no-account/${encodeURIComponent(e.fullPhone)}`, {
+              method: "POST",
+              credentials: "include",
+            })
+          )
+        );
+        noAccountCount = noAccountRows.length;
+      }
+
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
-      alert(`تم تحديث ${json.saved ?? entries.length} رقم أكونت من الملف`);
-    } catch (err) {
+
+      const parts: string[] = [];
+      if (savedCount > 0) parts.push(`تم تحديث ${savedCount} رقم أكونت`);
+      if (noAccountCount > 0) parts.push(`تم إخفاء ${noAccountCount} خط (غير موجود)`);
+      alert(parts.join("\n") || "لا توجد بيانات صالحة في الملف");
+    } catch {
       alert("تعذّر الاستيراد — تأكد من صحة الملف وحاول مرة أخرى");
     } finally {
       setImportLoading(false);
