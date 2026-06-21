@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll, Ban } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -154,6 +154,22 @@ export function WithoutAccountReport() {
       alert("تعذّر الحفظ — حاول مرة أخرى");
     } finally {
       setBulkSaving(false);
+    }
+  };
+
+  // تعليم خط بأنه "بدون رقم أكونت" — يختفى من التقرير دون تسجيل رقم أكونت
+  const handleMarkNoAccount = async (fullPhone: string) => {
+    if (!confirm("تأكيد: هذا الخط ليس له رقم أكونت وسيختفى من التقرير؟")) return;
+    setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
+    try {
+      const res = await fetch(`/api/lines-no-account/${encodeURIComponent(fullPhone)}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("failed");
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
+    } catch {
+      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
     }
   };
 
@@ -330,6 +346,15 @@ export function WithoutAccountReport() {
                               ) : (
                                 <Save className="w-4 h-4" />
                               )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMarkNoAccount(r.fullPhone)}
+                              disabled={saveState[r.fullPhone] === "saving"}
+                              title="ليس له رقم أكونت — إخفاء من التقرير"
+                              className="text-orange-500 hover:text-orange-700 disabled:opacity-40"
+                            >
+                              <Ban className="w-4 h-4" />
                             </button>
                             {saveState[r.fullPhone] === "error" && (
                               <span className="text-red-500 text-xs">!</span>

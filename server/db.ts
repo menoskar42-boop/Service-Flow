@@ -804,4 +804,15 @@ export async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS line_account_edits_edited_at_idx
       ON line_account_edits (edited_at DESC)
   `);
+
+  // lines_no_account — خطوط معلَّمة يدوياً بأنها "بدون رقم أكونت" (لا يوجد لها أكونت)
+  // تُخفى من تقرير الخطوط بدون أكونت دون تسجيل رقم أكونت لها.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lines_no_account (
+      full_phone text PRIMARY KEY,
+      marked_by_id integer REFERENCES users(id),
+      marked_by_name text,
+      marked_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
 }

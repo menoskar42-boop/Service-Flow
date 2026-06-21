@@ -1596,6 +1596,8 @@ export async function registerRoutes(
     const q = search.trim().toLowerCase();
 
     const conds: string[] = ["la.full_phone IS NULL"];
+    // استبعاد الخطوط المعلَّمة يدوياً بأنها "بدون رقم أكونت"
+    conds.push("NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = pl.full_phone)");
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -1738,6 +1740,27 @@ export async function registerRoutes(
     } finally {
       client.release();
     }
+  });
+
+  // POST /api/lines-no-account/:fullPhone — تعليم خط بأنه "بدون رقم أكونت" (يختفى من التقرير، الأكونت يفضل فاضى)
+  app.post("/api/lines-no-account/:fullPhone", requireAuth, async (req: any, res) => {
+    if (req.user.role === ROLES.SALES) return res.status(403).json({ message: "غير مصرح" });
+    const { fullPhone } = req.params;
+    await pool.query(
+      `INSERT INTO lines_no_account (full_phone, marked_by_id, marked_by_name)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (full_phone) DO NOTHING`,
+      [fullPhone, req.user.id, req.user.username],
+    );
+    res.json({ ok: true });
+  });
+
+  // DELETE /api/lines-no-account/:fullPhone — إلغاء تعليم "بدون رقم أكونت" (يرجع للتقرير)
+  app.delete("/api/lines-no-account/:fullPhone", requireAuth, async (req: any, res) => {
+    if (req.user.role === ROLES.SALES) return res.status(403).json({ message: "غير مصرح" });
+    const { fullPhone } = req.params;
+    await pool.query(`DELETE FROM lines_no_account WHERE full_phone = $1`, [fullPhone]);
+    res.json({ ok: true });
   });
 
   // GET /api/phone-lines/needs-speed — أرقام محتاجة رفع سرعة (تقريرا 2 و 4)

@@ -723,6 +723,16 @@ export const lineAccountEdits = pgTable("line_account_edits", {
 
 export type LineAccountEdit = typeof lineAccountEdits.$inferSelect;
 
+// lines_no_account — خطوط معلَّمة يدوياً بأنها "بدون رقم أكونت" (تُخفى من تقرير الخطوط بدون أكونت)
+export const linesNoAccount = pgTable("lines_no_account", {
+  fullPhone: text("full_phone").primaryKey(),
+  markedById: integer("marked_by_id").references(() => users.id),
+  markedByName: text("marked_by_name"),
+  markedAt: timestamp("marked_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type LineNoAccount = typeof linesNoAccount.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',
