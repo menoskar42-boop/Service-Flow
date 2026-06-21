@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll, Ban } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll, Ban, Upload } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -66,6 +66,60 @@ export function WithoutAccountReport() {
   // map of fullPhone → "saving" | "saved" | "error"
   const [saveState, setSaveState] = useState<Record<string, string>>({});
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setImportLoading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+      if (rows.length === 0) { alert("الملف فارغ أو لا توجد بيانات"); return; }
+
+      // flexible column detection — Arabic or English headers
+      const headers = Object.keys(rows[0]);
+      const phoneCol = headers.find((h) =>
+        h === "رقم التليفون الكامل" || /full.?phone/i.test(h)
+      );
+      const accountCol = headers.find((h) =>
+        h === "رقم الأكونت" || /account.?no/i.test(h)
+      );
+      if (!phoneCol || !accountCol) {
+        alert(`لم يتم العثور على الأعمدة المطلوبة.\nالمطلوب: "رقم التليفون الكامل" و "رقم الأكونت"\nالموجود: ${headers.join(", ")}`);
+        return;
+      }
+
+      const entries = rows
+        .map((r) => ({
+          fullPhone: String(r[phoneCol] ?? "").trim(),
+          accountNo: String(r[accountCol] ?? "").trim(),
+        }))
+        .filter((e) => e.fullPhone && e.accountNo);
+
+      if (entries.length === 0) { alert("لا توجد صفوف صالحة (رقم تليفون + رقم أكونت)"); return; }
+
+      const res = await fetch("/api/line-accounts/bulk", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      });
+      if (!res.ok) throw new Error("failed");
+      const json = await res.json();
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+      alert(`تم تحديث ${json.saved ?? entries.length} رقم أكونت من الملف`);
+    } catch (err) {
+      alert("تعذّر الاستيراد — تأكد من صحة الملف وحاول مرة أخرى");
+    } finally {
+      setImportLoading(false);
+    }
+  };
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -279,6 +333,28 @@ export function WithoutAccountReport() {
                 {bulkSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <SaveAll className="w-4 h-4" />}
                 حفظ الكل{draftCount > 0 ? ` (${draftCount})` : ""}
               </Button>
+            )}
+            {canEdit && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleImportExcel}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importLoading}
+                  className="gap-1 text-purple-700 border-purple-200"
+                  title="استيراد أرقام أكونت من ملف Excel (رقم التليفون الكامل + رقم الأكونت)"
+                >
+                  {importLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  استيراد Excel
+                </Button>
+              </>
             )}
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
