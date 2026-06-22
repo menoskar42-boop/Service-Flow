@@ -583,7 +583,7 @@ export function RepetitionStatsReport() {
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             <span>{r.closeByName || "غير معروف"}</span>
-                            {canEditTech && (
+                            {canEditTech && (!r.closeByName || r.closeByName === "غير معروف") && (
                               <button
                                 onClick={() => { setEditingTech(r.complainNo); setEditTechDraft(r.closeByName === "غير معروف" ? "" : (r.closeByName ?? "")); }}
                                 className="text-amber-500 hover:text-amber-700"
