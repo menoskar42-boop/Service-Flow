@@ -679,7 +679,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
        ) c138c ON true
        -- وقت الحالة 135/138 من شيت تفاصيل المتبقى — مطابقة برقم الشكوى
        LEFT JOIN LATERAL (
-         SELECT rc.time_till_now, rc.time_till_now_full
+         SELECT rc.time_till_now, rc.time_till_now_full, rc.uploaded_at, rc.complain_time
          FROM remaining_complaints rc WHERE rc.complain_no = t.ticket_id
          ORDER BY rc.id DESC LIMIT 1
        ) rcd ON true
@@ -4198,7 +4198,7 @@ export async function registerRoutes(
            ) c138c ON true
            -- وقت الحالة 135/138 من شيت تفاصيل المتبقى — مطابقة برقم الشكوى
            LEFT JOIN LATERAL (
-             SELECT rc.time_till_now, rc.time_till_now_full
+             SELECT rc.time_till_now, rc.time_till_now_full, rc.uploaded_at, rc.complain_time
              FROM remaining_complaints rc WHERE rc.complain_no = t.ticket_id
              ORDER BY rc.id DESC LIMIT 1
            ) rcd ON true
