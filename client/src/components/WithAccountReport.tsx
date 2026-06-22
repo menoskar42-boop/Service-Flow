@@ -74,10 +74,12 @@ const scoreBadge = (v: string | number | null | undefined) => {
 interface WithAccountReportProps {
   /** فلتر اختيارى: عرض فقط الخطوط التى أسكورها أعلى من هذه القيمة (تقرير الأسكور > 100) */
   scoreGt?: number;
+  /** فلتر اختيارى: عرض فقط الخطوط التى لم يتم قياسها من قبل (لا يوجد لها سجل فى شيت 138) */
+  neverMeasured?: boolean;
   title?: string;
 }
 
-export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {}) {
+export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccountReportProps = {}) {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -105,13 +107,14 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page, scoreGt ?? "", scoreMin, scoreMax, speedMin, speedMax],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+      if (neverMeasured) params.set("neverMeasured", "1");
       if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
       if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
       if (speedMin.trim()) params.set("speedGt", speedMin.trim());
@@ -197,6 +200,7 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+      if (neverMeasured) params.set("neverMeasured", "1");
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -223,6 +227,7 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+    if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
     if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
     if (speedMin.trim()) params.set("speedGt", speedMin.trim());
@@ -260,6 +265,7 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+    if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
     if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
     if (speedMin.trim()) params.set("speedGt", speedMin.trim());
@@ -268,7 +274,7 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
     const json = await res.json();
     const all = json.data as PhoneLine[];
     printTablePDF({
-      title: "تقرير الخطوط التى لها رقم أكونت",
+      title: title ?? "تقرير الخطوط التى لها رقم أكونت",
       columns: ["#", "التليفون الكامل", "الأكونت", "المصدر", "سرعة حالية", "أقصى سرعة", "السنترال", "الكابينه", "البكس", "IDU", "DP Terminal"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo, r.accountSource === "manual" ? "يدوى" : "138",
         r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "", r.central, r.cabinNumber, r.boxNumber, r.iduNo, r.dpTerminal]),

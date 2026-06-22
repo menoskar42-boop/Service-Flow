@@ -1556,13 +1556,17 @@ export async function registerRoutes(
   // GET /api/phone-lines/with-account — lines that have an entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/with-account", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50",
-            scoreGt = "", scoreLt = "", speedGt = "", speedLt = "" } = req.query as Record<string, string>;
+            scoreGt = "", scoreLt = "", speedGt = "", speedLt = "", neverMeasured = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
 
     const conds: string[] = ["la.full_phone IS NOT NULL"];
     const params: any[] = [];
+    // فلتر "لم يتم قياسها من قبل": لا يوجد أى سجل لهذا الخط فى شيت 138 (case_138)
+    if (neverMeasured === "1" || neverMeasured === "true") {
+      conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = pl.full_phone)`);
+    }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }

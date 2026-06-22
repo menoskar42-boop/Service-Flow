@@ -62,6 +62,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     icon: Cable,
     items: [
       { id: "with-account",        label: "خطوط لها رقم أكونت" },
+      { id: "account-never-measured", label: "خطوط لها أكونت ولم تُقَس" },
       { id: "without-account",     label: "خطوط بدون رقم أكونت" },
       { id: "regularized-no-account", label: "أعطال منتظمة بدون أكونت" },
       { id: "needs-speed-complaint",  label: "محتاجة رفع سرعة (لها شكوى)" },
@@ -447,6 +448,7 @@ export default function Dashboard() {
               {reportTab === "om-resolved" && <OmRejectionsReport bucket="resolved" title="متعذرات تم فكها (OM)" />}
               {reportTab === "om-stats"    && <OmStatsReport />}
               {reportTab === "with-account"        && <WithAccountReport />}
+              {reportTab === "account-never-measured" && <WithAccountReport neverMeasured title="خطوط لها رقم أكونت ولم يتم قياسها من قبل" />}
               {reportTab === "high-score"          && <WithAccountReport scoreGt={100} title="الخطوط التى أسكورها أعلى من 100" />}
               {reportTab === "without-account"     && <WithoutAccountReport />}
               {reportTab === "regularized-no-account" && <RegularizedNoAccountReport />}
