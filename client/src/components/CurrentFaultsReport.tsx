@@ -81,6 +81,12 @@ const shortStatusCode = (s: string | null) => {
     .join("-");
 };
 
+// حالة "9999- أعطال تنتظر الحل" تُعرض كـ "99-DSL"، وباقى الحالات تُختصر كالمعتاد.
+const dispStatus = (s: string | null) => {
+  if (s && (s.includes("9999") || s.includes("تنتظر الحل"))) return "99-DSL";
+  return shortStatusCode(s) || "-";
+};
+
 // رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash
 // (cross-origin: الـ Tampermonkey script فى تاب DZS يقرأ location.hash لأن
 // localStorage محجوز لكل origin لوحده).
@@ -164,7 +170,7 @@ export function CurrentFaultsReport() {
       "القياس الحالى (نفس الشكوى)": f.curMeasScore,
       "آخر قياس للرقم": f.lastMeasScore,
       "موقف التكرار": f.repeatStatus,
-      "Status Code": "99-DSL",
+      "Status Code": dispStatus(f.statusCode),
       "MSAN Code": f.msanCode,
       "Frame": f.frame,
       "رقم كابينه نهائى": f.cabinetNo,
@@ -216,7 +222,7 @@ export function CurrentFaultsReport() {
           <td>${esc(f.curMeasScore)}</td>
           <td>${esc(f.lastMeasScore)}</td>
           <td>${esc(f.repeatStatus)}</td>
-          <td style="font-size:9px">99-DSL</td>
+          <td style="font-size:9px">${esc(dispStatus(f.statusCode))}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
           <td>${esc(f.frame)}</td>
           <td>${esc(f.cabinetNo)}</td>
@@ -403,7 +409,7 @@ export function CurrentFaultsReport() {
                         <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
                       ) : ""}
                     </TableCell>
-                    <TableCell className="max-w-[140px] truncate">{"99-DSL"}</TableCell>
+                    <TableCell className="max-w-[140px] truncate">{dispStatus(f.statusCode)}</TableCell>
                     <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
                     <TableCell>{f.frame || "-"}</TableCell>
                     <TableCell>{f.cabinetNo || "-"}</TableCell>
