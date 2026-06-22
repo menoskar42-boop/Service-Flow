@@ -367,6 +367,7 @@ export const complaintDetails = pgTable("complaint_details", {
   complainTypeName: text("complain_type_name"),
   closeBy: text("close_by"),
   timeTillNow: real("time_till_now"),
+  timeTillNowFull: real("time_till_now_full"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -390,6 +391,7 @@ export const complaintDetailsSod = pgTable("complaint_details_sod", {
   complainTypeName: text("complain_type_name"),
   closeBy: text("close_by"),
   timeTillNow: real("time_till_now"),
+  timeTillNowFull: real("time_till_now_full"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -410,6 +412,7 @@ export const complaintDetailsCurrent = pgTable("complaint_details_current", {
   complainTypeName: text("complain_type_name"),
   closeBy: text("close_by"),
   timeTillNow: real("time_till_now"),
+  timeTillNowFull: real("time_till_now_full"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -434,6 +437,7 @@ export const remainingComplaints = pgTable("remaining_complaints", {
   cabinetNo: text("cabinet_no"),
   complainType: text("complain_type"),
   timeTillNow: real("time_till_now"),
+  timeTillNowFull: real("time_till_now_full"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -459,6 +463,7 @@ export const remainingComplaintsSod = pgTable("remaining_complaints_sod", {
   cabinetNo: text("cabinet_no"),
   complainType: text("complain_type"),
   timeTillNow: real("time_till_now"),
+  timeTillNowFull: real("time_till_now_full"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });
@@ -481,6 +486,7 @@ export const remainingComplaintsCurrent = pgTable("remaining_complaints_current"
   cabinetNo: text("cabinet_no"),
   complainType: text("complain_type"),
   timeTillNow: real("time_till_now"),
+  timeTillNowFull: real("time_till_now_full"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 });

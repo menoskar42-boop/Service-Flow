@@ -36,7 +36,16 @@ interface RegularizedFault extends Measurement138 {
   slot: string | null;
   portNumber: string | null;
   centralCode: string | null;
+  effectiveFaultHours: number | null;
 }
+
+// مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
+const fmtDur = (h: number | null | undefined) => {
+  if (h == null) return "-";
+  const d = Math.floor(h / 24);
+  const hr = Math.round(h % 24);
+  return d > 0 ? `${d}ي ${hr}س` : `${hr}س`;
+};
 
 // الأوقات من ملف TicketQueue مخزَّنة كـ UTC — تُعرض كما هى دون إزاحة المتصفح.
 const fmtDt = (d: string | null) => {
@@ -153,6 +162,7 @@ export function RegularizedFaultsReport() {
       "رقم البكس نهائى": f.boxNo,
       "ترمنال": f.dpTerminal,
       "وقت الشكوي": fmtDt(f.complainTime),
+      "الوقت الفعلى للشكوى (ساعة)": f.effectiveFaultHours != null ? Math.round(f.effectiveFaultHours * 10) / 10 : "",
       "ComplainTypeName": f.complainTypeName,
       "حالة الانتظام": f.regStatus,
       "اسم الفنى": f.techName,
@@ -182,7 +192,7 @@ export function RegularizedFaultsReport() {
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
-      <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
+      <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>الوقت الفعلى</th><th>نوع الشكوى</th>
       <th>حالة الانتظام</th><th>اسم الفنى</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
@@ -204,6 +214,7 @@ export function RegularizedFaultsReport() {
           <td>${esc(f.boxNo)}</td>
           <td>${esc(f.dpTerminal)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
+          <td style="font-size:9px">${esc(fmtDur(f.effectiveFaultHours))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
           <td>${esc(f.regStatus)}</td>
           <td>${esc(f.techName)}</td>
@@ -332,6 +343,7 @@ export function RegularizedFaultsReport() {
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
+                <TableHead className="text-right font-bold text-white whitespace-nowrap">الوقت الفعلى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
@@ -352,7 +364,7 @@ export function RegularizedFaultsReport() {
             <TableBody>
               {faults.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={25} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={26} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أعطال منتظمة اليوم — تأكد من رفع ملف شكاوى DSL الحالى"}
                   </TableCell>
                 </TableRow>
@@ -377,6 +389,7 @@ export function RegularizedFaultsReport() {
                     <TableCell>{f.boxNo || "-"}</TableCell>
                     <TableCell>{f.dpTerminal || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
+                    <TableCell className="whitespace-nowrap font-medium" title="الوقت الفعلى = (الآن − وقت الشكوى) − الوقت على الحالة 135/138">{fmtDur(f.effectiveFaultHours)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell>{regBadge(f.regStatus)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>

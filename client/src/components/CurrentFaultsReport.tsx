@@ -38,7 +38,16 @@ interface CurrentFault extends Measurement138 {
   slot: string | null;
   portNumber: string | null;
   centralCode: string | null;
+  effectiveFaultHours: number | null;
 }
+
+// مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
+const fmtDur = (h: number | null | undefined) => {
+  if (h == null) return "-";
+  const d = Math.floor(h / 24);
+  const hr = Math.round(h % 24);
+  return d > 0 ? `${d}ي ${hr}س` : `${hr}س`;
+};
 
 // الأوقات قادمة من ملف TicketQueue بتوقيت القاهرة لكنها مخزَّنة كـ UTC — نعرضها
 // كما هى (UTC) دون إزاحة توقيت المتصفح حتى تطابق الملف (مثل 22:00 وليس 01:00).
@@ -162,6 +171,7 @@ export function CurrentFaultsReport() {
       "رقم البكس نهائى": f.boxNo,
       "ترمنال": f.dpTerminal,
       "وقت الشكوي": fmtDt(f.complainTime),
+      "الوقت الفعلى للشكوى (ساعة)": f.effectiveFaultHours != null ? Math.round(f.effectiveFaultHours * 10) / 10 : "",
       "ComplainTypeName": f.complainTypeName,
       "تصنيف الاعطال": f.faultClass,
       "اسم الفنى": f.techName,
@@ -191,7 +201,7 @@ export function CurrentFaultsReport() {
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
-      <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
+      <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>الوقت الفعلى</th><th>نوع الشكوى</th>
       <th>تصنيف</th><th>كود العامل</th><th>اسم الفنى</th><th>نوع العطل</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
@@ -213,6 +223,7 @@ export function CurrentFaultsReport() {
           <td>${esc(f.boxNo)}</td>
           <td>${esc(f.dpTerminal)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
+          <td style="font-size:9px">${esc(fmtDur(f.effectiveFaultHours))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
           <td>${esc(f.faultClass)}</td>
           <td>${esc(f.workerCode)}</td>
@@ -348,6 +359,7 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
+                <TableHead className="text-right font-bold text-white whitespace-nowrap">الوقت الفعلى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">تصنيف</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
@@ -368,7 +380,7 @@ export function CurrentFaultsReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={26} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={27} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
                       : repeatedOnly
@@ -398,6 +410,7 @@ export function CurrentFaultsReport() {
                     <TableCell>{f.boxNo || "-"}</TableCell>
                     <TableCell>{f.dpTerminal || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
+                    <TableCell className="whitespace-nowrap font-medium" title="الوقت الفعلى = (الآن − وقت الشكوى) − الوقت على الحالة 135/138">{fmtDur(f.effectiveFaultHours)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
                     <TableCell>{faultBadge(f.faultClass)}</TableCell>
                     <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>

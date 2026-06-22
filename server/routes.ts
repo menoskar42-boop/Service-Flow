@@ -509,13 +509,13 @@ async function dedupBySerial(table: string): Promise<number> {
 
 const COMPLAINT_DETAILS_COLS = [
   "complain_no","sector","region","exchange_name","phone_number","msan_id","cabinet_no",
-  "complain_time","close_time","close_code","complain_side_name","complain_type_name","close_by","time_till_now",
+  "complain_time","close_time","close_code","complain_side_name","complain_type_name","close_by","time_till_now","time_till_now_full",
 ];
 
 const REMAINING_COMPLAINTS_COLS = [
   "complain_no","sector","region","exchange_name","phone_number","complain_time",
   "dispatch_time","dispatch_user","msan_id","close_time","close_code","close_by",
-  "status_code","cabinet_no","complain_type","time_till_now",
+  "status_code","cabinet_no","complain_type","time_till_now","time_till_now_full",
 ];
 
 // ترتيب الفنيين من الأفضل للأسوأ — الأفضل أولاً، وعند التساوى أبجدياً بالاسم.
@@ -640,7 +640,12 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
          c138c.score             AS "curMeasScore",
          c138c.current_speed     AS "curMeasCurrentSpeed",
          c138c.max_speed         AS "curMeasMaxSpeed",
-         (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime"
+         (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
+         -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت على الحالة 135/138 (من شيت المتبقى)
+         CASE WHEN t.complaint_time IS NULL THEN NULL
+              ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - t.complaint_time)) / 3600.0
+                               - COALESCE(rcd.time_till_now_full - rcd.time_till_now, 0))
+         END                     AS "effectiveFaultHours"
        FROM (
          SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
          WHERE close_date IS NOT NULL
@@ -667,6 +672,12 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
          FROM case_138 c WHERE c.complain_no = t.ticket_id
          ORDER BY c.id DESC LIMIT 1
        ) c138c ON true
+       -- وقت الحالة 135/138 من شيت تفاصيل المتبقى — مطابقة برقم الشكوى
+       LEFT JOIN LATERAL (
+         SELECT rc.time_till_now, rc.time_till_now_full
+         FROM remaining_complaints rc WHERE rc.complain_no = t.ticket_id
+         ORDER BY rc.id DESC LIMIT 1
+       ) rcd ON true
        ${where}
        ORDER BY t.ticket_id, t.id DESC
      ) x
@@ -2590,7 +2601,7 @@ export async function registerRoutes(
       const ws1 = wb.Sheets["التفاصيل"] || wb.Sheets["تفاصيل الأعطال"];
       if (ws1) {
         const rows1: any[][] = sheetRows(ws1);
-        const { find, dataRows } = smartSheet(rows1, ["complain no", "رقم الشكوى"]);
+        const { find, header, dataRows } = smartSheet(rows1, ["complain no", "رقم الشكوى"]);
         const iNo       = find("complain no", "رقم الشكوى");
         const iSector   = find("sector", "القطاع");
         const iRegion   = find("region", "المنطقة");
@@ -2606,6 +2617,10 @@ export async function registerRoutes(
         const iCloseBy  = find("close by", "أغلق بواسطة");
         // Arabic header: "فترة الاستمرار...استبعاد الحالة 135" | English: "time till now(except 135)"
         const iTimeTillNow1 = find("except 135", "استبعاد الحالة 135");
+        // العمود الكلى "Time untill now" (بدون استبعاد 135/138) — نتجنّب مطابقة عمود except135
+        const iTimeTillNowFull1 = header.findIndex((h) =>
+          (h.includes("till now") || h.includes("untill now") || h.includes("until now") || h.includes("الاستمرار") || h.includes("حتى ال"))
+          && !h.includes("except") && !h.includes("استبعاد") && !h.includes("135"));
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
@@ -2615,6 +2630,7 @@ export async function registerRoutes(
           if (!no || no === "0" || seen.has(no)) continue;
           seen.add(no);
           const timeTillNow1 = toHours(iTimeTillNow1 >= 0 ? r[iTimeTillNow1] : null);
+          const timeTillNowFull1 = toHours(iTimeTillNowFull1 >= 0 ? r[iTimeTillNowFull1] : null);
           inserts.push([
             no,
             String(g(r, iSector)) || null,
@@ -2630,11 +2646,12 @@ export async function registerRoutes(
             String(g(r, iType)) || null,
             String(g(r, iCloseBy)) || null,
             timeTillNow1,
+            timeTillNowFull1,
           ]);
         }
         detailsTotal = inserts.length;
         // cols that may have been null in older uploads — backfill them on re-upload
-        const detailsUpdateCols = ["close_by", "time_till_now", "complain_side_name", "complain_type_name", "cabinet_no", "msan_id"];
+        const detailsUpdateCols = ["close_by", "time_till_now", "time_till_now_full", "complain_side_name", "complain_type_name", "cabinet_no", "msan_id"];
         // All 3 destinations accumulate — no full replace — so uploading multiple
         // parts of the national 430D file combines them instead of overwriting.
         const r1hist = await accumulateTable("complaint_details", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId, detailsUpdateCols);
@@ -2649,7 +2666,7 @@ export async function registerRoutes(
       const ws2 = wb.Sheets["تفاصيل متبقى"];
       if (ws2) {
         const rows2: any[][] = sheetRows(ws2);
-        const { find, dataRows } = smartSheet(rows2, ["complain no"]);
+        const { find, header, dataRows } = smartSheet(rows2, ["complain no"]);
         const iNo = find("complain no");
         const iSector = find("sector");
         const iRegion = find("region");
@@ -2671,6 +2688,10 @@ export async function registerRoutes(
           return exact;
         })();
         const iTimeTillNow2 = find("except 135");
+        // العمود الكلى "Time untill now" (بدون استبعاد 135/138)
+        const iTimeTillNowFull2 = header.findIndex((h) =>
+          (h.includes("till now") || h.includes("untill now") || h.includes("until now") || h.includes("الاستمرار") || h.includes("حتى ال"))
+          && !h.includes("except") && !h.includes("استبعاد") && !h.includes("135"));
         const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
         const inserts: any[][] = [];
@@ -2680,6 +2701,7 @@ export async function registerRoutes(
           if (!no || no === "0" || seen.has(no)) continue;
           seen.add(no);
           const timeTillNow2 = toHours(iTimeTillNow2 >= 0 ? r[iTimeTillNow2] : null);
+          const timeTillNowFull2 = toHours(iTimeTillNowFull2 >= 0 ? r[iTimeTillNowFull2] : null);
           inserts.push([
             no,
             String(g(r, iSector)) || null,
@@ -2697,6 +2719,7 @@ export async function registerRoutes(
             String(g(r, iCabinet)) || null,
             String(g(r, iType)) || null,
             timeTillNow2,
+            timeTillNowFull2,
           ]);
         }
         remainingTotal = inserts.length;
@@ -2716,7 +2739,7 @@ export async function registerRoutes(
           rows: inserts,
           userId,
           overwriteCols: ["exchange_name", "status_code", "close_time", "close_code",
-                          "close_by", "time_till_now", "cabinet_no", "dispatch_time",
+                          "close_by", "time_till_now", "time_till_now_full", "cabinet_no", "dispatch_time",
                           "dispatch_user", "complain_type", "msan_id"],
         });
         remainingInserted = r2.hist;
@@ -4139,7 +4162,13 @@ export async function registerRoutes(
              c138c.score             AS "curMeasScore",
              c138c.current_speed     AS "curMeasCurrentSpeed",
              c138c.max_speed         AS "curMeasMaxSpeed",
-             (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime"
+             (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
+             -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت الذى قضته على الحالة 135/138
+             -- يُحسب من شيت تفاصيل المتبقى (430D) بمطابقة رقم الشكوى: delta = full − except135
+             CASE WHEN t.complaint_time IS NULL THEN NULL
+                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - t.complaint_time)) / 3600.0
+                                   - COALESCE(rcd.time_till_now_full - rcd.time_till_now, 0))
+             END                     AS "effectiveFaultHours"
            FROM ticket_dsl_current t
            LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
            LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
@@ -4157,6 +4186,12 @@ export async function registerRoutes(
              FROM case_138 c WHERE c.complain_no = t.ticket_id
              ORDER BY c.id DESC LIMIT 1
            ) c138c ON true
+           -- وقت الحالة 135/138 من شيت تفاصيل المتبقى — مطابقة برقم الشكوى
+           LEFT JOIN LATERAL (
+             SELECT rc.time_till_now, rc.time_till_now_full
+             FROM remaining_complaints rc WHERE rc.complain_no = t.ticket_id
+             ORDER BY rc.id DESC LIMIT 1
+           ) rcd ON true
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x

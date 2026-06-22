@@ -482,6 +482,15 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE remaining_complaints_sod   ADD COLUMN IF NOT EXISTS time_till_now numeric`);
   await pool.query(`ALTER TABLE remaining_complaints_current ADD COLUMN IF NOT EXISTS time_till_now numeric`);
 
+  // time_till_now_full — المدة الكلية من ملف 430D (Time untill now بدون استبعاد 135/138)
+  // الفرق (full − time_till_now) = الوقت الذى قضته الشكوى على الحالة 135/138.
+  await pool.query(`ALTER TABLE complaint_details          ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+  await pool.query(`ALTER TABLE complaint_details_sod      ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+  await pool.query(`ALTER TABLE complaint_details_current  ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+  await pool.query(`ALTER TABLE remaining_complaints       ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+  await pool.query(`ALTER TABLE remaining_complaints_sod   ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+  await pool.query(`ALTER TABLE remaining_complaints_current ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+
   // ftth_subscribers — ملخص مشتركين FTTH/ADSL (full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ftth_subscribers (
