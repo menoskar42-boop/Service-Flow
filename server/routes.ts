@@ -1596,7 +1596,7 @@ export async function registerRoutes(
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}${c138Where}
-       ORDER BY pl.central, pl.cabin_number, LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
+       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -1659,7 +1659,7 @@ export async function registerRoutes(
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
-       ORDER BY pl.id
+       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -1848,7 +1848,7 @@ export async function registerRoutes(
               cpl.complain_no AS "complaintNo",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime"
        ${joinClause} ${where}
-       ORDER BY c138p.score DESC NULLS LAST, pl.id
+       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), c138p.score DESC NULLS LAST, pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -1964,7 +1964,7 @@ export async function registerRoutes(
               c138p.score AS "lastMeasScore",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${where}
-       ORDER BY pl.full_phone, pl.id
+       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.full_phone, pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -2077,7 +2077,7 @@ export async function registerRoutes(
        ) c138dates ON true
        ${where}
        GROUP BY pl.central, pl.cabin_number, ctm.cabin_code
-       ORDER BY pl.central, pl.cabin_number`,
+       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0')`,
       params,
     );
     res.json({ data: rows });
@@ -2121,7 +2121,7 @@ export async function registerRoutes(
          ) c138dates ON true
          ${where}
          GROUP BY pl.central, pl.cabin_number, pl.box_number
-         ORDER BY pl.central, pl.cabin_number, pl.box_number`,
+         ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0')`,
         params,
       );
       res.json({ data: rows });
@@ -4574,7 +4574,7 @@ export async function registerRoutes(
          LEFT JOIN fault_union fu ON fu.phone_number = pl.tel_no
          ${where}
          GROUP BY pl.central, pl.cabin_number, pl.box_number
-         ORDER BY pl.central, pl.cabin_number, pl.box_number`,
+         ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0')`,
         params,
       );
       res.json(rows);
