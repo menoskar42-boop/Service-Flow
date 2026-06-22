@@ -345,7 +345,7 @@ export function RepetitionStatsReport() {
           {[
             { label: "إجمالى الأعطال",   value: ov.total,          sub: "" },
             { label: "الخطوط الفريدة",   value: ov.distinctPhones, sub: "" },
-            { label: "خطوط مكررة",        value: ov.repeatedPhones, sub: `مرات تكرار: ${ov.repCharges}` },
+            { label: "مرات التكرار",      value: ov.repCharges,     sub: `خطوط مكررة: ${ov.repeatedPhones}` },
             { label: "نسبة التكرار",  value: `${ov.repRatio}%`, sub: `المستهدف ≤ ${TARGET_REP}% — مكررة: ${ov.repeatedPhones}` },
           ].map(({ label, value, sub }) => (
             <Card key={label} className="border-0 shadow-sm">
