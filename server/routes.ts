@@ -1596,7 +1596,7 @@ export async function registerRoutes(
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}${c138Where}
-       ORDER BY pl.id
+       ORDER BY pl.central, pl.cabin_number, LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -2081,6 +2081,53 @@ export async function registerRoutes(
       params,
     );
     res.json({ data: rows });
+  });
+
+  // GET /api/reports/box-score-avg — متوسط القياسات لكل بكس (خطوط لها أكونت فقط)
+  app.get("/api/reports/box-score-avg", requireAuth, async (req: any, res) => {
+    try {
+      const { central, cabin, box } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [];
+      if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+      if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
+      if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+      const numSpeed = (col: string) =>
+        `NULLIF(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), '')::numeric`;
+      const { rows } = await pool.query(
+        `SELECT
+           COALESCE(pl.central, '—')      AS "centralName",
+           COALESCE(pl.cabin_number, '—') AS "cabinNumber",
+           COALESCE(pl.box_number, '—')   AS "boxNumber",
+           COUNT(DISTINCT pl.full_phone)::int AS "lineCount",
+           COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
+           ROUND(AVG(CASE WHEN c138p.score <= 100 THEN c138p.score END)::numeric, 1) AS "avgScore",
+           ROUND(AVG(${numSpeed("c138p.current_speed")}), 0) AS "avgCurrentSpeed",
+           ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed",
+           MIN(c138dates.oldest_at) AS "oldestMeasTime",
+           MAX(c138dates.newest_at) AS "newestMeasTime"
+         FROM line_accounts la
+         JOIN phone_lines pl ON pl.full_phone = la.full_phone
+         LEFT JOIN LATERAL (
+           SELECT c.score, c.current_speed, c.max_speed
+           FROM case_138 c WHERE c.full_phone = la.full_phone
+           ORDER BY c.id DESC LIMIT 1
+         ) c138p ON true
+         LEFT JOIN LATERAL (
+           SELECT MIN(c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS oldest_at,
+                  MAX(c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS newest_at
+           FROM case_138 c WHERE c.full_phone = la.full_phone
+         ) c138dates ON true
+         ${where}
+         GROUP BY pl.central, pl.cabin_number, pl.box_number
+         ORDER BY pl.central, pl.cabin_number, pl.box_number`,
+        params,
+      );
+      res.json({ data: rows });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
   });
 
   // === Work Orders (تركيبات) ===
