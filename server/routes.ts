@@ -642,9 +642,14 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
          c138c.max_speed         AS "curMeasMaxSpeed",
          (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
          -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت على الحالة 135/138 (من شيت المتبقى)
+         -- لو time_till_now_full فارغ: نقدّر وقت الحالة 135 = (uploaded_at − complain_time) − time_till_now
          CASE WHEN t.complaint_time IS NULL THEN NULL
               ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - t.complaint_time)) / 3600.0
-                               - COALESCE(rcd.time_till_now_full - rcd.time_till_now, 0))
+                               - COALESCE(
+                                   rcd.time_till_now_full - rcd.time_till_now,
+                                   GREATEST(0, EXTRACT(EPOCH FROM (rcd.uploaded_at - rcd.complain_time)) / 3600.0
+                                               - COALESCE(rcd.time_till_now, 0))
+                                 ))
          END                     AS "effectiveFaultHours"
        FROM (
          SELECT *, 'مغلق اليوم' AS reg_source FROM ticket_dsl_current
@@ -4165,9 +4170,14 @@ export async function registerRoutes(
              (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
              -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت الذى قضته على الحالة 135/138
              -- يُحسب من شيت تفاصيل المتبقى (430D) بمطابقة رقم الشكوى: delta = full − except135
+             -- لو time_till_now_full فارغ: نقدّر وقت الحالة 135 = (uploaded_at − complain_time) − time_till_now
              CASE WHEN t.complaint_time IS NULL THEN NULL
                   ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - t.complaint_time)) / 3600.0
-                                   - COALESCE(rcd.time_till_now_full - rcd.time_till_now, 0))
+                                   - COALESCE(
+                                       rcd.time_till_now_full - rcd.time_till_now,
+                                       GREATEST(0, EXTRACT(EPOCH FROM (rcd.uploaded_at - rcd.complain_time)) / 3600.0
+                                                   - COALESCE(rcd.time_till_now, 0))
+                                     ))
              END                     AS "effectiveFaultHours"
            FROM ticket_dsl_current t
            LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number

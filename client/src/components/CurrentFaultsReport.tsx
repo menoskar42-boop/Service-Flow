@@ -164,7 +164,7 @@ export function CurrentFaultsReport() {
       "القياس الحالى (نفس الشكوى)": f.curMeasScore,
       "آخر قياس للرقم": f.lastMeasScore,
       "موقف التكرار": f.repeatStatus,
-      "Status Code": f.statusCode,
+      "Status Code": "99-DSL",
       "MSAN Code": f.msanCode,
       "Frame": f.frame,
       "رقم كابينه نهائى": f.cabinetNo,
@@ -216,7 +216,7 @@ export function CurrentFaultsReport() {
           <td>${esc(f.curMeasScore)}</td>
           <td>${esc(f.lastMeasScore)}</td>
           <td>${esc(f.repeatStatus)}</td>
-          <td style="font-size:9px">${esc(f.statusCode)}</td>
+          <td style="font-size:9px">99-DSL</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
           <td>${esc(f.frame)}</td>
           <td>${esc(f.cabinetNo)}</td>
@@ -403,7 +403,7 @@ export function CurrentFaultsReport() {
                         <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
                       ) : ""}
                     </TableCell>
-                    <TableCell className="max-w-[140px] truncate">{shortStatusCode(f.statusCode) || "-"}</TableCell>
+                    <TableCell className="max-w-[140px] truncate">{"99-DSL"}</TableCell>
                     <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
                     <TableCell>{f.frame || "-"}</TableCell>
                     <TableCell>{f.cabinetNo || "-"}</TableCell>
