@@ -368,7 +368,7 @@ export function BoxScoreReport() {
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
         {/* رأس الفلاتر المشتركة */}
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
-          <h3 className="font-semibold text-base">متوسط قياسات الكباين والبكسيات</h3>
+          <h3 className="font-semibold text-base">متوسط القياسات</h3>
           <div className="flex flex-wrap items-center gap-2">
             <SearchableCombobox
               options={filterOptions?.centrals ?? []}
