@@ -5280,6 +5280,7 @@ export async function registerRoutes(
           r.close_time                                                                 AS "closeTime",
           r.appearances::int                                                           AS appearances,
           COALESCE(
+            (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = r.complain_no LIMIT 1),
             (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = r.close_by LIMIT 1),
             'غير معروف'
           )                                                                            AS "closeByName",

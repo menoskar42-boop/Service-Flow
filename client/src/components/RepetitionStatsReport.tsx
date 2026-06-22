@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +12,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, FileSpreadsheet, Printer, Repeat2 } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat2, Pencil, Save, X } from "lucide-react";
 import { format } from "date-fns";
 
 interface RepRow {
@@ -70,6 +72,37 @@ export function RepetitionStatsReport() {
   const [repDetailOpen, setRepDetailOpen]     = useState(false);
   const [repDetailData, setRepDetailData]     = useState<RepDetailRow[] | null>(null);
   const [repDetailLoading, setRepDetailLoading] = useState(false);
+  const [editingTech, setEditingTech]         = useState<string | null>(null); // complainNo
+  const [editTechDraft, setEditTechDraft]     = useState("");
+  const [savingTech, setSavingTech]           = useState(false);
+  const { user } = useAuth();
+  const canEditTech = user?.role === ROLES.ADMIN;
+
+  const handleSaveCloseTech = async (complainNo: string) => {
+    const tech = editTechDraft.trim();
+    if (!tech) return;
+    setSavingTech(true);
+    try {
+      const res = await fetch("/api/manual-close-by", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ complainNo, techName: tech }),
+      });
+      if (!res.ok) throw new Error("فشل الحفظ");
+      // تحديث البيانات المحلية مباشرةً بدون إعادة جلب
+      setRepDetailData((prev) =>
+        prev
+          ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech } : r)
+          : prev,
+      );
+      setEditingTech(null);
+    } catch {
+      alert("تعذّر حفظ فنى الإغلاق");
+    } finally {
+      setSavingTech(false);
+    }
+  };
 
   const mkQuery = (endpoint: string, key: string) => useQuery<RepData>({
     queryKey: [key, dateFrom, dateTo],
@@ -520,7 +553,48 @@ export function RepetitionStatsReport() {
                       <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>
                       <TableCell dir="ltr" className="text-right">{r.complainTime ? new Date(r.complainTime).toLocaleDateString("ar-EG") : ""}</TableCell>
                       <TableCell dir="ltr" className="text-right">{r.closeTime ? new Date(r.closeTime).toLocaleDateString("ar-EG") : ""}</TableCell>
-                      <TableCell>{r.closeByName}</TableCell>
+                      <TableCell>
+                        {editingTech === r.complainNo ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Input
+                              value={editTechDraft}
+                              onChange={(e) => setEditTechDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveCloseTech(r.complainNo);
+                                if (e.key === "Escape") setEditingTech(null);
+                              }}
+                              className="h-6 w-32 text-xs px-1"
+                              dir="rtl"
+                              autoFocus
+                              placeholder="اسم الفنى"
+                            />
+                            <button
+                              onClick={() => handleSaveCloseTech(r.complainNo)}
+                              disabled={savingTech}
+                              className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                              title="حفظ"
+                            >
+                              {savingTech ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                            </button>
+                            <button onClick={() => setEditingTech(null)} className="text-gray-400 hover:text-gray-600" title="إلغاء">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <span>{r.closeByName || "غير معروف"}</span>
+                            {canEditTech && (
+                              <button
+                                onClick={() => { setEditingTech(r.complainNo); setEditTechDraft(r.closeByName === "غير معروف" ? "" : (r.closeByName ?? "")); }}
+                                className="text-amber-500 hover:text-amber-700"
+                                title="تعيين فنى الإغلاق يدوياً"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell>{r.areaTechName}</TableCell>
                     </TableRow>
                   ))}
