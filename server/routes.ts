@@ -1409,14 +1409,7 @@ export async function registerRoutes(
     }
     const boxes: Record<string, string[]> = {};
     for (const [key, set] of boxMap) {
-      const sorted = Array.from(set).sort((a, b) => {
-        const na = parseInt(a), nb = parseInt(b);
-        if (!isNaN(na) && !isNaN(nb)) return na - nb;
-        if (!isNaN(na)) return -1;
-        if (!isNaN(nb)) return 1;
-        return a.localeCompare(b);
-      });
-      boxes[key] = sorted;
+      boxes[key] = Array.from(set).sort((a, b) => a.localeCompare(b, "ar", { numeric: false, sensitivity: "base" }));
     }
 
     res.json({ centrals, cabins, boxes });
