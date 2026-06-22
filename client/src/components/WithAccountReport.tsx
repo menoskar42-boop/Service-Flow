@@ -82,6 +82,10 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
   const [page, setPage] = useState(1);
+  const [scoreMin, setScoreMin] = useState("");
+  const [scoreMax, setScoreMax] = useState("");
+  const [speedMin, setSpeedMin] = useState("");
+  const [speedMax, setSpeedMax] = useState("");
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -101,13 +105,17 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page, scoreGt ?? ""],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page, scoreGt ?? "", scoreMin, scoreMax, speedMin, speedMax],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+      if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+      if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+      if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+      if (speedMax.trim()) params.set("speedLt", speedMax.trim());
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
@@ -214,6 +222,11 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+    if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+    if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+    if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+    if (speedMax.trim()) params.set("speedLt", speedMax.trim());
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
@@ -246,6 +259,11 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+    if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+    if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+    if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+    if (speedMax.trim()) params.set("speedLt", speedMax.trim());
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
     const json = await res.json();
     const all = json.data as PhoneLine[];
@@ -298,6 +316,50 @@ export function WithAccountReport({ scoreGt, title }: WithAccountReportProps = {
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
+            <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
+              <span className="whitespace-nowrap">السرعة الحالية:</span>
+              <Input
+                type="number"
+                min={0}
+                value={speedMin}
+                onChange={(e) => { setSpeedMin(e.target.value); setPage(1); }}
+                placeholder="من"
+                className="h-6 w-16 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+              />
+              <span>—</span>
+              <Input
+                type="number"
+                min={0}
+                value={speedMax}
+                onChange={(e) => { setSpeedMax(e.target.value); setPage(1); }}
+                placeholder="إلى"
+                className="h-6 w-16 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+              />
+            </div>
+            <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
+              <span className="whitespace-nowrap">الاسكور:</span>
+              <Input
+                type="number"
+                min={0}
+                value={scoreMin}
+                onChange={(e) => { setScoreMin(e.target.value); setPage(1); }}
+                placeholder="من"
+                className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+              />
+              <span>—</span>
+              <Input
+                type="number"
+                min={0}
+                value={scoreMax}
+                onChange={(e) => { setScoreMax(e.target.value); setPage(1); }}
+                placeholder="إلى"
+                className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+              />
+            </div>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
