@@ -186,8 +186,9 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   // القياس: نفتح كل أكونتس النطاق فى تاب DZS واحد — والسكريبت (dzs-expresse-v10.user.js)
   // يتولّى التقسيم لدفعات 50 خط والانتظار 400 ثانية بين كل دفعة والرفع التلقائى لشيت 138.
   const handleMeasureDZS = async () => {
-    if (!central && !cabin && !box) {
-      alert("اختر سنترال أو كابينة أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط");
+    const totalCount = data?.total ?? 0;
+    if (!central && !cabin && !box && totalCount > 500) {
+      alert("عدد الخطوط أكثر من 500 — اختر سنترال أو كابينة أو بكس أولاً للتضييق");
       return;
     }
     // افتح التاب فوراً وبشكل متزامن داخل ضغطة الزر (قبل أى await) — وإلا يحجبه الـ popup blocker
