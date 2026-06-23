@@ -20,6 +20,10 @@ export function useAuth() {
       return api.auth.me.responses[200].parse(await res.json());
     },
     retry: false,
+    // إعادة التحقق من الجلسة عند عودة المستخدم للتاب أو بعد 15 دقيقة خمول
+    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
   });
 
   const loginMutation = useMutation({
