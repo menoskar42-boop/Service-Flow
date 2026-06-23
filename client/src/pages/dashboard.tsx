@@ -142,10 +142,16 @@ export default function Dashboard() {
   const toggleGroup = (label: string) =>
     setOpenGroups((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
 
-  // مجموعات التقارير المعروضة حسب الدور — مسئول البيانات يرى فقط مجموعة القياسات
-  const visibleGroups = REPORT_GROUPS.filter(
-    (g) => user?.role !== ROLES.DATA_MANAGER || g.label === "القياسات",
-  );
+  // مجموعات التقارير المعروضة حسب الدور
+  // مسئول البيانات: يرى تقريرَين فقط من مجموعة القياسات
+  const DM_ALLOWED: ReportTab[] = ["without-account", "regularized-no-account"];
+  const visibleGroups = REPORT_GROUPS
+    .filter((g) => user?.role !== ROLES.DATA_MANAGER || g.label === "القياسات")
+    .map((g) =>
+      user?.role === ROLES.DATA_MANAGER
+        ? { ...g, items: g.items.filter((it) => DM_ALLOWED.includes(it.id)) }
+        : g,
+    );
   // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
   const [navOpen, setNavOpen] = useState(false);
   const currentReportLabel =
@@ -158,12 +164,8 @@ export default function Dashboard() {
       setLocation("/login");
     } else if (!authLoading && user?.role === ROLES.DATA_MANAGER) {
       setAdminTab("reports");
-      // افتح تلقائياً مجموعة القياسات وابدأ بأول تقرير فيها
-      const measGroup = REPORT_GROUPS.find((g) => g.label === "القياسات");
-      if (measGroup) {
-        setOpenGroups([measGroup.label]);
-        setReportTab(measGroup.items[0].id);
-      }
+      setOpenGroups(["القياسات"]);
+      setReportTab("without-account");
     }
   }, [authLoading, user, setLocation]);
 
