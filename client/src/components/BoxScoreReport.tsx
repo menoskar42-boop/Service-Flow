@@ -39,6 +39,7 @@ interface BoxAvgRow {
 interface FilterOptions {
   centrals: string[];
   copperCabins: Record<string, string[]>;
+  msanCabins: Record<string, string[]>;
 }
 
 type SortDir = "asc" | "desc";
@@ -82,16 +83,17 @@ function SortableHead<T extends string>({
 }
 
 // ── تاب الكباين ──────────────────────────────────────────────────────────────
-function CabinTab({ central, cabin }: { central: string; cabin: string }) {
+function CabinTab({ central, cabin, msan }: { central: string; cabin: string; msan: string }) {
   const [sortKey, setSortKey] = useState<keyof CabinetAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/reports/cabinet-score-avg", central, cabin],
+    queryKey: ["/api/reports/cabinet-score-avg", central, cabin, msan],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
+      if (msan) params.set("msan", msan);
       const res = await fetch(`/api/reports/cabinet-score-avg?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: CabinetAvgRow[] }>;
@@ -351,6 +353,7 @@ export function BoxScoreReport() {
   const [activeTab, setActiveTab] = useState<"cabinet" | "box">("cabinet");
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
+  const [msan, setMsan] = useState("");
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/reports/cabinet-score-avg/options"],
@@ -361,7 +364,8 @@ export function BoxScoreReport() {
     },
   });
 
-  const cabins = central && filterOptions ? (filterOptions.copperCabins[central] ?? []) : [];
+  const copperCabins = central && filterOptions ? (filterOptions.copperCabins[central] ?? []) : [];
+  const msanCabins   = central && filterOptions ? (filterOptions.msanCabins[central]   ?? []) : [];
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -373,20 +377,31 @@ export function BoxScoreReport() {
             <SearchableCombobox
               options={filterOptions?.centrals ?? []}
               value={central}
-              onChange={(v) => { setCentral(v); setCabin(""); }}
+              onChange={(v) => { setCentral(v); setCabin(""); setMsan(""); }}
               placeholder="كل السنترالات"
               searchPlaceholder="ابحث في السنترالات..."
               className="w-full sm:w-44 text-sm"
             />
             <SearchableCombobox
-              options={cabins}
+              options={copperCabins}
               value={cabin}
               onChange={(v) => setCabin(v)}
-              placeholder="كل الكباين"
-              searchPlaceholder="ابحث في الكباين..."
+              placeholder="كل الكباين النحاسية"
+              searchPlaceholder="ابحث في الكباين النحاسية..."
               disabled={!central}
-              className="w-full sm:w-40 text-sm"
+              className="w-full sm:w-44 text-sm"
             />
+            {activeTab === "cabinet" && (
+              <SearchableCombobox
+                options={msanCabins}
+                value={msan}
+                onChange={(v) => setMsan(v)}
+                placeholder="كل كباين MSAN"
+                searchPlaceholder="ابحث في كباين MSAN..."
+                disabled={!central}
+                className="w-full sm:w-40 text-sm"
+              />
+            )}
           </div>
         </div>
 
@@ -408,7 +423,7 @@ export function BoxScoreReport() {
         </div>
 
         {activeTab === "cabinet"
-          ? <CabinTab central={central} cabin={cabin} />
+          ? <CabinTab central={central} cabin={cabin} msan={msan} />
           : <BoxTab central={central} cabin={cabin} />}
       </Card>
     </div>

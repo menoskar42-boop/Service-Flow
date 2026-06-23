@@ -70,7 +70,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
       { id: "needs-speed-all",     label: "محتاجة رفع سرعة (الكل)" },
       { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
-      { id: "cabinet-score-avg",   label: "متوسط قياسات الكباين" },
       { id: "box-score-avg",       label: "متوسط القياسات" },
       { id: "account-edits",       label: "تعديلات الأكونت" },
     ],
@@ -457,7 +456,6 @@ export default function Dashboard() {
               {reportTab === "needs-speed-complaint"  && <NeedsSpeedReport requireComplaint title="أرقام لها شكوى ومحتاجة رفع سرعة" />}
               {reportTab === "needs-speed-all"        && <NeedsSpeedReport title="أرقام محتاجة رفع سرعة" />}
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
-              {reportTab === "cabinet-score-avg"   && <CabinetScoreReport />}
               {reportTab === "box-score-avg"       && <BoxScoreReport />}
               {reportTab === "account-edits"       && <AccountEditsReport />}
             </div>
