@@ -143,10 +143,11 @@ export default function Dashboard() {
     setOpenGroups((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
 
   // مجموعات التقارير المعروضة حسب الدور
-  // مسئول البيانات: يرى تقريرَين فقط من مجموعة القياسات
-  const DM_ALLOWED: ReportTab[] = ["without-account", "regularized-no-account"];
+  // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
+  const DM_ALLOWED: ReportTab[] = ["without-account", "regularized-no-account", "work-orders"];
+  const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   const visibleGroups = REPORT_GROUPS
-    .filter((g) => user?.role !== ROLES.DATA_MANAGER || g.label === "القياسات")
+    .filter((g) => user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label))
     .map((g) =>
       user?.role === ROLES.DATA_MANAGER
         ? { ...g, items: g.items.filter((it) => DM_ALLOWED.includes(it.id)) }
