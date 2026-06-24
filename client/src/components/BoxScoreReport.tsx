@@ -83,7 +83,7 @@ function SortableHead<T extends string>({
 }
 
 // ── تاب الكباين ──────────────────────────────────────────────────────────────
-function CabinTab({ central, cabin, msan }: { central: string; cabin: string; msan: string }) {
+function CabinTab({ central, cabin, msan, minScore }: { central: string; cabin: string; msan: string; minScore: string }) {
   const [sortKey, setSortKey] = useState<keyof CabinetAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -102,7 +102,12 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
 
   const sorted = useMemo(() => {
     if (!data?.data) return [];
-    return [...data.data].sort((a, b) => {
+    const threshold = minScore !== "" ? Number(minScore) : null;
+    let arr = [...data.data];
+    if (threshold != null && !isNaN(threshold)) {
+      arr = arr.filter((r) => r.avgScore != null && r.avgScore > threshold);
+    }
+    return arr.sort((a, b) => {
       const av = a[sortKey] ?? ""; const bv = b[sortKey] ?? "";
       if (typeof av === "number" && typeof bv === "number")
         return sortDir === "asc" ? av - bv : bv - av;
@@ -110,7 +115,7 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
         ? String(av).localeCompare(String(bv), "ar")
         : String(bv).localeCompare(String(av), "ar");
     });
-  }, [data, sortKey, sortDir]);
+  }, [data, sortKey, sortDir, minScore]);
 
   const toggle = (k: keyof CabinetAvgRow) => {
     if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -205,7 +210,7 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
 }
 
 // ── تاب البكسيات ──────────────────────────────────────────────────────────────
-function BoxTab({ central, cabin }: { central: string; cabin: string }) {
+function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; minScore: string }) {
   const [sortKey, setSortKey] = useState<keyof BoxAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [box, setBox] = useState("");
@@ -237,7 +242,12 @@ function BoxTab({ central, cabin }: { central: string; cabin: string }) {
 
   const sorted = useMemo(() => {
     if (!data?.data) return [];
-    return [...data.data].sort((a, b) => {
+    const threshold = minScore !== "" ? Number(minScore) : null;
+    let arr = [...data.data];
+    if (threshold != null && !isNaN(threshold)) {
+      arr = arr.filter((r) => r.avgScore != null && r.avgScore > threshold);
+    }
+    return arr.sort((a, b) => {
       const av = a[sortKey] ?? ""; const bv = b[sortKey] ?? "";
       if (typeof av === "number" && typeof bv === "number")
         return sortDir === "asc" ? av - bv : bv - av;
@@ -245,7 +255,7 @@ function BoxTab({ central, cabin }: { central: string; cabin: string }) {
         ? String(av).localeCompare(String(bv), "ar")
         : String(bv).localeCompare(String(av), "ar");
     });
-  }, [data, sortKey, sortDir]);
+  }, [data, sortKey, sortDir, minScore]);
 
   const toggle = (k: keyof BoxAvgRow) => {
     if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -354,6 +364,7 @@ export function BoxScoreReport() {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [msan, setMsan] = useState("");
+  const [minScore, setMinScore] = useState("");
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/reports/cabinet-score-avg/options"],
@@ -402,6 +413,15 @@ export function BoxScoreReport() {
                 className="w-full sm:w-40 text-sm"
               />
             )}
+            <input
+              type="number"
+              min={0}
+              value={minScore}
+              onChange={(e) => setMinScore(e.target.value)}
+              placeholder="الاسكور أكبر من"
+              className="w-36 border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right bg-white"
+              dir="rtl"
+            />
           </div>
         </div>
 
@@ -423,8 +443,8 @@ export function BoxScoreReport() {
         </div>
 
         {activeTab === "cabinet"
-          ? <CabinTab central={central} cabin={cabin} msan={msan} />
-          : <BoxTab central={central} cabin={cabin} />}
+          ? <CabinTab central={central} cabin={cabin} msan={msan} minScore={minScore} />
+          : <BoxTab central={central} cabin={cabin} minScore={minScore} />}
       </Card>
     </div>
   );
