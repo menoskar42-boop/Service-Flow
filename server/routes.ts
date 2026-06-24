@@ -5459,6 +5459,137 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/proxy/cfm-fault-counts?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
+  // يحسب لكل تذكرة CFM عدد أعطال 430D فى البكسات التابعة لها:
+  //   faultCountInRange  — خلال الفترة التى يختارها المستخدم (complain_time)
+  //   faultCountPreTicket — من (تاريخ إنشاء التكت − 7 أيام) حتى الآن
+  // مصدر البيانات: complaint_details ∪ remaining_complaints ← join مع phone_lines على tel_no=phone_number
+  app.get("/api/proxy/cfm-fault-counts", requireAuth, async (req, res) => {
+    try {
+      const dateFrom = (req.query.dateFrom as string | undefined)?.trim();
+      const dateTo   = (req.query.dateTo   as string | undefined)?.trim();
+
+      // 1. سحب قائمة التذاكر من CFM
+      const upstream = await cfmFetch("/api/tickets");
+      if (!upstream.ok) return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
+      const rawData = await upstream.json();
+      const tickets: any[] = Array.isArray(rawData) ? rawData : (rawData.data ?? rawData.tickets ?? []);
+
+      // 2. جمع اسماء السنترالات وأرقام الكابينات الفريدة لتقليل حجم الـ query
+      const exchSet = new Set<string>();
+      const cabSet  = new Set<string>();
+      for (const t of tickets) {
+        const exch = String(t?.central?.name ?? t?.centralDepartment ?? "").trim();
+        const cab  = String(t?.cable?.number ?? "").trim();
+        if (exch && cab) { exchSet.add(exch); cabSet.add(cab); }
+      }
+      if (!exchSet.size) return res.json([]);
+
+      const exchArr = Array.from(exchSet);
+      const cabArr  = Array.from(cabSet);
+
+      // 3. عد أعطال الفترة المختارة (موزّعة على بكسات)
+      const rangeMap = new Map<string, number>(); // key: "normCentral|cab|box"
+      if (dateFrom && dateTo) {
+        const { rows: rr } = await pool.query(`
+          SELECT x.exch, x.cab, x.box, SUM(x.cnt)::int AS cnt FROM (
+            SELECT cd.exchange_name AS exch, cd.cabinet_no AS cab,
+                   pl.box_number   AS box, COUNT(*)       AS cnt
+            FROM complaint_details cd
+            LEFT JOIN phone_lines pl ON pl.tel_no = cd.phone_number
+            WHERE cd.exchange_name = ANY($1) AND cd.cabinet_no = ANY($2)
+              AND cd.complain_time >= $3::timestamptz
+              AND cd.complain_time <= ($4 || ' 23:59:59')::timestamptz
+            GROUP BY cd.exchange_name, cd.cabinet_no, pl.box_number
+            UNION ALL
+            SELECT rc.exchange_name, rc.cabinet_no,
+                   pl2.box_number, COUNT(*) AS cnt
+            FROM remaining_complaints rc
+            LEFT JOIN phone_lines pl2 ON pl2.tel_no = rc.phone_number
+            WHERE rc.exchange_name = ANY($1) AND rc.cabinet_no = ANY($2)
+              AND rc.complain_time >= $3::timestamptz
+              AND rc.complain_time <= ($4 || ' 23:59:59')::timestamptz
+            GROUP BY rc.exchange_name, rc.cabinet_no, pl2.box_number
+          ) x GROUP BY x.exch, x.cab, x.box
+        `, [exchArr, cabArr, dateFrom, dateTo]);
+        for (const r of rr) {
+          const key = `${normCentral(r.exch)}|${String(r.cab ?? "").trim()}|${String(r.box ?? "").trim()}`;
+          rangeMap.set(key, (rangeMap.get(key) ?? 0) + (Number(r.cnt) || 0));
+        }
+      }
+
+      // 4. بيانات ما قبل التكت: نجلب تجميعًا يوميًا من (أقدم تكت − 7 أيام) حتى الآن
+      //    ثم نحسب per-ticket فى Node.js بناءً على تاريخ كل تكت
+      let minDate = new Date();
+      for (const t of tickets) {
+        if (t.createdAt) { const d = new Date(t.createdAt); if (d < minDate) minDate = d; }
+      }
+      const preFrom = new Date(minDate.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Map: "normCentral|cab|box" → [{dt, cnt}]
+      const preTimeMap = new Map<string, { dt: Date; cnt: number }[]>();
+      const { rows: pr } = await pool.query(`
+        SELECT x.exch, x.cab, x.box, x.dt, SUM(x.cnt)::int AS cnt FROM (
+          SELECT cd.exchange_name AS exch, cd.cabinet_no AS cab,
+                 pl.box_number   AS box,
+                 DATE(cd.complain_time AT TIME ZONE 'Africa/Cairo') AS dt,
+                 COUNT(*) AS cnt
+          FROM complaint_details cd
+          LEFT JOIN phone_lines pl ON pl.tel_no = cd.phone_number
+          WHERE cd.exchange_name = ANY($1) AND cd.cabinet_no = ANY($2)
+            AND cd.complain_time >= $3::timestamptz
+          GROUP BY cd.exchange_name, cd.cabinet_no, pl.box_number, dt
+          UNION ALL
+          SELECT rc.exchange_name, rc.cabinet_no,
+                 pl2.box_number,
+                 DATE(rc.complain_time AT TIME ZONE 'Africa/Cairo') AS dt,
+                 COUNT(*) AS cnt
+          FROM remaining_complaints rc
+          LEFT JOIN phone_lines pl2 ON pl2.tel_no = rc.phone_number
+          WHERE rc.exchange_name = ANY($1) AND rc.cabinet_no = ANY($2)
+            AND rc.complain_time >= $3::timestamptz
+          GROUP BY rc.exchange_name, rc.cabinet_no, pl2.box_number, dt
+        ) x GROUP BY x.exch, x.cab, x.box, x.dt
+      `, [exchArr, cabArr, preFrom]);
+
+      for (const r of pr) {
+        const key = `${normCentral(r.exch)}|${String(r.cab ?? "").trim()}|${String(r.box ?? "").trim()}`;
+        const dt = r.dt instanceof Date ? r.dt : new Date(String(r.dt));
+        if (!preTimeMap.has(key)) preTimeMap.set(key, []);
+        preTimeMap.get(key)!.push({ dt, cnt: Number(r.cnt) || 0 });
+      }
+
+      // 5. حساب العدد لكل تذكرة
+      const result = tickets.map((t: any) => {
+        const central  = normCentral(t?.central?.name ?? t?.centralDepartment);
+        const cabin    = String(t?.cable?.number ?? "").trim();
+        const boxes    = parseTicketBoxes(t?.box);
+        const ticketDt = t.createdAt ? new Date(t.createdAt) : null;
+        const preStart = ticketDt ? new Date(ticketDt.getTime() - 7 * 24 * 60 * 60 * 1000) : null;
+
+        let faultCountInRange = 0;
+        for (const b of boxes) {
+          faultCountInRange += rangeMap.get(`${central}|${cabin}|${b}`) ?? 0;
+        }
+
+        let faultCountPreTicket = 0;
+        if (preStart) {
+          for (const b of boxes) {
+            for (const { dt, cnt } of preTimeMap.get(`${central}|${cabin}|${b}`) ?? []) {
+              if (dt >= preStart) faultCountPreTicket += cnt;
+            }
+          }
+        }
+
+        return { id: t.id, faultCountInRange, faultCountPreTicket };
+      });
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(502).json({ message: `تعذّر حساب أعطال 430D: ${e.message}` });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 
