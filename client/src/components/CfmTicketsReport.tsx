@@ -95,6 +95,7 @@ export function CfmTicketsReport() {
   const [filterBoxFrom, setFilterBoxFrom] = useState("");
   const [filterBoxTo, setFilterBoxTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("open");
+  const [filterFaults, setFilterFaults] = useState<"all" | "has" | "none">("all");
 
   // --- 430D ---
   const [dateFrom, setDateFrom] = useState(() => {
@@ -138,9 +139,14 @@ export function CfmTicketsReport() {
         const hi = filterBoxTo   ? parseInt(filterBoxTo)   : Infinity;
         if (!boxes.some(b => { const n = parseInt(b); return n >= lo && n <= hi; })) return false;
       }
+      if (filterFaults !== "all" && preTicketMap != null) {
+        const n = preTicketMap.get(t.id) ?? 0;
+        if (filterFaults === "has"  && n === 0) return false;
+        if (filterFaults === "none" && n  >  0) return false;
+      }
       return true;
     });
-  }, [data, filterCentral, filterCabinet, filterStatus, filterBoxFrom, filterBoxTo]);
+  }, [data, filterCentral, filterCabinet, filterStatus, filterBoxFrom, filterBoxTo, filterFaults, preTicketMap]);
 
   // --- totals for filtered data ---
   const totals = useMemo(() => {
@@ -317,7 +323,7 @@ export function CfmTicketsReport() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const hasFilters = !!(filterCentral || filterCabinet || filterBoxFrom || filterBoxTo || filterStatus);
+  const hasFilters = !!(filterCentral || filterCabinet || filterBoxFrom || filterBoxTo || filterStatus || filterFaults !== "all");
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -390,9 +396,18 @@ export function CfmTicketsReport() {
               {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground font-medium">الأعطال</label>
+            <select value={filterFaults} onChange={e => setFilterFaults(e.target.value as "all" | "has" | "none")}
+              className="border rounded px-2 py-1 text-sm bg-white min-w-[140px]">
+              <option value="all">الكل</option>
+              <option value="has">لها أعطال فقط</option>
+              <option value="none">ليس لها أعطال</option>
+            </select>
+          </div>
           {hasFilters && (
             <Button variant="ghost" size="sm" className="self-end text-xs"
-              onClick={() => { setFilterCentral(""); setFilterCabinet(""); setFilterBoxFrom(""); setFilterBoxTo(""); setFilterStatus(""); }}>
+              onClick={() => { setFilterCentral(""); setFilterCabinet(""); setFilterBoxFrom(""); setFilterBoxTo(""); setFilterStatus(""); setFilterFaults("all"); }}>
               مسح الفلاتر
             </Button>
           )}
