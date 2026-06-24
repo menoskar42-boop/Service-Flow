@@ -97,8 +97,11 @@ export function CfmTicketsReport() {
   const [filterStatus, setFilterStatus] = useState("");
 
   // --- 430D ---
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10));
   // preTicketMap: يُحمَّل تلقائياً مع التذاكر (لا يحتاج تواريخ من المستخدم)
   const [preTicketMap, setPreTicketMap] = useState<Map<string, number> | null>(null);
   // faultMap: عدد أعطال الفترة المختارة — يظهر فقط بعد ضغط بحث
