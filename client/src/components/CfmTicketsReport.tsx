@@ -19,6 +19,21 @@ interface CfmTicket {
   createdAt: string;
   createdByUser?: { name: string } | null;
   works?: { performedBy?: string }[];
+  // مُضافة من الـ proxy: متوسط قياس بكسات التذكرة من Service Flow
+  boxAvgScore?: number | null;
+  boxMeasuredLines?: number;
+  boxCount?: number;
+  boxesWithData?: number;
+  boxBreakdown?: { box: string; avg: number | null; measured: number }[];
+}
+
+function avgScoreBadge(v: number | null | undefined) {
+  if (v == null) return <span className="text-gray-400">-</span>;
+  const cls =
+    v > 33 ? "bg-red-100 text-red-800" :
+    v > 15 ? "bg-amber-100 text-amber-700" :
+             "bg-green-100 text-green-800";
+  return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{v}</span>;
 }
 
 const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
@@ -127,6 +142,7 @@ export function CfmTicketsReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">بوكس</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">متوسط القياس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">نوع العطل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الحالة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الفنى</TableHead>
@@ -142,6 +158,14 @@ export function CfmTicketsReport() {
                     <TableCell className="whitespace-nowrap">{t.central?.name ?? t.centralDepartment ?? "-"}</TableCell>
                     <TableCell className="whitespace-nowrap font-medium">{t.cable?.number || "-"}</TableCell>
                     <TableCell className="text-xs whitespace-nowrap font-medium">{t.box || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {avgScoreBadge(t.boxAvgScore)}
+                      {t.boxCount != null && t.boxCount > 0 && (
+                        <span className="text-[10px] text-muted-foreground block mt-0.5">
+                          {t.boxesWithData}/{t.boxCount} بكس · {t.boxMeasuredLines ?? 0} خط
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {t.faultType ? (
                         <span className="text-xs">{t.faultType.name}</span>

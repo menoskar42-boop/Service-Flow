@@ -889,6 +889,64 @@ async function cfmFetch(path: string): Promise<Response> {
   }
   return r;
 }
+
+// تفكيك رقم البكس فى تذاكر Cable Guardian إلى قائمة أرقام بكسات:
+//   "1:15" → من 1 إلى 15 (مدى)   |   "1&15" → [1, 15] (مجموعة)   |   "5" → [5]
+function parseTicketBoxes(boxStr: string | null | undefined): string[] {
+  if (!boxStr) return [];
+  const s = String(boxStr).trim();
+  if (!s) return [];
+  // مدى: 1:15
+  if (s.includes(":")) {
+    const parts = s.split(":").map((x) => parseInt(x.replace(/[^0-9]/g, ""), 10));
+    const [a, b] = parts;
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      const lo = Math.min(a, b), hi = Math.max(a, b);
+      const out: string[] = [];
+      for (let i = lo; i <= hi && i - lo < 1000; i++) out.push(String(i));
+      return out;
+    }
+  }
+  // مجموعة: 1&15 (أو 1،15 / 1,15)
+  if (/[&،,]/.test(s)) {
+    return s.split(/[&،,]/).map((x) => x.replace(/[^0-9]/g, "")).filter(Boolean);
+  }
+  // بكس واحد
+  const single = s.replace(/[^0-9]/g, "");
+  return single ? [single] : [];
+}
+
+// توحيد اسم السنترال للمطابقة بين النظامين (إزالة المسافات حول الشرطات)
+function normCentral(s: string | null | undefined): string {
+  return String(s ?? "").replace(/\s+/g, "").trim();
+}
+
+// تجميع مجاميع القياسات لكل (سنترال، كابينة، بكس) للخطوط التى لها أكونت — مع كاش قصير
+let boxAggCache: { at: number; map: Map<string, { sum: number; measured: number; lines: number }> } | null = null;
+async function getBoxScoreAgg() {
+  const now = Date.now();
+  if (boxAggCache && now - boxAggCache.at < 60_000) return boxAggCache.map;
+  const { rows } = await pool.query(`
+    SELECT t.central, t.cabin_number, t.box_number,
+           COUNT(*) FILTER (WHERE t.score IS NOT NULL AND t.score <= 100)::int AS measured,
+           COALESCE(SUM(t.score) FILTER (WHERE t.score IS NOT NULL AND t.score <= 100), 0)::numeric AS sum_score,
+           COUNT(*)::int AS lines
+    FROM (
+      SELECT pl.central, pl.cabin_number, pl.box_number, pl.full_phone,
+        (SELECT c.score FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1) AS score
+      FROM line_accounts la
+      JOIN phone_lines pl ON pl.full_phone = la.full_phone
+    ) t
+    GROUP BY t.central, t.cabin_number, t.box_number
+  `);
+  const map = new Map<string, { sum: number; measured: number; lines: number }>();
+  for (const r of rows) {
+    const key = `${normCentral(r.central)}|${String(r.cabin_number ?? "").trim()}|${String(r.box_number ?? "").trim()}`;
+    map.set(key, { sum: Number(r.sum_score) || 0, measured: Number(r.measured) || 0, lines: Number(r.lines) || 0 });
+  }
+  boxAggCache = { at: now, map };
+  return map;
+}
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function registerRoutes(
@@ -5365,7 +5423,37 @@ export async function registerRoutes(
         return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
       }
       const data = await upstream.json();
-      res.json(data);
+      const tickets: any[] = Array.isArray(data) ? data : (data.data ?? data.tickets ?? []);
+
+      // إثراء كل تذكرة بمتوسط قياس البكسات التابعة لها (من بيانات Service Flow)
+      let agg: Map<string, { sum: number; measured: number; lines: number }> | null = null;
+      try { agg = await getBoxScoreAgg(); } catch { agg = null; }
+
+      if (agg) {
+        for (const t of tickets) {
+          const central = normCentral(t?.central?.name ?? t?.centralDepartment);
+          const cabin = String(t?.cable?.number ?? "").trim();
+          const boxes = parseTicketBoxes(t?.box);
+          let sum = 0, measured = 0, boxesWithData = 0;
+          const perBox: { box: string; avg: number | null; measured: number }[] = [];
+          for (const b of boxes) {
+            const hit = agg.get(`${central}|${cabin}|${b}`);
+            if (hit && hit.measured > 0) {
+              sum += hit.sum; measured += hit.measured; boxesWithData++;
+              perBox.push({ box: b, avg: Math.round((hit.sum / hit.measured) * 10) / 10, measured: hit.measured });
+            } else {
+              perBox.push({ box: b, avg: null, measured: 0 });
+            }
+          }
+          t.boxAvgScore = measured > 0 ? Math.round((sum / measured) * 10) / 10 : null;
+          t.boxMeasuredLines = measured;
+          t.boxCount = boxes.length;
+          t.boxesWithData = boxesWithData;
+          t.boxBreakdown = perBox;
+        }
+      }
+
+      res.json(tickets);
     } catch (e: any) {
       res.status(502).json({ message: `تعذّر الاتصال بـ Cable Fault Manager: ${e.message}` });
     }
