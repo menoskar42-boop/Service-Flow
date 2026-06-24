@@ -865,18 +865,16 @@ const CFM_CREDS = { username: "admin", password: "Mon_oskar11" };
 let cfmCookie: string | null = null;
 
 async function cfmLogin() {
-  const res = await fetch(`${CFM_BASE}/api/login`, {
+  const res = await fetch(`${CFM_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(CFM_CREDS),
   });
   if (!res.ok) throw new Error(`CFM login failed: ${res.status}`);
-  // Node 18+ returns array; fallback to single get() for older runtimes
   const cookies: string[] =
     typeof (res.headers as any).getSetCookie === "function"
       ? (res.headers as any).getSetCookie()
       : (res.headers.get("set-cookie") ?? "").split(/,(?=[^ ])/).filter(Boolean);
-  // كل cookie في صورة "name=value; ..." — نستخرج الجزء name=value فقط
   cfmCookie = cookies.map((c: string) => c.split(";")[0].trim()).join("; ");
   if (!cfmCookie) throw new Error("CFM login: no cookie received");
 }
@@ -5349,26 +5347,18 @@ export async function registerRoutes(
   app.get("/api/proxy/cfm-debug", requireAdmin, async (_req, res) => {
     try {
       cfmCookie = null;
-      // جرّب مسارات login المحتملة
-      const loginPaths = ["/api/login", "/api/auth/login", "/api/users/login", "/api/signin"];
-      const results: Record<string, any> = {};
-
-      for (const lp of loginPaths) {
-        const r = await fetch(`${CFM_BASE}${lp}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(CFM_CREDS),
-        });
+      // login بالمسار الصحيح
+      await cfmLogin();
+      const cookie = cfmCookie!;
+      // جرّب مسارات التذاكر المحتملة
+      const ticketPaths = ["/api/tickets", "/api/trouble-tickets", "/api/faults", "/api/complaints", "/api/reports/tickets"];
+      const results: Record<string, any> = { loginOk: true, cookie: cookie.slice(0, 40) + "..." };
+      for (const tp of ticketPaths) {
+        const r = await fetch(`${CFM_BASE}${tp}`, { headers: { Cookie: cookie } });
         const body = await r.text();
         const isHtml = body.trimStart().startsWith("<");
-        const cookies: string[] =
-          typeof (r.headers as any).getSetCookie === "function"
-            ? (r.headers as any).getSetCookie()
-            : (r.headers.get("set-cookie") ?? "").split(/,(?=[^ ])/).filter(Boolean);
-        const sessionCookies = cookies.filter((c: string) => c.includes("connect.sid") || c.includes("session"));
-        results[lp] = { status: r.status, isHtml, sessionCookies, bodyPreview: body.slice(0, 120) };
+        results[tp] = { status: r.status, isHtml, preview: body.slice(0, 150) };
       }
-
       res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
