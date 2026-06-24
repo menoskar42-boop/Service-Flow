@@ -5347,19 +5347,12 @@ export async function registerRoutes(
   app.get("/api/proxy/cfm-debug", requireAdmin, async (_req, res) => {
     try {
       cfmCookie = null;
-      // login بالمسار الصحيح
       await cfmLogin();
-      const cookie = cfmCookie!;
-      // جرّب مسارات التذاكر المحتملة
-      const ticketPaths = ["/api/tickets", "/api/trouble-tickets", "/api/faults", "/api/complaints", "/api/reports/tickets"];
-      const results: Record<string, any> = { loginOk: true, cookie: cookie.slice(0, 40) + "..." };
-      for (const tp of ticketPaths) {
-        const r = await fetch(`${CFM_BASE}${tp}`, { headers: { Cookie: cookie } });
-        const body = await r.text();
-        const isHtml = body.trimStart().startsWith("<");
-        results[tp] = { status: r.status, isHtml, preview: body.slice(0, 150) };
-      }
-      res.json(results);
+      const r = await fetch(`${CFM_BASE}/api/tickets`, { headers: { Cookie: cfmCookie! } });
+      const json = await r.json();
+      const arr = Array.isArray(json) ? json : (json.data ?? json.tickets ?? []);
+      // أرجع أول تذكرة خام كاملة لمعرفة أسماء الحقول بالظبط
+      res.json({ count: arr.length, firstTicketRaw: arr[0] ?? null });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
