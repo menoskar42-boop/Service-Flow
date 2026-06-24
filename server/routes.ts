@@ -5631,12 +5631,10 @@ export async function registerRoutes(
       }
 
       if (!keyMeta.size) return res.json({ lines: [], total: 0 });
-      const keys = Array.from(keyMeta.keys());
 
-      // تعبير المفتاح فى SQL يطابق normCentral (إزالة كل المسافات) فى Node
-      const keyExpr =
-        `regexp_replace(COALESCE(pl.central,''), '\\s', '', 'g') || '|' || ` +
-        `COALESCE(pl.cabin_number,'') || '|' || COALESCE(pl.box_number,'')`;
+      // نستخرج أرقام الكابينات الفريدة لتضييق الـ SQL query
+      // ثم نطابق (central + box) فى Node.js باستخدام normCentral — لتفادى أى تعقيد regex فى PostgreSQL
+      const cabArr = [...new Set([...keyMeta.keys()].map((k) => k.split("|")[1]).filter(Boolean))];
 
       const { rows } = await pool.query(
         `SELECT pl.tel_no AS "telNo", pl.central, pl.cabin_number AS "cabinNumber",
@@ -5644,31 +5642,35 @@ export async function registerRoutes(
                 pl.idu_no AS "iduNo", pl.dp_terminal AS "dpTerminal",
                 la.account_no AS "accountNo", la.source AS "accountSource",
                 c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
-                c138p.score AS "lastMeasScore",
-                (${keyExpr}) AS "matchKey"
+                c138p.score AS "lastMeasScore"
          FROM phone_lines pl
          LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
          LEFT JOIN LATERAL (
            SELECT c.current_speed, c.max_speed, c.score
            FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
          ) c138p ON true
-         WHERE (${keyExpr}) = ANY($1)
+         WHERE pl.cabin_number = ANY($1)
          ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''),8,'0'),
                   LPAD(COALESCE(pl.box_number,''),8,'0'), pl.full_phone`,
-        [keys],
+        [cabArr],
       );
 
-      const lines = rows.map((r: any) => {
-        const meta = keyMeta.get(r.matchKey);
-        return {
+      // الفلترة فى Node.js: ابنِ المفتاح بنفس normCentral وطابِق مع keyMeta
+      // هذا يضمن نفس منطق المطابقة المستخدم فى باقى الكود وبدون regex SQL معقّد
+      const lines: any[] = [];
+      for (const r of rows) {
+        const key = `${normCentral(r.central)}|${String(r.cabinNumber ?? "").trim()}|${String(r.boxNumber ?? "").trim()}`;
+        const meta = keyMeta.get(key);
+        if (!meta) continue;
+        lines.push({
           telNo: r.telNo, central: r.central, cabinNumber: r.cabinNumber, boxNumber: r.boxNumber,
           fullPhone: r.fullPhone, iduNo: r.iduNo, dpTerminal: r.dpTerminal,
           accountNo: r.accountNo, accountSource: r.accountSource,
           lineCurrentSpeed: r.lineCurrentSpeed, lineMaxSpeed: r.lineMaxSpeed, lastMeasScore: r.lastMeasScore,
-          ticketNumber: meta?.ticketNumber ?? "", faultType: meta?.faultType ?? "",
-          ticketCreatedAt: meta?.createdAt ?? "",
-        };
-      });
+          ticketNumber: meta.ticketNumber, faultType: meta.faultType,
+          ticketCreatedAt: meta.createdAt,
+        });
+      }
 
       res.json({ lines, total: lines.length });
     } catch (e: any) {
