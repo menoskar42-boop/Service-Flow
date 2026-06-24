@@ -5348,32 +5348,28 @@ export async function registerRoutes(
   // ── Cable-Fault-Manager live proxy ──────────────────────────────────────
   app.get("/api/proxy/cfm-debug", requireAdmin, async (_req, res) => {
     try {
-      cfmCookie = null; // force fresh login
-      const loginRes = await fetch(`${CFM_BASE}/api/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(CFM_CREDS),
-      });
-      const loginBody = await loginRes.text();
-      const cookies: string[] =
-        typeof (loginRes.headers as any).getSetCookie === "function"
-          ? (loginRes.headers as any).getSetCookie()
-          : (loginRes.headers.get("set-cookie") ?? "").split(/,(?=[^ ])/).filter(Boolean);
-      const cookieStr = cookies.map((c: string) => c.split(";")[0].trim()).join("; ");
+      cfmCookie = null;
+      // جرّب مسارات login المحتملة
+      const loginPaths = ["/api/login", "/api/auth/login", "/api/users/login", "/api/signin"];
+      const results: Record<string, any> = {};
 
-      const ticketsRes = await fetch(`${CFM_BASE}/api/tickets`, {
-        headers: { Cookie: cookieStr },
-      });
-      const ticketsBody = await ticketsRes.text().then((t) => t.slice(0, 500));
+      for (const lp of loginPaths) {
+        const r = await fetch(`${CFM_BASE}${lp}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(CFM_CREDS),
+        });
+        const body = await r.text();
+        const isHtml = body.trimStart().startsWith("<");
+        const cookies: string[] =
+          typeof (r.headers as any).getSetCookie === "function"
+            ? (r.headers as any).getSetCookie()
+            : (r.headers.get("set-cookie") ?? "").split(/,(?=[^ ])/).filter(Boolean);
+        const sessionCookies = cookies.filter((c: string) => c.includes("connect.sid") || c.includes("session"));
+        results[lp] = { status: r.status, isHtml, sessionCookies, bodyPreview: body.slice(0, 120) };
+      }
 
-      res.json({
-        loginStatus: loginRes.status,
-        loginBody: loginBody.slice(0, 200),
-        cookies,
-        cookieStr,
-        ticketsStatus: ticketsRes.status,
-        ticketsPreview: ticketsBody,
-      });
+      res.json(results);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
