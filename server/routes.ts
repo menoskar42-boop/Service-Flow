@@ -859,6 +859,35 @@ function startDailySnapshotScheduler() {
   setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة
 }
 
+// ── Cable-Fault-Manager live proxy ──────────────────────────────────────────
+const CFM_BASE = "http://cable-fault-manager.replit.app";
+const CFM_CREDS = { username: "admin", password: "Mon_oskar11" };
+let cfmCookie: string | null = null;
+
+async function cfmLogin() {
+  const res = await fetch(`${CFM_BASE}/api/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(CFM_CREDS),
+  });
+  if (!res.ok) throw new Error(`CFM login failed: ${res.status}`);
+  const raw = res.headers.get("set-cookie") ?? "";
+  const match = raw.match(/connect\.sid=[^;]+/);
+  cfmCookie = match ? match[0] : raw.split(";")[0];
+}
+
+async function cfmFetch(path: string): Promise<Response> {
+  if (!cfmCookie) await cfmLogin();
+  let r = await fetch(`${CFM_BASE}${path}`, { headers: { Cookie: cfmCookie! } });
+  if (r.status === 401 || r.status === 403) {
+    cfmCookie = null;
+    await cfmLogin();
+    r = await fetch(`${CFM_BASE}${path}`, { headers: { Cookie: cfmCookie! } });
+  }
+  return r;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -5308,6 +5337,20 @@ export async function registerRoutes(
       res.json(rows);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
+    }
+  });
+
+  // ── Cable-Fault-Manager live proxy ──────────────────────────────────────
+  app.get("/api/proxy/cfm-tickets", requireAuth, async (_req, res) => {
+    try {
+      const upstream = await cfmFetch("/api/tickets");
+      if (!upstream.ok) {
+        return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
+      }
+      const data = await upstream.json();
+      res.json(data);
+    } catch (e: any) {
+      res.status(502).json({ message: `تعذّر الاتصال بـ Cable Fault Manager: ${e.message}` });
     }
   });
 

@@ -33,6 +33,7 @@ import { OmRejectionsReport } from "@/components/OmRejectionsReport";
 import { OmStatsReport } from "@/components/OmStatsReport";
 import { FileUploadSection } from "@/components/FileUploadSection";
 import { DataCompletionSection } from "@/components/DataCompletionSection";
+import { CfmTicketsReport } from "@/components/CfmTicketsReport";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
@@ -41,7 +42,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits" | "regularized-no-account" | "needs-speed-complaint" | "high-score" | "needs-speed-all" | "complaint-no-measure";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits" | "regularized-no-account" | "needs-speed-complaint" | "high-score" | "needs-speed-all" | "complaint-no-measure" | "cfm-tickets";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -124,6 +125,13 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     icon: FileText,
     items: [
       { id: "work-orders", label: "أوامر الشغل" },
+    ],
+  },
+  {
+    label: "تقارير أعطال الشبكات الأرضية",
+    icon: AlertTriangle,
+    items: [
+      { id: "cfm-tickets", label: "تذاكر الأعطال" },
     ],
   },
 ];
@@ -461,6 +469,7 @@ export default function Dashboard() {
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
               {reportTab === "box-score-avg"       && <BoxScoreReport />}
               {reportTab === "account-edits"       && <AccountEditsReport />}
+              {reportTab === "cfm-tickets"         && <CfmTicketsReport />}
             </div>
           </div>
         )}
