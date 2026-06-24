@@ -1,18 +1,56 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, RefreshCw, AlertCircle } from "lucide-react";
 
-const REFRESH_INTERVAL = 30; // seconds
+const REFRESH_INTERVAL = 30;
+
+interface CfmTicket {
+  id: string;
+  ticketNumber: string;
+  centralDepartment?: string;
+  central?: { name: string; code?: string } | null;
+  cable?: { number?: string; cableNumber?: string; cabinetNumber?: string; type?: string } | null;
+  cabinet?: string | null;
+  box?: string | null;
+  faultType?: { name: string; category?: string } | null;
+  notes?: string | null;
+  status: "open" | "pending_confirmation" | "closed" | "cancelled" | string;
+  createdAt: string;
+  createdByUser?: { name: string } | null;
+  works?: { performedBy?: string }[];
+}
+
+const STATUS_LABELS: Record<string, { label: string; cls: string }> = {
+  open:                 { label: "مفتوحة",        cls: "bg-blue-100 text-blue-800" },
+  pending_confirmation: { label: "تحت التأكيد",   cls: "bg-amber-100 text-amber-800" },
+  closed:               { label: "مغلقة",         cls: "bg-green-100 text-green-800" },
+  cancelled:            { label: "ملغية",         cls: "bg-red-100 text-red-800" },
+};
+
+function statusBadge(s: string) {
+  const { label, cls } = STATUS_LABELS[s] ?? { label: s, cls: "bg-gray-100 text-gray-700" };
+  return <span className={`text-xs px-2 py-0.5 rounded font-medium ${cls}`}>{label}</span>;
+}
+
+function getTechs(ticket: CfmTicket) {
+  if (!ticket.works?.length) return "-";
+  const all = ticket.works.map((w) => w.performedBy).filter(Boolean);
+  return all.length ? [...new Set(all)].join("، ") : "-";
+}
+
+function fmtDate(iso: string) {
+  try { return new Date(iso).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" }); }
+  catch { return iso; }
+}
 
 export function CfmTicketsReport() {
-  const [data, setData] = useState<Record<string, unknown>[] | null>(null);
+  const [data, setData] = useState<CfmTicket[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -34,10 +72,8 @@ export function CfmTicketsReport() {
     }
   }, []);
 
-  // أول تحميل
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // تحديث تلقائى كل 30 ثانية
   useEffect(() => {
     const id = setInterval(() => {
       setCountdown((c) => {
@@ -45,17 +81,8 @@ export function CfmTicketsReport() {
         return c - 1;
       });
     }, 1000);
-    timerRef.current = id;
     return () => clearInterval(id);
   }, [fetchData]);
-
-  const columns = data && data.length > 0 ? Object.keys(data[0]) : [];
-
-  const fmt = (v: unknown) => {
-    if (v == null) return "-";
-    if (typeof v === "object") return JSON.stringify(v);
-    return String(v);
-  };
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -70,14 +97,8 @@ export function CfmTicketsReport() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {data && <span className="text-sm text-muted-foreground">{data.length} سجل</span>}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { fetchData(); setCountdown(REFRESH_INTERVAL); }}
-              disabled={loading}
-              className="gap-1"
-            >
+            {data && <span className="text-sm text-muted-foreground">{data.length} تذكرة</span>}
+            <Button variant="outline" size="sm" onClick={() => { fetchData(); setCountdown(REFRESH_INTERVAL); }} disabled={loading} className="gap-1">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               تحديث
             </Button>
@@ -86,8 +107,7 @@ export function CfmTicketsReport() {
 
         {error && (
           <div className="flex items-center gap-2 px-4 py-3 bg-red-50 text-red-700 text-sm border-b">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
+            <AlertCircle className="w-4 h-4 shrink-0" /><span>{error}</span>
           </div>
         )}
 
@@ -102,19 +122,39 @@ export function CfmTicketsReport() {
             <Table className="text-right text-sm" dir="rtl">
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="text-right font-bold w-10">#</TableHead>
-                  {columns.map((col) => (
-                    <TableHead key={col} className="text-right font-bold whitespace-nowrap">{col}</TableHead>
-                  ))}
+                  <TableHead className="text-right font-bold">#</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم التذكرة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الإنشاء</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">الكابل</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">الكابينة / البكس</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">نوع العطل</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">الحالة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">الفنى</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">ملاحظات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.map((row, idx) => (
-                  <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
+                {data.map((t, idx) => (
+                  <TableRow key={t.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
-                    {columns.map((col) => (
-                      <TableCell key={col} className="whitespace-nowrap">{fmt(row[col])}</TableCell>
-                    ))}
+                    <TableCell className="font-mono font-semibold text-blue-700 whitespace-nowrap">{t.ticketNumber}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDate(t.createdAt)}</TableCell>
+                    <TableCell className="whitespace-nowrap">{t.central?.name ?? t.centralDepartment ?? "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
+                      {t.cable ? `${t.cable.cableNumber ?? t.cable.number ?? "-"}` : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs whitespace-nowrap">
+                      {[t.cabinet, t.box].filter(Boolean).join(" / ") || "-"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {t.faultType ? (
+                        <span className="text-xs">{t.faultType.name}</span>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell>{statusBadge(t.status)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">{getTechs(t)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{t.notes || "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
