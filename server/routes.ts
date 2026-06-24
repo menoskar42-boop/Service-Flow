@@ -1638,7 +1638,8 @@ export async function registerRoutes(
 
   // GET /api/phone-lines/with-account — lines that have an entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/with-account", requireAuth, async (req, res) => {
-    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50",
+    const { search = "", central = "", cabin = "", box = "", boxFrom = "", boxTo = "",
+            page = "1", limit = "50",
             scoreGt = "", scoreLt = "", speedGt = "", speedLt = "", neverMeasured = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
@@ -1652,7 +1653,13 @@ export async function registerRoutes(
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
-    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    if (box) {
+      params.push(box); conds.push(`pl.box_number = $${params.length}`);
+    } else {
+      // مدى البكسيات: من boxFrom إلى boxTo (مقارنة رقمية)
+      if (boxFrom.trim()) { params.push(parseInt(boxFrom)); conds.push(`pl.box_number::int >= $${params.length}`); }
+      if (boxTo.trim())   { params.push(parseInt(boxTo));   conds.push(`pl.box_number::int <= $${params.length}`); }
+    }
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;

@@ -83,6 +83,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
+  const [boxFrom, setBoxFrom] = useState("");
+  const [boxTo, setBoxTo] = useState("");
   const [page, setPage] = useState(1);
   const [scoreMin, setScoreMin] = useState("");
   const [scoreMax, setScoreMax] = useState("");
@@ -107,12 +109,14 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (!box && boxFrom) params.set("boxFrom", boxFrom);
+      if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -187,7 +191,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   // يتولّى التقسيم لدفعات 50 خط والانتظار 400 ثانية بين كل دفعة والرفع التلقائى لشيت 138.
   const handleMeasureDZS = async () => {
     const totalCount = data?.total ?? 0;
-    if (!central && !cabin && !box && totalCount > 500) {
+    if (!central && !cabin && !box && !boxFrom && !boxTo && totalCount > 500) {
       alert("عدد الخطوط أكثر من 500 — اختر سنترال أو كابينة أو بكس أولاً للتضييق");
       return;
     }
@@ -200,6 +204,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (!box && boxFrom) params.set("boxFrom", boxFrom);
+      if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
@@ -227,6 +233,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (!box && boxFrom) params.set("boxFrom", boxFrom);
+    if (!box && boxTo)   params.set("boxTo",   boxTo);
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -308,7 +316,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
             <SearchableCombobox
               options={cabins}
               value={cabin}
-              onChange={(v) => { setCabin(v); setBox(""); setPage(1); }}
+              onChange={(v) => { setCabin(v); setBox(""); setBoxFrom(""); setBoxTo(""); setPage(1); }}
               placeholder="كل الكابينات"
               searchPlaceholder="ابحث في الكابينات..."
               disabled={!central}
@@ -317,12 +325,30 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
             <SearchableCombobox
               options={boxes}
               value={box}
-              onChange={(v) => { setBox(v); setPage(1); }}
+              onChange={(v) => { setBox(v); setBoxFrom(""); setBoxTo(""); setPage(1); }}
               placeholder="كل البكسيات"
               searchPlaceholder="ابحث في البكسيات..."
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
+            <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-white">
+              <span className="whitespace-nowrap">بكس من</span>
+              <Input
+                type="number" min="1" value={boxFrom}
+                onChange={e => { setBoxFrom(e.target.value); setBox(""); setPage(1); }}
+                className="w-14 h-6 text-xs px-1 border-0 shadow-none"
+                placeholder="1"
+                disabled={!cabin}
+              />
+              <span>—</span>
+              <Input
+                type="number" min="1" value={boxTo}
+                onChange={e => { setBoxTo(e.target.value); setBox(""); setPage(1); }}
+                className="w-14 h-6 text-xs px-1 border-0 shadow-none"
+                placeholder="99"
+                disabled={!cabin}
+              />
+            </div>
             <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
               <span className="whitespace-nowrap">السرعة الحالية:</span>
               <Input
