@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.2 (Service-Flow 138 sheet + auto-upload + 140-batch/400s)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.2: يقيس على دفعات 140 خط، وبعد كل دفعة ينتظر 400 ثانية قبل بدء الدفعة التالية (يتجنّب حد الـ popups).
-// @version      10.2.0
+// @name         DZS Expresse Continuous Flow v10.3 (Service-Flow 138 sheet + auto-upload + 140-batch/400s)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3: حماية من تداخل التابات القديمة مع جولات القياس الجديدة (stale-tab guard فى openNextLine + maybeDownloadFinal).
+// @version      10.3.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -347,9 +347,26 @@
     }
   });
 
+  function _iAmCurrentRun() {
+    // Returns true if our LINE_IDS still match what's saved in localStorage.
+    // When a new measurement starts, it saves new LINE_IDS → old stale tabs get a mismatch
+    // and must NOT touch INDEX_KEY or DOWNLOAD_DONE_KEY (cross-run pollution guard).
+    try {
+      const stored = JSON.parse(localStorage.getItem(SF_ACCOUNTS_KEY) || "[]");
+      if (stored.length !== LINE_IDS.length) return false;
+      for (let i = 0; i < LINE_IDS.length; i++) { if (stored[i] !== LINE_IDS[i]) return false; }
+      return true;
+    } catch (e) { return false; }
+  }
+
   function openNextLine() {
     const nextIndex = lineIndex + 1;
     if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); return; }
+    // 🛡️ Stale-tab guard: if a new measurement has started, don't corrupt its index.
+    if (!_iAmCurrentRun()) {
+      console.warn("⚠️ openNextLine: stale tab — LINE_IDS changed, skipping index update.");
+      return;
+    }
     localStorage.setItem(INDEX_KEY, String(nextIndex));
 
     // 🆕 لو وصلنا حدّ دفعة (كل 50 خط) → استنى 400 ثانية قبل بدء الدفعة التالية،
@@ -381,6 +398,14 @@
     const results = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
     if (results.length < UNIQUE_LINE_COUNT) return;
     if (localStorage.getItem(DOWNLOAD_DONE_KEY) === "1") return;
+    // 🛡️ Stale-tab guard: only trigger download if we're still the current run.
+    // Without this, old tabs from a prior measurement fire maybeDownloadFinal when
+    // the new run's result count happens to reach the OLD UNIQUE_LINE_COUNT,
+    // setting DOWNLOAD_DONE_KEY prematurely and causing the new run to restart.
+    if (!_iAmCurrentRun()) {
+      console.warn("⚠️ maybeDownloadFinal: stale tab — LINE_IDS changed, skipping download trigger.");
+      return;
+    }
     localStorage.setItem(DOWNLOAD_DONE_KEY, "1");
     iAmTheDownloader = true;
     setTimeout(() => { downloadResults(); }, 1500);
