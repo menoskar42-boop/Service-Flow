@@ -217,7 +217,7 @@ export default function Dashboard() {
       "حالة التعاقد": order.contractStatus || "لم يتم التعاقد",
       "سبب الرفض": order.rejectionReason || "",
       "السنترال": order.centralName || "",
-      "الكابينة": order.cabinNumber || "",
+      "الكابينه": order.cabinNumber || "",
       "البوكس": order.boxNumber || "",
       "بعد أقرب بوكس": order.nearestBoxDistance || "",
       "ملاحظات": order.additionalNotes || "",

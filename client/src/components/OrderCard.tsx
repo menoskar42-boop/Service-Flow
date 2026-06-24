@@ -70,7 +70,7 @@ export function OrderCard({ order, role }: OrderCardProps) {
             {order.isFeasible ? (
               <div className="grid grid-cols-2 gap-2 text-sm mb-2">
                 <div className="bg-white p-2 rounded border shadow-sm">
-                  <span className="text-xs text-muted-foreground block mb-0.5">الكابينة</span>
+                  <span className="text-xs text-muted-foreground block mb-0.5">الكابينه</span>
                   <span className="font-mono font-medium">{order.cabinNumber || "-"}</span>
                 </div>
                 <div className="bg-white p-2 rounded border shadow-sm">

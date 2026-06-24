@@ -154,7 +154,7 @@ export function GroundFaultsNoAccountReport() {
       "رقم التليفون الكامل": l.fullPhone,
       "رقم التليفون": l.telNo,
       "السنترال": l.central,
-      "رقم الكابينة": l.cabinNumber,
+      "رقم الكابينه": l.cabinNumber,
       "رقم البكس": l.boxNumber,
       "IDU": l.iduNo,
       "DP Terminal": l.dpTerminal,
@@ -168,7 +168,7 @@ export function GroundFaultsNoAccountReport() {
   const handleExportPDF = () => {
     printTablePDF({
       title: "أعطال أرضية بدون رقم أكونت",
-      columns: ["#", "التذكرة", "نوع العطل", "التليفون الكامل", "السنترال", "الكابينة", "البكس", "التليفون", "IDU", "DP Terminal"],
+      columns: ["#", "التذكرة", "نوع العطل", "التليفون الكامل", "السنترال", "الكابينه", "البكس", "التليفون", "IDU", "DP Terminal"],
       rows: filtered.map((l, i) => [
         i + 1, l.ticketNumber, l.faultType, l.fullPhone, l.central, l.cabinNumber, l.boxNumber, l.telNo, l.iduNo, l.dpTerminal,
       ]),
@@ -198,8 +198,8 @@ export function GroundFaultsNoAccountReport() {
               options={cabinets}
               value={filterCabinet}
               onChange={setFilterCabinet}
-              placeholder="كل الكابينه"
-              searchPlaceholder="ابحث في الكابينه..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!filterCentral}
               className="w-full sm:w-40 text-sm"
             />
@@ -248,7 +248,7 @@ export function GroundFaultsNoAccountReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
                   {canEdit && <TableHead className="text-right font-bold whitespace-nowrap">تسجيل أكونت</TableHead>}
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
-                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">IDU</TableHead>

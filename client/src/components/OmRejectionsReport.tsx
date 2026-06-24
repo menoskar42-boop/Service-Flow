@@ -71,19 +71,19 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     },
   });
 
-  // قائمة أكواد الكابينه المميزة للدروب ليست (مستقلة عن فلتر الكابينة نفسه)
+  // قائمة أكواد الكباين المميزة للدروب ليست (مستقلة عن فلتر الكابينه نفسه)
   const { data: msanCodes = [] } = useQuery<string[]>({
     queryKey: ["/api/ftth-orders/msan-codes", bucket, fccFilter],
     queryFn: async () => {
       const p = new URLSearchParams({ bucket });
       if (fccFilter.trim()) p.set("fccFilter", fccFilter.trim());
       const res = await fetch(`/api/ftth-orders/msan-codes?${p}`, { credentials: "include" });
-      if (!res.ok) throw new Error("فشل تحميل أكواد الكابينه");
+      if (!res.ok) throw new Error("فشل تحميل أكواد الكباين");
       return res.json();
     },
   });
 
-  // إسناد فنى يدوى لكود كابينة غير معروف (أدمن) — نفس أسلوب تجاوزات ٢٤ ساعة
+  // إسناد فنى يدوى لكود كابينه غير معروف (أدمن) — نفس أسلوب تجاوزات ٢٤ ساعة
   const [assigningCode, setAssigningCode] = useState<string | null>(null);
   const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({
     queryKey: ["/api/technician-names"],
@@ -114,7 +114,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       setAssigningCode(null);
       qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
       qc.invalidateQueries({ queryKey: ["/api/reports/om-stats"] });
-      toast({ title: "تم إسناد الفنى", description: `${techName} — كابينة ${msanCode}`, duration: 3500 });
+      toast({ title: "تم إسناد الفنى", description: `${techName} — كابينه ${msanCode}`, duration: 3500 });
     } catch (e: any) {
       toast({ title: "خطأ", description: e?.message || "تعذّر الحفظ", variant: "destructive", duration: 5000 });
     }
@@ -125,7 +125,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       await apiRequest("DELETE", `/api/msan-tech/${encodeURIComponent(msanCode)}`);
       qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
       qc.invalidateQueries({ queryKey: ["/api/reports/om-stats"] });
-      toast({ title: "تم إلغاء الإسناد", description: `كابينة ${msanCode}`, duration: 3000 });
+      toast({ title: "تم إلغاء الإسناد", description: `كابينه ${msanCode}`, duration: 3000 });
     } catch (e: any) {
       toast({ title: "خطأ", description: e?.message || "تعذّر الحذف", variant: "destructive", duration: 5000 });
     }
@@ -257,8 +257,8 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
               options={msanCodes}
               value={msanFilter}
               onChange={setMsanFilter}
-              placeholder="كود الكابينة (MSAN)"
-              searchPlaceholder="ابحث بكود الكابينة..."
+              placeholder="كود الكابينه (MSAN)"
+              searchPlaceholder="ابحث بكود الكابينه..."
               emptyText="لا توجد أكواد"
               className="h-9 text-sm"
             />

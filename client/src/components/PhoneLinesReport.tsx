@@ -95,11 +95,11 @@ export function PhoneLinesReport() {
     full: r.fullPhone ?? "",
   });
 
-  // القياس يشتغل على النطاق المفلتر بالكامل (السنترال/الكابينة/البكس المحدد) —
+  // القياس يشتغل على النطاق المفلتر بالكامل (السنترال/الكابينه/البكس المحدد) —
   // مش الصفحة الظاهرة فقط — فنجيب كل الصفوف المطابقة للفلتر (limit كبير).
   const handleMeasureDZS = async () => {
     if (!central && !cabin && !box) {
-      alert("اختر سنترال أو كابينة أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط وليس كل الجدول");
+      alert("اختر سنترال أو كابينه أو بكس أولاً — القياس يشتغل على النطاق المحدد فقط وليس كل الجدول");
       return;
     }
     // افتح التاب فوراً (قبل await) لتفادى حظر المتصفح للـ popup
@@ -220,8 +220,8 @@ export function PhoneLinesReport() {
               options={cabins}
               value={cabin}
               onChange={(v) => { setCabin(v); setBox(""); setPage(1); }}
-              placeholder="كل الكابينه"
-              searchPlaceholder="ابحث في الكابينه..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!central}
               className="w-full sm:w-40 text-sm"
             />

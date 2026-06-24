@@ -94,7 +94,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
     const exportRows = summarySorted.map((v, i) => ({
       "#": i + 1,
       "السنترال": v.central,
-      "الكابينة": v.cabinNumber,
+      "الكابينه": v.cabinNumber,
       "رقم البوكس": v.boxNumber,
       "عدد المتعذرات": v.count,
       "أسباب التعذر": [...v.reasons].join(" / "),
@@ -108,7 +108,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
   const handleExportPDF = () => {
     printTablePDF({
       title: "تقرير عدد المتعذرات لكل بوكس",
-      columns: ["#", "السنترال", "الكابينة", "رقم البوكس", "عدد المتعذرات", "أسباب التعذر"],
+      columns: ["#", "السنترال", "الكابينه", "رقم البوكس", "عدد المتعذرات", "أسباب التعذر"],
       rows: summarySorted.map((v, i) => [i + 1, v.central, v.cabinNumber, v.boxNumber, v.count, [...v.reasons].join(" / ")]),
     });
   };
@@ -147,7 +147,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3" dir="rtl">
           <div>
             <h3 className="font-semibold text-base">تقرير عدد المتعذرات لكل بوكس</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">مجمّع حسب السنترال + الكابينة + رقم البوكس</p>
+            <p className="text-xs text-muted-foreground mt-0.5">مجمّع حسب السنترال + الكابينه + رقم البوكس</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200">
@@ -164,7 +164,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
               <TableRow>
                 <TableHead className="text-right font-bold w-12">#</TableHead>
                 <TableHead className="text-right font-bold">السنترال</TableHead>
-                <TableHead className="text-right font-bold">الكابينة</TableHead>
+                <TableHead className="text-right font-bold">الكابينه</TableHead>
                 <TableHead className="text-right font-bold">رقم البوكس</TableHead>
                 <TableHead className="text-right font-bold">عدد المتعذرات</TableHead>
                 <TableHead className="text-right font-bold">التفاصيل</TableHead>

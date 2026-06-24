@@ -656,7 +656,7 @@ export function FileUploadSection() {
           lastUpload={ut("/api/phone-ports/import")}
         />
         <UploadCard
-          label="الفنيين بأرقام الكابينه — يستبدل القديم"
+          label="الفنيين بأرقام الكباين — يستبدل القديم"
           icon={Users}
           endpoint="/api/cabinet-technicians/import"
           queryKey="/api/cabinet-technicians"
@@ -736,7 +736,7 @@ export function FileUploadSection() {
               onClick={() => setTab("cabinTech")}
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "cabinTech" ? "bg-lime-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
-              فنيين الكابينه ({cabinTech.length})
+              فنيين الكباين ({cabinTech.length})
             </button>
             <button
               onClick={() => setTab("techNames")}
@@ -866,7 +866,7 @@ export function FileUploadSection() {
           {/* Search box + export for details tab */}
           <div className="px-1 flex items-center gap-2 flex-wrap">
             <Input
-              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
+              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينه"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
               className="max-w-sm text-sm"
@@ -889,7 +889,7 @@ export function FileUploadSection() {
                   "رقم الشكوى": d.complainNo,
                   "السنترال": d.exchangeName ?? "",
                   "رقم التليفون": d.phoneNumber ?? "",
-                  "الكابينة": d.cabinetNo ?? "",
+                  "الكابينه": d.cabinetNo ?? "",
                   "MSAN": d.msanId ?? "",
                   "نوع العطل": d.complainTypeName ?? "",
                   "كود الإغلاق": d.closeCode ?? "",
@@ -916,7 +916,7 @@ export function FileUploadSection() {
                     <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
                     <TableHead className="text-right font-bold">السنترال</TableHead>
                     <TableHead className="text-right font-bold">رقم التليفون</TableHead>
-                    <TableHead className="text-right font-bold">الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">الكابينه</TableHead>
                     <TableHead className="text-right font-bold">MSAN</TableHead>
                     <TableHead className="text-right font-bold">نوع العطل</TableHead>
                     <TableHead className="text-right font-bold">كود الإغلاق</TableHead>
@@ -955,7 +955,7 @@ export function FileUploadSection() {
           {/* Search box + export for remaining tab */}
           <div className="px-1 flex items-center gap-2 flex-wrap">
             <Input
-              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
+              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينه"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
               className="max-w-sm text-sm"
@@ -977,7 +977,7 @@ export function FileUploadSection() {
                   "رقم الشكوى": d.complainNo,
                   "السنترال": d.exchangeName ?? "",
                   "رقم التليفون": d.phoneNumber ?? "",
-                  "الكابينة": d.cabinetNo ?? "",
+                  "الكابينه": d.cabinetNo ?? "",
                   "MSAN": d.msanId ?? "",
                   "نوع العطل": d.complainType ?? "",
                   "كود الحالة": d.statusCode ?? "",
@@ -1006,7 +1006,7 @@ export function FileUploadSection() {
                     <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
                     <TableHead className="text-right font-bold">السنترال</TableHead>
                     <TableHead className="text-right font-bold">رقم التليفون</TableHead>
-                    <TableHead className="text-right font-bold">الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">الكابينه</TableHead>
                     <TableHead className="text-right font-bold">MSAN</TableHead>
                     <TableHead className="text-right font-bold">نوع العطل</TableHead>
                     <TableHead className="text-right font-bold">الحالة</TableHead>
@@ -1094,7 +1094,7 @@ export function FileUploadSection() {
         <>
           <div className="px-1">
             <Input
-              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينة"
+              placeholder="بحث برقم الشكوى / التليفون / السنترال / الكابينه"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
               className="max-w-sm text-sm"
@@ -1110,7 +1110,7 @@ export function FileUploadSection() {
                     <TableHead className="text-right font-bold">السنترال</TableHead>
                     <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
                     <TableHead className="text-right font-bold">التليفون</TableHead>
-                    <TableHead className="text-right font-bold">الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">الكابينه</TableHead>
                     <TableHead className="text-right font-bold">البكس</TableHead>
                     <TableHead className="text-right font-bold">السرعة الحالية</TableHead>
                     <TableHead className="text-right font-bold">أقصى سرعة</TableHead>
@@ -1262,7 +1262,7 @@ export function FileUploadSection() {
         <>
           <div className="px-1">
             <Input
-              placeholder="بحث بالسنترال / الكابينة / كود العامل / المنطقة / IDU"
+              placeholder="بحث بالسنترال / الكابينه / كود العامل / المنطقة / IDU"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
               className="max-w-sm text-sm"
@@ -1276,20 +1276,20 @@ export function FileUploadSection() {
                   <TableRow>
                     <TableHead className="text-right font-bold w-8">#</TableHead>
                     <TableHead className="text-right font-bold">السنترال</TableHead>
-                    <TableHead className="text-right font-bold">رقم الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold">كود العامل</TableHead>
                     <TableHead className="text-right font-bold">حياة كريمة</TableHead>
                     <TableHead className="text-right font-bold">المنطقة</TableHead>
                     <TableHead className="text-right font-bold">الشغال</TableHead>
                     <TableHead className="text-right font-bold">كود القرية</TableHead>
-                    <TableHead className="text-right font-bold">كود الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">كود الكابينه</TableHead>
                     <TableHead className="text-right font-bold">IDU</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {cabinTech.length === 0 ? (
                     <TableRow><TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
-                      {fetchCT ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف الفنيين بأرقام الكابينه"}
+                      {fetchCT ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف الفنيين بأرقام الكباين"}
                     </TableCell></TableRow>
                   ) : cabinTech.map((c, i) => (
                     <TableRow key={c.id} className="hover:bg-muted/30">
@@ -1362,7 +1362,7 @@ export function FileUploadSection() {
                   <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
                   <TableHead className="text-right font-bold">السنترال</TableHead>
                   <TableHead className="text-right font-bold">رقم التليفون</TableHead>
-                  <TableHead className="text-right font-bold">الكابينة</TableHead>
+                  <TableHead className="text-right font-bold">الكابينه</TableHead>
                   <TableHead className="text-right font-bold">الفنى</TableHead>
                   <TableHead className="text-right font-bold">نوع الخط</TableHead>
                   <TableHead className="text-right font-bold">الأولوية</TableHead>
@@ -1407,7 +1407,7 @@ export function FileUploadSection() {
                   <TableHead className="text-right font-bold">رقم الشكوى</TableHead>
                   <TableHead className="text-right font-bold">السنترال</TableHead>
                   <TableHead className="text-right font-bold">رقم التليفون</TableHead>
-                  <TableHead className="text-right font-bold">الكابينة</TableHead>
+                  <TableHead className="text-right font-bold">الكابينه</TableHead>
                   <TableHead className="text-right font-bold">الفنى</TableHead>
                   <TableHead className="text-right font-bold">نوع الخط</TableHead>
                   <TableHead className="text-right font-bold">الأولوية</TableHead>

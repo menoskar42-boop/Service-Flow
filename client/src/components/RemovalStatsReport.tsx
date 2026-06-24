@@ -326,10 +326,10 @@ export function RemovalStatsReport() {
       "رقم الشكوى": r.complainNo,
       "رقم التليفون": r.phoneNumber,
       "السنترال": r.centralName,
-      "الكابينة (430D)": r.cabinetNo,
-      "الكابينة (بيان الخطوط)": r.lineCabin ?? "",
+      "الكابينه (430D)": r.cabinetNo,
+      "الكابينه (بيان الخطوط)": r.lineCabin ?? "",
       "البكس": r.lineBox ?? "",
-      "كود الكابينة (MSAN)": r.msanCode ?? "",
+      "كود الكابينه (MSAN)": r.msanCode ?? "",
       "الفريم": r.frame ?? "",
       "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
       "تاريخ الإغلاق": r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "",
@@ -602,7 +602,7 @@ export function RemovalStatsReport() {
                     <TableHead className="text-white font-bold text-right">رقم الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
                     <TableHead className="text-white font-bold text-right">السنترال</TableHead>
-                    <TableHead className="text-white font-bold text-right">الكابينة</TableHead>
+                    <TableHead className="text-white font-bold text-right">الكابينه</TableHead>
                     <TableHead className="text-white font-bold text-right">البكس</TableHead>
                     <TableHead className="text-white font-bold text-right">كود MSAN</TableHead>
                     <TableHead className="text-white font-bold text-right">الفريم</TableHead>

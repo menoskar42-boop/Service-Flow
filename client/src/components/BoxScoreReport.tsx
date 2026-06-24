@@ -82,7 +82,7 @@ function SortableHead<T extends string>({
   );
 }
 
-// ── تاب الكابينه ──────────────────────────────────────────────────────────────
+// ── تاب الكباين ──────────────────────────────────────────────────────────────
 function CabinTab({ central, cabin, msan }: { central: string; cabin: string; msan: string }) {
   const [sortKey, setSortKey] = useState<keyof CabinetAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -130,14 +130,14 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "متوسط الكابينه");
+    XLSX.utils.book_append_sheet(wb, ws, "متوسط الكباين");
     XLSX.writeFile(wb, "cabinet-score-avg.xlsx");
   };
 
   const handleExportPDF = () => {
     printTablePDF({
-      title: "متوسط قياسات الكابينه",
-      columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
+      title: "متوسط قياسات الكباين",
+      columns: ["السنترال", "الكابينه", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
           ? [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, r.measuredCount,
@@ -153,7 +153,7 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
     <>
       <div className="p-3 border-b flex gap-2 justify-end">
         <p className="text-xs text-muted-foreground self-center ml-auto">
-          {sorted.length.toLocaleString("ar-EG")} كابينة
+          {sorted.length.toLocaleString("ar-EG")} كابينه
         </p>
         <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200">تصدير Excel</Button>
         <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-red-700 border-red-200">تصدير PDF</Button>
@@ -187,7 +187,7 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
                       <TableCell>{r.avgMaxSpeed != null ? Number(r.avgMaxSpeed).toLocaleString("ar-EG") : "—"}</TableCell>
                     </>
                   ) : (
-                    <TableCell colSpan={3} className="text-center text-amber-600 text-xs">لا توجد خطوط مقاسة داخل هذه الكابينة</TableCell>
+                    <TableCell colSpan={3} className="text-center text-amber-600 text-xs">لا توجد خطوط مقاسة داخل هذه الكابينه</TableCell>
                   )}
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.oldestMeasTime)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.newestMeasTime)}</TableCell>
@@ -272,7 +272,7 @@ function BoxTab({ central, cabin }: { central: string; cabin: string }) {
   const handleExportPDF = () => {
     printTablePDF({
       title: "متوسط قياسات البكسيات",
-      columns: ["السنترال", "الكابينة", "البكس", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
+      columns: ["السنترال", "الكابينه", "البكس", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
           ? [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, r.measuredCount,
@@ -386,8 +386,8 @@ export function BoxScoreReport() {
               options={copperCabins}
               value={cabin}
               onChange={(v) => setCabin(v)}
-              placeholder="كل الكابينه النحاسية"
-              searchPlaceholder="ابحث في الكابينه النحاسية..."
+              placeholder="كل الكباين النحاسية"
+              searchPlaceholder="ابحث في الكباين النحاسية..."
               disabled={!central}
               className="w-full sm:w-44 text-sm"
             />
@@ -396,8 +396,8 @@ export function BoxScoreReport() {
                 options={msanCabins}
                 value={msan}
                 onChange={(v) => setMsan(v)}
-                placeholder="كل كابينه MSAN"
-                searchPlaceholder="ابحث في كابينه MSAN..."
+                placeholder="كل كباين MSAN"
+                searchPlaceholder="ابحث في كباين MSAN..."
                 disabled={!central}
                 className="w-full sm:w-40 text-sm"
               />
@@ -405,7 +405,7 @@ export function BoxScoreReport() {
           </div>
         </div>
 
-        {/* تبويبات الكابينه / البكسيات */}
+        {/* تبويبات الكباين / البكسيات */}
         <div className="flex border-b bg-muted/30">
           {(["cabinet", "box"] as const).map((t) => (
             <button

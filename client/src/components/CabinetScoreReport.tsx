@@ -131,15 +131,15 @@ export function CabinetScoreReport() {
 
   const handleExportPDF = () => {
     printTablePDF({
-      title: "متوسط قياسات الكابينه",
-      columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
+      title: "متوسط قياسات الكباين",
+      columns: ["السنترال", "الكابينه", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
           ? [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, r.measuredCount,
              r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—",
              fmtDt(r.oldestMeasTime), fmtDt(r.newestMeasTime)]
           : [r.centralName, r.cabinNumber, r.msanCode ?? "—", r.lineCount, 0,
-             "لا توجد خطوط مقاسة داخل هذه الكابينة", "", "", "لا يوجد", "لا يوجد"],
+             "لا توجد خطوط مقاسة داخل هذه الكابينه", "", "", "لا يوجد", "لا يوجد"],
       ),
     });
   };
@@ -149,10 +149,10 @@ export function CabinetScoreReport() {
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-base">متوسط قياسات الكابينه</h3>
+            <h3 className="font-semibold text-base">متوسط قياسات الكباين</h3>
             {data && (
               <p className="text-xs text-muted-foreground mt-0.5">
-                {sorted.length.toLocaleString("ar-EG")} كابينة — خطوط لها رقم أكونت فقط
+                {sorted.length.toLocaleString("ar-EG")} كابينه — خطوط لها رقم أكونت فقط
               </p>
             )}
           </div>
@@ -169,8 +169,8 @@ export function CabinetScoreReport() {
               options={copperCabins}
               value={cabin}
               onChange={(v) => setCabin(v)}
-              placeholder="كل الكابينه النحاسية"
-              searchPlaceholder="ابحث في الكابينه النحاسية..."
+              placeholder="كل الكباين النحاسية"
+              searchPlaceholder="ابحث في الكباين النحاسية..."
               disabled={!central}
               className="w-full sm:w-44 text-sm"
             />
@@ -178,8 +178,8 @@ export function CabinetScoreReport() {
               options={msanCabins}
               value={msan}
               onChange={(v) => setMsan(v)}
-              placeholder="كل كابينه MSAN"
-              searchPlaceholder="ابحث في كابينه MSAN..."
+              placeholder="كل كباين MSAN"
+              searchPlaceholder="ابحث في كباين MSAN..."
               disabled={!central}
               className="w-full sm:w-40 text-sm"
             />
@@ -253,7 +253,7 @@ export function CabinetScoreReport() {
                       </>
                     ) : (
                       <TableCell colSpan={3} className="text-center text-amber-600 text-xs">
-                        لا توجد خطوط مقاسة داخل هذه الكابينة
+                        لا توجد خطوط مقاسة داخل هذه الكابينه
                       </TableCell>
                     )}
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.oldestMeasTime)}</TableCell>

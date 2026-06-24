@@ -241,7 +241,7 @@ export function CfmTicketsReport() {
         "رقم التذكرة": t.ticketNumber,
         "تاريخ الإنشاء": fmtDate(t.createdAt),
         "السنترال": t.central?.name ?? t.centralDepartment ?? "",
-        "رقم الكابينة": t.cable?.number ?? "",
+        "رقم الكابينه": t.cable?.number ?? "",
         "بوكس": t.box ?? "",
         "متوسط القياس": t.boxAvgScore ?? "",
         "البكسيات المقاسة": t.boxCount ? `${t.boxesWithData}/${t.boxCount} · ${t.boxMeasuredLines ?? 0} خط` : "",
@@ -267,7 +267,7 @@ export function CfmTicketsReport() {
     const hasFault = !!faultMap;
     const headRow = `<tr>
       <th>#</th><th>رقم التذكرة</th><th>تاريخ الإنشاء</th><th>السنترال</th>
-      <th>الكابينة</th><th>بوكس</th><th>متوسط القياس</th><th>البكسيات المقاسة</th>
+      <th>الكابينه</th><th>بوكس</th><th>متوسط القياس</th><th>البكسيات المقاسة</th>
       <th>نوع العطل</th><th>الحالة</th><th>الفنى</th>
       <th>أعطال 7أيام قبل التكت</th>
       ${hasFault ? "<th>أعطال فى الفترة</th>" : ""}
@@ -371,7 +371,7 @@ export function CfmTicketsReport() {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground font-medium">الكابينة</label>
+            <label className="text-xs text-muted-foreground font-medium">الكابينه</label>
             <select value={filterCabinet} onChange={e => setFilterCabinet(e.target.value)}
               className="border rounded px-2 py-1 text-sm bg-white min-w-[100px]">
               <option value="">الكل</option>
@@ -476,7 +476,7 @@ export function CfmTicketsReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التذكرة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الإنشاء</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
-                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">بوكس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap" title="متوسط قيمة الـ score لكل البكسيات — الرقم الصغير يوضح: (بكسيات فيها قياس / إجمالى البكسيات) · عدد الخطوط المقاسة">
                     متوسط القياس ⓘ

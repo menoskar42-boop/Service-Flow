@@ -144,7 +144,7 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
       "العميل": r.customerName,
       "العنوان": r.customerAddress,
       "السنترال": r.centralName,
-      "الكابينة": displayCabin(r),
+      "الكابينه": displayCabin(r),
       "رقم البوكس": r.boxNumber,
       "ملاحظات": r.additionalNotes || "",
       "عدد الشغال على البكس": r.workingCount !== null ? r.workingCount : "لا يوجد في بيان التليفونات",
@@ -161,7 +161,7 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
   const handleExportPDF = () => {
     printTablePDF({
       title: "تقرير متعذرات بوكس معطل",
-      columns: ["#", "العميل", "السنترال", "الكابينة", "رقم البوكس",
+      columns: ["#", "العميل", "السنترال", "الكابينه", "رقم البوكس",
         "عدد الشغال على البكس", "الفني", "التاريخ", "المصدر"],
       rows: filtered.map((r, i) => [i + 1, r.customerName, r.centralName, displayCabin(r),
         r.boxNumber, r.workingCount !== null ? r.workingCount : "لا يوجد في بيان التليفونات",
@@ -232,8 +232,8 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
               options={cabinOptions}
               value={filterCabin}
               onChange={(v) => { setFilterCabin(v); setFilterBox(""); }}
-              placeholder="كل الكابينه"
-              searchPlaceholder="ابحث في الكابينه..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!filterCentral}
               className="w-full sm:w-36 text-sm"
             />
@@ -283,7 +283,7 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
                 <TableHead className="text-right font-bold w-10">#</TableHead>
                 <TableHead className="text-right font-bold">العميل</TableHead>
                 <TableHead className="text-right font-bold">السنترال</TableHead>
-                <TableHead className="text-right font-bold">الكابينة</TableHead>
+                <TableHead className="text-right font-bold">الكابينه</TableHead>
                 <TableHead className="text-right font-bold">رقم البوكس</TableHead>
                 <TableHead className="text-right font-bold">ملاحظات</TableHead>
                 <TableHead className="text-right font-bold">عدد الشغال على البكس</TableHead>

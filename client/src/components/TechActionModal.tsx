@@ -120,7 +120,7 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>رقم الكابينة (اختياري)</Label>
+                <Label>رقم الكابينه (اختياري)</Label>
                 <SearchableCombobox
                   options={feasibleCentral ? getCabins(feasibleCentral) : []}
                   value={cabinNumber}
@@ -128,8 +128,8 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
                     setCabinNumber(val);
                     setBoxNumber("");
                   }}
-                  placeholder="اختر الكابينة"
-                  searchPlaceholder="ابحث عن كابينة..."
+                  placeholder="اختر الكابينه"
+                  searchPlaceholder="ابحث عن كابينه..."
                   disabled={!feasibleCentral}
                 />
               </div>
@@ -184,7 +184,7 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>رقم الكابينة *</Label>
+                    <Label>رقم الكابينه *</Label>
                     <SearchableCombobox
                       options={centralName ? getCabins(centralName) : []}
                       value={notFeasibleCabin}
@@ -192,8 +192,8 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
                         setNotFeasibleCabin(val);
                         setNotFeasibleBox("");
                       }}
-                      placeholder="اختر الكابينة"
-                      searchPlaceholder="ابحث عن كابينة..."
+                      placeholder="اختر الكابينه"
+                      searchPlaceholder="ابحث عن كابينه..."
                       disabled={!centralName}
                     />
                   </div>

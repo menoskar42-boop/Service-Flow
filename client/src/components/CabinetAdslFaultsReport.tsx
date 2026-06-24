@@ -95,12 +95,12 @@ export function CabinetAdslFaultsReport() {
     return true;
   };
 
-  // تاب لكل كابينة
+  // تاب لكل كابينه
   const cabinetRows = cabinetData
     .filter((r) => passMin(r.faultCount, r.workingAdsl))
     .sort((a, b) => per1000(b.faultCount, b.workingAdsl) - per1000(a.faultCount, a.workingAdsl));
 
-  // تاب لكل فنى (تجميع من بيانات الكابينة)
+  // تاب لكل فنى (تجميع من بيانات الكابينه)
   const techRows = (() => {
     const m = new Map<string, { techName: string; workingAdsl: number; faultCount: number }>();
     for (const r of cabinetData) {
@@ -135,13 +135,13 @@ export function CabinetAdslFaultsReport() {
     };
     if (isBox) {
       const data = boxRows.map((r, i) => ({
-        "#": i + 1, "السنترال": r.centralName, "رقم الكابينة": r.cabinNumber,
+        "#": i + 1, "السنترال": r.centralName, "رقم الكابينه": r.cabinNumber,
         "رقم البكس": r.boxNumber, "اسم الفنى": r.techName,
         "عدد الخطوط": r.workingLines, "عدد الأعطال": r.faultCount,
         "أعطال لكل 1000 خط": per1000(r.faultCount, r.workingLines),
         "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingLines),
       }));
-      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "رقم البكس": "", "اسم الفنى": "",
+      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "رقم البكس": "", "اسم الفنى": "",
         "عدد الخطوط": totWorking, "عدد الأعطال": totFaults,
         "أعطال لكل 1000 خط": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
       makeSheet(data, "البكسيات");
@@ -157,13 +157,13 @@ export function CabinetAdslFaultsReport() {
       makeSheet(data, "بالفنى");
     } else {
       const data = cabinetRows.map((r, i) => ({
-        "#": i + 1, "السنترال": r.centralName, "رقم الكابينة": r.cabinNumber,
-        "كود الكابينة (MSAN)": r.msanCode, "اسم الفنى": r.techName,
+        "#": i + 1, "السنترال": r.centralName, "رقم الكابينه": r.cabinNumber,
+        "كود الكابينه (MSAN)": r.msanCode, "اسم الفنى": r.techName,
         "الشغال ADSL": r.workingAdsl, "عدد الأعطال": r.faultCount,
         "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
         "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
       }));
-      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "كود الكابينة (MSAN)": "", "اسم الفنى": "",
+      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "كود الكابينه (MSAN)": "", "اسم الفنى": "",
         "الشغال ADSL": totWorking, "عدد الأعطال": totFaults,
         "أعطال لكل 1000 مشترك": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
       makeSheet(data, "الكابينه");
@@ -173,7 +173,7 @@ export function CabinetAdslFaultsReport() {
   };
 
   const handleExportPDF = () => {
-    const tabLabel = isBox ? "لكل بكس" : (isTech ? "لكل فنى" : "لكل كابينة");
+    const tabLabel = isBox ? "لكل بكس" : (isTech ? "لكل فنى" : "لكل كابينه");
     const title = `تقرير عدد الأعطال فى الألف ${tabLabel} — ${dateFrom} إلى ${dateTo}`;
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -182,10 +182,10 @@ export function CabinetAdslFaultsReport() {
     const per1000Label = isBox ? "أعطال / 1000 خط" : "أعطال / 1000";
 
     const head = isBox
-      ? `<th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>رقم البكس</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`
+      ? `<th>#</th><th>السنترال</th><th>رقم الكابينه</th><th>رقم البكس</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`
       : isTech
         ? `<th>#</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`
-        : `<th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>كود الكابينة (MSAN)</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`;
+        : `<th>#</th><th>السنترال</th><th>رقم الكابينه</th><th>كود الكابينه (MSAN)</th><th>اسم الفنى</th><th>${workingLabel}</th><th>عدد الأعطال</th><th>${per1000Label}</th><th>متوقع نهاية الشهر</th>`;
 
     const cells = (r: any, n: number) => {
       const w = getW(r);
@@ -233,7 +233,7 @@ export function CabinetAdslFaultsReport() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const countLabel = isBox ? "عدد البكسيات" : (isTech ? "عدد الفنيين" : "عدد الكابينه");
+  const countLabel = isBox ? "عدد البكسيات" : (isTech ? "عدد الفنيين" : "عدد الكباين");
   const workingLabel = isBox ? "إجمالى الخطوط" : "إجمالى الشغال ADSL";
 
   return (
@@ -261,7 +261,7 @@ export function CabinetAdslFaultsReport() {
             {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <Input
-            placeholder="بحث برقم الكابينة / كود الكابينة / البكس / الفنى"
+            placeholder="بحث برقم الكابينه / كود الكابينه / البكس / الفنى"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="w-full sm:max-w-xs text-sm"
@@ -288,7 +288,7 @@ export function CabinetAdslFaultsReport() {
 
       {/* ثلاث تبويبات */}
       <div className="flex rounded-lg border overflow-hidden text-sm">
-        {([["tech", "لكل فنى"], ["cabinet", "لكل كابينة"], ["box", "لكل بكس"]] as const).map(([key, label]) => (
+        {([["tech", "لكل فنى"], ["cabinet", "لكل كابينه"], ["box", "لكل بكس"]] as const).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -325,8 +325,8 @@ export function CabinetAdslFaultsReport() {
               <TableRow>
                 <TableHead className="text-right font-bold w-10">#</TableHead>
                 {!isTech && <TableHead className="text-right font-bold">السنترال</TableHead>}
-                {!isTech && <TableHead className="text-right font-bold">رقم الكابينة</TableHead>}
-                {tab === "cabinet" && <TableHead className="text-right font-bold">كود الكابينة (MSAN)</TableHead>}
+                {!isTech && <TableHead className="text-right font-bold">رقم الكابينه</TableHead>}
+                {tab === "cabinet" && <TableHead className="text-right font-bold">كود الكابينه (MSAN)</TableHead>}
                 {tab === "box"     && <TableHead className="text-right font-bold">رقم البكس</TableHead>}
                 <TableHead className="text-right font-bold">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold">{isBox ? "عدد الخطوط" : "الشغال ADSL"}</TableHead>

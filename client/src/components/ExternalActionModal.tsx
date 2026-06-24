@@ -88,7 +88,7 @@ export function ExternalActionModal({ order, action }: ExternalActionModalProps)
           {isFeasible ? (
             <>
               <div className="space-y-2">
-                <Label htmlFor="ext-cabin">رقم الكابينة (اختياري)</Label>
+                <Label htmlFor="ext-cabin">رقم الكابينه (اختياري)</Label>
                 <Input
                   id="ext-cabin"
                   value={cabinNumber}
@@ -138,7 +138,7 @@ export function ExternalActionModal({ order, action }: ExternalActionModalProps)
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>رقم الكابينة *</Label>
+                    <Label>رقم الكابينه *</Label>
                     <Input
                       required
                       value={notFeasibleCabin}

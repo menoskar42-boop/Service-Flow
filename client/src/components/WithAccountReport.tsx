@@ -192,7 +192,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const handleMeasureDZS = async () => {
     const totalCount = data?.total ?? 0;
     if (!central && !cabin && !box && !boxFrom && !boxTo && totalCount > 500) {
-      alert("عدد الخطوط أكثر من 500 — اختر سنترال أو كابينة أو بكس أولاً للتضييق");
+      alert("عدد الخطوط أكثر من 500 — اختر سنترال أو كابينه أو بكس أولاً للتضييق");
       return;
     }
     // افتح التاب فوراً وبشكل متزامن داخل ضغطة الزر (قبل أى await) — وإلا يحجبه الـ popup blocker
@@ -317,8 +317,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
               options={cabins}
               value={cabin}
               onChange={(v) => { setCabin(v); setBox(""); setBoxFrom(""); setBoxTo(""); setPage(1); }}
-              placeholder="كل الكابينه"
-              searchPlaceholder="ابحث في الكابينه..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!central}
               className="w-full sm:w-40 text-sm"
             />

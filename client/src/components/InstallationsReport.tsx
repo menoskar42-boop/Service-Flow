@@ -103,7 +103,7 @@ export function InstallationsReport({
       "المرحلة": o.stage,
       "الحالة": o.status,
       "الأهمية": o.priority,
-      "الكابينة": o.cabinetNo,
+      "الكابينه": o.cabinetNo,
       "كود العامل": o.workerCode,
       "اسم الفنى": o.techName,
       "الوصف": o.workOrderType,
@@ -125,7 +125,7 @@ export function InstallationsReport({
       <th>#</th><th>السنترال</th><th>رقم المرجع</th><th>${esc(phoneLabel)}</th><th>الموبايل</th>
       <th>اسم العميل</th><th>العنوان</th><th>نوع الأمر</th>
       <th>تاريخ الإنشاء</th><th>التصنيف</th>
-      <th>الكابينة</th><th>اسم الفنى</th>${regularized ? "<th>الانتظام</th>" : ""}
+      <th>الكابينه</th><th>اسم الفنى</th>${regularized ? "<th>الانتظام</th>" : ""}
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -234,7 +234,7 @@ export function InstallationsReport({
           {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <Input
-          placeholder="بحث برقم التليفون / النوع / الكابينة / البكس"
+          placeholder="بحث برقم التليفون / النوع / الكابينه / البكس"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="w-full sm:max-w-xs text-sm"
@@ -301,7 +301,7 @@ export function InstallationsReport({
                 <TableHead className="text-right font-bold text-white">المرحلة</TableHead>
                 <TableHead className="text-right font-bold text-white">الحالة</TableHead>
                 <TableHead className="text-right font-bold text-white">الأهمية</TableHead>
-                <TableHead className="text-right font-bold text-white">الكابينة</TableHead>
+                <TableHead className="text-right font-bold text-white">الكابينه</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">الوصف</TableHead>
                 {regularized && <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>}

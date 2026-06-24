@@ -188,7 +188,7 @@ export function RegularizedFaultsRangeReport() {
     const headRow = `<tr>
       <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
-      <th>الكابينة</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
+      <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>حالة الانتظام</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
@@ -298,7 +298,7 @@ export function RegularizedFaultsRangeReport() {
           {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <Input
-          placeholder="بحث برقم التليفون / الكابينة / البكس / status"
+          placeholder="بحث برقم التليفون / الكابينه / البكس / status"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="w-full sm:max-w-xs text-sm"
@@ -356,7 +356,7 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
                 <TableHead className="text-right font-bold text-white">Frame</TableHead>
-                <TableHead className="text-right font-bold text-white">الكابينة</TableHead>
+                <TableHead className="text-right font-bold text-white">الكابينه</TableHead>
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>

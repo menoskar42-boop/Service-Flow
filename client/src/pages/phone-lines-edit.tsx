@@ -279,19 +279,19 @@ export default function PhoneLinesEditPage() {
                     </div>
                     <div className="text-xs text-muted-foreground">{line.central}</div>
                     <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div><span className="text-muted-foreground">كابينة:</span> <span className="font-medium">{line.cabinNumber || "—"}</span></div>
+                      <div><span className="text-muted-foreground">كابينه:</span> <span className="font-medium">{line.cabinNumber || "—"}</span></div>
                       <div><span className="text-muted-foreground">بكس:</span> <span className="font-medium">{line.boxNumber || "—"}</span></div>
                       <div><span className="text-muted-foreground">DP Terminal:</span> <span className="font-medium">{line.dpTerminal || "—"}</span></div>
                     </div>
                     {editingId === line.id && (
                       <div className="space-y-2 pt-2 border-t bg-blue-50 -mx-3 px-3 pb-3 mt-2 rounded-b-lg">
                         <div className="space-y-1">
-                          <label className="text-xs text-muted-foreground">الكابينة</label>
+                          <label className="text-xs text-muted-foreground">الكابينه</label>
                           <SearchableCombobox
                             options={fieldOptions?.cabins || []}
                             value={editCabin}
                             onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); setEditCabinetIn(""); }}
-                            placeholder="اختر الكابينة"
+                            placeholder="اختر الكابينه"
                             searchPlaceholder="ابحث..."
                           />
                         </div>
@@ -318,7 +318,7 @@ export default function PhoneLinesEditPage() {
                             disabled={!editCabin || optsFetching}
                           />
                           {!optsFetching && editCabin && (fieldOptions?.boxes?.length || 0) === 0 && (
-                            <p className="text-xs text-amber-600">⚠️ لا توجد بكسيات لهذه الكابينة في قاعدة البيانات</p>
+                            <p className="text-xs text-amber-600">⚠️ لا توجد بكسيات لهذه الكابينه في قاعدة البيانات</p>
                           )}
                         </div>
                         <div className="space-y-1">
@@ -363,7 +363,7 @@ export default function PhoneLinesEditPage() {
                     <TableRow>
                       <TableHead className="text-right">رقم الخط</TableHead>
                       <TableHead className="text-right">السنترال</TableHead>
-                      <TableHead className="text-right">الكابينة</TableHead>
+                      <TableHead className="text-right">الكابينه</TableHead>
                       <TableHead className="text-right">البكس</TableHead>
                       <TableHead className="text-right">DP Terminal</TableHead>
                       <TableHead className="text-right w-24"></TableHead>
@@ -397,12 +397,12 @@ export default function PhoneLinesEditPage() {
                             <TableCell colSpan={6}>
                               <div className="flex flex-wrap gap-3 items-end py-2">
                                 <div className="space-y-1 w-40">
-                                  <label className="text-xs text-muted-foreground">الكابينة</label>
+                                  <label className="text-xs text-muted-foreground">الكابينه</label>
                                   <SearchableCombobox
                                     options={fieldOptions?.cabins || []}
                                     value={editCabin}
                                     onChange={(val) => { setEditCabin(val); setEditBox(""); setEditDp(""); setEditCabinetIn(""); }}
-                                    placeholder="اختر الكابينة"
+                                    placeholder="اختر الكابينه"
                                     searchPlaceholder="ابحث..."
                                   />
                                 </div>
@@ -514,13 +514,13 @@ export default function PhoneLinesEditPage() {
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                     <div className="space-y-0.5 bg-gray-50 p-2 rounded">
                       <div className="text-muted-foreground font-medium mb-1">القديم</div>
-                      <div>كابينة: <span dir="ltr" className="inline-block">{edit.oldCabinNumber || "—"}</span></div>
+                      <div>كابينه: <span dir="ltr" className="inline-block">{edit.oldCabinNumber || "—"}</span></div>
                       <div>بكس: <span dir="ltr" className="inline-block">{edit.oldBoxNumber || "—"}</span></div>
                       <div>DP Terminal: <span dir="ltr" className="inline-block">{edit.oldDpTerminal || "—"}</span></div>
                     </div>
                     <div className="space-y-0.5 bg-blue-50 p-2 rounded">
                       <div className="text-muted-foreground font-medium mb-1">الجديد</div>
-                      <div className="font-medium">كابينة: <span dir="ltr" className="inline-block">{edit.newCabinNumber || "—"}</span></div>
+                      <div className="font-medium">كابينه: <span dir="ltr" className="inline-block">{edit.newCabinNumber || "—"}</span></div>
                       <div className="font-medium">بكس: <span dir="ltr" className="inline-block">{edit.newBoxNumber || "—"}</span></div>
                       <div className="font-medium">DP Terminal: <span dir="ltr" className="inline-block">{edit.newDpTerminal || "—"}</span></div>
                     </div>
@@ -585,14 +585,14 @@ export default function PhoneLinesEditPage() {
                       <TableCell className="whitespace-nowrap">{edit.central}</TableCell>
                       <TableCell>
                         <div className="text-xs space-y-0.5 text-muted-foreground">
-                          <div>كابينة: <span dir="ltr" className="inline-block">{edit.oldCabinNumber || "—"}</span></div>
+                          <div>كابينه: <span dir="ltr" className="inline-block">{edit.oldCabinNumber || "—"}</span></div>
                           <div>بكس: <span dir="ltr" className="inline-block">{edit.oldBoxNumber || "—"}</span></div>
                           <div>DP Terminal: <span dir="ltr" className="inline-block">{edit.oldDpTerminal || "—"}</span></div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-xs space-y-0.5 font-medium">
-                          <div>كابينة: <span dir="ltr" className="inline-block">{edit.newCabinNumber || "—"}</span></div>
+                          <div>كابينه: <span dir="ltr" className="inline-block">{edit.newCabinNumber || "—"}</span></div>
                           <div>بكس: <span dir="ltr" className="inline-block">{edit.newBoxNumber || "—"}</span></div>
                           <div>DP Terminal: <span dir="ltr" className="inline-block">{edit.newDpTerminal || "—"}</span></div>
                         </div>

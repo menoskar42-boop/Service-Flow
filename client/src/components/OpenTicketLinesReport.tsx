@@ -114,7 +114,7 @@ export function OpenTicketLinesReport() {
       "السرعة الحالية": l.lineCurrentSpeed ?? "",
       "أقصى سرعة": l.lineMaxSpeed ?? "",
       "السنترال": l.central,
-      "رقم الكابينة": l.cabinNumber,
+      "رقم الكابينه": l.cabinNumber,
       "رقم البكس": l.boxNumber,
       "DP Terminal": l.dpTerminal,
     }));
@@ -128,7 +128,7 @@ export function OpenTicketLinesReport() {
     printTablePDF({
       title: "خطوط على بكسيات لها تذكرة عطل شبكة أرضية مفتوحة",
       columns: ["#", "التذكرة", "نوع العطل", "التليفون الكامل", "الأكونت", "آخر قياس",
-        "سرعة حالية", "أقصى سرعة", "السنترال", "الكابينة", "البكس"],
+        "سرعة حالية", "أقصى سرعة", "السنترال", "الكابينه", "البكس"],
       rows: filtered.map((l, i) => [
         i + 1, l.ticketNumber, l.faultType, l.fullPhone, l.accountNo ?? "",
         l.lastMeasScore ?? "", l.lineCurrentSpeed ?? "", l.lineMaxSpeed ?? "",
@@ -167,8 +167,8 @@ export function OpenTicketLinesReport() {
               options={cabinets}
               value={filterCabinet}
               onChange={setFilterCabinet}
-              placeholder="كل الكابينه"
-              searchPlaceholder="ابحث في الكابينه..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!filterCentral}
               className="w-full sm:w-40 text-sm"
             />
@@ -224,7 +224,7 @@ export function OpenTicketLinesReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
-                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
                 </TableRow>

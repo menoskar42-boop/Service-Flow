@@ -102,11 +102,11 @@ export function BoxFaultsReport() {
     });
     const data: any[] = displayRows.map((r, i) => isTech
       ? { "#": i + 1, "اسم الفنى": r.techName, ...metric(r) }
-      : { "#": i + 1, "السنترال": r.centralName, "رقم الكابينة": r.cabinNumber, "رقم البكس": r.boxNumber, "اسم الفنى": r.techName, ...metric(r) });
+      : { "#": i + 1, "السنترال": r.centralName, "رقم الكابينه": r.cabinNumber, "رقم البكس": r.boxNumber, "اسم الفنى": r.techName, ...metric(r) });
     const totMetric = { "عدد الخطوط": totWorking, "عدد الأعطال": totFaults, "أعطال لكل 1000 خط": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected };
     data.push(isTech
       ? { "#": "", "اسم الفنى": "إجمالى الإدارة", ...totMetric }
-      : { "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "رقم البكس": "", "اسم الفنى": "", ...totMetric });
+      : { "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "رقم البكس": "", "اسم الفنى": "", ...totMetric });
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, isTech ? "بالفنى" : "البكسيات");
@@ -118,7 +118,7 @@ export function BoxFaultsReport() {
     const esc = (v: any) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const head = isTech
       ? `<th>#</th><th>اسم الفنى</th><th>عدد الخطوط</th><th>عدد الأعطال</th><th>أعطال / 1000</th><th>متوقع نهاية الشهر</th>`
-      : `<th>#</th><th>السنترال</th><th>رقم الكابينة</th><th>رقم البكس</th><th>اسم الفنى</th><th>عدد الخطوط</th><th>عدد الأعطال</th><th>أعطال / 1000</th><th>متوقع نهاية الشهر</th>`;
+      : `<th>#</th><th>السنترال</th><th>رقم الكابينه</th><th>رقم البكس</th><th>اسم الفنى</th><th>عدد الخطوط</th><th>عدد الأعطال</th><th>أعطال / 1000</th><th>متوقع نهاية الشهر</th>`;
     const cells = (r: any, n: number) => {
       const m = `<td>${esc(r.workingLines)}</td><td>${esc(r.faultCount)}</td><td>${esc(per1000(r.faultCount, r.workingLines))}</td><td>${esc(projected(r.faultCount, r.workingLines))}</td>`;
       return isTech
@@ -191,7 +191,7 @@ export function BoxFaultsReport() {
             {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <Input
-            placeholder="بحث برقم الكابينة / رقم البكس / الفنى"
+            placeholder="بحث برقم الكابينه / رقم البكس / الفنى"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="w-full sm:max-w-xs text-sm"
@@ -255,7 +255,7 @@ export function BoxFaultsReport() {
               <TableRow>
                 <TableHead className="text-right font-bold w-10">#</TableHead>
                 {!isTech && <TableHead className="text-right font-bold">السنترال</TableHead>}
-                {!isTech && <TableHead className="text-right font-bold">رقم الكابينة</TableHead>}
+                {!isTech && <TableHead className="text-right font-bold">رقم الكابينه</TableHead>}
                 {!isTech && <TableHead className="text-right font-bold">رقم البكس</TableHead>}
                 <TableHead className="text-right font-bold">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold">عدد الخطوط</TableHead>

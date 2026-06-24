@@ -64,7 +64,7 @@ export function OmStatsReport() {
 
   const ov = data?.overall;
 
-  // إسناد فنى يدوى لكود كابينة غير معروف (أدمن)
+  // إسناد فنى يدوى لكود كابينه غير معروف (أدمن)
   const [assigningCode, setAssigningCode] = useState<string | null>(null);
   const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({
     queryKey: ["/api/technician-names"],
@@ -87,7 +87,7 @@ export function OmStatsReport() {
       await apiRequest("POST", "/api/msan-tech", { msanCode, techName });
       setAssigningCode(null);
       invalidate();
-      toast({ title: "تم إسناد الفنى", description: `${techName} — كابينة ${msanCode}`, duration: 3500 });
+      toast({ title: "تم إسناد الفنى", description: `${techName} — كابينه ${msanCode}`, duration: 3500 });
     } catch (e: any) {
       toast({ title: "خطأ", description: e?.message || "تعذّر الحفظ", variant: "destructive", duration: 5000 });
     }
@@ -96,7 +96,7 @@ export function OmStatsReport() {
     try {
       await apiRequest("DELETE", `/api/msan-tech/${encodeURIComponent(msanCode)}`);
       invalidate();
-      toast({ title: "تم إلغاء الإسناد", description: `كابينة ${msanCode}`, duration: 3000 });
+      toast({ title: "تم إلغاء الإسناد", description: `كابينه ${msanCode}`, duration: 3000 });
     } catch (e: any) {
       toast({ title: "خطأ", description: e?.message || "تعذّر الحذف", variant: "destructive", duration: 5000 });
     }
@@ -159,7 +159,7 @@ export function OmStatsReport() {
       "تم فكها": r.resolved,
       "نسبة التحقيق": `${r.pctResolved}%`,
     })));
-    XLSX.utils.book_append_sheet(wb, wsC, "لكل كابينة");
+    XLSX.utils.book_append_sheet(wb, wsC, "لكل كابينه");
     XLSX.writeFile(wb, `om-stats-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -223,7 +223,7 @@ export function OmStatsReport() {
           </tr></thead>
           <tbody>${techRows}${overallTechRow}</tbody>
         </table>
-        <h3>لكل كابينة</h3>
+        <h3>لكل كابينه</h3>
         <table style="width:100%;border-collapse:collapse">
           <thead><tr>
             <th style="${thStyle}">السنترال</th>
@@ -256,7 +256,7 @@ export function OmStatsReport() {
                 activeTab === tab ? "bg-blue-900 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
               }`}
             >
-              {tab === "tech" ? "لكل فنى" : "لكل كابينة"}
+              {tab === "tech" ? "لكل فنى" : "لكل كابينه"}
             </button>
           ))}
         </div>
@@ -341,11 +341,11 @@ export function OmStatsReport() {
         </Card>
       )}
 
-      {/* تاب لكل كابينة */}
+      {/* تاب لكل كابينه */}
       {activeTab === "cabinet" && data && data.byCabinet.length > 0 && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
           <CardHeader className="pb-2 bg-blue-900 text-white rounded-t-lg px-4 py-3">
-            <CardTitle className="text-sm font-bold">إحصائية متعذرات OM — لكل كابينة</CardTitle>
+            <CardTitle className="text-sm font-bold">إحصائية متعذرات OM — لكل كابينه</CardTitle>
           </CardHeader>
           <div className="overflow-x-auto">
             <Table className="text-right text-xs" dir="rtl">

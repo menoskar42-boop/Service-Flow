@@ -280,9 +280,9 @@ export function RepetitionStatsReport() {
       "#": i + 1,
       "رقم التليفون": r.phoneNumber,
       "السنترال": r.centralName,
-      "الكابينة (بيان الخطوط)": r.lineCabin ?? "",
+      "الكابينه (بيان الخطوط)": r.lineCabin ?? "",
       "البكس": r.lineBox ?? "",
-      "كود الكابينة (MSAN)": r.msanCode ?? "",
+      "كود الكابينه (MSAN)": r.msanCode ?? "",
       "الفريم": r.frame ?? "",
       "عدد المرات": r.appearances,
       "رقم الشكوى": r.complainNo,
@@ -524,7 +524,7 @@ export function RepetitionStatsReport() {
                     <TableHead className="text-white font-bold text-right">#</TableHead>
                     <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
                     <TableHead className="text-white font-bold text-right">السنترال</TableHead>
-                    <TableHead className="text-white font-bold text-right">الكابينة</TableHead>
+                    <TableHead className="text-white font-bold text-right">الكابينه</TableHead>
                     <TableHead className="text-white font-bold text-right">البكس</TableHead>
                     <TableHead className="text-white font-bold text-right">كود MSAN</TableHead>
                     <TableHead className="text-white font-bold text-right">الفريم</TableHead>

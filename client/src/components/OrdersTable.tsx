@@ -50,9 +50,9 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const [myRejectionsOnly, setMyRejectionsOnly] = useState(false);
   const [cabinetTechFilter, setCabinetTechFilter] = useState(""); // أدمن: متعذرات فنى منطقة محدد
 
-  // الهدف لفلتر "متعذرات الكابينة": اسم الفنى المسجَّل (للفنى) أو المختار (للأدمن)
+  // الهدف لفلتر "متعذرات الكابينه": اسم الفنى المسجَّل (للفنى) أو المختار (للأدمن)
   const cabinetTechTarget = myRejectionsOnly ? (user?.username ?? null) : (cabinetTechFilter || null);
-  // قائمة فنيى الكابينه الذين لديهم متعذرات (لدروب ليست الأدمن)
+  // قائمة فنيى الكباين الذين لديهم متعذرات (لدروب ليست الأدمن)
   const cabinetTechs = Array.from(new Set(
     orders
       .filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE || o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE)
@@ -98,7 +98,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   };
 
   const filteredOrders = orders.filter((order) => {
-    // متعذرات منطقة الفنى: المتعذرة على كابينة تابعة للفنى المستهدف (بصرف النظر عمّن ردّ)
+    // متعذرات منطقة الفنى: المتعذرة على كابينه تابعة للفنى المستهدف (بصرف النظر عمّن ردّ)
     if (cabinetTechTarget) {
       const isRejected = order.status === ORDER_STATUS.NOT_FEASIBLE || order.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
       if (!isRejected) return false;
@@ -299,7 +299,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               onChange={(e) => setCabinetTechFilter(e.target.value)}
               className={`border rounded-md px-3 py-2 text-sm min-w-[150px] ${cabinetTechFilter ? "bg-red-50 border-red-200 text-red-700" : "bg-white"}`}
               dir="rtl"
-              title="عرض المتعذرات على كابينه فنى منطقة محدد"
+              title="عرض المتعذرات على كباين فنى منطقة محدد"
             >
               <option value="">متعذرات فنى…</option>
               {cabinetTechs.map(t => (
@@ -315,7 +315,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   ? "bg-red-600 text-white border-red-600"
                   : "bg-white text-red-700 border-red-200 hover:bg-red-50"
               }`}
-              title="عرض المتعذرات على الكابينه التابعة لى فقط"
+              title="عرض المتعذرات على الكباين التابعة لى فقط"
             >
               متعذراتى فقط
             </button>
@@ -403,14 +403,14 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     <span className="text-muted-foreground">-</span>
                   ) : order.isFeasible === true ? (
                     <div className="space-y-1">
-                      {order.cabinNumber && <div>كابينة: {order.cabinNumber}</div>}
+                      {order.cabinNumber && <div>كابينه: {order.cabinNumber}</div>}
                       {order.boxNumber && <div>بوكس: {order.boxNumber}</div>}
                     </div>
                   ) : order.isFeasible === false ? (
                     <div className="text-destructive font-medium text-xs">
                       {order.rejectionReason}
                       {order.centralName && <span className="block text-muted-foreground">السنترال: {order.centralName}</span>}
-                      {order.cabinNumber && <span className="block text-muted-foreground">كابينة: {order.cabinNumber}</span>}
+                      {order.cabinNumber && <span className="block text-muted-foreground">كابينه: {order.cabinNumber}</span>}
                       {order.boxNumber && <span className="block text-muted-foreground">بوكس: {order.boxNumber}</span>}
                       {order.nearestBoxDistance && <span className="block text-muted-foreground">بعد: {order.nearestBoxDistance}م</span>}
                       {order.additionalNotes && <span className="block text-muted-foreground">{order.additionalNotes}</span>}
@@ -428,7 +428,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     ) : order.isFeasibleExternal === true ? (
                       <div className="space-y-1 text-teal-700">
                         <div className="text-xs font-medium">بواسطة: {order.externalName}</div>
-                        {order.externalCabinNumber && <div>كابينة: {order.externalCabinNumber}</div>}
+                        {order.externalCabinNumber && <div>كابينه: {order.externalCabinNumber}</div>}
                         {order.externalBoxNumber && <div>بوكس: {order.externalBoxNumber}</div>}
                       </div>
                     ) : (
@@ -436,7 +436,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                         <div className="font-medium">بواسطة: {order.externalName}</div>
                         {order.externalRejectionReason && <div>{order.externalRejectionReason}</div>}
                         {order.externalCentralName && <span className="block text-muted-foreground">السنترال: {order.externalCentralName}</span>}
-                        {order.externalCabinNumber && <span className="block text-muted-foreground">كابينة: {order.externalCabinNumber}</span>}
+                        {order.externalCabinNumber && <span className="block text-muted-foreground">كابينه: {order.externalCabinNumber}</span>}
                         {order.externalBoxNumber && <span className="block text-muted-foreground">بوكس: {order.externalBoxNumber}</span>}
                         {order.externalNearestBoxDistance && <span className="block text-muted-foreground">بعد: {order.externalNearestBoxDistance}م</span>}
                         {order.externalAdditionalNotes && <span className="block text-muted-foreground">{order.externalAdditionalNotes}</span>}
