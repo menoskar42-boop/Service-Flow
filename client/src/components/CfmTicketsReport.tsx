@@ -94,7 +94,7 @@ export function CfmTicketsReport() {
   const [filterCabinet, setFilterCabinet] = useState("");
   const [filterBoxFrom, setFilterBoxFrom] = useState("");
   const [filterBoxTo, setFilterBoxTo] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatus, setFilterStatus] = useState("open");
 
   // --- 430D ---
   const [dateFrom, setDateFrom] = useState(() => {
