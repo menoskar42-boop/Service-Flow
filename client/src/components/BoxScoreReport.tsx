@@ -82,7 +82,7 @@ function SortableHead<T extends string>({
   );
 }
 
-// ── تاب الكباين ──────────────────────────────────────────────────────────────
+// ── تاب الكابينه ──────────────────────────────────────────────────────────────
 function CabinTab({ central, cabin, msan }: { central: string; cabin: string; msan: string }) {
   const [sortKey, setSortKey] = useState<keyof CabinetAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -130,13 +130,13 @@ function CabinTab({ central, cabin, msan }: { central: string; cabin: string; ms
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "متوسط الكباين");
+    XLSX.utils.book_append_sheet(wb, ws, "متوسط الكابينه");
     XLSX.writeFile(wb, "cabinet-score-avg.xlsx");
   };
 
   const handleExportPDF = () => {
     printTablePDF({
-      title: "متوسط قياسات الكباين",
+      title: "متوسط قياسات الكابينه",
       columns: ["السنترال", "الكابينة", "كود MSAN", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
@@ -386,8 +386,8 @@ export function BoxScoreReport() {
               options={copperCabins}
               value={cabin}
               onChange={(v) => setCabin(v)}
-              placeholder="كل الكباين النحاسية"
-              searchPlaceholder="ابحث في الكباين النحاسية..."
+              placeholder="كل الكابينه النحاسية"
+              searchPlaceholder="ابحث في الكابينه النحاسية..."
               disabled={!central}
               className="w-full sm:w-44 text-sm"
             />
@@ -396,8 +396,8 @@ export function BoxScoreReport() {
                 options={msanCabins}
                 value={msan}
                 onChange={(v) => setMsan(v)}
-                placeholder="كل كباين MSAN"
-                searchPlaceholder="ابحث في كباين MSAN..."
+                placeholder="كل كابينه MSAN"
+                searchPlaceholder="ابحث في كابينه MSAN..."
                 disabled={!central}
                 className="w-full sm:w-40 text-sm"
               />
@@ -405,7 +405,7 @@ export function BoxScoreReport() {
           </div>
         </div>
 
-        {/* تبويبات الكباين / البكسيات */}
+        {/* تبويبات الكابينه / البكسيات */}
         <div className="flex border-b bg-muted/30">
           {(["cabinet", "box"] as const).map((t) => (
             <button
@@ -417,7 +417,7 @@ export function BoxScoreReport() {
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              {t === "cabinet" ? "الكباين" : "البكسيات"}
+              {t === "cabinet" ? "الكابينه" : "البكسيات"}
             </button>
           ))}
         </div>

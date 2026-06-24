@@ -71,14 +71,14 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     },
   });
 
-  // قائمة أكواد الكباين المميزة للدروب ليست (مستقلة عن فلتر الكابينة نفسه)
+  // قائمة أكواد الكابينه المميزة للدروب ليست (مستقلة عن فلتر الكابينة نفسه)
   const { data: msanCodes = [] } = useQuery<string[]>({
     queryKey: ["/api/ftth-orders/msan-codes", bucket, fccFilter],
     queryFn: async () => {
       const p = new URLSearchParams({ bucket });
       if (fccFilter.trim()) p.set("fccFilter", fccFilter.trim());
       const res = await fetch(`/api/ftth-orders/msan-codes?${p}`, { credentials: "include" });
-      if (!res.ok) throw new Error("فشل تحميل أكواد الكباين");
+      if (!res.ok) throw new Error("فشل تحميل أكواد الكابينه");
       return res.json();
     },
   });

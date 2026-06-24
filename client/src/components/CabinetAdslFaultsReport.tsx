@@ -166,7 +166,7 @@ export function CabinetAdslFaultsReport() {
       data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينة": "", "كود الكابينة (MSAN)": "", "اسم الفنى": "",
         "الشغال ADSL": totWorking, "عدد الأعطال": totFaults,
         "أعطال لكل 1000 مشترك": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
-      makeSheet(data, "الكباين");
+      makeSheet(data, "الكابينه");
     }
     const suffix = isBox ? "box" : (isTech ? "tech" : "cabinet");
     XLSX.writeFile(wb, `faults-per-1000-${suffix}-${dateFrom}-${dateTo}.xlsx`);
@@ -233,7 +233,7 @@ export function CabinetAdslFaultsReport() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const countLabel = isBox ? "عدد البكسيات" : (isTech ? "عدد الفنيين" : "عدد الكباين");
+  const countLabel = isBox ? "عدد البكسيات" : (isTech ? "عدد الفنيين" : "عدد الكابينه");
   const workingLabel = isBox ? "إجمالى الخطوط" : "إجمالى الشغال ADSL";
 
   return (

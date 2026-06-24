@@ -656,7 +656,7 @@ export function FileUploadSection() {
           lastUpload={ut("/api/phone-ports/import")}
         />
         <UploadCard
-          label="الفنيين بأرقام الكباين — يستبدل القديم"
+          label="الفنيين بأرقام الكابينه — يستبدل القديم"
           icon={Users}
           endpoint="/api/cabinet-technicians/import"
           queryKey="/api/cabinet-technicians"
@@ -736,7 +736,7 @@ export function FileUploadSection() {
               onClick={() => setTab("cabinTech")}
               className={`px-4 py-1.5 text-sm font-medium transition-colors ${tab === "cabinTech" ? "bg-lime-600 text-white" : "bg-white text-muted-foreground hover:bg-muted"}`}
             >
-              فنيين الكباين ({cabinTech.length})
+              فنيين الكابينه ({cabinTech.length})
             </button>
             <button
               onClick={() => setTab("techNames")}
@@ -1289,7 +1289,7 @@ export function FileUploadSection() {
                 <TableBody>
                   {cabinTech.length === 0 ? (
                     <TableRow><TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
-                      {fetchCT ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف الفنيين بأرقام الكباين"}
+                      {fetchCT ? "جاري التحميل..." : "لا توجد بيانات — ارفع ملف الفنيين بأرقام الكابينه"}
                     </TableCell></TableRow>
                   ) : cabinTech.map((c, i) => (
                     <TableRow key={c.id} className="hover:bg-muted/30">

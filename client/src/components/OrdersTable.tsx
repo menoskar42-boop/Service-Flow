@@ -52,7 +52,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
 
   // الهدف لفلتر "متعذرات الكابينة": اسم الفنى المسجَّل (للفنى) أو المختار (للأدمن)
   const cabinetTechTarget = myRejectionsOnly ? (user?.username ?? null) : (cabinetTechFilter || null);
-  // قائمة فنيى الكباين الذين لديهم متعذرات (لدروب ليست الأدمن)
+  // قائمة فنيى الكابينه الذين لديهم متعذرات (لدروب ليست الأدمن)
   const cabinetTechs = Array.from(new Set(
     orders
       .filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE || o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE)
@@ -299,7 +299,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               onChange={(e) => setCabinetTechFilter(e.target.value)}
               className={`border rounded-md px-3 py-2 text-sm min-w-[150px] ${cabinetTechFilter ? "bg-red-50 border-red-200 text-red-700" : "bg-white"}`}
               dir="rtl"
-              title="عرض المتعذرات على كباين فنى منطقة محدد"
+              title="عرض المتعذرات على كابينه فنى منطقة محدد"
             >
               <option value="">متعذرات فنى…</option>
               {cabinetTechs.map(t => (
@@ -315,7 +315,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   ? "bg-red-600 text-white border-red-600"
                   : "bg-white text-red-700 border-red-200 hover:bg-red-50"
               }`}
-              title="عرض المتعذرات على الكباين التابعة لى فقط"
+              title="عرض المتعذرات على الكابينه التابعة لى فقط"
             >
               متعذراتى فقط
             </button>

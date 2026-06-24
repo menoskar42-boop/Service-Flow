@@ -167,8 +167,8 @@ export function OpenTicketLinesReport() {
               options={cabinets}
               value={filterCabinet}
               onChange={setFilterCabinet}
-              placeholder="كل الكباين"
-              searchPlaceholder="ابحث في الكباين..."
+              placeholder="كل الكابينه"
+              searchPlaceholder="ابحث في الكابينه..."
               disabled={!filterCentral}
               className="w-full sm:w-40 text-sm"
             />
