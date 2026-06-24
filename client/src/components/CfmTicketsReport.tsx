@@ -12,7 +12,6 @@ interface CfmTicket {
   centralDepartment?: string;
   central?: { name: string; code?: string } | null;
   cable?: { number?: string; cableNumber?: string; cabinetNumber?: string; type?: string } | null;
-  cabinet?: string | null;
   box?: string | null;
   faultType?: { name: string; category?: string } | null;
   notes?: string | null;
@@ -126,8 +125,8 @@ export function CfmTicketsReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التذكرة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الإنشاء</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
-                  <TableHead className="text-right font-bold whitespace-nowrap">الكابل</TableHead>
-                  <TableHead className="text-right font-bold whitespace-nowrap">الكابينة / البكس</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">بوكس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">نوع العطل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الحالة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الفنى</TableHead>
@@ -141,12 +140,8 @@ export function CfmTicketsReport() {
                     <TableCell className="font-mono font-semibold text-blue-700 whitespace-nowrap">{t.ticketNumber}</TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDate(t.createdAt)}</TableCell>
                     <TableCell className="whitespace-nowrap">{t.central?.name ?? t.centralDepartment ?? "-"}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">
-                      {t.cable ? `${t.cable.cableNumber ?? t.cable.number ?? "-"}` : "-"}
-                    </TableCell>
-                    <TableCell className="text-xs whitespace-nowrap">
-                      {[t.cabinet, t.box].filter(Boolean).join(" / ") || "-"}
-                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-medium">{t.cable?.number || "-"}</TableCell>
+                    <TableCell className="text-xs whitespace-nowrap font-medium">{t.box || "-"}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {t.faultType ? (
                         <span className="text-xs">{t.faultType.name}</span>
