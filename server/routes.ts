@@ -5597,6 +5597,85 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/proxy/cfm-open-ticket-lines
+  // أرقام التليفونات الموجودة على البكسيات التى لها تذكرة عطل شبكة أرضية (CFM) حالتها "مفتوحة".
+  //   - يسحب تذاكر CFM ويأخذ فقط status === "open"
+  //   - يبنى مجموعة مفاتيح (normCentral|cabin|box) من بكسيات هذه التذاكر
+  //   - يجلب كل خطوط phone_lines المطابِقة لهذه البكسيات + بيانات الأكونت + آخر قياس من شيت 138
+  app.get("/api/proxy/cfm-open-ticket-lines", requireAuth, async (_req, res) => {
+    try {
+      const upstream = await cfmFetch("/api/tickets");
+      if (!upstream.ok) return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
+      const rawData = await upstream.json();
+      const tickets: any[] = Array.isArray(rawData) ? rawData : (rawData.data ?? rawData.tickets ?? []);
+
+      // مفتاح "normCentral|cabin|box" → بيانات التذكرة (للإلحاق بكل خط)
+      const keyMeta = new Map<string, { ticketNumber: string; faultType: string; createdAt: string }>();
+      for (const t of tickets) {
+        if (t?.status !== "open") continue;
+        const central = normCentral(t?.central?.name ?? t?.centralDepartment);
+        const cabin   = String(t?.cable?.number ?? "").trim();
+        if (!central || !cabin) continue;
+        const boxes = parseTicketBoxes(t?.box);
+        for (const b of boxes) {
+          const key = `${central}|${cabin}|${b}`;
+          // أول تذكرة مفتوحة تطابق هذا البكس تكفى للعرض
+          if (!keyMeta.has(key)) {
+            keyMeta.set(key, {
+              ticketNumber: String(t?.ticketNumber ?? ""),
+              faultType: String(t?.faultType?.name ?? ""),
+              createdAt: String(t?.createdAt ?? ""),
+            });
+          }
+        }
+      }
+
+      if (!keyMeta.size) return res.json({ lines: [], total: 0 });
+      const keys = Array.from(keyMeta.keys());
+
+      // تعبير المفتاح فى SQL يطابق normCentral (إزالة كل المسافات) فى Node
+      const keyExpr =
+        `regexp_replace(COALESCE(pl.central,''), '\\s', '', 'g') || '|' || ` +
+        `COALESCE(pl.cabin_number,'') || '|' || COALESCE(pl.box_number,'')`;
+
+      const { rows } = await pool.query(
+        `SELECT pl.tel_no AS "telNo", pl.central, pl.cabin_number AS "cabinNumber",
+                pl.box_number AS "boxNumber", pl.full_phone AS "fullPhone",
+                pl.idu_no AS "iduNo", pl.dp_terminal AS "dpTerminal",
+                la.account_no AS "accountNo", la.source AS "accountSource",
+                c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
+                c138p.score AS "lastMeasScore",
+                (${keyExpr}) AS "matchKey"
+         FROM phone_lines pl
+         LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+         LEFT JOIN LATERAL (
+           SELECT c.current_speed, c.max_speed, c.score
+           FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
+         ) c138p ON true
+         WHERE (${keyExpr}) = ANY($1)
+         ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''),8,'0'),
+                  LPAD(COALESCE(pl.box_number,''),8,'0'), pl.full_phone`,
+        [keys],
+      );
+
+      const lines = rows.map((r: any) => {
+        const meta = keyMeta.get(r.matchKey);
+        return {
+          telNo: r.telNo, central: r.central, cabinNumber: r.cabinNumber, boxNumber: r.boxNumber,
+          fullPhone: r.fullPhone, iduNo: r.iduNo, dpTerminal: r.dpTerminal,
+          accountNo: r.accountNo, accountSource: r.accountSource,
+          lineCurrentSpeed: r.lineCurrentSpeed, lineMaxSpeed: r.lineMaxSpeed, lastMeasScore: r.lastMeasScore,
+          ticketNumber: meta?.ticketNumber ?? "", faultType: meta?.faultType ?? "",
+          ticketCreatedAt: meta?.createdAt ?? "",
+        };
+      });
+
+      res.json({ lines, total: lines.length });
+    } catch (e: any) {
+      res.status(502).json({ message: `تعذّر جلب خطوط التذاكر المفتوحة: ${e.message}` });
+    }
+  });
+
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
 
