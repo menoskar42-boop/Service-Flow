@@ -99,7 +99,10 @@ export function CfmTicketsReport() {
   // --- 430D ---
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [faultMap, setFaultMap] = useState<Map<string, { inRange: number; preTicket: number }> | null>(null);
+  // preTicketMap: يُحمَّل تلقائياً مع التذاكر (لا يحتاج تواريخ من المستخدم)
+  const [preTicketMap, setPreTicketMap] = useState<Map<string, number> | null>(null);
+  // faultMap: عدد أعطال الفترة المختارة — يظهر فقط بعد ضغط بحث
+  const [faultMap, setFaultMap] = useState<Map<string, number> | null>(null);
   const [faultLoading, setFaultLoading] = useState(false);
   const [faultError, setFaultError] = useState<string | null>(null);
 
@@ -150,6 +153,16 @@ export function CfmTicketsReport() {
       setData(Array.isArray(json) ? json : (json.data ?? json.tickets ?? []));
       setLastFetch(new Date());
       setCountdown(REFRESH_INTERVAL);
+      // تحميل عدد أعطال ما قبل التكت تلقائياً (لا يحتاج تواريخ من المستخدم)
+      fetch("/api/proxy/cfm-fault-counts", { credentials: "include" })
+        .then(r => r.ok ? r.json() : null)
+        .then((fj: { id: string; faultCountPreTicket: number }[] | null) => {
+          if (!fj) return;
+          const m = new Map<string, number>();
+          for (const r of fj) m.set(r.id, r.faultCountPreTicket);
+          setPreTicketMap(m);
+        })
+        .catch(() => {});
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -172,9 +185,15 @@ export function CfmTicketsReport() {
         throw new Error((j as any).message || `خطأ ${res.status}`);
       }
       const json: { id: string; faultCountInRange: number; faultCountPreTicket: number }[] = await res.json();
-      const map = new Map<string, { inRange: number; preTicket: number }>();
-      for (const r of json) map.set(r.id, { inRange: r.faultCountInRange, preTicket: r.faultCountPreTicket });
-      setFaultMap(map);
+      // تحديث عمود الفترة المختارة
+      const rangeMap = new Map<string, number>();
+      const preMap   = new Map<string, number>();
+      for (const r of json) {
+        rangeMap.set(r.id, r.faultCountInRange);
+        preMap.set(r.id, r.faultCountPreTicket);
+      }
+      setFaultMap(rangeMap);
+      setPreTicketMap(preMap);
     } catch (e: any) {
       setFaultError(e.message);
     } finally {
@@ -198,7 +217,6 @@ export function CfmTicketsReport() {
   const handleExportExcel = () => {
     if (!filteredData.length) return;
     const rows = filteredData.map((t, idx) => {
-      const fault = faultMap?.get(t.id);
       return {
         "#": idx + 1,
         "رقم التذكرة": t.ticketNumber,
@@ -212,10 +230,8 @@ export function CfmTicketsReport() {
         "الحالة": STATUS_LABELS[t.status]?.label ?? t.status,
         "الفنى": getTechs(t),
         "ملاحظات": t.notes ?? "",
-        ...(faultMap ? {
-          "أعطال فى الفترة": fault?.inRange ?? 0,
-          "أعطال قبل التكت (7 أيام)": fault?.preTicket ?? 0,
-        } : {}),
+        "أعطال 7أيام قبل التكت": preTicketMap?.get(t.id) ?? "",
+        ...(faultMap ? { "أعطال فى الفترة المختارة": faultMap.get(t.id) ?? 0 } : {}),
       };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -233,8 +249,10 @@ export function CfmTicketsReport() {
     const headRow = `<tr>
       <th>#</th><th>رقم التذكرة</th><th>تاريخ الإنشاء</th><th>السنترال</th>
       <th>الكابينة</th><th>بوكس</th><th>متوسط القياس</th><th>البكسيات المقاسة</th>
-      <th>نوع العطل</th><th>الحالة</th><th>الفنى</th><th>ملاحظات</th>
-      ${hasFault ? "<th>أعطال فى الفترة</th><th>أعطال 7 أيام</th>" : ""}
+      <th>نوع العطل</th><th>الحالة</th><th>الفنى</th>
+      <th>أعطال 7أيام قبل التكت</th>
+      ${hasFault ? "<th>أعطال فى الفترة</th>" : ""}
+      <th>ملاحظات</th>
     </tr>`;
     const ROWS_PER_PAGE = 25;
     const totalPages = Math.max(1, Math.ceil(filteredData.length / ROWS_PER_PAGE));
@@ -250,8 +268,10 @@ export function CfmTicketsReport() {
           <td>${esc(t.cable?.number)}</td><td>${esc(t.box)}</td>
           <td>${esc(t.boxAvgScore ?? "")}</td><td>${esc(cov)}</td>
           <td>${esc(t.faultType?.name)}</td><td>${esc(STATUS_LABELS[t.status]?.label ?? t.status)}</td>
-          <td>${esc(getTechs(t))}</td><td>${esc(t.notes)}</td>
-          ${hasFault ? `<td>${fault?.inRange ?? 0}</td><td>${fault?.preTicket ?? 0}</td>` : ""}
+          <td>${esc(getTechs(t))}</td>
+          <td>${preTicketMap?.get(t.id) ?? ""}</td>
+          ${hasFault ? `<td>${faultMap?.get(t.id) ?? 0}</td>` : ""}
+          <td>${esc(t.notes)}</td>
         </tr>`;
       }).join("");
       pages += `<section class="page">
@@ -419,16 +439,13 @@ export function CfmTicketsReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">نوع العطل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الحالة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الفنى</TableHead>
-                  {faultMap && <>
-                    <TableHead className="text-right font-bold whitespace-nowrap text-blue-800">أعطال فى الفترة</TableHead>
-                    <TableHead className="text-right font-bold whitespace-nowrap text-orange-700">أعطال 7أيام قبل التكت</TableHead>
-                  </>}
+                  <TableHead className="text-right font-bold whitespace-nowrap text-orange-700" title="عدد أعطال 430D فى بكسيات هذه التذكرة من أسبوع قبل إنشاء التكت وحتى الآن">أعطال 7أيام قبل التكت</TableHead>
+                  {faultMap && <TableHead className="text-right font-bold whitespace-nowrap text-blue-800">أعطال فى الفترة المختارة</TableHead>}
                   <TableHead className="text-right font-bold whitespace-nowrap">ملاحظات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredData.map((t, idx) => {
-                  const fault = faultMap?.get(t.id);
                   const hasBreakdown = (t.boxBreakdown?.length ?? 0) > 1;
                   const isExpanded = expandedBox === t.id;
                   return (
@@ -475,18 +492,16 @@ export function CfmTicketsReport() {
                       </TableCell>
                       <TableCell>{statusBadge(t.status)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs">{getTechs(t)}</TableCell>
-                      {faultMap && <>
+                      <TableCell className="text-center whitespace-nowrap">
+                        {preTicketMap == null
+                          ? <span className="text-gray-300 text-[10px]">…</span>
+                          : (() => { const n = preTicketMap.get(t.id) ?? 0; return <span className={`text-xs font-semibold px-2 py-0.5 rounded ${n > 0 ? "bg-orange-100 text-orange-800" : "text-gray-400"}`}>{n}</span>; })()}
+                      </TableCell>
+                      {faultMap && (
                         <TableCell className="text-center whitespace-nowrap">
-                          {fault != null
-                            ? <span className={`text-xs font-semibold px-2 py-0.5 rounded ${fault.inRange > 0 ? "bg-blue-100 text-blue-800" : "text-gray-400"}`}>{fault.inRange}</span>
-                            : <span className="text-gray-300">-</span>}
+                          {(() => { const n = faultMap.get(t.id) ?? 0; return <span className={`text-xs font-semibold px-2 py-0.5 rounded ${n > 0 ? "bg-blue-100 text-blue-800" : "text-gray-400"}`}>{n}</span>; })()}
                         </TableCell>
-                        <TableCell className="text-center whitespace-nowrap">
-                          {fault != null
-                            ? <span className={`text-xs font-semibold px-2 py-0.5 rounded ${fault.preTicket > 0 ? "bg-orange-100 text-orange-800" : "text-gray-400"}`}>{fault.preTicket}</span>
-                            : <span className="text-gray-300">-</span>}
-                        </TableCell>
-                      </>}
+                      )}
                       <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">{t.notes || "-"}</TableCell>
                     </TableRow>
                   );
