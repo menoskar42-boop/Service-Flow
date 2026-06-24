@@ -213,8 +213,8 @@ export function ComplaintNoMeasureReport() {
               options={cabins}
               value={cabin}
               onChange={(v) => { setCabin(v); setBox(""); setPage(1); }}
-              placeholder="كل الكابينات"
-              searchPlaceholder="ابحث في الكابينات..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!central}
               className="w-full sm:w-40 text-sm"
             />

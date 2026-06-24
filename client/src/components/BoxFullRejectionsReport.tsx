@@ -235,8 +235,8 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
               options={cabinOptions}
               value={filterCabin}
               onChange={(v) => { setFilterCabin(v); setFilterBox(""); }}
-              placeholder="كل الكابينات"
-              searchPlaceholder="ابحث في الكابينات..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!filterCentral}
               className="w-full sm:w-36 text-sm"
             />

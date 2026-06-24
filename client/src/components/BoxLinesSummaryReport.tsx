@@ -101,8 +101,8 @@ export function BoxLinesSummaryReport() {
               options={cabins}
               value={cabin}
               onChange={(v) => { setCabin(v); setBox(""); }}
-              placeholder="كل الكابينات"
-              searchPlaceholder="ابحث في الكابينات..."
+              placeholder="كل الكباين"
+              searchPlaceholder="ابحث في الكباين..."
               disabled={!central}
               className="w-full sm:w-36 text-sm"
             />
