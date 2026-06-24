@@ -871,9 +871,14 @@ async function cfmLogin() {
     body: JSON.stringify(CFM_CREDS),
   });
   if (!res.ok) throw new Error(`CFM login failed: ${res.status}`);
-  const raw = res.headers.get("set-cookie") ?? "";
-  const match = raw.match(/connect\.sid=[^;]+/);
-  cfmCookie = match ? match[0] : raw.split(";")[0];
+  // Node 18+ returns array; fallback to single get() for older runtimes
+  const cookies: string[] =
+    typeof (res.headers as any).getSetCookie === "function"
+      ? (res.headers as any).getSetCookie()
+      : (res.headers.get("set-cookie") ?? "").split(/,(?=[^ ])/).filter(Boolean);
+  // كل cookie في صورة "name=value; ..." — نستخرج الجزء name=value فقط
+  cfmCookie = cookies.map((c: string) => c.split(";")[0].trim()).join("; ");
+  if (!cfmCookie) throw new Error("CFM login: no cookie received");
 }
 
 async function cfmFetch(path: string): Promise<Response> {
@@ -5341,6 +5346,39 @@ export async function registerRoutes(
   });
 
   // ── Cable-Fault-Manager live proxy ──────────────────────────────────────
+  app.get("/api/proxy/cfm-debug", requireAdmin, async (_req, res) => {
+    try {
+      cfmCookie = null; // force fresh login
+      const loginRes = await fetch(`${CFM_BASE}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(CFM_CREDS),
+      });
+      const loginBody = await loginRes.text();
+      const cookies: string[] =
+        typeof (loginRes.headers as any).getSetCookie === "function"
+          ? (loginRes.headers as any).getSetCookie()
+          : (loginRes.headers.get("set-cookie") ?? "").split(/,(?=[^ ])/).filter(Boolean);
+      const cookieStr = cookies.map((c: string) => c.split(";")[0].trim()).join("; ");
+
+      const ticketsRes = await fetch(`${CFM_BASE}/api/tickets`, {
+        headers: { Cookie: cookieStr },
+      });
+      const ticketsBody = await ticketsRes.text().then((t) => t.slice(0, 500));
+
+      res.json({
+        loginStatus: loginRes.status,
+        loginBody: loginBody.slice(0, 200),
+        cookies,
+        cookieStr,
+        ticketsStatus: ticketsRes.status,
+        ticketsPreview: ticketsBody,
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get("/api/proxy/cfm-tickets", requireAuth, async (_req, res) => {
     try {
       const upstream = await cfmFetch("/api/tickets");
