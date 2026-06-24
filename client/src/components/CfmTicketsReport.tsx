@@ -139,6 +139,16 @@ export function CfmTicketsReport() {
     });
   }, [data, filterCentral, filterCabinet, filterStatus, filterBoxFrom, filterBoxTo]);
 
+  // --- totals for filtered data ---
+  const totals = useMemo(() => {
+    let preTicket = 0, inRange = 0;
+    for (const t of filteredData) {
+      preTicket += preTicketMap?.get(t.id) ?? 0;
+      inRange   += faultMap?.get(t.id) ?? 0;
+    }
+    return { preTicket, inRange };
+  }, [filteredData, preTicketMap, faultMap]);
+
   // --- fetch tickets ---
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -409,6 +419,23 @@ export function CfmTicketsReport() {
           )}
           {faultError && <span className="text-xs text-red-600 self-center">{faultError}</span>}
         </div>
+
+        {/* Totals summary */}
+        {(preTicketMap || faultMap) && filteredData.length > 0 && (
+          <div className="px-4 py-2 border-b bg-amber-50/60 flex flex-wrap gap-x-6 gap-y-1 items-center text-sm">
+            <span className="font-semibold text-amber-900">إجمالى ({filteredData.length} تذكرة):</span>
+            {preTicketMap && (
+              <span className="text-orange-800 font-medium">
+                أعطال 7أيام قبل التكتات: <span className="font-bold text-base">{totals.preTicket}</span>
+              </span>
+            )}
+            {faultMap && (
+              <span className="text-blue-800 font-medium">
+                أعطال فى الفترة المختارة: <span className="font-bold text-base">{totals.inRange}</span>
+              </span>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="flex items-center gap-2 px-4 py-3 bg-red-50 text-red-700 text-sm border-b">
