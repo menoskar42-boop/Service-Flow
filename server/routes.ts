@@ -860,7 +860,7 @@ function startDailySnapshotScheduler() {
 }
 
 // ── Cable-Fault-Manager live proxy ──────────────────────────────────────────
-const CFM_BASE = "http://cable-fault-manager.replit.app";
+const CFM_BASE = "https://cable-fault-manager.replit.app";
 const CFM_CREDS = { username: "admin", password: "Mon_oskar11" };
 let cfmCookie: string | null = null;
 
