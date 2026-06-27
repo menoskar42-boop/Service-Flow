@@ -90,6 +90,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const [scoreMax, setScoreMax] = useState("");
   const [speedMin, setSpeedMin] = useState("");
   const [speedMax, setSpeedMax] = useState("");
+  const [accountQ, setAccountQ] = useState("");
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -109,7 +110,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
@@ -123,6 +124,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
       if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
       if (speedMin.trim()) params.set("speedGt", speedMin.trim());
       if (speedMax.trim()) params.set("speedLt", speedMax.trim());
+      if (accountQ.trim()) params.set("accountQ", accountQ.trim());
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
@@ -208,6 +210,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
+      if (accountQ.trim()) params.set("accountQ", accountQ.trim());
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -241,6 +244,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
     if (speedMin.trim()) params.set("speedGt", speedMin.trim());
     if (speedMax.trim()) params.set("speedLt", speedMax.trim());
+    if (accountQ.trim()) params.set("accountQ", accountQ.trim());
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
@@ -279,6 +283,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
     if (speedMin.trim()) params.set("speedGt", speedMin.trim());
     if (speedMax.trim()) params.set("speedLt", speedMax.trim());
+    if (accountQ.trim()) params.set("accountQ", accountQ.trim());
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
     const json = await res.json();
     const all = json.data as PhoneLine[];
@@ -330,6 +335,14 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
               searchPlaceholder="ابحث في البكسيات..."
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
+            />
+            <Input
+              type="text"
+              value={accountQ}
+              onChange={(e) => { setAccountQ(e.target.value); setPage(1); }}
+              placeholder="بحث برقم الأكونت"
+              className="w-full sm:w-40 h-9 text-sm"
+              dir="ltr"
             />
             <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-white">
               <span className="whitespace-nowrap">بكس من</span>

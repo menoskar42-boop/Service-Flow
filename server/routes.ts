@@ -1639,7 +1639,7 @@ export async function registerRoutes(
   // GET /api/phone-lines/with-account — lines that have an entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/with-account", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", boxFrom = "", boxTo = "",
-            page = "1", limit = "50",
+            page = "1", limit = "50", accountQ = "",
             scoreGt = "", scoreLt = "", speedGt = "", speedLt = "", neverMeasured = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
@@ -1664,6 +1664,11 @@ export async function registerRoutes(
       params.push(`%${q}%`);
       const p = `$${params.length}`;
       conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p} OR LOWER(la.account_no) LIKE ${p})`);
+    }
+    // بحث مخصّص برقم الأكونت فقط
+    if (accountQ.trim()) {
+      params.push(`%${accountQ.trim().toLowerCase()}%`);
+      conds.push(`LOWER(la.account_no) LIKE $${params.length}`);
     }
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
