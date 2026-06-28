@@ -3327,6 +3327,64 @@ export async function registerRoutes(
     res.json({ inserted });
   });
 
+  // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====
+  // التوكن: env C360_INGEST_TOKEN (وله قيمة افتراضية) — لازم يطابق التوكن فى سكربت التامبر منكى.
+  const C360_INGEST_TOKEN = process.env.C360_INGEST_TOKEN || "sf-c360-account-ingest-2026";
+  const setC360Cors = (res: any) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-C360-Token");
+  };
+  app.options("/api/line-accounts/ingest", (_req, res) => { setC360Cors(res); res.sendStatus(204); });
+  // body: { items: [{ fullPhone, accountNo }] } — يحفظ الأكونت ويسجّل تعديل بمصدر customer360
+  app.post("/api/line-accounts/ingest", async (req: any, res) => {
+    setC360Cors(res);
+    if (req.headers["x-c360-token"] !== C360_INGEST_TOKEN) {
+      return res.status(401).json({ message: "invalid token" });
+    }
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const clean = items
+      .map((e: any) => ({ fullPhone: String(e?.fullPhone || "").trim(), accountNo: String(e?.accountNo || "").trim() }))
+      .filter((e: any) => e.fullPhone && e.accountNo);
+    if (!clean.length) return res.json({ saved: 0 });
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      let saved = 0;
+      for (const e of clean) {
+        const { rows: existing } = await client.query(
+          `SELECT account_no FROM line_accounts WHERE full_phone = $1`,
+          [e.fullPhone],
+        );
+        const oldNo: string | null = existing[0]?.account_no ?? null;
+        if (oldNo === e.accountNo) continue; // لا تغيير — تجاهل
+        await client.query(
+          `INSERT INTO line_accounts (full_phone, account_no, source, updated_by_name, updated_at)
+           VALUES ($1, $2, 'customer360', 'customer360', now())
+           ON CONFLICT (full_phone) DO UPDATE
+             SET account_no = EXCLUDED.account_no,
+                 source = 'customer360',
+                 updated_by_name = 'customer360',
+                 updated_at = now()`,
+          [e.fullPhone, e.accountNo],
+        );
+        await client.query(
+          `INSERT INTO line_account_edits (full_phone, old_account_no, new_account_no, edited_by_name)
+           VALUES ($1, $2, $3, 'customer360')`,
+          [e.fullPhone, oldNo, e.accountNo],
+        );
+        saved++;
+      }
+      await client.query("COMMIT");
+      res.json({ saved });
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      res.status(500).json({ message: err.message });
+    } finally {
+      client.release();
+    }
+  });
+
   // POST /api/cabinet-technicians/import — الفنيين بأرقام الكباين (full replace each upload)
   app.post("/api/cabinet-technicians/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {

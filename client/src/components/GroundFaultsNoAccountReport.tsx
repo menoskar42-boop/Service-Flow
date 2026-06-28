@@ -7,7 +7,8 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, RefreshCw, AlertCircle, Save, SaveAll, FileSpreadsheet, FileText } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, Save, SaveAll, FileSpreadsheet, FileText, IdCard } from "lucide-react";
+import { openCustomer360 } from "@/lib/customer360";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -203,6 +204,18 @@ export function GroundFaultsNoAccountReport() {
               disabled={!filterCentral}
               className="w-full sm:w-40 text-sm"
             />
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openCustomer360(filtered.map((l) => l.fullPhone))}
+                disabled={filtered.length === 0}
+                className="gap-1 text-purple-700 border-purple-200 disabled:opacity-40"
+                title="فتح Customer360 لجلب أرقام الأكونت للخطوط المعروضة تلقائياً"
+              >
+                <IdCard className="w-4 h-4" /> جلب الأكونت من Customer360
+              </Button>
+            )}
             {canEdit && (
               <Button
                 variant="outline"

@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll, Ban, Upload } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll, Ban, Upload, IdCard } from "lucide-react";
+import { openCustomer360 } from "@/lib/customer360";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -347,6 +348,18 @@ export function WithoutAccountReport() {
             >
               <CalendarClock className="w-4 h-4" /> شكوى هذا الشهر
             </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openCustomer360((data?.data ?? []).map((r) => r.fullPhone))}
+                disabled={!data?.data?.length}
+                className="gap-1 text-purple-700 border-purple-200 disabled:opacity-40"
+                title="فتح Customer360 لجلب أرقام الأكونت لخطوط الصفحة الحالية تلقائياً"
+              >
+                <IdCard className="w-4 h-4" /> جلب الأكونت من Customer360
+              </Button>
+            )}
             {canEdit && (
               <Button
                 variant="outline"
