@@ -102,9 +102,10 @@ export function OpenTicketBoxAvgReport() {
       }
       g.lineCount++;
       const sc = num(l.lastMeasScore);
-      if (sc != null) { g.scores.push(sc); g.measuredCount++; }
-      // متوسط السرعات: نستبعد قيم N/A (غير الرقمية) ونستبعد الخطوط اللى اسكورها > 100
-      // (101/102… أكواد خارج الخدمة وليست قياسات حقيقية).
+      // الخط يُعدّ "مقاس" لو له قراءة، لكن متوسط الاسكور يستبعد الأكواد > 100
+      // (101/102… خارج الخدمة وليست قياسات حقيقية).
+      if (sc != null) { g.measuredCount++; if (sc <= 100) g.scores.push(sc); }
+      // متوسط السرعات: نستبعد قيم N/A (غير الرقمية) ونستبعد الخطوط اللى اسكورها > 100.
       if (sc == null || sc <= 100) {
         const cur = num(l.lineCurrentSpeed);
         const mx = num(l.lineMaxSpeed);
