@@ -2,7 +2,7 @@
 // @name         Customer360 Account Grabber (Service-Flow)
 // @namespace    service-flow.customer360
 // @description  يفتح Customer360، يستنى تسجيل الدخول، يدخل رقم التليفون الكامل من تقرير Service-Flow، يستنى حل البازل يدوياً، يقرأ رقم الأكونت، يحفظه فى الموقع + شيت CSV. سكربت مستقل تماماً عن سكربتات DZS/FCC القديمة.
-// @version      1.0.0
+// @version      1.1.0
 // @match        https://customer360.te.eg/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -123,6 +123,20 @@
     } catch (e) { console.warn("post err", e); }
   }
 
+  // "Subscriber information is not exist" → نعلّم الخط "بدون رقم أكونت" فى الموقع
+  // (نفس منطق الدايرة الحمراء جنب خانة الأكونت — الخط يختفى من تقرير «خطوط بدون رقم أكونت»)
+  function markNoAccountOnSite(fullPhone) {
+    if (!SF_AUTO_UPLOAD || !SF_API_BASE || !fullPhone) return;
+    try {
+      fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/line-accounts/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-C360-Token": SF_INGEST_TOKEN },
+        body: JSON.stringify({ items: [{ fullPhone, notExist: true }] }),
+      }).then(r => r.json()).then(j => console.log("🚫 اتعلّم بدون أكونت فى الموقع:", fullPhone, j))
+        .catch(e => console.warn("🚫 فشل تعليم بدون أكونت:", e));
+    } catch (e) { console.warn("mark err", e); }
+  }
+
   /* ================== RESULTS / CSV ================== */
   function recordResult(fullPhone, accountNo, status) {
     const results = getResults();
@@ -131,6 +145,7 @@
     else results.push({ fullPhone, accountNo, status });
     setResults(results);
     if (accountNo) postToServiceFlow(fullPhone, accountNo);
+    else if (status === "غير موجود") markNoAccountOnSite(fullPhone);
     updatePanel();
   }
 

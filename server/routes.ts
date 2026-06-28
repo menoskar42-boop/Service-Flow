@@ -3368,13 +3368,29 @@ export async function registerRoutes(
       return res.status(401).json({ message: "invalid token" });
     }
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    // العناصر اللى رجّع لها Customer360 "غير موجود" (notExist) → نعلّمها "بدون رقم أكونت"
+    // (نفس منطق الدايرة الحمراء فى تقرير خطوط بدون رقم أكونت — تختفى من التقرير)
+    const noAccount = items
+      .filter((e: any) => e?.notExist === true || String(e?.status || "").includes("غير موجود"))
+      .map((e: any) => String(e?.fullPhone || "").trim())
+      .filter(Boolean);
     const clean = items
       .map((e: any) => ({ fullPhone: String(e?.fullPhone || "").trim(), accountNo: String(e?.accountNo || "").trim() }))
       .filter((e: any) => e.fullPhone && e.accountNo);
-    if (!clean.length) return res.json({ saved: 0 });
+    if (!clean.length && !noAccount.length) return res.json({ saved: 0, markedNoAccount: 0 });
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+      let markedNoAccount = 0;
+      for (const fullPhone of [...new Set(noAccount)]) {
+        const r = await client.query(
+          `INSERT INTO lines_no_account (full_phone, marked_by_name)
+           VALUES ($1, 'customer360')
+           ON CONFLICT (full_phone) DO NOTHING`,
+          [fullPhone],
+        );
+        markedNoAccount += r.rowCount ?? 0;
+      }
       let saved = 0;
       for (const e of clean) {
         const { rows: existing } = await client.query(
@@ -3401,7 +3417,7 @@ export async function registerRoutes(
         saved++;
       }
       await client.query("COMMIT");
-      res.json({ saved });
+      res.json({ saved, markedNoAccount });
     } catch (err: any) {
       await client.query("ROLLBACK");
       res.status(500).json({ message: err.message });
