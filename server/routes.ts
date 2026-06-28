@@ -4527,13 +4527,11 @@ export async function registerRoutes(
                              = date_trunc('month', cd.close_time AT TIME ZONE 'Africa/Cairo')
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
-             -- Status Code الحقيقى (160-DSL / 173-DSL…) من شيت شكاوى DSL/نحاس (ticket_queue)
-             -- بمطابقة رقم الشكوى = ticket_id، وناخد آخر حالة عطل (نستبعد أكواد الإزالة 135/138)
-             (SELECT tq.status_code FROM ticket_queue tq
-                WHERE tq.ticket_id = cd.complain_no
-                  AND tq.status_code IS NOT NULL AND tq.status_code <> ''
-                  AND tq.status_code !~ '^(135|138)'
-                ORDER BY tq.id DESC LIMIT 1) AS "statusCode",
+             -- Status Code من شيت 430D (تفاصيل متبقى) بمطابقة رقم الشكوى —
+             -- شيت "التفاصيل" نفسه مافيهوش العمود ده، فنجيبه من المتبقى (آخر حالة)
+             (SELECT rc2.status_code FROM remaining_complaints rc2
+                WHERE rc2.complain_no = cd.complain_no
+                ORDER BY rc2.id DESC LIMIT 1) AS "statusCode",
              cd.close_code            AS "closeCode",
              COALESCE(cd.msan_id, ct.cabin_code) AS "msanCode",
              pp.frame                 AS "frame",
@@ -4603,11 +4601,7 @@ export async function registerRoutes(
                            AND rc2.phone_number = rc.phone_number
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
-             (SELECT tq.status_code FROM ticket_queue tq
-                WHERE tq.ticket_id = rc.complain_no
-                  AND tq.status_code IS NOT NULL AND tq.status_code <> ''
-                  AND tq.status_code !~ '^(135|138)'
-                ORDER BY tq.id DESC LIMIT 1) AS "statusCode",
+             rc.status_code           AS "statusCode",
              rc.close_code            AS "closeCode",
              COALESCE(rc.msan_id, ct2.cabin_code) AS "msanCode",
              pp2.frame                AS "frame",
