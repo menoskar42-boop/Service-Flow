@@ -5387,14 +5387,14 @@ export async function registerRoutes(
       if (srcTab === "closed") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code
             FROM complaint_details
             WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           )`;
       } else if (srcTab === "open") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code
             FROM remaining_complaints_current
             WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
@@ -5403,17 +5403,17 @@ export async function registerRoutes(
       } else {
         srcCTE = `
           WITH src_raw AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 1 AS sp
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
             -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 2 AS sp
             FROM remaining_complaints WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
               AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
           src AS (
-            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code
             FROM src_raw ORDER BY complain_no, sp
           )`;
       }
@@ -5423,7 +5423,7 @@ export async function registerRoutes(
         phone_occ AS (
           SELECT
             po.complain_no, po.exchange_name AS central_name, po.cabinet_no,
-            po.phone_number, po.complain_time, po.close_time, po.close_by,
+            po.phone_number, po.complain_time, po.close_time, po.close_by, po.close_code,
             COUNT(*) OVER (PARTITION BY po.phone_number) AS appearances
           FROM src po
           WHERE TRUE ${dateClause}
@@ -5438,6 +5438,7 @@ export async function registerRoutes(
           r.cabinet_no                                                                 AS "cabinetNo",
           r.complain_time                                                              AS "complainTime",
           r.close_time                                                                 AS "closeTime",
+          r.close_code                                                                 AS "closeCode",
           r.appearances::int                                                           AS appearances,
           COALESCE(
             (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = r.complain_no LIMIT 1),

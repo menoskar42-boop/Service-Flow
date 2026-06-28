@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
+import { closeReason } from "@/lib/close-codes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -41,6 +42,7 @@ interface RepDetailRow {
   cabinetNo: string;
   complainTime: string;
   closeTime: string;
+  closeCode: string | null;
   appearances: number;
   closeByName: string;
   areaTechName: string;
@@ -303,6 +305,8 @@ export function RepetitionStatsReport() {
       "رقم الشكوى": r.complainNo,
       "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
       "تاريخ الإغلاق": r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "",
+      "كود الإغلاق": r.closeCode ?? "",
+      "سبب الإغلاق": closeReason(r.closeCode),
       "فنى الإغلاق": r.closeByName,
       "فنى المنطقة": r.areaTechName,
     })));
@@ -547,6 +551,7 @@ export function RepetitionStatsReport() {
                     <TableHead className="text-white font-bold text-right">رقم الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">تاريخ الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">تاريخ الإغلاق</TableHead>
+                    <TableHead className="text-white font-bold text-right">سبب الإغلاق</TableHead>
                     <TableHead className="text-white font-bold text-right">فنى الإغلاق</TableHead>
                     <TableHead className="text-white font-bold text-right">فنى المنطقة</TableHead>
                   </TableRow>
@@ -568,6 +573,11 @@ export function RepetitionStatsReport() {
                       <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>
                       <TableCell dir="ltr" className="text-right">{r.complainTime ? new Date(r.complainTime).toLocaleDateString("ar-EG") : ""}</TableCell>
                       <TableCell dir="ltr" className="text-right">{r.closeTime ? new Date(r.closeTime).toLocaleDateString("ar-EG") : ""}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {r.closeCode ? (
+                          <span title={`كود ${r.closeCode}`}>{closeReason(r.closeCode) || `كود ${r.closeCode}`}</span>
+                        ) : "—"}
+                      </TableCell>
                       <TableCell>
                         {editingTech === r.complainNo ? (
                           <span className="inline-flex items-center gap-1">
@@ -611,7 +621,7 @@ export function RepetitionStatsReport() {
                   ))}
                   {repDetailData.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center text-muted-foreground py-6">لا توجد خطوط مكررة</TableCell>
+                      <TableCell colSpan={14} className="text-center text-muted-foreground py-6">لا توجد خطوط مكررة</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
