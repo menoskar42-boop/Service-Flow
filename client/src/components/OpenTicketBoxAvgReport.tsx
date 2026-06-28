@@ -46,8 +46,11 @@ const scoreBadge = (v: number | null) => {
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
 };
 
-const avg = (nums: number[]) =>
-  nums.length ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10 : null;
+const avg = (nums: number[]) => {
+  // أمان إضافى: نتجاهل أى قيمة غير رقمية (N/A) حتى لو تسرّبت للمصفوفة
+  const valid = nums.filter((n) => Number.isFinite(n));
+  return valid.length ? Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 10) / 10 : null;
+};
 
 // يحوّل القيمة لرقم صالح أو null (يستبعد N/A والفراغات والقيم غير الرقمية)
 const num = (v: unknown): number | null => {
@@ -267,8 +270,8 @@ export function OpenTicketBoxAvgReport() {
                     <TableCell>{b.lineCount}</TableCell>
                     <TableCell>{b.measuredCount}</TableCell>
                     <TableCell>{scoreBadge(b.avgScore)}</TableCell>
-                    <TableCell className="font-mono">{b.avgCurrentSpeed != null ? b.avgCurrentSpeed.toLocaleString("ar-EG") : "—"}</TableCell>
-                    <TableCell className="font-mono">{b.avgMaxSpeed != null ? b.avgMaxSpeed.toLocaleString("ar-EG") : "—"}</TableCell>
+                    <TableCell className="font-mono">{Number.isFinite(b.avgCurrentSpeed as number) ? (b.avgCurrentSpeed as number).toLocaleString("ar-EG") : "—"}</TableCell>
+                    <TableCell className="font-mono">{Number.isFinite(b.avgMaxSpeed as number) ? (b.avgMaxSpeed as number).toLocaleString("ar-EG") : "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
