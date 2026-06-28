@@ -2156,8 +2156,9 @@ export async function registerRoutes(
          COUNT(DISTINCT pl.full_phone)::int AS "lineCount",
          COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
          ROUND(AVG(CASE WHEN c138p.score <= 100 THEN c138p.score END)::numeric, 1) AS "avgScore",
-         ROUND(AVG(${numSpeed("c138p.current_speed")}), 0) AS "avgCurrentSpeed",
-         ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed",
+         -- متوسط السرعات: نستبعد N/A (numSpeed→NULL) ونستبعد الخطوط اللى اسكورها > 100
+         ROUND(AVG(CASE WHEN COALESCE(c138p.score, 0) <= 100 THEN ${numSpeed("c138p.current_speed")} END), 0) AS "avgCurrentSpeed",
+         ROUND(AVG(CASE WHEN COALESCE(c138p.score, 0) <= 100 THEN ${numSpeed("c138p.max_speed")} END), 0)     AS "avgMaxSpeed",
          MIN(c138dates.oldest_at) AS "oldestMeasTime",
          MAX(c138dates.newest_at) AS "newestMeasTime"
        FROM line_accounts la
@@ -2205,8 +2206,9 @@ export async function registerRoutes(
            COUNT(DISTINCT pl.full_phone)::int AS "lineCount",
            COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
            ROUND(AVG(CASE WHEN c138p.score <= 100 THEN c138p.score END)::numeric, 1) AS "avgScore",
-           ROUND(AVG(${numSpeed("c138p.current_speed")}), 0) AS "avgCurrentSpeed",
-           ROUND(AVG(${numSpeed("c138p.max_speed")}), 0)     AS "avgMaxSpeed",
+           -- متوسط السرعات: نستبعد N/A (numSpeed→NULL) ونستبعد الخطوط اللى اسكورها > 100
+           ROUND(AVG(CASE WHEN COALESCE(c138p.score, 0) <= 100 THEN ${numSpeed("c138p.current_speed")} END), 0) AS "avgCurrentSpeed",
+           ROUND(AVG(CASE WHEN COALESCE(c138p.score, 0) <= 100 THEN ${numSpeed("c138p.max_speed")} END), 0)     AS "avgMaxSpeed",
            MIN(c138dates.oldest_at) AS "oldestMeasTime",
            MAX(c138dates.newest_at) AS "newestMeasTime"
          FROM line_accounts la

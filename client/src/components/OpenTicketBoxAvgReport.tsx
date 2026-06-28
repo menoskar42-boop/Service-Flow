@@ -49,6 +49,13 @@ const scoreBadge = (v: number | null) => {
 const avg = (nums: number[]) =>
   nums.length ? Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10 : null;
 
+// يحوّل القيمة لرقم صالح أو null (يستبعد N/A والفراغات والقيم غير الرقمية)
+const num = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
 export function OpenTicketBoxAvgReport() {
   const [lines, setLines] = useState<OpenTicketLine[]>([]);
   const [loading, setLoading] = useState(false);
@@ -91,9 +98,16 @@ export function OpenTicketBoxAvgReport() {
         map.set(key, g);
       }
       g.lineCount++;
-      if (l.lastMeasScore != null)     { g.scores.push(Number(l.lastMeasScore)); g.measuredCount++; }
-      if (l.lineCurrentSpeed != null)  g.curs.push(Number(l.lineCurrentSpeed));
-      if (l.lineMaxSpeed != null)      g.maxs.push(Number(l.lineMaxSpeed));
+      const sc = num(l.lastMeasScore);
+      if (sc != null) { g.scores.push(sc); g.measuredCount++; }
+      // متوسط السرعات: نستبعد قيم N/A (غير الرقمية) ونستبعد الخطوط اللى اسكورها > 100
+      // (101/102… أكواد خارج الخدمة وليست قياسات حقيقية).
+      if (sc == null || sc <= 100) {
+        const cur = num(l.lineCurrentSpeed);
+        const mx = num(l.lineMaxSpeed);
+        if (cur != null) g.curs.push(cur);
+        if (mx != null) g.maxs.push(mx);
+      }
     }
     return [...map.values()].map((g) => ({
       ...g,
