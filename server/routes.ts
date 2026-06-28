@@ -4527,7 +4527,7 @@ export async function registerRoutes(
                              = date_trunc('month', cd.close_time AT TIME ZONE 'Africa/Cairo')
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
-             cd.status_code           AS "statusCode",
+             cd.complain_type_name    AS "statusCode",
              cd.close_code            AS "closeCode",
              COALESCE(cd.msan_id, ct.cabin_code) AS "msanCode",
              pp.frame                 AS "frame",
@@ -4597,7 +4597,7 @@ export async function registerRoutes(
                            AND rc2.phone_number = rc.phone_number
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
-             rc.status_code           AS "statusCode",
+             rc.complain_type         AS "statusCode",
              rc.close_code            AS "closeCode",
              COALESCE(rc.msan_id, ct2.cabin_code) AS "msanCode",
              pp2.frame                AS "frame",
