@@ -578,7 +578,7 @@ export function RemovalStatsReport() {
 
       {/* Dialog: تفصيل الأعطال التى تجاوزت 24 ساعة */}
       <Dialog open={beyond24Open} onOpenChange={setBeyond24Open}>
-        <DialogContent className="max-w-5xl w-full" dir="rtl">
+        <DialogContent className="max-w-5xl w-full max-h-[88vh] flex flex-col" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-right text-sm">
               تفصيل الأعطال التى تجاوزت ٢٤ ساعة — {activeTab === "combined" ? "إجمالية" : activeTab === "details" ? "مغلقة" : "مفتوحة"} — {dateFrom} إلى {dateTo}
@@ -598,7 +598,7 @@ export function RemovalStatsReport() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
           )}
           {!beyond24Loading && beyond24Data && (
-            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-auto">
               <Table className="text-right text-xs" dir="rtl">
                 <TableHeader className="bg-amber-900 sticky top-0">
                   <TableRow>

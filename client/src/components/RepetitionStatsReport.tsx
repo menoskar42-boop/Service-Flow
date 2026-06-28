@@ -512,7 +512,7 @@ export function RepetitionStatsReport() {
 
       {/* Dialog: تفصيل الخطوط المكررة */}
       <Dialog open={repDetailOpen} onOpenChange={setRepDetailOpen}>
-        <DialogContent className="max-w-5xl w-full" dir="rtl">
+        <DialogContent className="max-w-5xl w-full max-h-[88vh] flex flex-col" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-right text-sm">
               تفصيل الخطوط المكررة — {activeTab === "combined" ? "إجمالية" : activeTab === "closed" ? "مغلقة" : "مفتوحة"} — {dateFrom} إلى {dateTo}
@@ -536,7 +536,7 @@ export function RepetitionStatsReport() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-600" /></div>
           )}
           {!repDetailLoading && repDetailData && (
-            <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-auto">
               <Table className="text-right text-xs" dir="rtl">
                 <TableHeader className="bg-purple-900 sticky top-0">
                   <TableRow>
