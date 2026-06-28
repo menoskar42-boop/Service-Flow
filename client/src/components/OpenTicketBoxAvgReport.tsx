@@ -55,6 +55,7 @@ export function OpenTicketBoxAvgReport() {
   const [error, setError] = useState<string | null>(null);
   const [filterCentral, setFilterCentral] = useState("");
   const [filterCabinet, setFilterCabinet] = useState("");
+  const [minScore, setMinScore] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -118,14 +119,15 @@ export function OpenTicketBoxAvgReport() {
     [boxes, filterCentral],
   );
 
-  const filtered = useMemo(
-    () => boxes.filter((b) => {
+  const filtered = useMemo(() => {
+    const threshold = minScore !== "" ? Number(minScore) : null;
+    return boxes.filter((b) => {
       if (filterCentral && b.central !== filterCentral) return false;
       if (filterCabinet && b.cabinNumber !== filterCabinet) return false;
+      if (threshold != null && !isNaN(threshold) && !(b.avgScore != null && b.avgScore > threshold)) return false;
       return true;
-    }),
-    [boxes, filterCentral, filterCabinet],
-  );
+    });
+  }, [boxes, filterCentral, filterCabinet, minScore]);
 
   const handleExportExcel = () => {
     const rows = filtered.map((b) => ({
@@ -184,6 +186,15 @@ export function OpenTicketBoxAvgReport() {
               searchPlaceholder="ابحث في الكباين..."
               disabled={!filterCentral}
               className="w-full sm:w-40 text-sm"
+            />
+            <input
+              type="number"
+              min={0}
+              value={minScore}
+              onChange={(e) => setMinScore(e.target.value)}
+              placeholder="الاسكور أكبر من"
+              className="w-36 border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right bg-white"
+              dir="rtl"
             />
             <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel
