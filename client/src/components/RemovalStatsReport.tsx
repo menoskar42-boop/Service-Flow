@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, FileSpreadsheet, Printer, Clock, UserPlus, Pencil, X } from "lucide-react";
 import { format } from "date-fns";
+import { closeReason } from "@/lib/close-codes";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -44,6 +45,7 @@ interface Beyond24Row {
   cabinetNo: string;
   complainTime: string;
   closeTime: string;
+  closeCode: string | null;
   hours: number;
   closeByName: string;
   closeByManual?: boolean;
@@ -334,6 +336,8 @@ export function RemovalStatsReport() {
       "تاريخ الشكوى": r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "",
       "تاريخ الإغلاق": r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "",
       "المدة (ساعة)": r.hours,
+      "كود الإغلاق": r.closeCode ?? "",
+      "سبب الإغلاق": closeReason(r.closeCode),
       "فنى الإغلاق": r.closeByName,
       "فنى المنطقة": r.areaTechName,
     })));
@@ -609,6 +613,7 @@ export function RemovalStatsReport() {
                     <TableHead className="text-white font-bold text-right">تاريخ الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">تاريخ الإغلاق</TableHead>
                     <TableHead className="text-white font-bold text-right">المدة (ساعة)</TableHead>
+                    <TableHead className="text-white font-bold text-right">سبب الإغلاق</TableHead>
                     <TableHead className="text-white font-bold text-right">فنى الإغلاق</TableHead>
                     <TableHead className="text-white font-bold text-right">فنى المنطقة</TableHead>
                   </TableRow>
@@ -630,6 +635,9 @@ export function RemovalStatsReport() {
                         <span className={`px-2 py-0.5 rounded text-xs font-bold ${Number(r.hours) <= 48 ? "bg-yellow-100 text-yellow-800" : Number(r.hours) <= 120 ? "bg-orange-100 text-orange-800" : "bg-red-100 text-red-800"}`}>
                           {r.hours}
                         </span>
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap" title={r.closeCode ? `كود ${r.closeCode}` : ""}>
+                        {r.closeCode ? (closeReason(r.closeCode) || `كود ${r.closeCode}`) : "—"}
                       </TableCell>
                       <TableCell>
                         {assigningNo === r.complainNo ? (
@@ -674,7 +682,7 @@ export function RemovalStatsReport() {
                   ))}
                   {beyond24Data.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={13} className="text-center text-muted-foreground py-6">لا توجد أعطال تجاوزت ٢٤ ساعة</TableCell>
+                      <TableCell colSpan={14} className="text-center text-muted-foreground py-6">لا توجد أعطال تجاوزت ٢٤ ساعة</TableCell>
                     </TableRow>
                   )}
                 </TableBody>

@@ -5288,7 +5288,7 @@ export async function registerRoutes(
       if (srcTab === "details") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by,
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code,
                    FALSE AS is_open, time_till_now
             FROM complaint_details
             WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
@@ -5296,7 +5296,7 @@ export async function registerRoutes(
       } else if (srcTab === "remaining") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by,
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code,
                    (FLOOR(status_code::numeric)::int = 135) AS is_open, time_till_now
             FROM remaining_complaints_current
             WHERE exchange_name ILIKE '%غنايم%'
@@ -5306,18 +5306,18 @@ export async function registerRoutes(
       } else {
         srcCTE = `
           WITH src_raw AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 1 AS sp, FALSE::bool AS is_open, time_till_now
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 1 AS sp, FALSE::bool AS is_open, time_till_now
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
             -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, 2 AS sp,
+            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 2 AS sp,
                    (FLOOR(status_code::numeric)::int = 135)::bool AS is_open, time_till_now
             FROM remaining_complaints WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
               AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
           src AS (
-            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, is_open, time_till_now
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, is_open, time_till_now
             FROM src_raw ORDER BY complain_no, sp
           )`;
       }
@@ -5332,6 +5332,7 @@ export async function registerRoutes(
             src.cabinet_no                                                               AS "cabinetNo",
             src.complain_time                                                            AS "complainTime",
             src.close_time                                                               AS "closeTime",
+            src.close_code                                                               AS "closeCode",
             ROUND(CASE
               WHEN src.is_open
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
