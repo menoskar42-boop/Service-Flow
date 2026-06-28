@@ -17,7 +17,7 @@ import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { WithAccountReport } from "@/components/WithAccountReport";
 import { WithoutAccountReport } from "@/components/WithoutAccountReport";
 import { RegularizedNoAccountReport } from "@/components/RegularizedNoAccountReport";
-import { NeedsSpeedReport } from "@/components/NeedsSpeedReport";
+import { NeedsSpeedTab } from "@/components/NeedsSpeedTab";
 import { ComplaintNoMeasureReport } from "@/components/ComplaintNoMeasureReport";
 import { CabinetScoreReport } from "@/components/CabinetScoreReport";
 import { BoxScoreReport } from "@/components/BoxScoreReport";
@@ -43,7 +43,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits" | "regularized-no-account" | "needs-speed-complaint" | "high-score" | "needs-speed-all" | "complaint-no-measure" | "cfm-tickets" | "ground-network";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits" | "regularized-no-account" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -69,9 +69,8 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "without-account",     label: "خطوط بدون رقم أكونت" },
       { id: "regularized-no-account", label: "أعطال منتظمة بدون أكونت" },
       { id: "ground-network",      label: "أعطال الشبكة الأرضية" },
-      { id: "needs-speed-complaint",  label: "محتاجة رفع سرعة (لها شكوى)" },
+      { id: "needs-speed",         label: "محتاجة رفع سرعة" },
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
-      { id: "needs-speed-all",     label: "محتاجة رفع سرعة (الكل)" },
       { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
       { id: "box-score-avg",       label: "متوسط القياسات" },
       { id: "account-edits",       label: "تعديلات الأكونت" },
@@ -467,8 +466,7 @@ export default function Dashboard() {
               {reportTab === "without-account"     && <WithoutAccountReport />}
               {reportTab === "regularized-no-account" && <RegularizedNoAccountReport />}
               {reportTab === "ground-network" && <GroundNetworkFaultsTab />}
-              {reportTab === "needs-speed-complaint"  && <NeedsSpeedReport requireComplaint title="أرقام لها شكوى ومحتاجة رفع سرعة" />}
-              {reportTab === "needs-speed-all"        && <NeedsSpeedReport title="أرقام محتاجة رفع سرعة" />}
+              {reportTab === "needs-speed"            && <NeedsSpeedTab />}
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
               {reportTab === "box-score-avg"       && <BoxScoreReport />}
               {reportTab === "account-edits"       && <AccountEditsReport />}
