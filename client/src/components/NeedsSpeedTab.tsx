@@ -9,7 +9,7 @@ const TABS: { id: SubTab; label: string }[] = [
 ];
 
 export function NeedsSpeedTab() {
-  const [tab, setTab] = useState<SubTab>("complaint");
+  const [tab, setTab] = useState<SubTab>("all");
 
   return (
     <div className="space-y-4" dir="rtl">
