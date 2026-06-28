@@ -25,6 +25,8 @@ interface RegularizedFault extends Measurement138 {
   complainTypeName: string | null;
   regStatus: string | null;
   closeDate: string | null;
+  firstCloseDate: string | null;
+  lastCloseDate: string | null;
   onu: string | null;
   workerCode: string | null;
   techName: string | null;
@@ -163,7 +165,8 @@ export function RegularizedFaultsRangeReport() {
       "وقت الشكوي": fmtDt(f.complainTime),
       "ComplainTypeName": f.complainTypeName,
       "حالة الانتظام": f.regStatus,
-      "تاريخ الإغلاق": fmtDt(f.closeDate),
+      "أول إغلاق": fmtDt(f.firstCloseDate),
+      "آخر إغلاق": fmtDt(f.lastCloseDate),
       "Onu": f.onu,
       "كود العامل": f.workerCode,
       "اسم الفنى": f.techName,
@@ -191,7 +194,7 @@ export function RegularizedFaultsRangeReport() {
       <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
-      <th>حالة الانتظام</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
+      <th>حالة الانتظام</th><th>أول إغلاق</th><th>آخر إغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -216,7 +219,8 @@ export function RegularizedFaultsRangeReport() {
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
           <td>${esc(f.regStatus)}</td>
-          <td style="font-size:9px">${esc(fmtDt(f.closeDate))}</td>
+          <td style="font-size:9px">${esc(fmtDt(f.firstCloseDate))}</td>
+          <td style="font-size:9px">${esc(fmtDt(f.lastCloseDate))}</td>
           <td>${esc(f.workerCode)}</td>
           <td>${esc(f.techName)}</td>
           <td>${esc(f.voiceStatus)}</td>
@@ -366,7 +370,8 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>
-                <TableHead className="text-right font-bold text-white">تاريخ الإغلاق</TableHead>
+                <TableHead className="text-right font-bold text-white">أول إغلاق</TableHead>
+                <TableHead className="text-right font-bold text-white">آخر إغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">ONU</TableHead>
                 <TableHead className="text-right font-bold text-white">كود العامل</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
@@ -425,7 +430,8 @@ export function RegularizedFaultsRangeReport() {
                       {f.regStatus || "-"}
                     </span>
                   </TableCell>
-                  <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.closeDate)}</TableCell>
+                  <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.firstCloseDate)}</TableCell>
+                  <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.lastCloseDate)}</TableCell>
                   <TableCell>{f.onu || "-"}</TableCell>
                   <TableCell>{f.workerCode || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{f.techName || "-"}</TableCell>

@@ -4508,7 +4508,8 @@ export async function registerRoutes(
              ELSE NULL END`;
 
       const { rows } = await pool.query(
-        `(
+        `WITH combined AS (
+         (
            -- ===== شيت التفاصيل: كل الأعطال المغلقة منتظمة =====
            SELECT
              cd.complain_no           AS "ticketId",
@@ -4646,7 +4647,26 @@ export async function registerRoutes(
            ) rc138c ON true
            ${rcWhere}
          )
-         ORDER BY "closeDate" ASC NULLS LAST`,
+        ),
+        agg AS (
+          -- لكل شكوى: أول وآخر تاريخ إغلاق عبر كل سجلاتها (تفاصيل + متبقى)
+          SELECT "ticketId" AS k,
+                 MIN("closeDate") AS first_close,
+                 MAX("closeDate") AS last_close
+          FROM combined GROUP BY "ticketId"
+        )
+        SELECT * FROM (
+          -- شكوى واحدة لكل complain_no: نحتفظ بأحدث سجل (آخر تاريخ إغلاق) فيكون
+          -- الـ Status Code هو الأخير، ونرفق أول/آخر تاريخ إغلاق
+          SELECT DISTINCT ON (c."ticketId")
+                 c.*,
+                 a.first_close AS "firstCloseDate",
+                 a.last_close  AS "lastCloseDate"
+          FROM combined c
+          JOIN agg a ON a.k = c."ticketId"
+          ORDER BY c."ticketId", c."closeDate" DESC NULLS LAST
+        ) d
+        ORDER BY d."lastCloseDate" ASC NULLS LAST`,
         params,
       );
       res.json(rows);
