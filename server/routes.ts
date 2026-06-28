@@ -2749,7 +2749,25 @@ export async function registerRoutes(
       let remainingInserted = 0, remainingTotal = 0;
 
       // ── Sheet: التفاصيل / تفاصيل الأعطال (accumulating, dedup by complain_no) ──
-      const ws1 = wb.Sheets["التفاصيل"] || wb.Sheets["تفاصيل الأعطال"];
+      let ws1 = wb.Sheets["التفاصيل"] || wb.Sheets["تفاصيل الأعطال"];
+      let detailsSheetName = wb.Sheets["التفاصيل"] ? "التفاصيل" : (wb.Sheets["تفاصيل الأعطال"] ? "تفاصيل الأعطال" : null);
+      // Fallback: لو اتغيّر اسم شيت التفاصيل فى ملف 430D، ندوّر عليه بالمحتوى:
+      // أى شيت (غير شيت المتبقى) فيه عمود "complain no" / "رقم الشكوى" ومافيهوش
+      // أعمدة المتبقى المميزة (status code / dispatch) — دى علامة شيت التفاصيل.
+      if (!ws1) {
+        for (const name of wb.SheetNames) {
+          if (name === "تفاصيل متبقى" || name.includes("متبقى")) continue;
+          const cand = wb.Sheets[name];
+          if (!cand) continue;
+          const rowsC = sheetRows(cand);
+          const { header, dataRows } = smartSheet(rowsC, ["complain no", "رقم الشكوى"]);
+          const hasComplainNo = header.some((h) => h.includes("complain no") || h.includes("رقم الشكوى"));
+          const looksRemaining = header.some((h) => h.includes("status code") || h.includes("dispatch"));
+          if (hasComplainNo && !looksRemaining && dataRows.length > 0) {
+            ws1 = cand; detailsSheetName = name; break;
+          }
+        }
+      }
       if (ws1) {
         const rows1: any[][] = sheetRows(ws1);
         const { find, header, dataRows } = smartSheet(rows1, ["complain no", "رقم الشكوى"]);
@@ -2900,6 +2918,9 @@ export async function registerRoutes(
         inserted: detailsInserted + remainingInserted,
         details: { inserted: detailsInserted, total: detailsTotal },
         remaining: { inserted: remainingInserted, total: remainingTotal },
+        // تشخيص: أسماء الشيتات فى الملف + الشيت اللى اتقرأ منه التفاصيل
+        sheetNames: wb.SheetNames,
+        detailsSheet: detailsSheetName,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
