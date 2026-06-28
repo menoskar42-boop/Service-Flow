@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, Repeat, Radar } from "lucide-react";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
+import { closeReason } from "@/lib/close-codes";
 interface RegularizedFault extends Measurement138 {
   ticketId: string | null;
   centralName: string | null;
@@ -153,6 +154,7 @@ export function RegularizedFaultsRangeReport() {
       "آخر قياس للرقم": f.lastMeasScore,
       "موقف التكرار": f.repeatStatus,
       "Status Code": f.statusCode,
+      "سبب الإغلاق": closeReason(f.statusCode),
       "MSAN Code": f.msanCode,
       "Frame": f.frame,
       "رقم كابينه نهائى": f.cabinetNo,
@@ -186,7 +188,7 @@ export function RegularizedFaultsRangeReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
+      <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>حالة الانتظام</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
@@ -205,6 +207,7 @@ export function RegularizedFaultsRangeReport() {
           <td>${esc(f.lastMeasScore)}</td>
           <td>${esc(f.repeatStatus)}</td>
           <td style="font-size:9px">${esc(f.statusCode)}</td>
+          <td style="font-size:9px">${esc(closeReason(f.statusCode))}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
           <td>${esc(f.frame)}</td>
           <td>${esc(f.cabinetNo)}</td>
@@ -354,6 +357,7 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
+                <TableHead className="text-right font-bold text-white">سبب الإغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
                 <TableHead className="text-right font-bold text-white">Frame</TableHead>
                 <TableHead className="text-right font-bold text-white">الكابينه</TableHead>
@@ -408,6 +412,7 @@ export function RegularizedFaultsRangeReport() {
                     ) : ""}
                   </TableCell>
                   <TableCell className="max-w-[140px] truncate">{shortStatusCode(f.statusCode) || "-"}</TableCell>
+                  <TableCell className="max-w-[150px] truncate text-xs" title={closeReason(f.statusCode)}>{closeReason(f.statusCode) || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
                   <TableCell>{f.frame || "-"}</TableCell>
                   <TableCell>{f.cabinetNo || "-"}</TableCell>
