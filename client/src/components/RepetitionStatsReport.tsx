@@ -5,6 +5,7 @@ import { ROLES } from "@shared/schema";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -77,6 +78,20 @@ export function RepetitionStatsReport() {
   const [savingTech, setSavingTech]           = useState(false);
   const { user } = useAuth();
   const canEditTech = user?.role === ROLES.ADMIN;
+
+  // قائمة أسماء الفنيين لاختيار فنى الإغلاق من دروب ليست (بدل الكتابة اليدوية)
+  const { data: techNamesList } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => {
+      const res = await fetch("/api/technician-names", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل تحميل أسماء الفنيين");
+      return res.json();
+    },
+    enabled: canEditTech,
+  });
+  const techNameOptions = [
+    ...new Set((techNamesList ?? []).map((t) => (t.techName ?? "").trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, "ar"));
 
   const handleSaveCloseTech = async (complainNo: string) => {
     const tech = editTechDraft.trim();
@@ -556,21 +571,17 @@ export function RepetitionStatsReport() {
                       <TableCell>
                         {editingTech === r.complainNo ? (
                           <span className="inline-flex items-center gap-1">
-                            <Input
+                            <SearchableCombobox
+                              options={techNameOptions}
                               value={editTechDraft}
-                              onChange={(e) => setEditTechDraft(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") handleSaveCloseTech(r.complainNo);
-                                if (e.key === "Escape") setEditingTech(null);
-                              }}
-                              className="h-6 w-32 text-xs px-1"
-                              dir="rtl"
-                              autoFocus
-                              placeholder="اسم الفنى"
+                              onChange={setEditTechDraft}
+                              placeholder="اختر اسم الفنى"
+                              searchPlaceholder="ابحث عن فنى..."
+                              className="w-40 text-xs"
                             />
                             <button
                               onClick={() => handleSaveCloseTech(r.complainNo)}
-                              disabled={savingTech}
+                              disabled={savingTech || !editTechDraft.trim()}
                               className="text-green-600 hover:text-green-800 disabled:opacity-40"
                               title="حفظ"
                             >
