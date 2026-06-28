@@ -115,9 +115,10 @@ export function OpenTicketBoxAvgReport() {
       avgCurrentSpeed: avg(g.curs),
       avgMaxSpeed: avg(g.maxs),
     })).sort((a, b) =>
-      a.central.localeCompare(b.central, "ar") ||
-      Number(a.cabinNumber) - Number(b.cabinNumber) ||
-      Number(a.boxNumber) - Number(b.boxNumber),
+      // ترتيب أبجدى/طبيعى: السنترال ثم الكابينه ثم البكس (numeric يتعامل مع صيغ زى "7-1")
+      a.central.localeCompare(b.central, "ar", { numeric: true }) ||
+      a.cabinNumber.localeCompare(b.cabinNumber, "ar", { numeric: true }) ||
+      a.boxNumber.localeCompare(b.boxNumber, "ar", { numeric: true }),
     );
   }, [lines]);
 
