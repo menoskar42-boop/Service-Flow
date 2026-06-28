@@ -16,6 +16,7 @@ interface RegularizedFault extends Measurement138 {
   phoneShort: string | null;
   repeatStatus: string;
   statusCode: string | null;
+  closeCode: string | null;
   msanCode: string | null;
   frame: string | null;
   cabinetNo: string | null;
@@ -156,7 +157,7 @@ export function RegularizedFaultsRangeReport() {
       "آخر قياس للرقم": f.lastMeasScore,
       "موقف التكرار": f.repeatStatus,
       "Status Code": f.statusCode,
-      "سبب الإغلاق": closeReason(f.statusCode),
+      "سبب الإغلاق": closeReason(f.closeCode),
       "MSAN Code": f.msanCode,
       "Frame": f.frame,
       "رقم كابينه نهائى": f.cabinetNo,
@@ -210,7 +211,7 @@ export function RegularizedFaultsRangeReport() {
           <td>${esc(f.lastMeasScore)}</td>
           <td>${esc(f.repeatStatus)}</td>
           <td style="font-size:9px">${esc(f.statusCode)}</td>
-          <td style="font-size:9px">${esc(closeReason(f.statusCode))}</td>
+          <td style="font-size:9px">${esc(closeReason(f.closeCode))}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
           <td>${esc(f.frame)}</td>
           <td>${esc(f.cabinetNo)}</td>
@@ -417,7 +418,7 @@ export function RegularizedFaultsRangeReport() {
                     ) : ""}
                   </TableCell>
                   <TableCell className="max-w-[140px] truncate">{shortStatusCode(f.statusCode) || "-"}</TableCell>
-                  <TableCell className="max-w-[150px] truncate text-xs" title={closeReason(f.statusCode)}>{closeReason(f.statusCode) || "-"}</TableCell>
+                  <TableCell className="max-w-[150px] truncate text-xs" title={closeReason(f.closeCode)}>{closeReason(f.closeCode) || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left">{f.msanCode || "-"}</TableCell>
                   <TableCell>{f.frame || "-"}</TableCell>
                   <TableCell>{f.cabinetNo || "-"}</TableCell>

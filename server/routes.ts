@@ -509,7 +509,7 @@ async function dedupBySerial(table: string): Promise<number> {
 
 const COMPLAINT_DETAILS_COLS = [
   "complain_no","sector","region","exchange_name","phone_number","msan_id","cabinet_no",
-  "complain_time","close_time","close_code","complain_side_name","complain_type_name","close_by","time_till_now","time_till_now_full",
+  "complain_time","close_time","close_code","status_code","complain_side_name","complain_type_name","close_by","time_till_now","time_till_now_full",
 ];
 
 const REMAINING_COMPLAINTS_COLS = [
@@ -2781,6 +2781,7 @@ export async function registerRoutes(
         const iMsan     = find("msan id", "msan");
         const iCabinet  = find("cabinet no", "الكابينة");
         const iCloseCode    = find("close code", "كود الإغلاق");
+        const iStatusCode   = find("status code", "حالة الشكوى", "حالة الشكوي");
         const iComplainTime = find("compalin time", "complain time", "وقت الشكوى");
         const iCloseTime    = find("close time", "وقت الإغلاق");
         const iSide     = find("complain side name", "side name");
@@ -2813,6 +2814,7 @@ export async function registerRoutes(
             toDate(g(r, iComplainTime)),
             toDate(g(r, iCloseTime)),
             String(g(r, iCloseCode)) || null,
+            String(g(r, iStatusCode)) || null,
             String(g(r, iSide)) || null,
             String(g(r, iType)) || null,
             String(g(r, iCloseBy)) || null,
@@ -2822,7 +2824,7 @@ export async function registerRoutes(
         }
         detailsTotal = inserts.length;
         // cols that may have been null in older uploads — backfill them on re-upload
-        const detailsUpdateCols = ["close_by", "time_till_now", "time_till_now_full", "complain_side_name", "complain_type_name", "cabinet_no", "msan_id"];
+        const detailsUpdateCols = ["close_by", "time_till_now", "time_till_now_full", "complain_side_name", "complain_type_name", "cabinet_no", "msan_id", "status_code"];
         // All 3 destinations accumulate — no full replace — so uploading multiple
         // parts of the national 430D file combines them instead of overwriting.
         const r1hist = await accumulateTable("complaint_details", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId, detailsUpdateCols);
@@ -4525,7 +4527,8 @@ export async function registerRoutes(
                              = date_trunc('month', cd.close_time AT TIME ZONE 'Africa/Cairo')
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
-             cd.close_code            AS "statusCode",
+             cd.status_code           AS "statusCode",
+             cd.close_code            AS "closeCode",
              COALESCE(cd.msan_id, ct.cabin_code) AS "msanCode",
              pp.frame                 AS "frame",
              cd.cabinet_no            AS "cabinetNo",
@@ -4595,6 +4598,7 @@ export async function registerRoutes(
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
              rc.status_code           AS "statusCode",
+             rc.close_code            AS "closeCode",
              COALESCE(rc.msan_id, ct2.cabin_code) AS "msanCode",
              pp2.frame                AS "frame",
              rc.cabinet_no            AS "cabinetNo",

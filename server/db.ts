@@ -322,6 +322,7 @@ export async function ensureSchema() {
       complain_time timestamptz,
       close_time timestamptz,
       close_code text,
+      status_code text,
       complain_side_name text,
       complain_type_name text,
       close_by text,
@@ -412,7 +413,7 @@ export async function ensureSchema() {
       complain_no text NOT NULL UNIQUE,
       sector text, region text, exchange_name text, phone_number text,
       msan_id text, cabinet_no text, complain_time timestamptz, close_time timestamptz,
-      close_code text, complain_side_name text, complain_type_name text, close_by text,
+      close_code text, status_code text, complain_side_name text, complain_type_name text, close_by text,
       uploaded_at timestamptz NOT NULL DEFAULT now(),
       uploaded_by_id integer REFERENCES users(id)
     )
@@ -423,7 +424,7 @@ export async function ensureSchema() {
       complain_no text NOT NULL UNIQUE,
       sector text, region text, exchange_name text, phone_number text,
       msan_id text, cabinet_no text, complain_time timestamptz, close_time timestamptz,
-      close_code text, complain_side_name text, complain_type_name text, close_by text,
+      close_code text, status_code text, complain_side_name text, complain_type_name text, close_by text,
       uploaded_at timestamptz NOT NULL DEFAULT now(),
       uploaded_by_id integer REFERENCES users(id)
     )
@@ -490,6 +491,11 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE remaining_complaints       ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
   await pool.query(`ALTER TABLE remaining_complaints_sod   ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
   await pool.query(`ALTER TABLE remaining_complaints_current ADD COLUMN IF NOT EXISTS time_till_now_full numeric`);
+
+  // status_code — حالة الشكوى من ملف 430D (شيت التفاصيل) — مثل DSL-160 / 173 …
+  await pool.query(`ALTER TABLE complaint_details          ADD COLUMN IF NOT EXISTS status_code text`);
+  await pool.query(`ALTER TABLE complaint_details_sod      ADD COLUMN IF NOT EXISTS status_code text`);
+  await pool.query(`ALTER TABLE complaint_details_current  ADD COLUMN IF NOT EXISTS status_code text`);
 
   // ftth_subscribers — ملخص مشتركين FTTH/ADSL (full replace each upload)
   await pool.query(`
