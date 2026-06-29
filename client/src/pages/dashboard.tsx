@@ -15,8 +15,7 @@ import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsRepor
 import { WorkOrdersReport } from "@/components/WorkOrdersReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { WithAccountReport } from "@/components/WithAccountReport";
-import { WithoutAccountReport } from "@/components/WithoutAccountReport";
-import { RegularizedNoAccountReport } from "@/components/RegularizedNoAccountReport";
+import { NoAccountTab } from "@/components/NoAccountTab";
 import { NeedsSpeedTab } from "@/components/NeedsSpeedTab";
 import { ComplaintNoMeasureReport } from "@/components/ComplaintNoMeasureReport";
 import { CabinetScoreReport } from "@/components/CabinetScoreReport";
@@ -44,7 +43,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "without-account" | "cabinet-score-avg" | "account-edits" | "regularized-no-account" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -67,8 +66,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "with-account",        label: "خطوط لها رقم أكونت" },
       { id: "account-never-measured", label: "خطوط لها أكونت ولم تُقَس" },
-      { id: "without-account",     label: "خطوط بدون رقم أكونت" },
-      { id: "regularized-no-account", label: "أعطال منتظمة بدون أكونت" },
+      { id: "no-account",          label: "بدون أكونت" },
       { id: "ground-network",      label: "أعطال الشبكة الأرضية" },
       { id: "needs-speed",         label: "محتاجة رفع سرعة" },
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
@@ -155,7 +153,7 @@ export default function Dashboard() {
 
   // مجموعات التقارير المعروضة حسب الدور
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
-  const DM_ALLOWED: ReportTab[] = ["without-account", "regularized-no-account", "ground-network", "work-orders"];
+  const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   const visibleGroups = REPORT_GROUPS
     .filter((g) => user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label))
@@ -177,7 +175,7 @@ export default function Dashboard() {
     } else if (!authLoading && user?.role === ROLES.DATA_MANAGER) {
       setAdminTab("reports");
       setOpenGroups(["القياسات"]);
-      setReportTab("without-account");
+      setReportTab("no-account");
     }
   }, [authLoading, user, setLocation]);
 
@@ -466,8 +464,7 @@ export default function Dashboard() {
               {reportTab === "with-account"        && <WithAccountReport />}
               {reportTab === "account-never-measured" && <WithAccountReport neverMeasured title="خطوط لها رقم أكونت ولم يتم قياسها من قبل" />}
               {reportTab === "high-score"          && <WithAccountReport scoreGt={100} title="الخطوط التى أسكورها أعلى من 100" />}
-              {reportTab === "without-account"     && <WithoutAccountReport />}
-              {reportTab === "regularized-no-account" && <RegularizedNoAccountReport />}
+              {reportTab === "no-account"          && <NoAccountTab />}
               {reportTab === "ground-network" && <GroundNetworkFaultsTab />}
               {reportTab === "needs-speed"            && <NeedsSpeedTab />}
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
