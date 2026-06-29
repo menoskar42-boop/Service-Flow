@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.3 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3: رقيب مستمر للحالات المعروفة فى كل المراحل — "Line is no longer provisioned"→103، "out of service"→101، "line id not found"→105 — يُسجَّل فوراً بدون قياس أو انتظار timeout.
-// @version      10.3.0
+// @name         DZS Expresse Continuous Flow v10.3.1 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3.1: تطابق أوسع لحالة "no longer provisioned/provisional/not provisioned" → 103 (تتسجّل فوراً ويفتح الخط التالى أوتوماتيك). رقيب مستمر للحالات المعروفة فى كل المراحل (103/101/105).
+// @version      10.3.1
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -151,9 +151,10 @@
   function checkForKnownState() {
     const raw = document.body.innerText || "";
     const t = raw.toLowerCase();
-    if (t.includes("line is no longer provisioned")) return SCORE_NOT_PROVISIONED; // 103 (زى ما كانت)
+    // 103 — أوسع تطابق: "no longer provisioned/provisional/provision" أو "Not Provisioned"
+    if (/no\s*longer\s*provision|not\s*provision/i.test(raw)) return SCORE_NOT_PROVISIONED;
     if (t.includes("line is out of service")) return SCORE_OUT_OF_SERVICE;          // 101
-    // 🆕 "line id not found" (أو صيغ مشابهة) → score 105 وسرعات فاضية، تتعالج فوراً بدون انتظار timeout
+    // "line id not found" (أو صيغ مشابهة) → score 105 وسرعات فاضية، تتعالج فوراً بدون انتظار timeout
     if (/line\s*id\s*not\s*found|line\s*not\s*found|id\s*not\s*found|no\s*such\s*line/i.test(raw)) return SCORE_NOT_FOUND;
     return null;
   }
