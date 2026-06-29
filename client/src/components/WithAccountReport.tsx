@@ -194,9 +194,9 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   // يتولّى التقسيم لدفعات 50 خط والانتظار 400 ثانية بين كل دفعة والرفع التلقائى لشيت 138.
   const handleMeasureDZS = async () => {
     const totalCount = data?.total ?? 0;
-    if (!central && !cabin && !box && !boxFrom && !boxTo && totalCount > 500) {
-      alert("عدد الخطوط أكثر من 500 — اختر سنترال أو كابينه أو بكس أولاً للتضييق");
-      return;
+    // تحذير فقط (مش منع): لو العدد كبير نسأل المستخدم هل يكمّل
+    if (totalCount > 500) {
+      if (!confirm(`عدد الخطوط ${totalCount.toLocaleString("ar-EG")} (أكثر من 500) — القياس على دفعات هياخد وقت طويل. هل تريد الاستمرار؟`)) return;
     }
     // افتح التاب فوراً وبشكل متزامن داخل ضغطة الزر (قبل أى await) — وإلا يحجبه الـ popup blocker
     const w = window.open("about:blank", "dzs_measure");
