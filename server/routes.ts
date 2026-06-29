@@ -890,6 +890,14 @@ async function cfmFetch(path: string): Promise<Response> {
   return r;
 }
 
+// ── Maintenance (نظام صيانة البوكسات) live proxy ─────────────────────────────
+const MAINT_BASE  = "https://maintenance-we.replit.app";
+const MAINT_TOKEN = process.env.MAINTENANCE_API_TOKEN || "sf-comprehensive-2026-GHNAT-7Kx9";
+
+async function maintFetch(path: string): Promise<Response> {
+  return fetch(`${MAINT_BASE}${path}`, { headers: { "X-API-Token": MAINT_TOKEN } });
+}
+
 // تفكيك رقم البكس فى تذاكر Cable Guardian إلى قائمة أرقام بكسات:
 //   "1:15" → من 1 إلى 15 (مدى)   |   "1&15" → [1, 15] (مجموعة)   |   "5" → [5]
 function parseTicketBoxes(boxStr: string | null | undefined): string[] {
@@ -5812,6 +5820,43 @@ export async function registerRoutes(
       res.json({ lines, total: lines.length });
     } catch (e: any) {
       res.status(502).json({ message: `تعذّر جلب خطوط التذاكر المفتوحة: ${e.message}` });
+    }
+  });
+
+  // ── بروكسى نظام صيانة البوكسات (maintenance-we) ────────────────────────────
+  // GET /api/proxy/maintenance-comprehensive — تقرير الفحوصات الشامل (كل الصفحات)
+  //   فلاتر اختيارية: central, cabin, box, dateFrom, dateTo
+  app.get("/api/proxy/maintenance-comprehensive", requireAuth, async (req, res) => {
+    try {
+      const { central = "", cabin = "", box = "", dateFrom = "", dateTo = "" } =
+        req.query as Record<string, string>;
+      const base = new URLSearchParams();
+      if (central) base.set("central", central);
+      if (cabin)   base.set("cabin", cabin);
+      if (box)     base.set("box", box);
+      if (dateFrom) base.set("dateFrom", dateFrom);
+      if (dateTo)   base.set("dateTo", dateTo);
+      base.set("limit", "500");
+
+      // نجيب كل الصفحات (الإجمالى صغير ~مئات) عشان المطابقة بالبكس تبقى كاملة
+      let page = 1;
+      let all: any[] = [];
+      let totalPages = 1;
+      do {
+        base.set("page", String(page));
+        const upstream = await maintFetch(`/api/reports/comprehensive?${base}`);
+        if (!upstream.ok) {
+          return res.status(upstream.status).json({ message: `Maintenance API returned ${upstream.status}` });
+        }
+        const j: any = await upstream.json();
+        all = all.concat(Array.isArray(j?.data) ? j.data : []);
+        totalPages = Number(j?.totalPages ?? 1) || 1;
+        page++;
+      } while (page <= totalPages && page <= 30);
+
+      res.json({ data: all, total: all.length });
+    } catch (e: any) {
+      res.status(502).json({ message: `تعذّر جلب بيانات الصيانة: ${e.message}` });
     }
   });
 
