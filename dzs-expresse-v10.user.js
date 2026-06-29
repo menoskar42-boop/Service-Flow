@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.4 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.4: إصلاح إغلاق التابات (حيلة window.open '_self' لتفادى منع المتصفح بعد التنقّل) — يمنع امتلاء الذاكرة/Out of Memory. + عدّاد التابات المفتوحة جنب العدّاد + Auto-refresh لصفحة Out of Memory.
-// @version      10.4.0
+// @name         DZS Expresse Continuous Flow v10.5 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.5: لما "another real-time request is in progress" يظهر، يعيد طلب الـ real-time ويستنى لحد ما يفضى بدل ما يفشل بـ timeout 60ث ويسجّل 104 غلط (يحسّن الدقة والسرعة). + إغلاق تابات + عدّاد + OOM refresh.
+// @version      10.5.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -513,6 +513,12 @@
     if (processingComplete) { clearInterval(confirmTimer); return; }
     if (yesClicked) { clearInterval(confirmTimer); return; }
     cf++;
+    const ks = checkForKnownState(); if (ks !== null) { clearInterval(confirmTimer); handleSpecialAndClose(ks); return; }
+    // 🆕 الـ real-time مشغول بطلب تانى → نعيد المحاولة ونستنى لحد ما يفضى (بدل ما نفشل بـ timeout 60ث ونسجّل 104 غلط)
+    if (/another\s*real-?time\s*request\s*is\s*in\s*progress|real-?time\s*request\s*currently\s*unavailable/i.test(document.body.innerText || "")) {
+      if (cf % 8 === 0) { const rb = findRealTimeButton(); if (rb) rb.click(); } // إعادة الطلب كل ~6 ثوانى
+      if (cf < MAX_CF * 3) return; // استنى أطول لما يكون مشغول (لحد ~3 دقايق) قبل ما نستسلم
+    }
     const dialog = document.querySelector("div[id*='rtDialog']");
     if (!(dialog && dialog.style.display !== "none")) { if (cf >= MAX_CF) { clearInterval(confirmTimer); handleSpecialAndClose(SCORE_TIMEOUT); } return; }
     const yesBtn = document.querySelector("button[id*='confirmationForm:yesButton']");
