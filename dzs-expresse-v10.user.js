@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.3 (Service-Flow 138 sheet + auto-upload + 140-batch/400s)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3: حماية من تداخل التابات القديمة مع جولات القياس الجديدة (stale-tab guard فى openNextLine + maybeDownloadFinal).
-// @version      10.3.0
+// @name         DZS Expresse Continuous Flow v10.1 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.1: اكتشاف فورى لحالة "line id not found" → score 105 وسرعات فاضية بدون انتظار timeout (يمنع توقف فتح الصفحات وعدم نزول الـ CSV).
+// @version      10.1.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -20,10 +20,6 @@
   const SF_API_BASE   = "https://service-flow--menoskar42.replit.app"; // ← عدّليه لو الدومين اتغيّر
   const SF_INGEST_TOKEN = "sf-dzs-138-ingest-2026"; // ← لازم يطابق DZS_INGEST_TOKEN فى السيرفر
   const SF_AUTO_UPLOAD = true; // false لو عايزه CSV فقط من غير رفع تلقائى
-
-  // 🆕 القياس على دفعات: 140 خط لكل دفعة، وبعد كل دفعة انتظار 400 ثانية قبل الدفعة التالية
-  const DZS_BATCH_SIZE = 140;
-  const DZS_BATCH_PAUSE_MS = 400 * 1000; // 400 ثانية
 
   const SF_ACCOUNTS_KEY = "DZS_SF_ACCOUNTS";
   const SF_META_KEY     = "DZS_SF_META";
@@ -78,6 +74,7 @@
   const SCORE_NO_FIELD = "102";
   const SCORE_NOT_PROVISIONED = "103";
   const SCORE_TIMEOUT = "104";
+  const SCORE_NOT_FOUND = "105"; // 🆕 line id not found → score 105 وسرعات فاضية
 
   /* ================== STORAGE KEYS ================== */
   const INDEX_KEY = "DZS_LINE_INDEX";
@@ -139,7 +136,6 @@
   const CURRENT_LINE_ID = allDone ? null : LINE_IDS[lineIndex];
 
   let lineDetailsDone = false, yesClicked = false, processingComplete = false, iAmTheDownloader = false;
-  let iAmBatchLauncher = false; // 🆕 هذا التاب مسؤول عن إطلاق الدفعة التالية بعد انتظار 400 ثانية
   let earlyScore = "", earlyCur = "", earlyMax = "";
 
   /* ================== HELPERS ================== */
@@ -153,9 +149,13 @@
   }
 
   function checkForKnownState() {
-    const t = (document.body.innerText || "").toLowerCase();
+    const raw = document.body.innerText || "";
+    const t = raw.toLowerCase();
     if (t.includes("line is no longer provisioned")) return SCORE_NOT_PROVISIONED;
     if (t.includes("line is out of service")) return SCORE_OUT_OF_SERVICE;
+    // 🆕 "line id not found" (أو صيغ مشابهة) → نتعامل معاها فوراً بـ score 105 وسرعات فاضية
+    //     بدل انتظار الـ timeout (دقيقتين) اللى كان بيوقف فتح الصفحات ويمنع نزول الـ CSV.
+    if (/line\s*id\s*not\s*found|line\s*not\s*found|id\s*not\s*found|no\s*such\s*line/i.test(raw)) return SCORE_NOT_FOUND;
     return null;
   }
 
@@ -304,8 +304,6 @@
 
   function closeThisTab() {
     if (iAmTheDownloader) { console.log("🔒 Tab kept open for CSV."); showFinalMessage(); return; }
-    // 🆕 لو هذا التاب مسؤول عن إطلاق الدفعة التالية، نبقيه مفتوحاً حتى يُطلقها (بعد 400 ثانية) ثم يغلق نفسه
-    if (iAmBatchLauncher) { console.log("🔒 تاب مُطلِق الدفعة — يبقى مفتوحاً حتى تبدأ الدفعة التالية بعد 400 ثانية."); return; }
     setTimeout(() => { window.close(); }, DELAY_BEFORE_CLOSE_MS);
   }
   function showFinalMessage() {
@@ -347,65 +345,22 @@
     }
   });
 
-  function _iAmCurrentRun() {
-    // Returns true if our LINE_IDS still match what's saved in localStorage.
-    // When a new measurement starts, it saves new LINE_IDS → old stale tabs get a mismatch
-    // and must NOT touch INDEX_KEY or DOWNLOAD_DONE_KEY (cross-run pollution guard).
-    try {
-      const stored = JSON.parse(localStorage.getItem(SF_ACCOUNTS_KEY) || "[]");
-      if (stored.length !== LINE_IDS.length) return false;
-      for (let i = 0; i < LINE_IDS.length; i++) { if (stored[i] !== LINE_IDS[i]) return false; }
-      return true;
-    } catch (e) { return false; }
-  }
-
   function openNextLine() {
     const nextIndex = lineIndex + 1;
     if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); return; }
-    // 🛡️ Stale-tab guard: if a new measurement has started, don't corrupt its index.
-    if (!_iAmCurrentRun()) {
-      console.warn("⚠️ openNextLine: stale tab — LINE_IDS changed, skipping index update.");
-      return;
-    }
     localStorage.setItem(INDEX_KEY, String(nextIndex));
-
-    // 🆕 لو وصلنا حدّ دفعة (كل 50 خط) → استنى 400 ثانية قبل بدء الدفعة التالية،
-    //    وخلّى هذا التاب مفتوحاً (launcher) حتى يُطلقها فعلاً ثم يغلق نفسه.
-    const crossingBatch = (nextIndex % DZS_BATCH_SIZE === 0);
-    const delay = crossingBatch ? DZS_BATCH_PAUSE_MS : STAGGER_BETWEEN_TABS_MS;
-    if (crossingBatch) {
-      iAmBatchLauncher = true;
-      console.log("⏸️ نهاية دفعة " + DZS_BATCH_SIZE + " — استنى " + (DZS_BATCH_PAUSE_MS / 1000) +
-                  " ثانية ثم نبدأ الدفعة التالية من خط رقم " + nextIndex);
-    }
-
     const tryOpen = (n) => {
       const features = "width=1280,height=800,left=" + (50 + ((nextIndex*40)%400)) + ",top=" + (50 + ((nextIndex*40)%200));
       const w = window.open("/expresse/welcome", "_blank", features);
-      const opened = (w && !w.closed);
-      if (!opened && n < MAX_POPUP_ATTEMPTS) { setTimeout(() => tryOpen(n+1), POPUP_RETRY_DELAY_MS); return; }
-      // أُطلقت الدفعة التالية (أو استُنفدت المحاولات) — اسمح لهذا التاب بالإغلاق
-      if (crossingBatch) {
-        if (opened) console.log("▶️ بدأت الدفعة التالية من خط رقم " + nextIndex);
-        iAmBatchLauncher = false;
-        setTimeout(() => { try { window.close(); } catch (e) {} }, DELAY_BEFORE_CLOSE_MS);
-      }
+      if (!(w && !w.closed) && n < MAX_POPUP_ATTEMPTS) setTimeout(() => tryOpen(n+1), POPUP_RETRY_DELAY_MS);
     };
-    setTimeout(() => tryOpen(1), delay);
+    setTimeout(() => tryOpen(1), STAGGER_BETWEEN_TABS_MS);
   }
 
   function maybeDownloadFinal() {
     const results = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
     if (results.length < UNIQUE_LINE_COUNT) return;
     if (localStorage.getItem(DOWNLOAD_DONE_KEY) === "1") return;
-    // 🛡️ Stale-tab guard: only trigger download if we're still the current run.
-    // Without this, old tabs from a prior measurement fire maybeDownloadFinal when
-    // the new run's result count happens to reach the OLD UNIQUE_LINE_COUNT,
-    // setting DOWNLOAD_DONE_KEY prematurely and causing the new run to restart.
-    if (!_iAmCurrentRun()) {
-      console.warn("⚠️ maybeDownloadFinal: stale tab — LINE_IDS changed, skipping download trigger.");
-      return;
-    }
     localStorage.setItem(DOWNLOAD_DONE_KEY, "1");
     iAmTheDownloader = true;
     setTimeout(() => { downloadResults(); }, 1500);
