@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.5 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.5: لما "another real-time request is in progress" يظهر، يعيد طلب الـ real-time ويستنى لحد ما يفضى بدل ما يفشل بـ timeout 60ث ويسجّل 104 غلط (يحسّن الدقة والسرعة). + إغلاق تابات + عدّاد + OOM refresh.
-// @version      10.5.0
+// @name         DZS Expresse Continuous Flow v10.6 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.6: حد أقصى لعدد التابات المتزامنة (MAX_CONCURRENT=5) — كل فتح تاب يحترم الحد فيمنع امتلاء الذاكرة؛ والحالات الخاصة بقت تفتح التالى ثم تقفل (بدل الفتح الفورى اللى كان بيغرق الذاكرة). يقدر يقيس آلاف الخطوط من غير حد 500.
+// @version      10.6.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -104,6 +104,7 @@
   const WAIT_FOR_DISPATCH_SCORE = 1.9 * 60 * 1000;
   const EARLY_READ_MAX_MS = 40 * 1000;
   const STAGGER_BETWEEN_TABS_MS = 5000;
+  const MAX_CONCURRENT = 5; // أقصى عدد تابات قياس مفتوحة فى نفس الوقت (يمنع امتلاء الذاكرة) — قلّليه لو لسه فيه ضغط
   const POPUP_RETRY_DELAY_MS = 10000;
   const MAX_POPUP_ATTEMPTS = 5;
   const DELAY_BEFORE_CLOSE_MS = 2000;
@@ -394,18 +395,21 @@
     }
   });
 
-  // immediate=true: يفتح الخط التالى فوراً (للحالات الخاصة 101/103/105 لأن التاب بيتقفل بسرعة
-  //                  فلو استنينا STAGGER التاب بيتقفل قبل ما يفتح التالى وتتكسر السلسلة).
-  function openNextLine(immediate) {
+  // يفتح الخط التالى مع احترام حد التابات المتزامنة (MAX_CONCURRENT) — يمنع امتلاء الذاكرة
+  // وتعارضات الـ real-time. cb (اختيارى) تتنفّذ بعد ما يفتح فعلاً (تُستخدم لقفل التاب الحالى بعد الفتح).
+  function openNextLine(cb) {
     const nextIndex = lineIndex + 1;
-    if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); return; }
-    localStorage.setItem(INDEX_KEY, String(nextIndex));
-    const tryOpen = (n) => {
+    if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); if (cb) cb(); return; }
+    const attempt = () => {
+      // مزدحم؟ استنى لحد ما يقفل تاب قبل ما نفتح التالى (يمنع flood الذاكرة)
+      if (countOpenTabs() > MAX_CONCURRENT) { setTimeout(attempt, 1500); return; }
+      localStorage.setItem(INDEX_KEY, String(nextIndex));
       const features = "width=1280,height=800,left=" + (50 + ((nextIndex*40)%400)) + ",top=" + (50 + ((nextIndex*40)%200));
       const w = window.open("/expresse/welcome", "_blank", features);
-      if (!(w && !w.closed) && n < MAX_POPUP_ATTEMPTS) setTimeout(() => tryOpen(n+1), POPUP_RETRY_DELAY_MS);
+      if (!(w && !w.closed)) { setTimeout(attempt, POPUP_RETRY_DELAY_MS); return; } // popup فشل — أعد
+      if (cb) cb();
     };
-    setTimeout(() => tryOpen(1), immediate ? 0 : STAGGER_BETWEEN_TABS_MS);
+    setTimeout(attempt, STAGGER_BETWEEN_TABS_MS);
   }
 
   function maybeDownloadFinal() {
@@ -434,7 +438,9 @@
     if (processingComplete) return;
     processingComplete = true;
     saveResult(CURRENT_LINE_ID, score, "", "", "-");
-    openNextLine(true); maybeDownloadFinal(); closeThisTab(); // immediate=true: يفتح التالى قبل قفل التاب
+    maybeDownloadFinal();
+    if (iAmTheDownloader) { showFinalMessage(); return; } // آخر خط — يفضل مفتوح للـ CSV
+    openNextLine(closeThisTab); // افتح التالى (مع احترام الحد) ثم اقفل التاب ده — متتكسرش السلسلة ومتفيضش الذاكرة
   }
 
   window.DZS_test = findDispatchScore;
@@ -450,8 +456,7 @@
   setTimeout(function globalWatchdog() {
     if (processingComplete) return;
     console.warn("⏱️ Watchdog finalize for " + CURRENT_LINE_ID);
-    if (!yesClicked) openNextLine(true);
-    readScoreThenClose();
+    if (!yesClicked) { openNextLine(readScoreThenClose); } else { readScoreThenClose(); }
   }, WAIT_FOR_DISPATCH_SCORE + 60 * 1000);
 
   /* ================== AUTO LOGIN ================== */
