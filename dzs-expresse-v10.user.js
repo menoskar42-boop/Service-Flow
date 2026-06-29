@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.1 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.1: اكتشاف فورى لحالة "line id not found" → score 105 وسرعات فاضية بدون انتظار timeout (يمنع توقف فتح الصفحات وعدم نزول الـ CSV).
-// @version      10.1.0
+// @name         DZS Expresse Continuous Flow v10.2 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.2: حالات "Line is no longer provisioned" / "Not Provisioned" / "line id not found" تُسجَّل score 105 وسرعات فاضية فوراً بدون انتظار timeout.
+// @version      10.2.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -151,11 +151,13 @@
   function checkForKnownState() {
     const raw = document.body.innerText || "";
     const t = raw.toLowerCase();
-    if (t.includes("line is no longer provisioned")) return SCORE_NOT_PROVISIONED;
     if (t.includes("line is out of service")) return SCORE_OUT_OF_SERVICE;
-    // 🆕 "line id not found" (أو صيغ مشابهة) → نتعامل معاها فوراً بـ score 105 وسرعات فاضية
-    //     بدل انتظار الـ timeout (دقيقتين) اللى كان بيوقف فتح الصفحات ويمنع نزول الـ CSV.
-    if (/line\s*id\s*not\s*found|line\s*not\s*found|id\s*not\s*found|no\s*such\s*line/i.test(raw)) return SCORE_NOT_FOUND;
+    // 🆕 الحالات اللى مفيهاش قياس (تظهر بعد البحث مباشرة) → score 105 وسرعات فاضية،
+    //     ونتعامل معاها فوراً بدل انتظار الـ timeout (دقيقتين) اللى كان بيوقف فتح الصفحات.
+    //     • "Line is no longer provisioned in AXON Expresse." / "Not Provisioned"
+    //     • "line id not found" وصيغ مشابهة
+    if (t.includes("line is no longer provisioned") || t.includes("not provisioned") ||
+        /line\s*id\s*not\s*found|line\s*not\s*found|id\s*not\s*found|no\s*such\s*line/i.test(raw)) return SCORE_NOT_FOUND;
     return null;
   }
 
