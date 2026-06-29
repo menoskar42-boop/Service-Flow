@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/RefreshButton";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import {
@@ -314,6 +315,7 @@ export function RegularizedFaultsReport() {
         >
           <Radar className="w-4 h-4" /> قياس DZS
         </Button>
+        <RefreshButton />
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}
