@@ -1682,11 +1682,13 @@ export async function registerRoutes(
     const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
     const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
     // فلاتر اختيارية على الاسكور والسرعة — تحتاج c138Join دائماً (موجود فى الـ query)
+    // ملاحظة: current_speed مخزّنة كنص → لازم نحوّلها لرقم قبل المقارنة (وإلا تتعمل مقارنة نصية غلط)
+    const numCurSpeed = `NULLIF(regexp_replace(COALESCE(c138p.current_speed, ''), '[^0-9]', '', 'g'), '')::numeric`;
     const c138Parts: string[] = [];
     if (scoreGt !== "" && !isNaN(parseFloat(scoreGt))) { params.push(parseFloat(scoreGt)); c138Parts.push(`c138p.score > $${params.length}`); }
     if (scoreLt !== "" && !isNaN(parseFloat(scoreLt))) { params.push(parseFloat(scoreLt)); c138Parts.push(`c138p.score < $${params.length}`); }
-    if (speedGt !== "" && !isNaN(parseFloat(speedGt))) { params.push(parseFloat(speedGt)); c138Parts.push(`c138p.current_speed > $${params.length}`); }
-    if (speedLt !== "" && !isNaN(parseFloat(speedLt))) { params.push(parseFloat(speedLt)); c138Parts.push(`c138p.current_speed < $${params.length}`); }
+    if (speedGt !== "" && !isNaN(parseFloat(speedGt))) { params.push(parseFloat(speedGt)); c138Parts.push(`${numCurSpeed} > $${params.length}`); }
+    if (speedLt !== "" && !isNaN(parseFloat(speedLt))) { params.push(parseFloat(speedLt)); c138Parts.push(`${numCurSpeed} < $${params.length}`); }
     const c138Where = c138Parts.length > 0 ? " AND " + c138Parts.join(" AND ") : "";
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}`, params);
