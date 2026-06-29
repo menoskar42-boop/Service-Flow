@@ -2198,30 +2198,35 @@ export async function registerRoutes(
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const numSpeed = (col: string) =>
         `NULLIF(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), '')::numeric`;
+      // نبدأ من كل خطوط البكس (مش بس اللى لها أكونت) عشان نحسب كل الأعداد المطلوبة.
       const { rows } = await pool.query(
         `SELECT
            COALESCE(pl.central, '—')      AS "centralName",
            COALESCE(pl.cabin_number, '—') AS "cabinNumber",
            COALESCE(pl.box_number, '—')   AS "boxNumber",
            COUNT(DISTINCT pl.full_phone)::int AS "lineCount",
-           COUNT(DISTINCT CASE WHEN c138p.score IS NOT NULL THEN pl.full_phone END)::int AS "measuredCount",
+           COUNT(DISTINCT pl.full_phone) FILTER (WHERE la.full_phone IS NOT NULL)::int AS "withAccountCount",
+           COUNT(DISTINCT pl.full_phone) FILTER (WHERE c138p.score IS NOT NULL)::int   AS "measuredCount",
+           COUNT(DISTINCT pl.full_phone) FILTER (WHERE na.full_phone IS NOT NULL)::int AS "noAccountCount",
+           COUNT(DISTINCT pl.full_phone) FILTER (WHERE la.full_phone IS NULL AND na.full_phone IS NULL)::int AS "undeterminedCount",
            ROUND(AVG(CASE WHEN c138p.score <= 100 THEN c138p.score END)::numeric, 1) AS "avgScore",
            -- متوسط السرعات: نستبعد N/A (numSpeed→NULL) ونستبعد الخطوط اللى اسكورها > 100
            ROUND(AVG(CASE WHEN COALESCE(c138p.score, 0) <= 100 THEN ${numSpeed("c138p.current_speed")} END), 0) AS "avgCurrentSpeed",
            ROUND(AVG(CASE WHEN COALESCE(c138p.score, 0) <= 100 THEN ${numSpeed("c138p.max_speed")} END), 0)     AS "avgMaxSpeed",
            MIN(c138dates.oldest_at) AS "oldestMeasTime",
            MAX(c138dates.newest_at) AS "newestMeasTime"
-         FROM line_accounts la
-         JOIN phone_lines pl ON pl.full_phone = la.full_phone
+         FROM phone_lines pl
+         LEFT JOIN line_accounts la   ON la.full_phone = pl.full_phone
+         LEFT JOIN lines_no_account na ON na.full_phone = pl.full_phone
          LEFT JOIN LATERAL (
            SELECT c.score, c.current_speed, c.max_speed
-           FROM case_138 c WHERE c.full_phone = la.full_phone
+           FROM case_138 c WHERE c.full_phone = pl.full_phone
            ORDER BY c.id DESC LIMIT 1
          ) c138p ON true
          LEFT JOIN LATERAL (
            SELECT MIN(c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS oldest_at,
                   MAX(c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS newest_at
-           FROM case_138 c WHERE c.full_phone = la.full_phone
+           FROM case_138 c WHERE c.full_phone = pl.full_phone
          ) c138dates ON true
          ${where}
          GROUP BY pl.central, pl.cabin_number, pl.box_number

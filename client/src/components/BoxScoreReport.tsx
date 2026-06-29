@@ -6,9 +6,33 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, AlertCircle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+const buildDZSUrl = (accounts: string[]) =>
+  `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
+
+// يجيب أرقام الأكونت لخطوط نطاق معيّن ويفتح بوابة DZS لقياسها
+async function measureAccountsFor(params: URLSearchParams): Promise<number> {
+  params.set("page", "1"); params.set("limit", "20000");
+  const w = window.open("about:blank", "dzs_measure");
+  try {
+    const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
+    const json = await res.json();
+    const accounts = [...new Set(
+      ((json.data as any[]) ?? []).map((r) => (r.accountNo ?? "").toString().trim()).filter(Boolean),
+    )];
+    if (!accounts.length) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت لقياسها فى هذا النطاق"); return 0; }
+    if (w) w.location.href = buildDZSUrl(accounts);
+    return accounts.length;
+  } catch {
+    try { w?.close(); } catch {}
+    alert("تعذّر تحميل أرقام الأكونت للقياس");
+    return 0;
+  }
+}
 
 interface CabinetAvgRow {
   centralName: string;
@@ -28,12 +52,16 @@ interface BoxAvgRow {
   cabinNumber: string;
   boxNumber: string;
   lineCount: number;
+  withAccountCount: number;
   measuredCount: number;
+  noAccountCount: number;
+  undeterminedCount: number;
   avgScore: number | null;
   avgCurrentSpeed: number | null;
   avgMaxSpeed: number | null;
   oldestMeasTime: string | null;
   newestMeasTime: string | null;
+  hasOpenTicket?: boolean;
 }
 
 interface FilterOptions {
@@ -240,10 +268,44 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
     },
   });
 
+  // البكسيات اللى لها تذكرة عطل شبكة أرضية مفتوحة (من بروكسى CFM) — لتحديد عمود "تذكرة مفتوحة"
+  const { data: openTickets } = useQuery({
+    queryKey: ["/api/proxy/cfm-open-ticket-lines"],
+    queryFn: async () => {
+      const res = await fetch("/api/proxy/cfm-open-ticket-lines", { credentials: "include" });
+      if (!res.ok) return { lines: [] };
+      return res.json() as Promise<{ lines: { central: string; cabinNumber: string; boxNumber: string }[] }>;
+    },
+  });
+  const openTicketSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const l of openTickets?.lines ?? []) s.add(`${l.central}|${l.cabinNumber}|${l.boxNumber}`);
+    return s;
+  }, [openTickets]);
+
+  const [dzsBox, setDzsBox] = useState<string | null>(null);
+  const measureBox = async (r: BoxAvgRow) => {
+    setDzsBox(`${r.cabinNumber}/${r.boxNumber}`);
+    const p = new URLSearchParams();
+    p.set("central", r.centralName); p.set("cabin", r.cabinNumber); p.set("box", r.boxNumber);
+    await measureAccountsFor(p);
+    setTimeout(() => setDzsBox(null), 1500);
+  };
+  const measureAll = async () => {
+    const p = new URLSearchParams();
+    if (central) p.set("central", central);
+    if (cabin) p.set("cabin", cabin);
+    if (box) p.set("box", box);
+    if (!central && !cabin && !box) {
+      if (!confirm("هتفتح قياس DZS لكل الخطوط اللى لها أكونت فى كل السنترالات — متأكد؟")) return;
+    }
+    await measureAccountsFor(p);
+  };
+
   const sorted = useMemo(() => {
     if (!data?.data) return [];
     const threshold = minScore !== "" ? Number(minScore) : null;
-    let arr = [...data.data];
+    let arr = data.data.map((r) => ({ ...r, hasOpenTicket: openTicketSet.has(`${r.centralName}|${r.cabinNumber}|${r.boxNumber}`) }));
     if (threshold != null && !isNaN(threshold)) {
       arr = arr.filter((r) => r.avgScore != null && r.avgScore > threshold);
     }
@@ -267,7 +329,9 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
   const handleExportExcel = () => {
     const rows = sorted.map((r) => ({
       "السنترال": r.centralName, "رقم الكابينه": r.cabinNumber, "رقم البكس": r.boxNumber,
-      "عدد الخطوط": r.lineCount, "خطوط مقاسة": r.measuredCount,
+      "عدد الخطوط": r.lineCount, "لها أكونت": r.withAccountCount, "خطوط مقاسة": r.measuredCount,
+      "بدون أكونت": r.noAccountCount, "لم يُحدَّد": r.undeterminedCount,
+      "تذكرة أرضية مفتوحة": r.hasOpenTicket ? "نعم" : "لا",
       "متوسط الاسكور": r.measuredCount > 0 ? r.avgScore : "لا توجد خطوط مقاسة",
       "متوسط السرعة الحالية (Kbps)": r.measuredCount > 0 ? r.avgCurrentSpeed : "",
       "متوسط أقصى سرعة (Kbps)": r.measuredCount > 0 ? r.avgMaxSpeed : "",
@@ -282,13 +346,15 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
   const handleExportPDF = () => {
     printTablePDF({
       title: "متوسط قياسات البكسيات",
-      columns: ["السنترال", "الكابينه", "البكس", "الخطوط", "مقاسة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
+      columns: ["السنترال", "الكابينه", "البكس", "الخطوط", "لها أكونت", "مقاسة", "بدون أكونت", "لم يُحدَّد", "تذكرة أرضية", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
       rows: sorted.map((r) =>
         r.measuredCount > 0
-          ? [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, r.measuredCount,
+          ? [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, r.withAccountCount, r.measuredCount,
+             r.noAccountCount, r.undeterminedCount, r.hasOpenTicket ? "نعم" : "لا",
              r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—",
              fmtDt(r.oldestMeasTime), fmtDt(r.newestMeasTime)]
-          : [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, 0,
+          : [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, r.withAccountCount, 0,
+             r.noAccountCount, r.undeterminedCount, r.hasOpenTicket ? "نعم" : "لا",
              "لا توجد خطوط مقاسة", "", "", "لا يوجد", "لا يوجد"],
       ),
     });
@@ -308,6 +374,9 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
             disabled={!cabin}
             className="w-36 text-sm"
           />
+          <Button variant="outline" size="sm" onClick={measureAll} className="text-blue-700 border-blue-200 gap-1">
+            <Radar className="w-4 h-4" /> قياس الكل
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200">تصدير Excel</Button>
           <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-red-700 border-red-200">تصدير PDF</Button>
         </div>
@@ -320,10 +389,14 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
             <TableHeader className="bg-muted/50">
               <TableRow>
                 <H label="السنترال" k="centralName" /><H label="رقم الكابينه" k="cabinNumber" />
-                <H label="رقم البكس" k="boxNumber" /><H label="الخطوط" k="lineCount" />
-                <H label="مقاسة" k="measuredCount" /><H label="متوسط الاسكور" k="avgScore" />
+                <H label="رقم البكس" k="boxNumber" /><H label="عدد الخطوط" k="lineCount" />
+                <H label="لها أكونت" k="withAccountCount" /><H label="مقاسة" k="measuredCount" />
+                <H label="بدون أكونت" k="noAccountCount" /><H label="لم يُحدَّد" k="undeterminedCount" />
+                <TableHead className="text-right font-bold whitespace-nowrap">تذكرة أرضية</TableHead>
+                <H label="متوسط الاسكور" k="avgScore" />
                 <H label="متوسط السرعة الحالية" k="avgCurrentSpeed" /><H label="متوسط أقصى سرعة" k="avgMaxSpeed" />
                 <H label="أقدم تاريخ قياس" k="oldestMeasTime" /><H label="أحدث تاريخ قياس" k="newestMeasTime" />
+                <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -333,7 +406,15 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                   <TableCell className="font-medium">{r.cabinNumber}</TableCell>
                   <TableCell className="font-medium">{r.boxNumber}</TableCell>
                   <TableCell>{r.lineCount}</TableCell>
+                  <TableCell className="text-green-700 font-medium">{r.withAccountCount}</TableCell>
                   <TableCell>{r.measuredCount}</TableCell>
+                  <TableCell className="text-orange-600">{r.noAccountCount}</TableCell>
+                  <TableCell className="text-gray-500">{r.undeterminedCount}</TableCell>
+                  <TableCell>
+                    {r.hasOpenTicket
+                      ? <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 font-semibold">نعم</span>
+                      : <span className="text-xs text-gray-400">لا</span>}
+                  </TableCell>
                   {r.measuredCount > 0 ? (
                     <>
                       <TableCell>{scoreBadge(r.avgScore)}</TableCell>
@@ -345,10 +426,21 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                   )}
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.oldestMeasTime)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.newestMeasTime)}</TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() => measureBox(r)}
+                      disabled={r.withAccountCount === 0}
+                      title={r.withAccountCount > 0 ? "قياس DZS لكل خطوط البكس اللى لها أكونت" : "لا توجد خطوط لها أكونت"}
+                      className="text-blue-600 hover:text-blue-800 disabled:opacity-30"
+                    >
+                      {dzsBox === `${r.cabinNumber}/${r.boxNumber}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />}
+                    </button>
+                  </TableCell>
                 </TableRow>
               ))}
               {sorted.length === 0 && (
-                <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">لا توجد بيانات</TableCell></TableRow>
+                <TableRow><TableCell colSpan={15} className="text-center text-muted-foreground py-8">لا توجد بيانات</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
