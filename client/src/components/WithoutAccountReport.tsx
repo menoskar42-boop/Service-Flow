@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2, Save, CalendarClock, SaveAll, Ban, Upload, IdCard } from "lucide-react";
 import { openCustomer360 } from "@/lib/customer360";
+import { RefreshButton } from "@/components/RefreshButton";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -395,6 +396,7 @@ export function WithoutAccountReport() {
                 </Button>
               </>
             )}
+            <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
