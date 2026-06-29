@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -75,6 +75,7 @@ export function RepetitionStatsReport() {
   const [repDetailOpen, setRepDetailOpen]     = useState(false);
   const [repDetailData, setRepDetailData]     = useState<RepDetailRow[] | null>(null);
   const [repDetailLoading, setRepDetailLoading] = useState(false);
+  const [repDetailTech, setRepDetailTech]     = useState(""); // فلتر باسم الفنى
   const [editingTech, setEditingTech]         = useState<string | null>(null); // complainNo
   const [editTechDraft, setEditTechDraft]     = useState("");
   const [savingTech, setSavingTech]           = useState(false);
@@ -291,9 +292,27 @@ export function RepetitionStatsReport() {
     setRepDetailLoading(false);
   };
 
+  // قائمة أسماء الفنيين الظاهرين فى التفصيلة (فنى الإغلاق + فنى المنطقة) للفلتر
+  const repDetailTechOptions = useMemo(() => {
+    if (!repDetailData) return [];
+    const s = new Set<string>();
+    for (const r of repDetailData) {
+      if (r.closeByName && r.closeByName !== "غير معروف") s.add(r.closeByName);
+      if (r.areaTechName && r.areaTechName !== "غير معروف") s.add(r.areaTechName);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, "ar"));
+  }, [repDetailData]);
+
+  // الصفوف بعد تطبيق فلتر اسم الفنى (يطابق فنى الإغلاق أو فنى المنطقة)
+  const repDetailFiltered = useMemo(() => {
+    if (!repDetailData) return [];
+    if (!repDetailTech) return repDetailData;
+    return repDetailData.filter((r) => r.closeByName === repDetailTech || r.areaTechName === repDetailTech);
+  }, [repDetailData, repDetailTech]);
+
   const exportRepDetailExcel = () => {
-    if (!repDetailData) return;
-    const ws = XLSX.utils.json_to_sheet(repDetailData.map((r, i) => ({
+    if (!repDetailFiltered.length) return;
+    const ws = XLSX.utils.json_to_sheet(repDetailFiltered.map((r, i) => ({
       "#": i + 1,
       "رقم التليفون": r.phoneNumber,
       "السنترال": r.centralName,
@@ -518,19 +537,29 @@ export function RepetitionStatsReport() {
               تفصيل الخطوط المكررة — {activeTab === "combined" ? "إجمالية" : activeTab === "closed" ? "مغلقة" : "مفتوحة"} — {dateFrom} إلى {dateTo}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
             <span className="text-xs text-muted-foreground">
               {repDetailLoading
                 ? "جارى التحميل..."
                 : repDetailData
-                  ? `${new Set(repDetailData.map(r => r.phoneNumber)).size} خط مكرر — ${repDetailData.length} شكوى`
+                  ? `${new Set(repDetailFiltered.map(r => r.phoneNumber)).size} خط مكرر — ${repDetailFiltered.length} شكوى`
                   : ""}
             </span>
-            <Button variant="outline" size="sm" onClick={exportRepDetailExcel}
-              disabled={!repDetailData || repDetailData.length === 0}
-              className="text-green-700 border-green-200 gap-1 text-xs">
-              <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
-            </Button>
+            <div className="flex items-center gap-2">
+              <SearchableCombobox
+                options={repDetailTechOptions}
+                value={repDetailTech}
+                onChange={setRepDetailTech}
+                placeholder="كل الفنيين"
+                searchPlaceholder="ابحث باسم الفنى..."
+                className="w-44 text-xs"
+              />
+              <Button variant="outline" size="sm" onClick={exportRepDetailExcel}
+                disabled={!repDetailFiltered.length}
+                className="text-green-700 border-green-200 gap-1 text-xs">
+                <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
+              </Button>
+            </div>
           </div>
           {repDetailLoading && (
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-600" /></div>
@@ -557,9 +586,9 @@ export function RepetitionStatsReport() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {repDetailData.map((r, i) => (
+                  {repDetailFiltered.map((r, i) => (
                     <TableRow key={`${r.complainNo}-${i}`}
-                      className={`hover:bg-purple-50 ${i > 0 && repDetailData[i-1].phoneNumber === r.phoneNumber ? "border-t-0" : "border-t-2 border-purple-200"}`}>
+                      className={`hover:bg-purple-50 ${i > 0 && repDetailFiltered[i-1].phoneNumber === r.phoneNumber ? "border-t-0" : "border-t-2 border-purple-200"}`}>
                       <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="font-bold text-purple-900">{r.phoneNumber}</TableCell>
                       <TableCell>{r.centralName}</TableCell>
@@ -619,7 +648,7 @@ export function RepetitionStatsReport() {
                       <TableCell>{r.areaTechName}</TableCell>
                     </TableRow>
                   ))}
-                  {repDetailData.length === 0 && (
+                  {repDetailFiltered.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={14} className="text-center text-muted-foreground py-6">لا توجد خطوط مكررة</TableCell>
                     </TableRow>
