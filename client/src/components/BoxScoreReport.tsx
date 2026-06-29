@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/RefreshButton";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -554,6 +555,7 @@ export function BoxScoreReport() {
               className="w-36 border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right bg-white"
               dir="rtl"
             />
+            <RefreshButton />
           </div>
         </div>
 

@@ -18,6 +18,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { RefreshButton } from "@/components/RefreshButton";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
@@ -409,6 +410,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
             </Button>
+            <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
