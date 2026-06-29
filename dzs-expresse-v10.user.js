@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.3.1 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3.1: تطابق أوسع لحالة "no longer provisioned/provisional/not provisioned" → 103 (تتسجّل فوراً ويفتح الخط التالى أوتوماتيك). رقيب مستمر للحالات المعروفة فى كل المراحل (103/101/105).
-// @version      10.3.1
+// @name         DZS Expresse Continuous Flow v10.3.2 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3.2: إصلاح تكسّر السلسلة فى الحالات الخاصة (101/103/105) — كان التاب بيتقفل (2ث) قبل ما يفتح الخط التالى (5ث)؛ دلوقتى بيفتح التالى فوراً قبل القفل. + تطابق أوسع لـ provisioned/provisional.
+// @version      10.3.2
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -345,7 +345,9 @@
     }
   });
 
-  function openNextLine() {
+  // immediate=true: يفتح الخط التالى فوراً (للحالات الخاصة 101/103/105 لأن التاب بيتقفل بسرعة
+  //                  فلو استنينا STAGGER التاب بيتقفل قبل ما يفتح التالى وتتكسر السلسلة).
+  function openNextLine(immediate) {
     const nextIndex = lineIndex + 1;
     if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); return; }
     localStorage.setItem(INDEX_KEY, String(nextIndex));
@@ -354,7 +356,7 @@
       const w = window.open("/expresse/welcome", "_blank", features);
       if (!(w && !w.closed) && n < MAX_POPUP_ATTEMPTS) setTimeout(() => tryOpen(n+1), POPUP_RETRY_DELAY_MS);
     };
-    setTimeout(() => tryOpen(1), STAGGER_BETWEEN_TABS_MS);
+    setTimeout(() => tryOpen(1), immediate ? 0 : STAGGER_BETWEEN_TABS_MS);
   }
 
   function maybeDownloadFinal() {
@@ -383,7 +385,7 @@
     if (processingComplete) return;
     processingComplete = true;
     saveResult(CURRENT_LINE_ID, score, "", "", "-");
-    openNextLine(); maybeDownloadFinal(); closeThisTab();
+    openNextLine(true); maybeDownloadFinal(); closeThisTab(); // immediate=true: يفتح التالى قبل قفل التاب
   }
 
   window.DZS_test = findDispatchScore;
@@ -399,7 +401,7 @@
   setTimeout(function globalWatchdog() {
     if (processingComplete) return;
     console.warn("⏱️ Watchdog finalize for " + CURRENT_LINE_ID);
-    if (!yesClicked) openNextLine();
+    if (!yesClicked) openNextLine(true);
     readScoreThenClose();
   }, WAIT_FOR_DISPATCH_SCORE + 60 * 1000);
 
