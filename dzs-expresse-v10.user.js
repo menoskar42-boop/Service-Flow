@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.3.2 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.3.2: إصلاح تكسّر السلسلة فى الحالات الخاصة (101/103/105) — كان التاب بيتقفل (2ث) قبل ما يفتح الخط التالى (5ث)؛ دلوقتى بيفتح التالى فوراً قبل القفل. + تطابق أوسع لـ provisioned/provisional.
-// @version      10.3.2
+// @name         DZS Expresse Continuous Flow v10.4 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.4: إصلاح إغلاق التابات (حيلة window.open '_self' لتفادى منع المتصفح بعد التنقّل) — يمنع امتلاء الذاكرة/Out of Memory. + عدّاد التابات المفتوحة جنب العدّاد + Auto-refresh لصفحة Out of Memory.
+// @version      10.4.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -10,6 +10,47 @@
 
 (function () {
   "use strict";
+
+  /* ===== AUTO-REFRESH صفحة "Out of Memory" ===== */
+  // لو المتصفح طلع "Not enough memory to open this page" نعمل reload أوتوماتيك بدل اليدوى.
+  (function autoRefreshOOM() {
+    const txt = (document.body && document.body.innerText || "");
+    if (/not enough memory|out of memory/i.test(txt)) {
+      console.warn("🧠 Out of Memory page — auto refreshing…");
+      setTimeout(() => { try { location.reload(); } catch (e) {} }, 2000);
+    }
+  })();
+
+  /* ===== تتبّع عدد التابات المفتوحة (heartbeat فى localStorage) ===== */
+  const OPEN_TABS_KEY = "DZS_OPEN_TABS";
+  const MY_TAB_ID = "t" + Math.random().toString(36).slice(2) + "_" + new Date().getTime();
+  function heartbeat() {
+    try {
+      const m = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || "{}");
+      const now = new Date().getTime();
+      m[MY_TAB_ID] = now;
+      for (const k in m) if (now - m[k] > 8000) delete m[k]; // نظّف القديمة
+      localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(m));
+    } catch (e) {}
+  }
+  function countOpenTabs() {
+    try {
+      const m = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || "{}");
+      const now = new Date().getTime();
+      return Object.keys(m).filter(k => now - m[k] < 8000).length;
+    } catch (e) { return 0; }
+  }
+  function removeMyTab() {
+    try {
+      const m = JSON.parse(localStorage.getItem(OPEN_TABS_KEY) || "{}");
+      delete m[MY_TAB_ID];
+      localStorage.setItem(OPEN_TABS_KEY, JSON.stringify(m));
+    } catch (e) {}
+  }
+  heartbeat();
+  setInterval(heartbeat, 2000);
+  window.addEventListener("beforeunload", removeMyTab);
+  window.addEventListener("unload", removeMyTab);
 
   /* ================== CONFIG ================== */
   const USER = "xceed_lob";
@@ -304,7 +345,14 @@
 
   function closeThisTab() {
     if (iAmTheDownloader) { console.log("🔒 Tab kept open for CSV."); showFinalMessage(); return; }
-    setTimeout(() => { window.close(); }, DELAY_BEFORE_CLOSE_MS);
+    removeMyTab();
+    setTimeout(() => {
+      // المتصفح بيرفض window.close() على التابات اللى اتنقّلت (welcome→clearview)؛
+      // نعمل reset للنافذة الأول عشان يسمح بالإغلاق (حيلة معروفة) ثم نقفل.
+      try { window.open("", "_self"); } catch (e) {}
+      try { window.close(); } catch (e) {}
+      try { window.top.close(); } catch (e) {}
+    }, DELAY_BEFORE_CLOSE_MS);
   }
   function showFinalMessage() {
     try {
@@ -333,7 +381,8 @@
     const btn = document.getElementById("dzs-download-btn"); if (!btn) return;
     const results = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
     const pct = Math.round((results.length / UNIQUE_LINE_COUNT) * 100);
-    btn.innerHTML = "📥 تنزيل CSV (" + results.length + "/" + UNIQUE_LINE_COUNT + " — " + pct + "%)";
+    btn.innerHTML = "📥 تنزيل CSV (" + results.length + "/" + UNIQUE_LINE_COUNT + " — " + pct + "%)"
+                  + "<br><span style='font-size:12px;font-weight:normal'>🗂️ " + countOpenTabs() + " تاب مفتوح</span>";
     if (results.length >= UNIQUE_LINE_COUNT) btn.style.background = "#2e7d32";
   }
   (function ensureButton(){ document.body ? injectDownloadButton() : setTimeout(ensureButton,200); })();
