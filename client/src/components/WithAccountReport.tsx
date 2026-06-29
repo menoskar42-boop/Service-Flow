@@ -212,6 +212,11 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (accountQ.trim()) params.set("accountQ", accountQ.trim());
+      // 🆕 نطبّق نفس فلاتر الاسكور/السرعة المكتوبة فى الشاشة على القياس
+      if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+      if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+      if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+      if (speedMax.trim()) params.set("speedLt", speedMax.trim());
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
