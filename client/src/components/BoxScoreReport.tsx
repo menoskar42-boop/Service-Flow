@@ -6,9 +6,10 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, AlertCircle } from "lucide-react";
+import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, Wrench } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { MaintBoxDetail, maintStatusBadge, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -283,6 +284,24 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
     return s;
   }, [openTickets]);
 
+  // بيانات الصيانة من الموقع المنفصل (مطابقة بالسنترال|الكابينة|البكس بعد إزالة المسافات)
+  const mkey = (c: string, cab: string, b: string) =>
+    `${(c ?? "").trim()}|${String(cab ?? "").replace(/\s/g, "")}|${String(b ?? "").replace(/\s/g, "").trim()}`;
+  const { data: maintData } = useQuery({
+    queryKey: ["/api/proxy/maintenance-comprehensive"],
+    queryFn: async () => {
+      const res = await fetch("/api/proxy/maintenance-comprehensive", { credentials: "include" });
+      if (!res.ok) return { data: [] as MaintRow[] };
+      return res.json() as Promise<{ data: MaintRow[] }>;
+    },
+  });
+  const maintMap = useMemo(() => {
+    const m = new Map<string, MaintRow>();
+    for (const r of maintData?.data ?? []) m.set(mkey(r.central, r.cabin_number, r.box_number), r);
+    return m;
+  }, [maintData]);
+  const [maintDetail, setMaintDetail] = useState<MaintRow | null>(null);
+
   const [dzsBox, setDzsBox] = useState<string | null>(null);
   const measureBox = async (r: BoxAvgRow) => {
     setDzsBox(`${r.cabinNumber}/${r.boxNumber}`);
@@ -393,6 +412,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                 <H label="لها أكونت" k="withAccountCount" /><H label="مقاسة" k="measuredCount" />
                 <H label="بدون أكونت" k="noAccountCount" /><H label="لم يُحدَّد" k="undeterminedCount" />
                 <TableHead className="text-right font-bold whitespace-nowrap">تذكرة أرضية</TableHead>
+                <TableHead className="text-right font-bold whitespace-nowrap">حالة الصيانة</TableHead>
                 <H label="متوسط الاسكور" k="avgScore" />
                 <H label="متوسط السرعة الحالية" k="avgCurrentSpeed" /><H label="متوسط أقصى سرعة" k="avgMaxSpeed" />
                 <H label="أقدم تاريخ قياس" k="oldestMeasTime" /><H label="أحدث تاريخ قياس" k="newestMeasTime" />
@@ -414,6 +434,25 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                     {r.hasOpenTicket
                       ? <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 font-semibold">نعم</span>
                       : <span className="text-xs text-gray-400">لا</span>}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {(() => {
+                      const m = maintMap.get(mkey(r.centralName, r.cabinNumber, r.boxNumber));
+                      if (!m) return <span className="text-xs text-gray-400">—</span>;
+                      return (
+                        <span className="inline-flex items-center gap-1">
+                          {maintStatusBadge(m.maintenance_status, m.maintenance_status_ar)}
+                          <button
+                            type="button"
+                            onClick={() => setMaintDetail(m)}
+                            title="تفاصيل ما تم فى الصيانة"
+                            className="text-purple-600 hover:text-purple-800"
+                          >
+                            <Wrench className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      );
+                    })()}
                   </TableCell>
                   {r.measuredCount > 0 ? (
                     <>
@@ -440,12 +479,13 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                 </TableRow>
               ))}
               {sorted.length === 0 && (
-                <TableRow><TableCell colSpan={15} className="text-center text-muted-foreground py-8">لا توجد بيانات</TableCell></TableRow>
+                <TableRow><TableCell colSpan={16} className="text-center text-muted-foreground py-8">لا توجد بيانات</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
         </div>
       )}
+      {maintDetail && <MaintBoxDetail row={maintDetail} onClose={() => setMaintDetail(null)} />}
     </>
   );
 }
