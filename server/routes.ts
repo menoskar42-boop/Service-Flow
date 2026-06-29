@@ -5846,7 +5846,11 @@ export async function registerRoutes(
         base.set("page", String(page));
         const upstream = await maintFetch(`/api/reports/comprehensive?${base}`);
         if (!upstream.ok) {
-          return res.status(upstream.status).json({ message: `Maintenance API returned ${upstream.status}` });
+          // نقرأ نص الخطأ من موقع الصيانة عشان التشخيص (يظهر سبب الـ 500 الحقيقى)
+          const body = await upstream.text().catch(() => "");
+          return res.status(502).json({
+            message: `Maintenance API returned ${upstream.status}: ${body.slice(0, 400) || "(no body)"}`,
+          });
         }
         const j: any = await upstream.json();
         all = all.concat(Array.isArray(j?.data) ? j.data : []);
