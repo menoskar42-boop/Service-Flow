@@ -7,6 +7,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAppActive } from "@/hooks/use-app-active";
 import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -395,10 +396,11 @@ export function FileUploadSection() {
   // bucket for tables that keep 3 snapshots: تاريخي / بداية اليوم / حالي
   const [bucket, setBucket] = useState<"historical" | "sod" | "current">("historical");
 
+  const active = useAppActive(); // يوقف الـ polling لما المستخدم خامل/التاب مخفى (توفير)
   const { data: uploadTimes = {} } = useQuery<Record<string, string | null>>({
     queryKey: ["/api/upload-times"],
     queryFn: () => fetch("/api/upload-times", { credentials: "include" }).then(r => r.json()),
-    refetchInterval: 60000,
+    refetchInterval: active ? 60000 : false,
     staleTime: 30000,
   });
   const ut = (ep: string) => uploadTimes[ep];

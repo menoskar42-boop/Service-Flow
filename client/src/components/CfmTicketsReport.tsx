@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { getAppActive } from "@/hooks/use-app-active";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -271,6 +272,7 @@ export function CfmTicketsReport() {
 
   useEffect(() => {
     const id = setInterval(() => {
+      if (!getAppActive()) return; // خامل/التاب مخفى → وقّف التحديث التلقائى (توفير)
       setCountdown((c) => {
         if (c <= 1) { fetchData(); return REFRESH_INTERVAL; }
         return c - 1;
