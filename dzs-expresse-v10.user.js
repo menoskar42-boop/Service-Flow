@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
 // @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.7: إعادة محاولة تلقائية لطلب الـ real-time لو سيرفر AXON رجّع "Request timed-out while in the Resource Allocator queue / data collection issue" (لحد MAX_RT_ATTEMPTS مرات) — الخط سليم لكن السيرفر زحم، فبدل ما نسجّل قراية غلط نعيد الطلب؛ والـ watchdog بقى retry-aware. v10.6: حد أقصى لعدد التابات المتزامنة (MAX_CONCURRENT=5) يمنع امتلاء الذاكرة.
-// @version      10.7.0
+// @version      10.7.1
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -104,7 +104,9 @@
   const WAIT_FOR_DISPATCH_SCORE = 1.9 * 60 * 1000;
   const EARLY_READ_MAX_MS = 40 * 1000;
   const STAGGER_BETWEEN_TABS_MS = 5000;
-  const MAX_CONCURRENT = 5; // أقصى عدد تابات قياس مفتوحة فى نفس الوقت (يمنع امتلاء الذاكرة) — قلّليه لو لسه فيه ضغط
+  const MAX_CONCURRENT = 2; // AXON يسمح بـ real-time واحد لكل جلسة دخول، فالتوازي العالي بيعمل تصادمات
+                            // ("another real-time request in progress" / "Resource Allocator queue timed out").
+                            // ابدأ بـ 2؛ لو لسه الرسالة بتظهر كتير نزّلها لـ 1.
   const POPUP_RETRY_DELAY_MS = 10000;
   const MAX_POPUP_ATTEMPTS = 5;
   const DELAY_BEFORE_CLOSE_MS = 2000;
@@ -511,8 +513,8 @@
       const ks = checkForKnownState(); if (ks !== null) { clearInterval(confirmTimer); handleSpecialAndClose(ks); return; }
       // الـ real-time مشغول بطلب تانى → نعيد المحاولة ونستنى لحد ما يفضى (بدل فشل بـ timeout 60ث وتسجيل 104 غلط)
       if (RA_BUSY_RE.test(document.body.innerText || "")) {
-        if (cf % 8 === 0) { const rb = findRealTimeButton(); if (rb) rb.click(); }
-        if (cf < MAX_CF * 3) return;
+        if (cf % 8 === 0) { const rb = findRealTimeButton(); if (rb) rb.click(); } // إعادة الطلب كل ~6 ثوانى
+        if (cf < MAX_CF * 5) return; // استنى لحد ~5 دقايق لما يكون مشغول (تاب تانى ماسك الـ slot) قبل ما نستسلم
       }
       const dialog = document.querySelector("div[id*='rtDialog']");
       if (!(dialog && dialog.style.display !== "none")) { if (cf >= MAX_CF) { clearInterval(confirmTimer); handleSpecialAndClose(SCORE_TIMEOUT); } return; }
