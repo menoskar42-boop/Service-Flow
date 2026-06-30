@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.9: السبب الجذري لتصادمات "busy" = الـ pipeline كان يفتح التاب التالى وقت ضغط Yes بينما التاب الحالى لسه بيجمّع real-time (AXON يسمح بـ real-time واحد لكل جلسة دخول). الحل: نفتح التالى وقت الإغلاق فقط (بعد ما AXON يفك القفل) = مفيش تداخل، مفيش busy، مفيش تعليق على Yes، مفيش تاب ثالث. v10.8: إصلاح deadlock. v10.7: retry على فشل الـ Resource Allocator.
-// @version      10.9.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.10.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -201,6 +201,8 @@
     // 103 — أوسع تطابق: "no longer provisioned/provisional/provision" أو "Not Provisioned"
     if (/no\s*longer\s*provision|not\s*provision/i.test(raw)) return SCORE_NOT_PROVISIONED;
     if (t.includes("line is out of service")) return SCORE_OUT_OF_SERVICE;          // 101
+    // 🆕 "POP_O/PerTone data is missing ... past 7 days" → تعذّر التحليل لنقص بيانات → نعتبرها 101 ونكمّل بدون real-time
+    if (/pop[_\s/]*o[_\s/]*\s*\/?\s*per[\s-]*tone|per[\s-]*tone\s*data\s*is\s*missing|data\s*is\s*missing\s*for\s*the\s*line\s*in\s*past\s*7\s*days/i.test(raw)) return SCORE_OUT_OF_SERVICE;
     // "line id not found" (أو صيغ مشابهة) → score 105 وسرعات فاضية، تتعالج فوراً بدون انتظار timeout
     if (/line\s*id\s*not\s*found|line\s*not\s*found|id\s*not\s*found|no\s*such\s*line/i.test(raw)) return SCORE_NOT_FOUND;
     return null;
@@ -290,6 +292,24 @@
     if (!isBadReading(m)) earlyMax = m;
     if (!isBadReading(s)) earlyScore = s;
     return !isBadReading(earlyCur) || !isBadReading(earlyMax);
+  }
+
+  // 🆕 هل القياس لسه شغّال (AXON بيجمّع البيانات)؟
+  function isCollecting() {
+    const t = (document.body.innerText || "").toLowerCase();
+    return /collecting real ?time data|real-?time request running|diagnostic is in progress|please wait while diagnostic|request is in progress/.test(t);
+  }
+  // 🆕 هل القياس خلص فعلاً؟ (نتيجة ظهرت) — عشان نقفل فوراً بدل انتظار 90ث ثابتة
+  function measurementComplete() {
+    if (checkForKnownState() !== null) return true;             // حالة خاصة (101/103/105/POP_O)
+    if (isCollecting()) return false;                           // لسه بيجمّع
+    const t = (document.body.innerText || "").toLowerCase();
+    if (/physical-?layer issue is detected|no dsl physical-?layer issue/.test(t)) return true; // بانر النتيجة
+    if (/latest real-?time request/.test(t) && /successful/.test(t)) return true;              // الطلب نجح
+    const ds = findDispatchScore();
+    if (ds && /^[0-9]/.test(ds) && ds !== SCORE_NO_FIELD) return true;                         // dispatch score رقمى حقيقى
+    if (!isBadReading(findSynchRateDS()) || !isBadReading(findMaxAchievableDS())) return true;  // السرعات ظهرت
+    return false;
   }
 
   // 🆕 رفع نتيجة لشيت 138 فى Service-Flow
@@ -471,21 +491,37 @@
   const MAX_RT_ATTEMPTS = 3;                  // عدد محاولات الـ real-time قبل ما نستسلم
   const RESOURCE_WATCH_DELAY_MS = 30 * 1000;  // نبدأ نراقب فشل الـ Resource Allocator بعد 30ث من yes (نسيب الطلب يخلص)
   const RA_BUSY_RE = /another\s*real-?time\s*request\s*is\s*in\s*progress|real-?time\s*request\s*currently\s*unavailable/i;
-  const RA_FAIL_RE = /timed-?out\s*while\s*in\s*the\s*resource\s*allocator\s*queue|problem\s*exists\s*with\s*the\s*collected\s*data|data\s*collection\s*issue|no\s*action\s*can\s*be\s*recommended/i;
+  // فقط timeout طابور الـ Resource Allocator (transient) → retry. الرسائل العامة (POP_O/data missing)
+  // بتتعالج كـ 101 فى checkForKnownState، فمنحطّهاش هنا عشان ما نعملّهاش retry بالغلط.
+  const RA_FAIL_RE = /timed-?out\s*while\s*in\s*the\s*resource\s*allocator\s*queue/i;
   let rtAttempt = 0, watchdogFires = 0, finalReadTimer = null, resourceWatcher = null;
 
-  // بعد ضغط yes: اقرأ بدرى + جدول القراية النهائية. ⚠️ مفيش فتح للتالى هنا!
-  // فتح التالى بقى وقت الإغلاق فقط (بعد ما AXON يخلّص الـ real-time ويفك القفل) — عشان
-  // التاب التالى ما يطلبش real-time والحالى لسه بيجمّع (ده كان بيعمل تصادم "busy").
+  // بعد ضغط yes: نراقب اكتمال القياس ونقرا أول ما يخلّص (مش انتظار 90ث ثابتة).
+  // ⚠️ مفيش فتح للتالى هنا — التالى بيتفتح وقت الإغلاق فقط (بعد ما AXON يفك القفل).
   function afterYesClicked() {
-    const t0 = Date.now();
+    const startedAt = Date.now();
+    // التقاط مستمر لأحدث السرعات/السكور طول ما القياس شغّال
     const earlyTimer = setInterval(() => {
       if (processingComplete) { clearInterval(earlyTimer); return; }
-      if (captureEarly()) { clearInterval(earlyTimer); return; }
-      if (Date.now() - t0 >= EARLY_READ_MAX_MS) clearInterval(earlyTimer);
+      captureEarly();
+      if (Date.now() - startedAt >= EARLY_READ_MAX_MS) clearInterval(earlyTimer);
     }, 3000);
-    if (finalReadTimer) clearTimeout(finalReadTimer);
-    finalReadTimer = setTimeout(() => readScoreThenClose(), WAIT_FOR_DISPATCH_SCORE);
+    // مراقب الاكتمال: أول ما النتيجة تظهر نقرا ونقفل ونفتح التالى — توفير الـ 90 ثانية
+    if (finalReadTimer) clearInterval(finalReadTimer);
+    finalReadTimer = setInterval(() => {
+      if (processingComplete) { clearInterval(finalReadTimer); return; }
+      const ks = checkForKnownState();
+      if (ks !== null) { clearInterval(finalReadTimer); handleSpecialAndClose(ks); return; }
+      // نستنى 12ث على الأقل قبل ما نقبل "اكتمل" (نتجنّب قراءة صفحة قديمة قبل ما القياس يبدأ فعلاً)
+      if (Date.now() - startedAt >= 12000 && measurementComplete()) {
+        clearInterval(finalReadTimer);
+        captureEarly();
+        setTimeout(() => readScoreThenClose(), 2000); // ثانيتين بعد الاكتمال لتثبيت القراية ثم قفل + فتح التالى
+        return;
+      }
+      // أمان: لو طوّل عن الحد الأقصى نقرا اللى موجود ونكمّل
+      if (Date.now() - startedAt >= WAIT_FOR_DISPATCH_SCORE + 30 * 1000) { clearInterval(finalReadTimer); readScoreThenClose(); }
+    }, 2000);
   }
 
   // يراقب ظهور فشل الـ Resource Allocator بعد yes — لو ظهر وفيه محاولات متبقّية يعيد طلب الـ real-time.
@@ -514,16 +550,22 @@
 
   // يستنى dialog التأكيد ويضغط yes (قابل لإعادة الاستدعاء فى كل محاولة retry).
   function armConfirm() {
-    let cf = 0;
+    let cf = 0, busyRetries = 0;
     const confirmTimer = setInterval(() => {
       if (processingComplete) { clearInterval(confirmTimer); return; }
       if (yesClicked) { clearInterval(confirmTimer); return; }
       cf++;
       const ks = checkForKnownState(); if (ks !== null) { clearInterval(confirmTimer); handleSpecialAndClose(ks); return; }
-      // الـ real-time مشغول بطلب تانى → نعيد المحاولة ونستنى لحد ما يفضى (بدل فشل بـ timeout 60ث وتسجيل 104 غلط)
+      // رسالة البلوك (الـ real-time مشغول): نحاول لحد 5 مرات (كل ~6 ثوانى) ومنفتحش تابات لحد ما نجيب نتيجة.
+      // لو فشل بعد 5 محاولات → نسجّل 104 ونروح للخط التالى.
       if (RA_BUSY_RE.test(document.body.innerText || "")) {
-        if (cf % 8 === 0) { const rb = findRealTimeButton(); if (rb) rb.click(); } // إعادة الطلب كل ~6 ثوانى
-        if (cf < MAX_CF * 5) return; // استنى لحد ~5 دقايق لما يكون مشغول (تاب تانى ماسك الـ slot) قبل ما نستسلم
+        if (cf % 8 === 0) {
+          busyRetries++;
+          if (busyRetries > 5) { clearInterval(confirmTimer); console.warn("⛔ البلوك استمر بعد 5 محاولات — تسجيل 104 والتالى للخط " + CURRENT_LINE_ID); handleSpecialAndClose(SCORE_TIMEOUT); return; }
+          console.warn("🔁 البلوك — محاولة " + busyRetries + "/5 للخط " + CURRENT_LINE_ID);
+          const rb = findRealTimeButton(); if (rb) rb.click(); // إعادة الطلب
+        }
+        return; // استنى لحد ما يفضى أو نستنفد المحاولات — متفتحش/تقرا حاجة
       }
       const dialog = document.querySelector("div[id*='rtDialog']");
       if (!(dialog && dialog.style.display !== "none")) { if (cf >= MAX_CF) { clearInterval(confirmTimer); handleSpecialAndClose(SCORE_TIMEOUT); } return; }
