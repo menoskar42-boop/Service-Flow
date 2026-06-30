@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.7: إعادة محاولة تلقائية لطلب الـ real-time لو سيرفر AXON رجّع "Request timed-out while in the Resource Allocator queue / data collection issue" (لحد MAX_RT_ATTEMPTS مرات) — الخط سليم لكن السيرفر زحم، فبدل ما نسجّل قراية غلط نعيد الطلب؛ والـ watchdog بقى retry-aware. v10.6: حد أقصى لعدد التابات المتزامنة (MAX_CONCURRENT=5) يمنع امتلاء الذاكرة.
-// @version      10.7.2
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.8: إصلاح deadlock — لما كل التابات توصل حالة خاصة (out of service/103/105) معاً عند الحد الأقصى كانت تتجمّد (كل تاب مستني يفتح التالى عشان يقفل، والتالى مستني سلوت يفضى)؛ الحل: نوقف نبض التاب ونشيله من العدّاد فوراً قبل فتح التالى + سقف انتظار 90ث للفتح يضمن إن السلسلة ماتقفلش. v10.7: retry تلقائى على فشل الـ Resource Allocator. v10.6: MAX_CONCURRENT يمنع امتلاء الذاكرة.
+// @version      10.8.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -48,7 +48,10 @@
     } catch (e) {}
   }
   heartbeat();
-  setInterval(heartbeat, 2000);
+  const _heartbeatTimer = setInterval(heartbeat, 2000);
+  // يوقف نبض هذا التاب ويشيله من العدّاد فوراً — عشان لما يبقى بيقفل ما يفضلش
+  // محسوب ضمن المفتوحين (ده اللى كان بيعمل deadlock عند الوصول للحد الأقصى).
+  function stopHeartbeat() { try { clearInterval(_heartbeatTimer); } catch (e) {} removeMyTab(); }
   window.addEventListener("beforeunload", removeMyTab);
   window.addEventListener("unload", removeMyTab);
 
@@ -348,7 +351,7 @@
 
   function closeThisTab() {
     if (iAmTheDownloader) { console.log("🔒 Tab kept open for CSV."); showFinalMessage(); return; }
-    removeMyTab();
+    stopHeartbeat();
     setTimeout(() => {
       // المتصفح بيرفض window.close() على التابات اللى اتنقّلت (welcome→clearview)؛
       // نعمل reset للنافذة الأول عشان يسمح بالإغلاق (حيلة معروفة) ثم نقفل.
@@ -402,9 +405,11 @@
   function openNextLine(cb) {
     const nextIndex = lineIndex + 1;
     if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); if (cb) cb(); return; }
+    let waits = 0;
     const attempt = () => {
-      // مزدحم؟ استنى لحد ما يقفل تاب قبل ما نفتح التالى (يمنع flood الذاكرة)
-      if (countOpenTabs() > MAX_CONCURRENT) { setTimeout(attempt, 1500); return; }
+      // مزدحم؟ استنى لحد ما يقفل تاب قبل ما نفتح التالى (يمنع flood الذاكرة).
+      // أمان: بعد ~90 ثانية انتظار نفتح برضه (تجاوز بسيط) عشان نضمن إن السلسلة ماتقفلش أبداً.
+      if (countOpenTabs() > MAX_CONCURRENT && waits < 60) { waits++; setTimeout(attempt, 1500); return; }
       localStorage.setItem(INDEX_KEY, String(nextIndex));
       const features = "width=1280,height=800,left=" + (50 + ((nextIndex*40)%400)) + ",top=" + (50 + ((nextIndex*40)%200));
       const w = window.open("/expresse/welcome", "_blank", features);
@@ -442,6 +447,7 @@
     saveResult(CURRENT_LINE_ID, score, "", "", "-");
     maybeDownloadFinal();
     if (iAmTheDownloader) { showFinalMessage(); return; } // آخر خط — يفضل مفتوح للـ CSV
+    stopHeartbeat();            // 🆕 حرّر سلوت هذا التاب فوراً قبل فتح التالى — يمنع deadlock لو كل التابات وصلت حالة خاصة معاً
     openNextLine(closeThisTab); // افتح التالى (مع احترام الحد) ثم اقفل التاب ده — متتكسرش السلسلة ومتفيضش الذاكرة
   }
 
