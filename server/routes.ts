@@ -1071,9 +1071,26 @@ export async function registerRoutes(
     }
   });
 
+  // 🆕 يضيف اسم الفني (tech_name) للمستخدم — من رقم العامل عبر technician_names — عشان
+  // الواجهة تقدر تفلتر تقارير الفني على بياناته. fallback: اسم المستخدم لو مفيش رقم عامل/تطابق.
+  async function userResponse(user: any) {
+    if (!user) return user;
+    let techName: string | null = null;
+    if (user.role === ROLES.TECH) {
+      if (user.workerCode) {
+        try {
+          const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [String(user.workerCode).trim()]);
+          techName = r.rows[0]?.tech_name ?? null;
+        } catch (e) {}
+      }
+      if (!techName) techName = user.username; // fallback: لو اسم المستخدم = اسم الفني
+    }
+    return { ...user, techName };
+  }
+
   // === Auth Routes ===
-  app.post(api.auth.login.path, passport.authenticate("local"), (req, res) => {
-    res.json(req.user);
+  app.post(api.auth.login.path, passport.authenticate("local"), async (req, res) => {
+    res.json(await userResponse(req.user));
   });
 
   app.post(api.auth.logout.path, (req, res, next) => {
@@ -1083,9 +1100,9 @@ export async function registerRoutes(
     });
   });
 
-  app.get(api.auth.me.path, (req, res) => {
+  app.get(api.auth.me.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    res.json(req.user);
+    res.json(await userResponse(req.user));
   });
 
   // === Middleware ===
@@ -2421,14 +2438,20 @@ export async function registerRoutes(
   };
 
   // GET /api/cable-entries — قائمة الإدخالات (فنى + أدمن)
-  app.get("/api/cable-entries", requireTechOrAdmin, async (req, res) => {
+  app.get("/api/cable-entries", requireTechOrAdmin, async (req: any, res) => {
     const { q } = req.query as Record<string, string>;
     const params: any[] = [];
-    let where = "";
+    const conds: string[] = [];
     if (q && q.trim()) {
       params.push(`%${q.trim()}%`);
-      where = `WHERE phone_local ILIKE $1 OR phone_full ILIKE $1`;
+      conds.push(`(phone_local ILIKE $${params.length} OR phone_full ILIKE $${params.length})`);
     }
+    // 🆕 الفني يشوف إدخالاته فقط (اللى هو دخلها)؛ الأدمن يشوف الكل
+    if (req.user?.role === ROLES.TECH) {
+      params.push(req.user.id);
+      conds.push(`created_by_id = $${params.length}`);
+    }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const { rows } = await pool.query(
       `SELECT id, phone_local AS "phoneLocal", phone_full AS "phoneFull",
               work_order_type AS "workOrderType", cable_quantity AS "cableQuantity",

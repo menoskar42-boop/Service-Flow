@@ -145,6 +145,15 @@ export function RemovalStatsReport() {
   const activeData  = activeTab === "combined" ? dataC : activeTab === "details" ? data : dataR;
   const ov          = activeData?.overall;
 
+  // 🆕 عرض الفني: يشوف سطره فقط + سطر الإجمالى + ترتيبه (من غير باقى الفنيين)
+  const myTech = (((user as any)?.techName) || user?.username || "").trim();
+  const techView = user?.role === ROLES.TECH && !!myTech;
+  const eqTech = (n: any) => String(n || "").trim() === myTech;
+  const fullTechRows = activeData?.byTechOnly ?? [];
+  const myRank = (() => { const i = fullTechRows.findIndex((r) => eqTech(r.techName)); return i >= 0 ? i + 1 : null; })();
+  const visTechOnly = techView ? fullTechRows.filter((r) => eqTech(r.techName)) : fullTechRows;
+  const visByTech   = techView ? (activeData?.byTech ?? []).filter((r) => eqTech(r.techName)) : (activeData?.byTech ?? []);
+
   const handleExportExcel = () => {
     if (!activeData) return;
     const wb = XLSX.utils.book_new();
@@ -448,7 +457,7 @@ export function RemovalStatsReport() {
       {activeData && activeData.byTechOnly.length > 0 && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
           <CardHeader className="pb-2 bg-blue-900 text-white rounded-t-lg px-4 py-3">
-            <CardTitle className="text-sm font-bold">إحصائيات بالفنى (إجمالى الإدارة)</CardTitle>
+            <CardTitle className="text-sm font-bold">إحصائيات بالفنى (إجمالى الإدارة){techView && myRank ? ` — ترتيبك: ${myRank} من ${fullTechRows.length}` : ""}</CardTitle>
           </CardHeader>
           <div className="overflow-x-auto">
             <Table className="text-right text-xs" dir="rtl">
@@ -465,7 +474,7 @@ export function RemovalStatsReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeData.byTechOnly.map(r => (
+                {visTechOnly.map(r => (
                   <TableRow key={r.techName} className="hover:bg-green-50">
                     <TableCell className="font-medium">{r.techName}</TableCell>
                     <TableCell className="font-bold">{r.total}</TableCell>
@@ -557,7 +566,7 @@ export function RemovalStatsReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {activeData.byTech.map(r => (
+                {visByTech.map(r => (
                   <TableRow key={`${r.centralName}-${r.techName}`} className="hover:bg-green-50">
                     <TableCell>{r.centralName}</TableCell>
                     <TableCell className="font-medium">{r.techName}</TableCell>

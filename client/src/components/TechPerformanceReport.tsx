@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 const REP_TARGET  = 4;  // مستهدف التكرار 4%
@@ -64,6 +66,7 @@ interface TechRow {
 }
 
 export function TechPerformanceReport() {
+  const { user } = useAuth();
   const today      = format(new Date(), "yyyy-MM-dd");
   const monthStart = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd");
   const [dateFrom, setDateFrom] = useState(monthStart);
@@ -336,6 +339,12 @@ export function TechPerformanceReport() {
     return <TableCell className={`text-center text-sm ${cls}`}>{v}</TableCell>;
   };
 
+  // 🆕 عرض الفني: سطره فقط (برقم ترتيبه الحقيقى) + سطر الإجمالى — من غير باقى الفنيين
+  const myTech = (((user as any)?.techName) || user?.username || "").trim();
+  const techView = user?.role === ROLES.TECH && !!myTech;
+  const myIdx = rows.findIndex((r) => String(r.techName || "").trim() === myTech);
+  const visRows = techView ? (myIdx >= 0 ? [rows[myIdx]] : []) : rows;
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
@@ -411,9 +420,9 @@ export function TechPerformanceReport() {
                 </TableRow>
               ) : (
                 <>
-                  {rows.map((r, idx) => (
+                  {visRows.map((r, idx) => (
                     <TableRow key={r.techName} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="text-center text-muted-foreground">{idx + 1}</TableCell>
+                      <TableCell className="text-center text-muted-foreground">{techView ? myIdx + 1 : idx + 1}</TableCell>
                       <TableCell className="font-semibold whitespace-nowrap">{r.techName}</TableCell>
                       <TableCell className="text-center">{r.omPct != null ? fmt1(r.omPct) : "—"}</TableCell>
                       {cellScore(r.omScore, MAX_OM)}
