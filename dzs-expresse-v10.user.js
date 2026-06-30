@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.10.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.11.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -163,6 +163,13 @@
   localStorage.setItem(SF_ACCOUNTS_KEY, JSON.stringify(LINE_IDS));
   localStorage.setItem(SF_META_KEY, JSON.stringify(SF_META));
 
+  // 🆕 فرض real-time (من تقرير الخطوط score>100): علامة sf_force=1 فى الهاش.
+  // تتثبّت للرن كله: أول تاب (اللى جاى بالهاش) يحدّد القيمة، وباقى التابات تقراها من localStorage.
+  const FORCE_RT_KEY = "DZS_FORCE_RT";
+  if (_fromHash) localStorage.setItem(FORCE_RT_KEY, /[#&]sf_force=1\b/.test(location.hash) ? "1" : "0");
+  const FORCE_REALTIME = localStorage.getItem(FORCE_RT_KEY) === "1";
+  if (FORCE_REALTIME) console.log("🎯 FORCE real-time mode ON — الحالات المخزّنة (POP_O/out-of-service) هتتقاس فعلياً.");
+
   let lineIndex = parseInt(localStorage.getItem(INDEX_KEY), 10);
   if (isNaN(lineIndex) || lineIndex < 0) lineIndex = 0;
   if (lineIndex >= LINE_IDS.length) {
@@ -182,7 +189,7 @@
 
   const CURRENT_LINE_ID = allDone ? null : LINE_IDS[lineIndex];
 
-  let lineDetailsDone = false, yesClicked = false, processingComplete = false, iAmTheDownloader = false;
+  let lineDetailsDone = false, yesClicked = false, processingComplete = false, iAmTheDownloader = false, rtRequested = false;
   let earlyScore = "", earlyCur = "", earlyMax = "";
 
   /* ================== HELPERS ================== */
@@ -196,6 +203,9 @@
   }
 
   function checkForKnownState() {
+    // 🎯 وضع الفرض: قبل ما نطلب real-time، نتجاهل الحالات المخزّنة (POP_O/out-of-service/...) ونكمّل
+    // عشان نعمل قياس فعلى. بعد طلب الـ real-time نشتغل عادى عشان نسجّل النتيجة الحقيقية.
+    if (FORCE_REALTIME && !rtRequested) return null;
     const raw = document.body.innerText || "";
     const t = raw.toLowerCase();
     // 103 — أوسع تطابق: "no longer provisioned/provisional/provision" أو "Not Provisioned"
@@ -638,7 +648,7 @@
     rt++;
     const ks = checkForKnownState(); if (ks !== null) { clearInterval(realTimeTimer); handleSpecialAndClose(ks); return; }
     const b = findRealTimeButton();
-    if (b) { b.click(); clearInterval(realTimeTimer); armConfirm(); return; } // 🆕 يبدأ متابعة dialog التأكيد + retry
+    if (b) { b.click(); rtRequested = true; clearInterval(realTimeTimer); armConfirm(); return; } // 🆕 طلبنا real-time → من دلوقتى الحالات الخاصة تتسجّل عادى
     if (rt >= MAX_RT) { clearInterval(realTimeTimer); handleSpecialAndClose(SCORE_TIMEOUT); }
   }, POLL_RT);
 

@@ -23,9 +23,11 @@ import { RefreshButton } from "@/components/RefreshButton";
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
 type DZSItem = { account: string; complaint?: string | null; short?: string | null; full?: string | null };
-const buildDZSUrl = (items: DZSItem[]) => {
+const buildDZSUrl = (items: DZSItem[], force = false) => {
   const accounts = items.map((it) => it.account);
-  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
+  // force = جاى من تقرير "الخطوط أسكورها أعلى من 100" → السكربت يعمل real-time فعلى حتى لو الخط
+  // مخزّن كحالة خاصة (POP_O/out-of-service)، بدل ما يعتبرها 101 على طول.
+  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}${force ? "&sf_force=1" : ""}`;
 };
 
 interface PhoneLine extends Measurement138 {
@@ -225,7 +227,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
       if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
-      if (w) w.location.href = buildDZSUrl(items);
+      if (w) w.location.href = buildDZSUrl(items, scoreGt != null); // scoreGt != null = تقرير الأسكور>100 → فرض real-time
       setDzsCount(items.length);
     } catch {
       try { w?.close(); } catch {}
@@ -235,7 +237,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     }
   };
 
-  const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)]), "_blank");
+  const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)], scoreGt != null), "_blank");
 
   const handleExport = async () => {
     const params = new URLSearchParams({ page: "1", limit: "20000" });
