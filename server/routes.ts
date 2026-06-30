@@ -2142,19 +2142,25 @@ export async function registerRoutes(
   });
 
   // GET /api/reports/cabinet-score-avg/options — فلاتر التقرير: السنترالات + الكباين النحاسية + كباين MSAN
-  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (_req, res) => {
+  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (req: any, res) => {
+    // 🆕 الفني يشوف كباينه فقط فى الفلاتر (المرتبطة برقم عامله)
+    const techCode = req.user?.role === ROLES.TECH ? (((req.user.workerCode || "") + "").trim() || "__none__") : null;
+    const plFilter = techCode
+      ? `AND EXISTS (SELECT 1 FROM cabinet_technicians ctf WHERE ctf.central_name = phone_lines.central AND ctf.cabin_number = phone_lines.cabin_number AND ctf.worker_code = '${techCode.replace(/'/g, "''")}')`
+      : "";
+    const msanFilter = techCode ? `AND worker_code = '${techCode.replace(/'/g, "''")}'` : "";
     // السنترالات + الكباين النحاسية من بيان التليفونات
     const { rows: plRows } = await pool.query(`
       SELECT DISTINCT central, cabin_number
       FROM phone_lines
-      WHERE central IS NOT NULL AND central <> ''
+      WHERE central IS NOT NULL AND central <> '' ${plFilter}
     `);
     // كباين MSAN (cabin_code) لكل سنترال من جدول الفنيين
     const { rows: msanRows } = await pool.query(`
       SELECT DISTINCT central_name AS central, cabin_code
       FROM cabinet_technicians
       WHERE central_name IS NOT NULL AND central_name <> ''
-        AND cabin_code IS NOT NULL AND cabin_code <> ''
+        AND cabin_code IS NOT NULL AND cabin_code <> '' ${msanFilter}
     `);
     const centralSet = new Set<string>();
     const copperMap = new Map<string, Set<string>>();
@@ -2187,6 +2193,11 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
     if (msan)    { params.push(msan);    conds.push(`ctm.cabin_code = $${params.length}`); }
+    // 🆕 الفني يشوف كباينه فقط (المرتبطة برقم عامله فى cabinet_technicians)
+    if (req.user?.role === ROLES.TECH) {
+      params.push(((req.user.workerCode || "") + "").trim() || "__none__");
+      conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctf WHERE ctf.central_name = pl.central AND ctf.cabin_number = pl.cabin_number AND ctf.worker_code = $${params.length})`);
+    }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // تعبير آمن لتحويل عمود السرعة النصى لرقم (تجاهل أى رمز غير رقمى)
     const numSpeed = (col: string) =>
@@ -2238,6 +2249,11 @@ export async function registerRoutes(
       if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
       if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
       if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
+      // 🆕 الفني يشوف بكسيات كباينه فقط (المرتبطة برقم عامله فى cabinet_technicians)
+      if (req.user?.role === ROLES.TECH) {
+        params.push(((req.user.workerCode || "") + "").trim() || "__none__");
+        conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctf WHERE ctf.central_name = pl.central AND ctf.cabin_number = pl.cabin_number AND ctf.worker_code = $${params.length})`);
+      }
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const numSpeed = (col: string) =>
         `NULLIF(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), '')::numeric`;
