@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
 // @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.8: إصلاح deadlock — لما كل التابات توصل حالة خاصة (out of service/103/105) معاً عند الحد الأقصى كانت تتجمّد (كل تاب مستني يفتح التالى عشان يقفل، والتالى مستني سلوت يفضى)؛ الحل: نوقف نبض التاب ونشيله من العدّاد فوراً قبل فتح التالى + سقف انتظار 90ث للفتح يضمن إن السلسلة ماتقفلش. v10.7: retry تلقائى على فشل الـ Resource Allocator. v10.6: MAX_CONCURRENT يمنع امتلاء الذاكرة.
-// @version      10.8.0
+// @version      10.8.1
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -107,9 +107,9 @@
   const WAIT_FOR_DISPATCH_SCORE = 1.5 * 60 * 1000; // وقت انتظار الـ Dispatch Score بعد yes — قلّليه يسرّع لكن لو زاد عدد القراءات الفاضية/102 ارجعيه لـ 1.8
   const EARLY_READ_MAX_MS = 40 * 1000;
   const STAGGER_BETWEEN_TABS_MS = 8000;
-  const MAX_CONCURRENT = 4; // AXON يسمح بـ real-time واحد لكل جلسة دخول، فالتوازي العالي بيعمل تصادمات
-                            // ("another real-time request in progress" / "Resource Allocator queue timed out").
-                            // ابدأ بـ 2؛ لو لسه الرسالة بتظهر كتير نزّلها لـ 1.
+  const MAX_CONCURRENT = 1; // AXON يسمح بـ real-time واحد بس لكل جلسة دخول. أى رقم أكبر بيخلّى التابات
+                            // تتخانق على "busy" وتعلّق وتعمل فيضان تابات. خليها 1 = مفيش تصادم، مفيش تعليق،
+                            // ونفس السرعة (AXON بيشتغل بالدور أصلاً). أقصى تجربة آمنة 2؛ متعدّيهاش.
   const POPUP_RETRY_DELAY_MS = 10000;
   const MAX_POPUP_ATTEMPTS = 5;
   const DELAY_BEFORE_CLOSE_MS = 2000;
