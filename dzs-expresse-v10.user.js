@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.8: إصلاح deadlock — لما كل التابات توصل حالة خاصة (out of service/103/105) معاً عند الحد الأقصى كانت تتجمّد (كل تاب مستني يفتح التالى عشان يقفل، والتالى مستني سلوت يفضى)؛ الحل: نوقف نبض التاب ونشيله من العدّاد فوراً قبل فتح التالى + سقف انتظار 90ث للفتح يضمن إن السلسلة ماتقفلش. v10.7: retry تلقائى على فشل الـ Resource Allocator. v10.6: MAX_CONCURRENT يمنع امتلاء الذاكرة.
-// @version      10.8.1
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.9: السبب الجذري لتصادمات "busy" = الـ pipeline كان يفتح التاب التالى وقت ضغط Yes بينما التاب الحالى لسه بيجمّع real-time (AXON يسمح بـ real-time واحد لكل جلسة دخول). الحل: نفتح التالى وقت الإغلاق فقط (بعد ما AXON يفك القفل) = مفيش تداخل، مفيش busy، مفيش تعليق على Yes، مفيش تاب ثالث. v10.8: إصلاح deadlock. v10.7: retry على فشل الـ Resource Allocator.
+// @version      10.9.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -106,7 +106,7 @@
 
   const WAIT_FOR_DISPATCH_SCORE = 1.5 * 60 * 1000; // وقت انتظار الـ Dispatch Score بعد yes — قلّليه يسرّع لكن لو زاد عدد القراءات الفاضية/102 ارجعيه لـ 1.8
   const EARLY_READ_MAX_MS = 40 * 1000;
-  const STAGGER_BETWEEN_TABS_MS = 8000;
+  const STAGGER_BETWEEN_TABS_MS = 3000; // التالى بيتفتح وقت الإغلاق (مفيش تداخل)، فـ 3 ثوانى كفاية كفاصل أمان
   const MAX_CONCURRENT = 1; // AXON يسمح بـ real-time واحد بس لكل جلسة دخول. أى رقم أكبر بيخلّى التابات
                             // تتخانق على "busy" وتعلّق وتعمل فيضان تابات. خليها 1 = مفيش تصادم، مفيش تعليق،
                             // ونفس السرعة (AXON بيشتغل بالدور أصلاً). أقصى تجربة آمنة 2؛ متعدّيهاش.
@@ -439,7 +439,9 @@
     if (isBadReading(score) && !isBadReading(earlyScore)) score = earlyScore;
     saveResult(CURRENT_LINE_ID, score, cur, max, usedEarly ? "قبل" : "بعد");
     maybeDownloadFinal();
-    closeThisTab();
+    if (iAmTheDownloader) { showFinalMessage(); return; } // آخر خط — يفضل مفتوح للـ CSV
+    stopHeartbeat();            // حرّر سلوت هذا التاب فوراً (AXON خلّص الـ real-time خلاص)
+    openNextLine(closeThisTab); // 🆕 افتح التالى دلوقتى فقط (مش وقت yes) ثم اقفل — مفيش تداخل real-time
   }
   function handleSpecialAndClose(score) {
     if (processingComplete) return;
@@ -470,11 +472,12 @@
   const RESOURCE_WATCH_DELAY_MS = 30 * 1000;  // نبدأ نراقب فشل الـ Resource Allocator بعد 30ث من yes (نسيب الطلب يخلص)
   const RA_BUSY_RE = /another\s*real-?time\s*request\s*is\s*in\s*progress|real-?time\s*request\s*currently\s*unavailable/i;
   const RA_FAIL_RE = /timed-?out\s*while\s*in\s*the\s*resource\s*allocator\s*queue|problem\s*exists\s*with\s*the\s*collected\s*data|data\s*collection\s*issue|no\s*action\s*can\s*be\s*recommended/i;
-  let rtAttempt = 0, watchdogFires = 0, nextLineOpened = false, finalReadTimer = null, resourceWatcher = null;
+  let rtAttempt = 0, watchdogFires = 0, finalReadTimer = null, resourceWatcher = null;
 
-  // بعد ضغط yes: افتح التالى (مرة واحدة) + اقرأ بدرى + جدول القراية النهائية بعد 1.9 دقيقة.
+  // بعد ضغط yes: اقرأ بدرى + جدول القراية النهائية. ⚠️ مفيش فتح للتالى هنا!
+  // فتح التالى بقى وقت الإغلاق فقط (بعد ما AXON يخلّص الـ real-time ويفك القفل) — عشان
+  // التاب التالى ما يطلبش real-time والحالى لسه بيجمّع (ده كان بيعمل تصادم "busy").
   function afterYesClicked() {
-    if (!nextLineOpened) { nextLineOpened = true; openNextLine(); }
     const t0 = Date.now();
     const earlyTimer = setInterval(() => {
       if (processingComplete) { clearInterval(earlyTimer); return; }
@@ -539,7 +542,7 @@
       // لو حصلت إعادة محاولة جديدة، اديله نافذة كمان بدل ما يقطع المحاولة الجارية
       if (rtAttempt > watchdogFires && watchdogFires < MAX_RT_ATTEMPTS) { watchdogFires = rtAttempt; scheduleWatchdog(); return; }
       console.warn("⏱️ Watchdog finalize for " + CURRENT_LINE_ID);
-      if (!yesClicked) { openNextLine(readScoreThenClose); } else { readScoreThenClose(); }
+      readScoreThenClose(); // يقرا (أو يسجّل فاضى) ثم يفتح التالى ويقفل — فتحة واحدة بس لكل تاب
     }, WAIT_FOR_DISPATCH_SCORE + 60 * 1000);
   }
   scheduleWatchdog();
