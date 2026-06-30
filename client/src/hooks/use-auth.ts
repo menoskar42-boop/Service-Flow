@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type User } from "@shared/routes";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useAppActive } from "@/hooks/use-app-active";
 import { z } from "zod";
 
 type LoginInput = z.infer<typeof api.auth.login.input>;
@@ -10,6 +11,7 @@ export function useAuth() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const active = useAppActive();
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: [api.auth.me.path],
@@ -20,10 +22,10 @@ export function useAuth() {
       return api.auth.me.responses[200].parse(await res.json());
     },
     retry: false,
-    // إعادة التحقق من الجلسة عند عودة المستخدم للتاب أو بعد 15 دقيقة خمول
+    // إعادة التحقق من الجلسة عند عودة المستخدم للتاب؛ والـ interval يقف لما تكون خامل (توفير)
     refetchOnWindowFocus: true,
     staleTime: 5 * 60 * 1000,
-    refetchInterval: 15 * 60 * 1000,
+    refetchInterval: active ? 15 * 60 * 1000 : false,
   });
 
   const loginMutation = useMutation({
