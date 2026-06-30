@@ -104,10 +104,10 @@
 
   const UNIQUE_LINE_COUNT = new Set(LINE_IDS).size;
 
-  const WAIT_FOR_DISPATCH_SCORE = 1.6 * 60 * 1000; // وقت انتظار الـ Dispatch Score بعد yes — قلّليه يسرّع لكن لو زاد عدد القراءات الفاضية/102 ارجعيه لـ 1.8
+  const WAIT_FOR_DISPATCH_SCORE = 1.5 * 60 * 1000; // وقت انتظار الـ Dispatch Score بعد yes — قلّليه يسرّع لكن لو زاد عدد القراءات الفاضية/102 ارجعيه لـ 1.8
   const EARLY_READ_MAX_MS = 40 * 1000;
-  const STAGGER_BETWEEN_TABS_MS = 5000;
-  const MAX_CONCURRENT = 2; // AXON يسمح بـ real-time واحد لكل جلسة دخول، فالتوازي العالي بيعمل تصادمات
+  const STAGGER_BETWEEN_TABS_MS = 8000;
+  const MAX_CONCURRENT = 4; // AXON يسمح بـ real-time واحد لكل جلسة دخول، فالتوازي العالي بيعمل تصادمات
                             // ("another real-time request in progress" / "Resource Allocator queue timed out").
                             // ابدأ بـ 2؛ لو لسه الرسالة بتظهر كتير نزّلها لـ 1.
   const POPUP_RETRY_DELAY_MS = 10000;
