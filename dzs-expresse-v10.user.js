@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.12: رفع على دفعات (batching) — بدل POST لكل خط، يرفع دفعة 15 لما يوصل 15، والباقى (< 15) عند انتهاء القياس أو كل 60ث (يقلّل ضغط السيرفر/التكلفة بدون فقد أى نتيجة). v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.12.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.13: رفع على دفعات لأقصى توفير — يرفع بس لما الدفعة توصل 15 أو عند انتهاء القياس (شلنا الـ timer كل 60ث) فالسيرفر يصحى كل ~15 خط بس وينام بينهم؛ والطابور محفوظ فى localStorage (ما بيتمسحش مع reset) فمفيش فقد لأى قياس غير مرفوع. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.13.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -49,8 +49,9 @@
   }
   heartbeat();
   const _heartbeatTimer = setInterval(heartbeat, 2000);
-  // 🆕 رفع أى متبقّى فى طابور الرفع كل 60 ثانية (يغطّى القياسات الصغيرة < 15 خط والمتبقّى من الدفعات)
-  setInterval(() => { try { flushUpload(); } catch (e) {} }, 60_000);
+  // ملاحظة: مفيش timer دورى للرفع — الرفع بيحصل بس لما الدفعة توصل 15 أو عند انتهاء القياس،
+  // عشان السيرفر يصحى كل ~15 خط بس (مش كل 60ث) وينام بينهم → توفير. الطابور بيفضل محفوظ
+  // فى localStorage (ما بيتمسحش مع reset الرن) فمفيش فقد لأى قياس غير مرفوع.
   // يوقف نبض هذا التاب ويشيله من العدّاد فوراً — عشان لما يبقى بيقفل ما يفضلش
   // محسوب ضمن المفتوحين (ده اللى كان بيعمل deadlock عند الوصول للحد الأقصى).
   function stopHeartbeat() { try { clearInterval(_heartbeatTimer); } catch (e) {} removeMyTab(); }
@@ -131,11 +132,12 @@
   const RESULTS_KEY = "DZS_RESULTS";
   const DOWNLOAD_DONE_KEY = "DZS_DOWNLOAD_DONE";
   const RESET_TOKEN_KEY = "DZS_RESET_TOKEN";
+  const PENDING_KEY = "DZS_PENDING_UPLOAD"; // طابور الرفع — لا يُمسح مع reset الرن عشان ما نفقدش قياسات غير مرفوعة
 
   /* ================== FORCED RESET via TOKEN ================== */
   const savedToken = localStorage.getItem(RESET_TOKEN_KEY);
   if (savedToken !== RESET_TOKEN) {
-    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0).forEach(k => localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0 && k !== PENDING_KEY).forEach(k => localStorage.removeItem(k));
     localStorage.setItem(RESET_TOKEN_KEY, RESET_TOKEN);
     console.log("🧹 FORCED RESET via token '" + RESET_TOKEN + "'.");
   }
@@ -145,7 +147,8 @@
   const prevResults = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
   const prevRunComplete = prevDownloadDone || (prevResults.length >= UNIQUE_LINE_COUNT && prevResults.length > 0);
   if (prevRunComplete) {
-    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0).forEach(k => localStorage.removeItem(k));
+    flushUpload(); // ارفع أى متبقّى قبل مسح الرن المكتمل
+    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0 && k !== PENDING_KEY).forEach(k => localStorage.removeItem(k));
     localStorage.setItem(RESET_TOKEN_KEY, RESET_TOKEN);
     console.log("🔄 Previous run complete, auto-reset.");
   }
@@ -327,9 +330,7 @@
   // 🆕 رفع نتيجة لشيت 138 على دفعات (batching) — يقلّل الضغط على السيرفر بدل POST لكل خط.
   // المنطق: لما الطابور يوصل 15 يرفع 15 فوراً؛ والباقى (< 15) يترفع عند انتهاء القياس أو كل 60 ثانية.
   // مثال: 25 خط → 15 ثم 10 ؛ وقياس خط/خطين → يترفع لوحده خلال 60ث أو عند النهاية.
-  const PENDING_KEY = "DZS_PENDING_UPLOAD";
   const UPLOAD_BATCH_SIZE = 15;
-  const UPLOAD_FLUSH_INTERVAL_MS = 60_000;
   function recToItem(rec) {
     return { phoneShort: rec.phoneShort, complainNo: rec.complainNo, score: rec.dispatchScore,
              currentSpeed: rec.currentSpeed, maxSpeed: rec.maxSpeed, fullPhone: rec.fullPhone, accountNo: rec.accountNo };
