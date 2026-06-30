@@ -12,7 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 6. **Always push to `origin/main`** after every commit.
 7. **Every report in the reports section (`قسم التقارير`) must have an Excel export button and a PDF export button** — follow the existing pattern in `CurrentFaultsReport.tsx` / `RegularizedFaultsReport.tsx` (`handleExportExcel` via XLSX + `handleExportPDF` via a printable RTL HTML window).
 8. **Every new column added to any table in `shared/schema.ts` MUST be accompanied — in the same commit — by a matching `ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col> <type>` at the start of `ensureSchema()` in `server/db.ts`** (and `CREATE TABLE IF NOT EXISTS` for new tables), so it gets applied to the Replit dev DB on server restart and prod/dev stay in sync (see "Replit Deploy" section below).
-9. **Whenever the Tampermonkey script (`tampermonkey-v2.9.js`) is changed, ALWAYS output the ENTIRE updated script in the chat reply (the full file, not just the modified section)** — the user copies it directly from chat into Tampermonkey. Edit the file in place as usual, then paste its complete contents in the response.
+9. **Whenever ANY Tampermonkey/userscript is changed, ALWAYS do BOTH of the following in the same turn:**
+   - (a) **Keep the canonical copy saved in a project file** and edit it in place (e.g. `dzs-expresse-v10.user.js`, `customer360-account-grabber.user.js`, `tampermonkey-v2.9.js`). This file is the single source of truth — every change goes through it, then commit + push to `origin/main`. This lets future sessions read the current code and continue from it.
+   - (b) **Output the ENTIRE updated script in the chat reply** (the full file, not just the modified section) — the user copies it directly from chat into Tampermonkey.
+   Applies to every Tampermonkey code change, no exceptions.
 
 ## Domain Context
 - Expert full-stack engineer (40+ years experience).
