@@ -58,11 +58,25 @@ export const api = {
         username: z.string(),
         password: z.string(),
         role: z.string(),
+        workerCode: z.string().optional(),
       }),
       responses: {
         201: z.custom<typeof users.$inferSelect>(),
         400: errorSchemas.validation,
         403: errorSchemas.unauthorized,
+      },
+    },
+    setWorkerCode: {
+      method: 'PUT' as const,
+      path: '/api/users/:id/worker-code',
+      input: z.object({
+        workerCode: z.string(),
+      }),
+      responses: {
+        200: z.custom<typeof users.$inferSelect>(),
+        400: errorSchemas.validation,
+        403: errorSchemas.unauthorized,
+        404: errorSchemas.validation,
       },
     },
     changePassword: {

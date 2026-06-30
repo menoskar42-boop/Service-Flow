@@ -30,11 +30,11 @@ import {
 import { useUsers } from "@/hooks/use-users";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES, type User } from "@shared/schema";
-import { Trash2, Loader2, Users, Ban, CheckCircle } from "lucide-react";
+import { Trash2, Loader2, Users, Ban, CheckCircle, Pencil } from "lucide-react";
 
 export function UsersList() {
   const [open, setOpen] = useState(false);
-  const { users, isLoading, deleteUser, isDeleting, suspendUser, isSuspending } = useUsers();
+  const { users, isLoading, deleteUser, isDeleting, suspendUser, isSuspending, setWorkerCode, isSettingWorkerCode } = useUsers();
   const { user: currentUser } = useAuth();
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
@@ -73,6 +73,11 @@ export function UsersList() {
     suspendUser({ userId: user.id, suspended: !user.suspended });
   };
 
+  const handleEditWorkerCode = (user: User) => {
+    const val = window.prompt(`رقم العامل للفني "${user.username}":`, user.workerCode || "");
+    if (val !== null) setWorkerCode({ userId: user.id, workerCode: val.trim() });
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -106,6 +111,7 @@ export function UsersList() {
                   <TableHead className="text-right font-bold">#</TableHead>
                   <TableHead className="text-right font-bold">اسم المستخدم</TableHead>
                   <TableHead className="text-right font-bold">الدور</TableHead>
+                  <TableHead className="text-right font-bold">رقم العامل</TableHead>
                   <TableHead className="text-right font-bold">الحالة</TableHead>
                   <TableHead className="text-right font-bold">إجراءات</TableHead>
                 </TableRow>
@@ -116,6 +122,19 @@ export function UsersList() {
                     <TableCell className="font-medium">{user.id}</TableCell>
                     <TableCell className="font-medium">{user.username}</TableCell>
                     <TableCell>{getRoleBadge(user.role)}</TableCell>
+                    <TableCell>
+                      {user.role === ROLES.TECH ? (
+                        <button
+                          onClick={() => handleEditWorkerCode(user)}
+                          disabled={isSettingWorkerCode}
+                          className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                          title="تعديل رقم العامل">
+                          {user.workerCode || "—"} <Pencil className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{getStatusBadge(user.suspended)}</TableCell>
                     <TableCell>
                       {user.id === currentUser?.id ? (

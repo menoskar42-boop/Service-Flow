@@ -1126,18 +1126,18 @@ export async function registerRoutes(
   // === User Management Routes ===
   app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
     const userList = await storage.getUsers();
-    const sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, suspended: u.suspended, createdAt: u.createdAt }));
+    const sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, workerCode: u.workerCode, suspended: u.suspended, createdAt: u.createdAt }));
     res.json(sanitized);
   });
 
   app.post(api.users.create.path, requireAuth, requireAdmin, async (req, res) => {
     try {
-      const { username, password, role } = req.body;
-      
+      const { username, password, role, workerCode } = req.body;
+
       if (!username || !password || !role) {
         return res.status(400).json({ message: "Missing required fields" });
       }
-      
+
       const validRoles = [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER];
       if (!validRoles.includes(role)) {
         return res.status(400).json({ message: "Role must be sales, tech, external, or data_manager" });
@@ -1149,8 +1149,8 @@ export async function registerRoutes(
       }
 
       const hashedPassword = await hashPassword(password);
-      const user = await storage.createUser({ username, password: hashedPassword, role });
-      res.status(201).json({ id: user.id, username: user.username, role: user.role });
+      const user = await storage.createUser({ username, password: hashedPassword, role, workerCode: workerCode?.trim() || null });
+      res.status(201).json({ id: user.id, username: user.username, role: user.role, workerCode: user.workerCode });
     } catch (e) {
       res.status(500).json({ message: "Error creating user" });
     }
@@ -1223,6 +1223,22 @@ export async function registerRoutes(
       res.json({ id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, suspended: updatedUser.suspended });
     } catch (e) {
       res.status(500).json({ message: "Error updating user suspension" });
+    }
+  });
+
+  // 🆕 تعيين رقم العامل لمستخدم (للفنيين) — يربط الحساب ببياناته فى التقارير
+  app.put(api.users.setWorkerCode.path, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      const { workerCode } = req.body;
+      const userToEdit = await storage.getUser(userId);
+      if (!userToEdit) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      const updatedUser = await storage.updateUserWorkerCode(userId, (workerCode || "").trim());
+      res.json({ id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, workerCode: updatedUser.workerCode, suspended: updatedUser.suspended });
+    } catch (e) {
+      res.status(500).json({ message: "Error updating worker code" });
     }
   });
 

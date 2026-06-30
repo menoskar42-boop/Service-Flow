@@ -15,6 +15,7 @@ export function CreateUserModal() {
     username: "",
     password: "",
     role: "",
+    workerCode: "",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -22,7 +23,7 @@ export function CreateUserModal() {
     createUser(formData, {
       onSuccess: () => {
         setOpen(false);
-        setFormData({ username: "", password: "", role: "" });
+        setFormData({ username: "", password: "", role: "", workerCode: "" });
       },
     });
   };
@@ -74,6 +75,17 @@ export function CreateUserModal() {
               </SelectContent>
             </Select>
           </div>
+          {formData.role === ROLES.TECH && (
+            <div className="space-y-2">
+              <Label>رقم العامل (للفني)</Label>
+              <Input
+                value={formData.workerCode}
+                onChange={(e) => setFormData({ ...formData, workerCode: e.target.value })}
+                className="text-right"
+                placeholder="مثال: 12345 — يربط حساب الفني ببياناته فى التقارير"
+              />
+            </div>
+          )}
           <div className="pt-4 flex justify-end gap-2">
             <Button variant="outline" type="button" onClick={() => setOpen(false)}>
               إلغاء

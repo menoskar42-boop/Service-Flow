@@ -79,6 +79,29 @@ export function useUsers() {
     },
   });
 
+  const setWorkerCodeMutation = useMutation({
+    mutationFn: async ({ userId, workerCode }: { userId: number; workerCode: string }) => {
+      const res = await fetch(api.users.setWorkerCode.path.replace(':id', userId.toString()), {
+        method: api.users.setWorkerCode.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workerCode }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to set worker code");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.users.list.path] });
+      toast({ title: "تم الحفظ", description: "تم تحديث رقم العامل" });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "خطأ", description: error.message });
+    },
+  });
+
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: number) => {
       const res = await fetch(api.users.delete.path.replace(':id', userId.toString()), {
@@ -148,6 +171,8 @@ export function useUsers() {
     isCreating: createUserMutation.isPending,
     changePassword: changePasswordMutation.mutate,
     isChangingPassword: changePasswordMutation.isPending,
+    setWorkerCode: setWorkerCodeMutation.mutate,
+    isSettingWorkerCode: setWorkerCodeMutation.isPending,
     deleteUser: deleteUserMutation.mutate,
     isDeleting: deleteUserMutation.isPending,
     suspendUser: suspendUserMutation.mutate,

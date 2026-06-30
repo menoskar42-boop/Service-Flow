@@ -59,6 +59,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   role: text("role").notNull(),
+  workerCode: text("worker_code"), // 🆕 رقم العامل — يربط حساب الفني ببياناته فى التقارير (tech_name/الكباين)
   suspended: boolean("suspended").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
