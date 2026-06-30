@@ -155,13 +155,19 @@ export default function Dashboard() {
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
   const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
+  // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg"];
+  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات"];
   const visibleGroups = REPORT_GROUPS
-    .filter((g) => user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label))
-    .map((g) =>
-      user?.role === ROLES.DATA_MANAGER
-        ? { ...g, items: g.items.filter((it) => DM_ALLOWED.includes(it.id)) }
-        : g,
-    );
+    .filter((g) =>
+      (user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label)) &&
+      (user?.role !== ROLES.TECH || TECH_ALLOWED_GROUPS.includes(g.label)),
+    )
+    .map((g) => {
+      if (user?.role === ROLES.DATA_MANAGER) return { ...g, items: g.items.filter((it) => DM_ALLOWED.includes(it.id)) };
+      if (user?.role === ROLES.TECH) return { ...g, items: g.items.filter((it) => TECH_ALLOWED.includes(it.id)) };
+      return g;
+    });
   // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
   const [navOpen, setNavOpen] = useState(false);
   const currentReportLabel =
@@ -278,7 +284,7 @@ export default function Dashboard() {
                   <ClipboardList className="w-4 h-4" />
                   الطلبات
                 </button>
-                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH) && (
                   <button
                     onClick={() => setAdminTab("reports")}
                     data-testid="tab-admin-reports"
@@ -329,8 +335,8 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
-        {/* ── REPORTS TAB (Admin & Data Manager) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && adminTab === "reports" && (
+        {/* ── REPORTS TAB (Admin, Data Manager & Tech) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH) && adminTab === "reports" && (
           <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
             {/* ── زر فتح/قفل القائمة على الموبايل ── */}
             <button
