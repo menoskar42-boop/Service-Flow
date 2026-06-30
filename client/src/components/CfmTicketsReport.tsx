@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, AlertCircle, Search, FileSpreadsheet, FileText } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, Search, FileSpreadsheet, FileText, Radar } from "lucide-react";
 import * as XLSX from "xlsx";
 
 const REFRESH_INTERVAL = 30;
@@ -81,6 +81,15 @@ function parseTicketBoxesClient(boxStr: string | null | undefined): string[] {
   return single ? [single] : [];
 }
 
+// ===== DZS: قياس خطوط البكس (نفس نمط WithAccountReport) =====
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+type DZSItem = { account: string; complaint?: string; short?: string; full?: string };
+function buildDZSUrl(items: DZSItem[]) {
+  const accounts = items.map((i) => i.account);
+  const meta = items.map((i) => `${i.account}~${i.complaint ?? ""}~${i.short ?? ""}~${i.full ?? ""}`).join(";");
+  return `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}&sf_meta=${encodeURIComponent(meta)}`;
+}
+
 export function CfmTicketsReport() {
   // --- ticket data ---
   const [data, setData] = useState<CfmTicket[] | null>(null);
@@ -112,6 +121,44 @@ export function CfmTicketsReport() {
 
   // --- box breakdown expand ---
   const [expandedBox, setExpandedBox] = useState<string | null>(null);
+
+  // --- قياس DZS لخطوط البكس ---
+  const [measuringId, setMeasuringId] = useState<string | null>(null);
+
+  // يقيس كل الخطوط التى لها أكونت على بكس (أو بكسيات) هذه التذكرة، فى نفس السنترال والكابينة.
+  const handleMeasureBox = async (t: CfmTicket) => {
+    const boxes = parseTicketBoxesClient(t.box);
+    if (boxes.length === 0) { alert("لا يوجد رقم بكس صالح لهذه التذكرة"); return; }
+    const central = t.central?.name ?? t.centralDepartment ?? "";
+    const cabin = t.cable?.number ?? "";
+    // افتح التاب فوراً (قبل أى await) لتفادى حجب الـ popup
+    const w = window.open("about:blank", "dzs_measure");
+    setMeasuringId(t.id);
+    try {
+      const seen = new Set<string>();
+      const items: DZSItem[] = [];
+      for (const bx of boxes) {
+        const params = new URLSearchParams({ limit: "20000", box: bx });
+        if (central) params.set("central", central);
+        if (cabin) params.set("cabin", cabin);
+        const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
+        const json = await res.json();
+        for (const r of ((json.data as any[]) ?? [])) {
+          const account = (r.accountNo ?? "").toString().trim();
+          if (!account || seen.has(account)) continue;
+          seen.add(account);
+          items.push({ account, complaint: "", short: r.telNo ?? "", full: r.fullPhone ?? "" });
+        }
+      }
+      if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد خطوط لها أكونت على هذا البكس"); return; }
+      if (w) w.location.href = buildDZSUrl(items);
+    } catch {
+      try { w?.close(); } catch {}
+      alert("تعذّر تحميل خطوط البكس للقياس");
+    } finally {
+      setMeasuringId(null);
+    }
+  };
 
   // --- derived ---
   const centrals = useMemo(() => {
@@ -503,6 +550,13 @@ export function CfmTicketsReport() {
                       <TableCell className="text-xs">
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span className="font-medium">{t.box || "-"}</span>
+                          {t.box && (
+                            <button onClick={() => handleMeasureBox(t)} disabled={measuringId === t.id}
+                              title="قياس DZS لكل الخطوط التى لها أكونت على هذا البكس"
+                              className="text-[10px] text-green-700 border border-green-200 rounded px-1 py-0.5 hover:bg-green-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
+                              {measuringId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />} قياس
+                            </button>
+                          )}
                           {hasBreakdown && (
                             <button onClick={() => setExpandedBox(isExpanded ? null : t.id)}
                               className="text-[10px] text-blue-600 hover:text-blue-800 underline hover:no-underline whitespace-nowrap">
