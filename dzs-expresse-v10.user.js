@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         DZS Expresse Continuous Flow v10.6 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.6: حد أقصى لعدد التابات المتزامنة (MAX_CONCURRENT=5) — كل فتح تاب يحترم الحد فيمنع امتلاء الذاكرة؛ والحالات الخاصة بقت تفتح التالى ثم تقفل (بدل الفتح الفورى اللى كان بيغرق الذاكرة). يقدر يقيس آلاف الخطوط من غير حد 500.
-// @version      10.6.0
+// @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
+// @description  Measures DZS, outputs CSV in شيت-138 column order, and auto-updates case_138 in Service-Flow. v10.7: إعادة محاولة تلقائية لطلب الـ real-time لو سيرفر AXON رجّع "Request timed-out while in the Resource Allocator queue / data collection issue" (لحد MAX_RT_ATTEMPTS مرات) — الخط سليم لكن السيرفر زحم، فبدل ما نسجّل قراية غلط نعيد الطلب؛ والـ watchdog بقى retry-aware. v10.6: حد أقصى لعدد التابات المتزامنة (MAX_CONCURRENT=5) يمنع امتلاء الذاكرة.
+// @version      10.7.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -452,12 +452,89 @@
 
   if (allDone) return;
 
-  /* ===== GLOBAL WATCHDOG ===== */
-  setTimeout(function globalWatchdog() {
-    if (processingComplete) return;
-    console.warn("⏱️ Watchdog finalize for " + CURRENT_LINE_ID);
-    if (!yesClicked) { openNextLine(readScoreThenClose); } else { readScoreThenClose(); }
-  }, WAIT_FOR_DISPATCH_SCORE + 60 * 1000);
+  /* ===== RETRY على فشل الـ Resource Allocator (سيرفر AXON مزحوم) =====
+     رسالة "Request timed-out while in the Resource Allocator queue" أو
+     "problem exists with the collected data / data collection issue" معناها إن سيرفر AXON
+     زحم وفشل يجمّع بيانات الـ real-time — والخط نفسه سليم (Provisioned). بدل ما نسجّل قراية
+     غلط (102) لخط سليم، نعيد طلب الـ real-time لحد MAX_RT_ATTEMPTS مرات؛ لو فشل كله نسجّل 104. */
+  const POLL_CF = 800, MAX_CF = Math.ceil(MAX_CONFIRM_WAIT_MS / POLL_CF);
+  const MAX_RT_ATTEMPTS = 3;                  // عدد محاولات الـ real-time قبل ما نستسلم
+  const RESOURCE_WATCH_DELAY_MS = 30 * 1000;  // نبدأ نراقب فشل الـ Resource Allocator بعد 30ث من yes (نسيب الطلب يخلص)
+  const RA_BUSY_RE = /another\s*real-?time\s*request\s*is\s*in\s*progress|real-?time\s*request\s*currently\s*unavailable/i;
+  const RA_FAIL_RE = /timed-?out\s*while\s*in\s*the\s*resource\s*allocator\s*queue|problem\s*exists\s*with\s*the\s*collected\s*data|data\s*collection\s*issue|no\s*action\s*can\s*be\s*recommended/i;
+  let rtAttempt = 0, watchdogFires = 0, nextLineOpened = false, finalReadTimer = null, resourceWatcher = null;
+
+  // بعد ضغط yes: افتح التالى (مرة واحدة) + اقرأ بدرى + جدول القراية النهائية بعد 1.9 دقيقة.
+  function afterYesClicked() {
+    if (!nextLineOpened) { nextLineOpened = true; openNextLine(); }
+    const t0 = Date.now();
+    const earlyTimer = setInterval(() => {
+      if (processingComplete) { clearInterval(earlyTimer); return; }
+      if (captureEarly()) { clearInterval(earlyTimer); return; }
+      if (Date.now() - t0 >= EARLY_READ_MAX_MS) clearInterval(earlyTimer);
+    }, 3000);
+    if (finalReadTimer) clearTimeout(finalReadTimer);
+    finalReadTimer = setTimeout(() => readScoreThenClose(), WAIT_FOR_DISPATCH_SCORE);
+  }
+
+  // يراقب ظهور فشل الـ Resource Allocator بعد yes — لو ظهر وفيه محاولات متبقّية يعيد طلب الـ real-time.
+  function startResourceWatcher() {
+    if (resourceWatcher) clearInterval(resourceWatcher);
+    const startedAt = Date.now();
+    resourceWatcher = setInterval(() => {
+      if (processingComplete) { clearInterval(resourceWatcher); return; }
+      if (Date.now() - startedAt < RESOURCE_WATCH_DELAY_MS) return; // اسيب الطلب يجري الأول
+      if (!RA_FAIL_RE.test(document.body.innerText || "")) return;
+      // ظهر فشل الـ Resource Allocator
+      clearInterval(resourceWatcher);
+      if (finalReadTimer) { clearTimeout(finalReadTimer); finalReadTimer = null; }
+      if (rtAttempt < MAX_RT_ATTEMPTS) {
+        rtAttempt++;
+        console.warn("♻️ Resource Allocator timeout — إعادة محاولة " + rtAttempt + "/" + MAX_RT_ATTEMPTS + " للخط " + CURRENT_LINE_ID);
+        const rb = findRealTimeButton(); if (rb) rb.click();
+        yesClicked = false;
+        armConfirm(); // استنى الـ dialog تانى → yes → راقب من جديد
+      } else {
+        console.warn("⛔ الـ Resource Allocator فشل " + MAX_RT_ATTEMPTS + " مرات — تسجيل 104 للخط " + CURRENT_LINE_ID);
+        handleSpecialAndClose(SCORE_TIMEOUT);
+      }
+    }, 2500);
+  }
+
+  // يستنى dialog التأكيد ويضغط yes (قابل لإعادة الاستدعاء فى كل محاولة retry).
+  function armConfirm() {
+    let cf = 0;
+    const confirmTimer = setInterval(() => {
+      if (processingComplete) { clearInterval(confirmTimer); return; }
+      if (yesClicked) { clearInterval(confirmTimer); return; }
+      cf++;
+      const ks = checkForKnownState(); if (ks !== null) { clearInterval(confirmTimer); handleSpecialAndClose(ks); return; }
+      // الـ real-time مشغول بطلب تانى → نعيد المحاولة ونستنى لحد ما يفضى (بدل فشل بـ timeout 60ث وتسجيل 104 غلط)
+      if (RA_BUSY_RE.test(document.body.innerText || "")) {
+        if (cf % 8 === 0) { const rb = findRealTimeButton(); if (rb) rb.click(); }
+        if (cf < MAX_CF * 3) return;
+      }
+      const dialog = document.querySelector("div[id*='rtDialog']");
+      if (!(dialog && dialog.style.display !== "none")) { if (cf >= MAX_CF) { clearInterval(confirmTimer); handleSpecialAndClose(SCORE_TIMEOUT); } return; }
+      const yesBtn = document.querySelector("button[id*='confirmationForm:yesButton']");
+      if (!yesBtn) return;
+      yesBtn.click(); yesClicked = true; clearInterval(confirmTimer);
+      afterYesClicked();
+      startResourceWatcher();
+    }, POLL_CF);
+  }
+
+  /* ===== GLOBAL WATCHDOG (retry-aware) ===== */
+  function scheduleWatchdog() {
+    setTimeout(function globalWatchdog() {
+      if (processingComplete) return;
+      // لو حصلت إعادة محاولة جديدة، اديله نافذة كمان بدل ما يقطع المحاولة الجارية
+      if (rtAttempt > watchdogFires && watchdogFires < MAX_RT_ATTEMPTS) { watchdogFires = rtAttempt; scheduleWatchdog(); return; }
+      console.warn("⏱️ Watchdog finalize for " + CURRENT_LINE_ID);
+      if (!yesClicked) { openNextLine(readScoreThenClose); } else { readScoreThenClose(); }
+    }, WAIT_FOR_DISPATCH_SCORE + 60 * 1000);
+  }
+  scheduleWatchdog();
 
   /* ================== AUTO LOGIN ================== */
   const loginTimer = setInterval(() => {
@@ -508,35 +585,12 @@
     rt++;
     const ks = checkForKnownState(); if (ks !== null) { clearInterval(realTimeTimer); handleSpecialAndClose(ks); return; }
     const b = findRealTimeButton();
-    if (b) { b.click(); clearInterval(realTimeTimer); return; }
+    if (b) { b.click(); clearInterval(realTimeTimer); armConfirm(); return; } // 🆕 يبدأ متابعة dialog التأكيد + retry
     if (rt >= MAX_RT) { clearInterval(realTimeTimer); handleSpecialAndClose(SCORE_TIMEOUT); }
   }, POLL_RT);
 
-  /* ================== YES → early + final ================== */
-  const POLL_CF = 800, MAX_CF = Math.ceil(MAX_CONFIRM_WAIT_MS / POLL_CF); let cf = 0;
-  const confirmTimer = setInterval(() => {
-    if (processingComplete) { clearInterval(confirmTimer); return; }
-    if (yesClicked) { clearInterval(confirmTimer); return; }
-    cf++;
-    const ks = checkForKnownState(); if (ks !== null) { clearInterval(confirmTimer); handleSpecialAndClose(ks); return; }
-    // 🆕 الـ real-time مشغول بطلب تانى → نعيد المحاولة ونستنى لحد ما يفضى (بدل ما نفشل بـ timeout 60ث ونسجّل 104 غلط)
-    if (/another\s*real-?time\s*request\s*is\s*in\s*progress|real-?time\s*request\s*currently\s*unavailable/i.test(document.body.innerText || "")) {
-      if (cf % 8 === 0) { const rb = findRealTimeButton(); if (rb) rb.click(); } // إعادة الطلب كل ~6 ثوانى
-      if (cf < MAX_CF * 3) return; // استنى أطول لما يكون مشغول (لحد ~3 دقايق) قبل ما نستسلم
-    }
-    const dialog = document.querySelector("div[id*='rtDialog']");
-    if (!(dialog && dialog.style.display !== "none")) { if (cf >= MAX_CF) { clearInterval(confirmTimer); handleSpecialAndClose(SCORE_TIMEOUT); } return; }
-    const yesBtn = document.querySelector("button[id*='confirmationForm:yesButton']");
-    if (!yesBtn) return;
-    yesBtn.click(); yesClicked = true; clearInterval(confirmTimer);
-    openNextLine();
-    const t0 = Date.now();
-    const earlyTimer = setInterval(() => {
-      if (processingComplete) { clearInterval(earlyTimer); return; }
-      if (captureEarly()) { clearInterval(earlyTimer); return; }
-      if (Date.now() - t0 >= EARLY_READ_MAX_MS) clearInterval(earlyTimer);
-    }, 3000);
-    setTimeout(() => readScoreThenClose(), WAIT_FOR_DISPATCH_SCORE);
-  }, POLL_CF);
+  /* ================== YES → early + final ==================
+     اتنقلت لـ armConfirm() / afterYesClicked() / startResourceWatcher() فوق (قبل الـ watchdog)
+     عشان نقدر نعيد استدعاءها فى كل محاولة retry عند فشل الـ Resource Allocator. */
 
 })();
