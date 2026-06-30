@@ -855,8 +855,10 @@ async function checkAndSnapshot() {
 // (cron داخلى — عند صحيان السيرفر يلتقط لقطة الساعة 11 خلال 15 دقيقة كحد أقصى،
 //  ولو كان نائماً يُعوّض بمجرد وصول أى طلب يوقظه.)
 function startDailySnapshotScheduler() {
-  setTimeout(checkAndSnapshot, 10_000);           // بعد الإقلاع بقليل
-  setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة
+  // تعويض عند الإقلاع فقط — مفيش setInterval كل 15 دقيقة (توفير compute: الـ instance
+  // ماعادش بيصحى دورياً). اللقطة اليومية المضمونة بتيجى من Scheduled Deployment (cron)
+  // يضرب POST /api/internal/run-snapshot. checkAndSnapshot idempotent (ON CONFLICT DO NOTHING).
+  setTimeout(checkAndSnapshot, 10_000);
 }
 
 // ── Cable-Fault-Manager live proxy ──────────────────────────────────────────
@@ -1169,6 +1171,16 @@ export async function registerRoutes(
       return orig(body);
     };
     next();
+  });
+
+  // 🆕 تشغيل اللقطة اليومية من Scheduled Deployment (cron) — محمى بتوكن (أو أدمن).
+  const SNAPSHOT_TOKEN = process.env.SNAPSHOT_TOKEN || "sf-snapshot-2026";
+  app.post("/api/internal/run-snapshot", async (req: any, res) => {
+    const ok = req.headers["x-snapshot-token"] === SNAPSHOT_TOKEN
+      || (req.isAuthenticated?.() && req.user?.role === ROLES.ADMIN);
+    if (!ok) return res.status(403).json({ message: "forbidden" });
+    try { await checkAndSnapshot(); res.json({ ok: true }); }
+    catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // === User Management Routes ===
