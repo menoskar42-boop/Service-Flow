@@ -1,59 +1,62 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 import { WS_EVENTS } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { useAppActive } from "@/hooks/use-app-active";
 
-// الـ WebSocket واعى للنشاط: يتوصّل وانت نشط (التاب ظاهر + بتتفاعل) عشان تحديثات الطلبات
-// (إضافة طلب / إعادة فنى / إلغاء معاينة / إمكانية التنفيذ) تيجى لحظياً بدون ريفريش؛
-// ويتفصل وانت خامل أو التاب فى الخلفية عشان السيرفر ينام ويوفّر. عند الرجوع يتوصّل
-// ويعيد تحميل البيانات فوراً (تشوف أى تحديث فاتك وانت خامل).
 export function useWebSocket() {
   const queryClient = useQueryClient();
+  const wsRef = useRef<WebSocket | null>(null);
   const { toast } = useToast();
-  const active = useAppActive();
 
   useEffect(() => {
-    if (!active) return; // خامل/مخفى → مفيش اتصال (السيرفر يقدر ينام)
-
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
-    let ws: WebSocket | null = null;
-    let closedByUs = false;
 
-    ws = new WebSocket(wsUrl);
+    const connect = () => {
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      // عند (إعادة) الاتصال: حدّث البيانات عشان نلحق أى تغييرات حصلت ونحنا خاملين
-      queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      ws.onopen = () => {
+        console.log("Connected to WebSocket");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+
+          if (message.type === WS_EVENTS.ORDER_CREATE || message.type === WS_EVENTS.ORDER_UPDATE) {
+            queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+            toast({
+              title: message.type === WS_EVENTS.ORDER_CREATE ? "طلب جديد" : "تحديث طلب",
+              description: `الطلب #${message.payload?.id} تم تحديثه`,
+              duration: 3000,
+            });
+          }
+
+          if (message.type === WS_EVENTS.NOTIFICATION) {
+            queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+          }
+        } catch (error) {
+          console.error("Failed to parse WebSocket message", error);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket disconnected, reconnecting in 3s...");
+        setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        ws.close();
+      };
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type === WS_EVENTS.ORDER_CREATE || message.type === WS_EVENTS.ORDER_UPDATE) {
-          queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
-          toast({
-            title: message.type === WS_EVENTS.ORDER_CREATE ? "طلب جديد" : "تحديث طلب",
-            description: `الطلب #${message.payload?.id} تم تحديثه`,
-            duration: 3000,
-          });
-        }
-        if (message.type === WS_EVENTS.NOTIFICATION) {
-          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-        }
-      } catch (error) {
-        console.error("Failed to parse WebSocket message", error);
-      }
-    };
-
-    ws.onerror = () => { try { ws?.close(); } catch {} };
+    connect();
 
     return () => {
-      closedByUs = true;
-      try { ws?.close(); } catch {}
+      wsRef.current?.close();
     };
-  }, [active, queryClient, toast]);
+  }, [queryClient, toast]);
 }

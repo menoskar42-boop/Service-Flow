@@ -961,14 +961,6 @@ async function getBoxScoreAgg() {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-// ── Cache فى الذاكرة لتقارير /api/reports/* (يقلّل تكرار الحساب التقيل على قاعدة البيانات) ──
-// نفس البيانات بالظبط — بس بتتحسب مرة كل TTL بدل كل طلب. المفتاح يشمل هوية الفني للتقارير
-// المفلترة بالمستخدم (متوسط القياسات) عشان كل فني يشوف الـ cache بتاعه.
-const reportCache = new Map<string, { at: number; data: any }>();
-const REPORT_CACHE_TTL = 120_000; // دقيقتان — التقارير فترية (يومى/شهرى) فالستالنس مقبول والتوفير أكبر
-
-// ────────────────────────────────────────────────────────────────────────────
-
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1151,29 +1143,6 @@ export async function registerRoutes(
     if (req.isAuthenticated() && req.user.role === ROLES.ADMIN) return next();
     res.status(403).json({ message: "Admin access required" });
   };
-
-  // 🆕 Cache لكل تقارير /api/reports/* (GET) — يقلّل الحساب التقيل المتكرر على DB.
-  // بيتطبّق بعد المصادقة فمفتاحه يشمل هوية الفني (للتقارير المفلترة بالمستخدم).
-  app.use((req: any, res: any, next: any) => {
-    if (req.method !== "GET" || !req.path.startsWith("/api/reports/")) return next();
-    const key = (req.user?.role === ROLES.TECH ? `t${req.user.id}` : "all") + "|" + req.originalUrl;
-    const hit = reportCache.get(key);
-    if (hit && Date.now() - hit.at < REPORT_CACHE_TTL) return res.json(hit.data);
-    const orig = res.json.bind(res);
-    res.json = (body: any) => {
-      try {
-        if (res.statusCode === 200) {
-          reportCache.set(key, { at: Date.now(), data: body });
-          if (reportCache.size > 400) { // تنظيف القديم
-            const now = Date.now();
-            for (const [k, v] of reportCache) if (now - v.at > REPORT_CACHE_TTL * 5) reportCache.delete(k);
-          }
-        }
-      } catch {}
-      return orig(body);
-    };
-    next();
-  });
 
   // 🆕 تشغيل اللقطة اليومية من Scheduled Deployment (cron) — محمى بتوكن (أو أدمن).
   const SNAPSHOT_TOKEN = process.env.SNAPSHOT_TOKEN || "sf-snapshot-2026";

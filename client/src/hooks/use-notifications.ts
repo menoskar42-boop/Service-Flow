@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { type Notification } from "@shared/schema";
-import { useAppActive } from "@/hooks/use-app-active";
 
 interface NotificationsResponse {
   items: Notification[];
@@ -9,7 +8,6 @@ interface NotificationsResponse {
 
 export function useNotifications() {
   const queryClient = useQueryClient();
-  const active = useAppActive(); // يوقف الـ polling لما المستخدم خامل/التاب مخفى (توفير)
 
   const { data } = useQuery({
     queryKey: ["/api/notifications"],
@@ -18,7 +16,7 @@ export function useNotifications() {
       if (!res.ok) throw new Error("Failed to fetch notifications");
       return res.json() as Promise<NotificationsResponse>;
     },
-    refetchInterval: active ? 60000 : false,
+    refetchInterval: 60000,
   });
 
   const markRead = useMutation({
