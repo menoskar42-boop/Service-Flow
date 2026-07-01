@@ -570,7 +570,7 @@ export function FileUploadSection() {
       {/* زر تشغيل التقارير اليومية */}
       <div className="flex justify-end">
         <Button
-          onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank")}
+          onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank", "noopener,noreferrer")}
           className="gap-2 bg-green-600 hover:bg-green-700 text-white"
         >
           <RefreshCw className="w-4 h-4" />

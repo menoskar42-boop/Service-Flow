@@ -11,5 +11,7 @@ export function openCustomer360(fullPhones: string[]): void {
     return;
   }
   const url = `${C360_LOGIN_URL}#sf_phones=${encodeURIComponent(phones.join(","))}`;
-  window.open(url, "customer360_grab");
+  // noreferrer/noopener: نفتح كأننا افتحنا الرابط مباشرة (من غير referrer لموقعنا) — بوابة te.eg
+  // بتعلّق (تفضل تحمّل) لو الطلب جالها referrer خارجى من الموقع. الـ hash بيوصل عادى للسكربت.
+  window.open(url, "_blank", "noopener,noreferrer");
 }
