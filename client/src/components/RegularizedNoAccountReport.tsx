@@ -46,10 +46,11 @@ interface FilterOptions {
 
 const PAGE_SIZE = 50;
 
-// افتراضى: من أول الشهر الحالى إلى اليوم
-const monthStart = () => {
+// افتراضى: من أول يوم فى الشهر السابق بثلاثة أشهر إلى اليوم (يمكن للمستخدم تغييره)
+const threeMonthsAgoStart = () => {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  const t = new Date(d.getFullYear(), d.getMonth() - 3, 1); // day=1 يتفادى تجاوز عدد أيام الشهر
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-01`;
 };
 const todayStr = () => {
   const d = new Date();
@@ -61,7 +62,7 @@ export function RegularizedNoAccountReport() {
   const qc = useQueryClient();
   const canEdit = user?.role !== ROLES.SALES;
 
-  const [dateFrom, setDateFrom] = useState(monthStart());
+  const [dateFrom, setDateFrom] = useState(threeMonthsAgoStart());
   const [dateTo, setDateTo] = useState(todayStr());
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
