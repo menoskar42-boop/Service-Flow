@@ -855,10 +855,12 @@ async function checkAndSnapshot() {
 // (cron داخلى — عند صحيان السيرفر يلتقط لقطة الساعة 11 خلال 15 دقيقة كحد أقصى،
 //  ولو كان نائماً يُعوّض بمجرد وصول أى طلب يوقظه.)
 function startDailySnapshotScheduler() {
-  // تعويض عند الإقلاع فقط — مفيش setInterval كل 15 دقيقة (توفير compute: الـ instance
-  // ماعادش بيصحى دورياً). اللقطة اليومية المضمونة بتيجى من Scheduled Deployment (cron)
-  // يضرب POST /api/internal/run-snapshot. checkAndSnapshot idempotent (ON CONFLICT DO NOTHING).
-  setTimeout(checkAndSnapshot, 10_000);
+  // Reserved VM شغّال 24/7 فالـ compute ثابت — نرجّع الفحص كل 15 دقيقة عشان اللقطة اليومية
+  // تتعمل تلقائياً (الـ VM بيقلع مرة واحدة، فتعويض الإقلاع لوحده ما يكفيش لكل يوم).
+  // checkAndSnapshot idempotent (ON CONFLICT DO NOTHING). الـ endpoint /api/internal/run-snapshot
+  // لسه موجود كخيار احتياطى (Scheduled Deployment) لو حبيت.
+  setTimeout(checkAndSnapshot, 10_000);           // بعد الإقلاع بقليل
+  setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة (يلتقط لقطة الساعة 11م تلقائياً)
 }
 
 // ── Cable-Fault-Manager live proxy ──────────────────────────────────────────
