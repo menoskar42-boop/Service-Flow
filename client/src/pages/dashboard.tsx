@@ -153,7 +153,7 @@ export default function Dashboard() {
 
   // مجموعات التقارير المعروضة حسب الدور
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
-  const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
+  const DM_ALLOWED: ReportTab[] = ["no-account", "work-orders"]; // أعطال الشبكة الأرضية للأدمن فقط
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
   const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg"];
