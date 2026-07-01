@@ -1,15 +1,52 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.11.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.16.0
 // @match        *://10.42.187.101:8080/expresse/*
-// @connect      service-flow--menoskar42.replit.app
+// @connect      service-flow-menoskar42.replit.app
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
   "use strict";
+
+  /* ===== منع الشاشة/الجهاز من النوم أثناء القياس ===== */
+  // النوم/الاسكرين سيفر بيفصل القياس. نحاول Wake Lock (HTTPS فقط) + fallback فيديو مكتوم شغّال.
+  (function keepScreenAwake() {
+    let wl = null;
+    const acquireWL = async () => {
+      try {
+        if (navigator.wakeLock && !wl) {
+          wl = await navigator.wakeLock.request("screen");
+          wl.addEventListener("release", () => { wl = null; });
+          console.log("🔆 Wake Lock نشط");
+        }
+      } catch (e) {}
+    };
+    acquireWL();
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) acquireWL(); });
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 2; canvas.height = 2;
+      const ctx = canvas.getContext("2d"); let f = 0;
+      setInterval(() => { f = (f + 3) % 255; if (ctx) { ctx.fillStyle = "rgb(" + f + ",0,0)"; ctx.fillRect(0, 0, 2, 2); } }, 1000);
+      const stream = canvas.captureStream ? canvas.captureStream(2) : null;
+      if (stream) {
+        const v = document.createElement("video");
+        v.srcObject = stream; v.muted = true;
+        v.setAttribute("playsinline", ""); v.setAttribute("autoplay", ""); v.loop = true;
+        v.style.cssText = "position:fixed;left:-100px;top:-100px;width:1px;height:1px;opacity:0;pointer-events:none;";
+        const mount = () => {
+          (document.body || document.documentElement).appendChild(v);
+          const p = () => v.play().catch(() => {});
+          p();
+          document.addEventListener("visibilitychange", () => { if (!document.hidden) p(); });
+        };
+        document.body ? mount() : window.addEventListener("DOMContentLoaded", mount);
+      }
+    } catch (e) {}
+  })();
 
   /* ===== AUTO-REFRESH صفحة "Out of Memory" ===== */
   // لو المتصفح طلع "Not enough memory to open this page" نعمل reload أوتوماتيك بدل اليدوى.
@@ -61,7 +98,7 @@
   const RESET_TOKEN = "3";
 
   // 🆕 رفع تلقائى لشيت 138 فى Service-Flow
-  const SF_API_BASE   = "https://service-flow--menoskar42.replit.app"; // ← عدّليه لو الدومين اتغيّر
+  const SF_API_BASE   = "https://service-flow-menoskar42.replit.app"; // ← عدّليه لو الدومين اتغيّر
   const SF_INGEST_TOKEN = "sf-dzs-138-ingest-2026"; // ← لازم يطابق DZS_INGEST_TOKEN فى السيرفر
   const SF_AUTO_UPLOAD = true; // false لو عايزه CSV فقط من غير رفع تلقائى
 
