@@ -764,6 +764,15 @@ export async function ensureSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS regularized_daily_cat_date_idx ON regularized_daily (category, snapshot_date)`);
 
+  // فهارس أداء لتسريع تقرير «محتاجة رفع سرعة» وتقارير الأعطال (كانت بطيئة جداً بعد تراكم الداتا).
+  // التقارير بتعمل subquery/LATERAL لكل خط فى case_138 والشكاوى — من غير الفهارس دى كل صف بيعمل scan كامل.
+  // idempotent (IF NOT EXISTS) — بتتبنى مرة عند تشغيل السيرفر وبتفضل موجودة بعدها.
+  await pool.query(`CREATE INDEX IF NOT EXISTS case_138_full_phone_id_idx ON case_138 (full_phone, id DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS complaint_details_phone_time_idx ON complaint_details (phone_number, complain_time DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS remaining_complaints_phone_time_idx ON remaining_complaints (phone_number, complain_time DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS phone_lines_tel_no_idx ON phone_lines (tel_no)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS phone_lines_central_cabin_box_idx ON phone_lines (central, cabin_number, box_number)`);
+
   // إدخال يدوى لكابينة TB07 (الغنايم) على حسن عبد الفتاح يعقوب — خارج حياة كريمة
   // يُنفَّذ مرة واحدة فقط إذا لم تكن الكابينة موجودة بالفعل
   await pool.query(`
