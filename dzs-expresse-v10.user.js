@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.13: رفع على دفعات لأقصى توفير — يرفع بس لما الدفعة توصل 15 أو عند انتهاء القياس (شلنا الـ timer كل 60ث) فالسيرفر يصحى كل ~15 خط بس وينام بينهم؛ والطابور محفوظ فى localStorage (ما بيتمسحش مع reset) فمفيش فقد لأى قياس غير مرفوع. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.13.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.14: رجّعنا الرفع لحظى لكل خط (شلنا الـ batching) لأن النشر بقى Reserved VM بتكلفة ثابتة — فالشيت يتحدّث فوراً مع كل قياس زى الأول. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.14.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow--menoskar42.replit.app
 // @grant        none
@@ -49,9 +49,6 @@
   }
   heartbeat();
   const _heartbeatTimer = setInterval(heartbeat, 2000);
-  // ملاحظة: مفيش timer دورى للرفع — الرفع بيحصل بس لما الدفعة توصل 15 أو عند انتهاء القياس،
-  // عشان السيرفر يصحى كل ~15 خط بس (مش كل 60ث) وينام بينهم → توفير. الطابور بيفضل محفوظ
-  // فى localStorage (ما بيتمسحش مع reset الرن) فمفيش فقد لأى قياس غير مرفوع.
   // يوقف نبض هذا التاب ويشيله من العدّاد فوراً — عشان لما يبقى بيقفل ما يفضلش
   // محسوب ضمن المفتوحين (ده اللى كان بيعمل deadlock عند الوصول للحد الأقصى).
   function stopHeartbeat() { try { clearInterval(_heartbeatTimer); } catch (e) {} removeMyTab(); }
@@ -132,12 +129,11 @@
   const RESULTS_KEY = "DZS_RESULTS";
   const DOWNLOAD_DONE_KEY = "DZS_DOWNLOAD_DONE";
   const RESET_TOKEN_KEY = "DZS_RESET_TOKEN";
-  const PENDING_KEY = "DZS_PENDING_UPLOAD"; // طابور الرفع — لا يُمسح مع reset الرن عشان ما نفقدش قياسات غير مرفوعة
 
   /* ================== FORCED RESET via TOKEN ================== */
   const savedToken = localStorage.getItem(RESET_TOKEN_KEY);
   if (savedToken !== RESET_TOKEN) {
-    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0 && k !== PENDING_KEY).forEach(k => localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0).forEach(k => localStorage.removeItem(k));
     localStorage.setItem(RESET_TOKEN_KEY, RESET_TOKEN);
     console.log("🧹 FORCED RESET via token '" + RESET_TOKEN + "'.");
   }
@@ -147,8 +143,7 @@
   const prevResults = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
   const prevRunComplete = prevDownloadDone || (prevResults.length >= UNIQUE_LINE_COUNT && prevResults.length > 0);
   if (prevRunComplete) {
-    flushUpload(); // ارفع أى متبقّى قبل مسح الرن المكتمل
-    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0 && k !== PENDING_KEY).forEach(k => localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k => k.indexOf("DZS_") === 0).forEach(k => localStorage.removeItem(k));
     localStorage.setItem(RESET_TOKEN_KEY, RESET_TOKEN);
     console.log("🔄 Previous run complete, auto-reset.");
   }
@@ -327,44 +322,21 @@
     return false;
   }
 
-  // 🆕 رفع نتيجة لشيت 138 على دفعات (batching) — يقلّل الضغط على السيرفر بدل POST لكل خط.
-  // المنطق: لما الطابور يوصل 15 يرفع 15 فوراً؛ والباقى (< 15) يترفع عند انتهاء القياس أو كل 60 ثانية.
-  // مثال: 25 خط → 15 ثم 10 ؛ وقياس خط/خطين → يترفع لوحده خلال 60ث أو عند النهاية.
-  const UPLOAD_BATCH_SIZE = 15;
-  function recToItem(rec) {
-    return { phoneShort: rec.phoneShort, complainNo: rec.complainNo, score: rec.dispatchScore,
-             currentSpeed: rec.currentSpeed, maxSpeed: rec.maxSpeed, fullPhone: rec.fullPhone, accountNo: rec.accountNo };
-  }
-  // يضيف النتيجة للطابور؛ يرفع دفعة 15 فوراً لو الطابور وصل 15.
-  function queueForUpload(rec) {
+  // رفع نتيجة لشيت 138 فوراً لكل خط (Reserved VM — التكلفة ثابتة فمفيش داعى للـ batching؛
+  // التحديث بقى لحظى لكل خط زى الأول).
+  function postToServiceFlow(rec) {
     if (!SF_AUTO_UPLOAD || !SF_API_BASE) return;
     try {
-      const q = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
-      q.push(recToItem(rec));
-      localStorage.setItem(PENDING_KEY, JSON.stringify(q));
-      if (q.length >= UPLOAD_BATCH_SIZE) flushUpload(UPLOAD_BATCH_SIZE);
-    } catch (e) {}
-  }
-  // يرفع دفعة من الطابور: max = أقصى عدد (مثلاً 15)، أو الكل لو undefined (للمتبقّى عند النهاية/كل 60ث).
-  function flushUpload(max) {
-    if (!SF_AUTO_UPLOAD || !SF_API_BASE) return;
-    let batch;
-    try {
-      const q = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
-      if (!q.length) return;
-      const n = max ? Math.min(max, q.length) : q.length;
-      batch = q.slice(0, n);
-      localStorage.setItem(PENDING_KEY, JSON.stringify(q.slice(n))); // dequeue فوراً (يمنع التكرار بين التابات)
-    } catch (e) { return; }
-    fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/case-138/measurements", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-DZS-Token": SF_INGEST_TOKEN },
-      body: JSON.stringify({ items: batch }),
-    }).then(r => r.json()).then(j => console.log("☁️ 138 رفع دفعة:", batch.length, j))
-      .catch(e => {
-        console.warn("☁️ فشل رفع الدفعة — إعادة للطابور:", e);
-        try { const q2 = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); localStorage.setItem(PENDING_KEY, JSON.stringify(batch.concat(q2))); } catch (e2) {}
-      });
+      fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/case-138/measurements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-DZS-Token": SF_INGEST_TOKEN },
+        body: JSON.stringify({ items: [{
+          phoneShort: rec.phoneShort, complainNo: rec.complainNo, score: rec.dispatchScore,
+          currentSpeed: rec.currentSpeed, maxSpeed: rec.maxSpeed, fullPhone: rec.fullPhone, accountNo: rec.accountNo,
+        }] }),
+      }).then(r => r.json()).then(j => console.log("☁️ 138 updated:", rec.accountNo, j))
+        .catch(e => console.warn("☁️ 138 update failed:", e));
+    } catch (e) { console.warn("post err", e); }
   }
 
   function saveResult(lineId, score, currentSpeed, maxSpeed, source) {
@@ -383,7 +355,7 @@
                 "| phone:", meta.short || "-", "| complaint:", meta.complaint || "-",
                 "(" + results.length + "/" + UNIQUE_LINE_COUNT + ")");
     updateDownloadButton();
-    queueForUpload(rec); // 🆕 يضيف للطابور بدل رفع فورى — يترفع على دفعات
+    postToServiceFlow(rec); // رفع فورى لحظى لكل خط
   }
 
   // CSV بترتيب شيت 138
@@ -484,7 +456,6 @@
     if (localStorage.getItem(DOWNLOAD_DONE_KEY) === "1") return;
     localStorage.setItem(DOWNLOAD_DONE_KEY, "1");
     iAmTheDownloader = true;
-    flushUpload(); // 🆕 ارفع أى متبقّى عند اكتمال القياس (حتى لو أقل من 15)
     setTimeout(() => { downloadResults(); }, 1500);
   }
 
