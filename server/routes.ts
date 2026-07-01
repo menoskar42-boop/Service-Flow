@@ -855,12 +855,8 @@ async function checkAndSnapshot() {
 // (cron داخلى — عند صحيان السيرفر يلتقط لقطة الساعة 11 خلال 15 دقيقة كحد أقصى،
 //  ولو كان نائماً يُعوّض بمجرد وصول أى طلب يوقظه.)
 function startDailySnapshotScheduler() {
-  // Reserved VM شغّال 24/7 فالـ compute ثابت — نرجّع الفحص كل 15 دقيقة عشان اللقطة اليومية
-  // تتعمل تلقائياً (الـ VM بيقلع مرة واحدة، فتعويض الإقلاع لوحده ما يكفيش لكل يوم).
-  // checkAndSnapshot idempotent (ON CONFLICT DO NOTHING). الـ endpoint /api/internal/run-snapshot
-  // لسه موجود كخيار احتياطى (Scheduled Deployment) لو حبيت.
   setTimeout(checkAndSnapshot, 10_000);           // بعد الإقلاع بقليل
-  setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة (يلتقط لقطة الساعة 11م تلقائياً)
+  setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة
 }
 
 // ── Cable-Fault-Manager live proxy ──────────────────────────────────────────
@@ -1143,16 +1139,6 @@ export async function registerRoutes(
     if (req.isAuthenticated() && req.user.role === ROLES.ADMIN) return next();
     res.status(403).json({ message: "Admin access required" });
   };
-
-  // 🆕 تشغيل اللقطة اليومية من Scheduled Deployment (cron) — محمى بتوكن (أو أدمن).
-  const SNAPSHOT_TOKEN = process.env.SNAPSHOT_TOKEN || "sf-snapshot-2026";
-  app.post("/api/internal/run-snapshot", async (req: any, res) => {
-    const ok = req.headers["x-snapshot-token"] === SNAPSHOT_TOKEN
-      || (req.isAuthenticated?.() && req.user?.role === ROLES.ADMIN);
-    if (!ok) return res.status(403).json({ message: "forbidden" });
-    try { await checkAndSnapshot(); res.json({ ok: true }); }
-    catch (e: any) { res.status(500).json({ message: e.message }); }
-  });
 
   // === User Management Routes ===
   app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
@@ -2156,25 +2142,19 @@ export async function registerRoutes(
   });
 
   // GET /api/reports/cabinet-score-avg/options — فلاتر التقرير: السنترالات + الكباين النحاسية + كباين MSAN
-  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (req: any, res) => {
-    // 🆕 الفني يشوف كباينه فقط فى الفلاتر (المرتبطة برقم عامله)
-    const techCode = req.user?.role === ROLES.TECH ? (((req.user.workerCode || "") + "").trim() || "__none__") : null;
-    const plFilter = techCode
-      ? `AND EXISTS (SELECT 1 FROM cabinet_technicians ctf WHERE ctf.central_name = phone_lines.central AND ctf.cabin_number = phone_lines.cabin_number AND ctf.worker_code = '${techCode.replace(/'/g, "''")}')`
-      : "";
-    const msanFilter = techCode ? `AND worker_code = '${techCode.replace(/'/g, "''")}'` : "";
+  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (_req, res) => {
     // السنترالات + الكباين النحاسية من بيان التليفونات
     const { rows: plRows } = await pool.query(`
       SELECT DISTINCT central, cabin_number
       FROM phone_lines
-      WHERE central IS NOT NULL AND central <> '' ${plFilter}
+      WHERE central IS NOT NULL AND central <> ''
     `);
     // كباين MSAN (cabin_code) لكل سنترال من جدول الفنيين
     const { rows: msanRows } = await pool.query(`
       SELECT DISTINCT central_name AS central, cabin_code
       FROM cabinet_technicians
       WHERE central_name IS NOT NULL AND central_name <> ''
-        AND cabin_code IS NOT NULL AND cabin_code <> '' ${msanFilter}
+        AND cabin_code IS NOT NULL AND cabin_code <> ''
     `);
     const centralSet = new Set<string>();
     const copperMap = new Map<string, Set<string>>();
@@ -2207,11 +2187,6 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
     if (msan)    { params.push(msan);    conds.push(`ctm.cabin_code = $${params.length}`); }
-    // 🆕 الفني يشوف كباينه فقط (المرتبطة برقم عامله فى cabinet_technicians)
-    if (req.user?.role === ROLES.TECH) {
-      params.push(((req.user.workerCode || "") + "").trim() || "__none__");
-      conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctf WHERE ctf.central_name = pl.central AND ctf.cabin_number = pl.cabin_number AND ctf.worker_code = $${params.length})`);
-    }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // تعبير آمن لتحويل عمود السرعة النصى لرقم (تجاهل أى رمز غير رقمى)
     const numSpeed = (col: string) =>
@@ -2263,11 +2238,6 @@ export async function registerRoutes(
       if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
       if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
       if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
-      // 🆕 الفني يشوف بكسيات كباينه فقط (المرتبطة برقم عامله فى cabinet_technicians)
-      if (req.user?.role === ROLES.TECH) {
-        params.push(((req.user.workerCode || "") + "").trim() || "__none__");
-        conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctf WHERE ctf.central_name = pl.central AND ctf.cabin_number = pl.cabin_number AND ctf.worker_code = $${params.length})`);
-      }
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const numSpeed = (col: string) =>
         `NULLIF(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), '')::numeric`;

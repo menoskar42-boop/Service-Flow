@@ -12,7 +12,7 @@ export function useWebSocket() {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
-
+    
     const connect = () => {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -24,12 +24,19 @@ export function useWebSocket() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-
+          
           if (message.type === WS_EVENTS.ORDER_CREATE || message.type === WS_EVENTS.ORDER_UPDATE) {
+            // Invalidate the orders query to trigger a refetch
             queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+
+            // Show toast notification
+            const title = message.type === WS_EVENTS.ORDER_CREATE
+              ? "طلب جديد"
+              : "تحديث طلب";
+
             toast({
-              title: message.type === WS_EVENTS.ORDER_CREATE ? "طلب جديد" : "تحديث طلب",
-              description: `الطلب #${message.payload?.id} تم تحديثه`,
+              title: title,
+              description: `الطلب #${message.payload.id} تم تحديثه`,
               duration: 3000,
             });
           }
@@ -46,7 +53,7 @@ export function useWebSocket() {
         console.log("WebSocket disconnected, reconnecting in 3s...");
         setTimeout(connect, 3000);
       };
-
+      
       ws.onerror = (err) => {
         console.error("WebSocket error:", err);
         ws.close();
