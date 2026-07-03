@@ -9,6 +9,7 @@ import { CreateUserModal } from "@/components/CreateUserModal";
 import { UsersList } from "@/components/UsersList";
 import { BoxRejectionReport } from "@/components/BoxRejectionReport";
 import { PhoneLinesReport } from "@/components/PhoneLinesReport";
+import { PhoneLookupReport } from "@/components/PhoneLookupReport";
 import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
@@ -43,7 +44,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -72,6 +73,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
       { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
       { id: "box-score-avg",       label: "متوسط القياسات" },
+      { id: "phone-lookup",        label: "بحث برقم التليفون" },
       { id: "account-edits",       label: "تعديلات الأكونت" },
     ],
   },
@@ -153,10 +155,10 @@ export default function Dashboard() {
 
   // مجموعات التقارير المعروضة حسب الدور
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
-  const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
+  const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders", "phone-lookup"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg"];
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "phone-lookup"];
   const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات"];
   const visibleGroups = REPORT_GROUPS
     .filter((g) =>
@@ -267,8 +269,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tab Navigation — Admin, Tech & Data Manager */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER) && (
+        {/* Tab Navigation — Admin, Tech, Data Manager & External */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.EXTERNAL) && (
           <div className="border-t bg-white">
             <div className="container mx-auto px-4">
               <div className="flex" dir="rtl">
@@ -284,7 +286,7 @@ export default function Dashboard() {
                   <ClipboardList className="w-4 h-4" />
                   الطلبات
                 </button>
-                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && (
                   <button
                     onClick={() => setAdminTab("reports")}
                     data-testid="tab-admin-reports"
@@ -335,8 +337,8 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
-        {/* ── REPORTS TAB (Admin, Data Manager & Tech) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH) && adminTab === "reports" && (
+        {/* ── REPORTS TAB (Admin, Data Manager, Tech & External) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && adminTab === "reports" && (
           <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
             {/* ── زر فتح/قفل القائمة على الموبايل ── */}
             <button
@@ -475,6 +477,7 @@ export default function Dashboard() {
               {reportTab === "needs-speed"            && <NeedsSpeedTab />}
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
               {reportTab === "box-score-avg"       && <BoxScoreReport />}
+              {reportTab === "phone-lookup"        && <PhoneLookupReport />}
               {reportTab === "account-edits"       && <AccountEditsReport />}
               {reportTab === "cfm-tickets"         && <CfmTicketsReport />}
             </div>
@@ -496,7 +499,7 @@ export default function Dashboard() {
         )}
 
         {/* ── ORDERS TAB (all roles) ── */}
-        {((user.role !== ROLES.ADMIN && user.role !== ROLES.TECH) || adminTab === "orders") && (
+        {((user.role !== ROLES.ADMIN && user.role !== ROLES.TECH && user.role !== ROLES.EXTERNAL) || adminTab === "orders") && (
           <>
             {/* Actions Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">

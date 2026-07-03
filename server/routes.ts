@@ -2000,6 +2000,37 @@ export async function registerRoutes(
     res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
   });
 
+  // GET /api/phone-lines/lookup?phone=<رقم> — بحث برقم التليفون → بياناته الفنية + آخر قياس
+  // متاح لكل المستخدمين ما عدا المبيعات. يقبل الرقم الكامل (88..) أو رقم التليفون القصير.
+  app.get("/api/phone-lines/lookup", requireAuth, async (req, res) => {
+    if (req.user?.role === ROLES.SALES) return res.status(403).json({ message: "غير مسموح" });
+    const phone = String((req.query as Record<string, string>).phone || "").trim();
+    if (!phone) return res.status(400).json({ message: "أدخل رقم التليفون" });
+    // مطابقة الرقم الكامل أو القصير (مع/بدون بادئة 88)
+    const short = phone.replace(/^88/, "");
+    const full = phone.startsWith("88") ? phone : "88" + phone;
+    const { rows } = await pool.query(
+      `SELECT pl.tel_no AS "telNo", pl.central, pl.cabin_number AS "cabinNumber",
+              pl.box_number AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
+              pl.dp_terminal AS "dpTerminal", pl.full_phone AS "fullPhone",
+              la.account_no AS "accountNo",
+              c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
+              c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
+       FROM phone_lines pl
+       LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+       LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+       LEFT JOIN LATERAL (
+         SELECT current_speed, max_speed, score, uploaded_at
+         FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
+       ) c ON true
+       WHERE pl.full_phone = $1 OR pl.tel_no = $2 OR pl.full_phone = $3
+       LIMIT 1`,
+      [phone, short, full],
+    );
+    if (!rows.length) return res.json({ found: false });
+    res.json({ found: true, line: rows[0] });
+  });
+
   // GET /api/reports/regularized-no-account — الأعطال المنتظمة خلال فترة التى ليس لها رقم أكونت (تقرير 1)
   // المصدر: نفس مصدر تقرير الأعطال المنتظمة لفترة (التفاصيل المغلقة + المتبقى 138/135، سنترالات غنايم)،
   //   مطابقة برقم التليفون مع phone_lines، ثم استبعاد الأرقام التى لها رقم أكونت.
