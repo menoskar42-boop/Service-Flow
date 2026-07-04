@@ -4420,17 +4420,17 @@ export async function registerRoutes(
     });
   });
 
-  // GET /api/reports/current-faults — الأعطال الحالية (status 160,173,122,73,72,60)
+  // GET /api/reports/current-faults — الأعطال الحالية (status 160,173,122,73,72,60,81)
   // Joins case_138 ← phone_ports ← cabinet_technicians
   // البيان معتمد على ملف شكاوى DSL الحالى (ticket_dsl_current) — وليس حاله 138.
-  // الأكواد المطلوبة: 160/173/122 (Status Code) و 73/72/60 (ComplainTypeName).
+  // الأكواد المطلوبة: 160/173/122/81 (Status Code) و 73/72/60 (ComplainTypeName).
   app.get("/api/reports/current-faults", requireAuth, async (req, res) => {
     try {
       const { central = "", q = "" } = req.query as Record<string, string>;
       const params: any[] = [];
       const conds: string[] = [
         `t.close_date IS NULL`,
-        `(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')`,
+        `(t.status_code ~ '^(160|173|122|73|72|60|81)' OR t.complain_type_name ~ '^(160|173|122|73|72|60|81)')`,
         `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`,
       ];
       if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
