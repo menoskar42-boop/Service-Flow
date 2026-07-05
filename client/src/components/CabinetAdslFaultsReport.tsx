@@ -112,7 +112,8 @@ export function CabinetAdslFaultsReport() {
     }
     return Array.from(m.values())
       .filter((r) => passMin(r.faultCount, r.workingAdsl))
-      .sort((a, b) => per1000(b.faultCount, b.workingAdsl) - per1000(a.faultCount, a.workingAdsl));
+      // ترتيب تصاعدى: الأقل أعطال/1000 = الأفضل = الأول (كل ما تزيد الأعطال يبقى أوحش)
+      .sort((a, b) => per1000(a.faultCount, a.workingAdsl) - per1000(b.faultCount, b.workingAdsl));
   })();
 
   // تاب لكل بكس
