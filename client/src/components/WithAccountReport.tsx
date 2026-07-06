@@ -102,6 +102,14 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const qc = useQueryClient();
   const { user } = useAuth();
   const canEdit = user?.role !== ROLES.SALES;
+  // تنسيق تاريخ آخر قياس للخط (من شيت 138)
+  const fmtMeasDate = (d: string | null | undefined) => {
+    if (!d) return "-";
+    const t = new Date(d);
+    if (isNaN(t.getTime())) return "-";
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+  };
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -257,6 +265,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
       "رقم التليفون الكامل": r.fullPhone,
+      "تاريخ آخر قياس": fmtMeasDate(r.lastMeasTime),
       "رقم الأكونت": r.accountNo,
       "مصدر الأكونت": r.accountSource === "manual" ? "يدوى" : "شيت 138",
       "آخر قياس": r.lastMeasScore,
@@ -449,6 +458,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">تاريخ آخر قياس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">المصدر</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>
@@ -474,6 +484,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
                   {data?.data.map((r, idx) => (
                     <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono font-semibold text-blue-700">{r.fullPhone || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-muted-foreground">{fmtMeasDate(r.lastMeasTime)}</TableCell>
                       <TableCell dir="ltr" className="text-left font-mono">
                         {editingPhone === r.fullPhone ? (
                           <span className="inline-flex items-center gap-1">

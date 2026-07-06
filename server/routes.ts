@@ -1711,6 +1711,11 @@ export async function registerRoutes(
       params.push(`%${accountQ.trim().toLowerCase()}%`);
       conds.push(`LOWER(la.account_no) LIKE $${params.length}`);
     }
+    // الفنى: يرى خطوطه فقط (كباينه من cabinet_technicians حسب رقم العامل)
+    if (req.user?.role === ROLES.TECH) {
+      params.push(String((req.user as any).workerCode || "").trim());
+      conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctx WHERE ctx.central_name = pl.central AND ctx.cabin_number = pl.cabin_number AND ctx.worker_code = $${params.length})`);
+    }
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
     const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
