@@ -85,6 +85,8 @@ const shortStatusCode = (s: string | null) => {
 // حالة "9999- أعطال تنتظر الحل" تُعرض كـ "99-DSL"، وباقى الحالات تُختصر كالمعتاد.
 const dispStatus = (s: string | null) => {
   if (s && (s.includes("9999") || s.includes("تنتظر الحل"))) return "99-DSL";
+  // حالة 81 (استكمال بيانات) — كود خانتين — تُعرض "81"
+  if (s && (s.includes("استكمال") || /(?:^|\D)81(?:81)?(?:\D|$)/.test(s))) return "81";
   return shortStatusCode(s) || "-";
 };
 
