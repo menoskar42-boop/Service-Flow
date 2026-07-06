@@ -5456,6 +5456,19 @@ export async function registerRoutes(
       if (dateFrom) { params.push(dateFrom); dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
 
+      // الفنى: يرى أعطاله فقط — سواء هو فنى الإغلاق أو فنى المنطقة (على الأسماء المحسوبة)
+      let techClause = "";
+      if (req.user?.role === ROLES.TECH) {
+        const wc = String((req.user as any).workerCode || "").trim();
+        let myTech = "";
+        if (wc) {
+          const tr = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [wc]);
+          myTech = tr.rows[0]?.tech_name || "";
+        }
+        params.push(myTech);
+        techClause = ` AND (b."closeByName" = $${params.length} OR b."areaTechName" = $${params.length})`;
+      }
+
       let srcCTE: string;
       if (srcTab === "details") {
         srcCTE = `
@@ -5536,7 +5549,7 @@ export async function registerRoutes(
           FROM src
           WHERE TRUE ${dateClause}
         )
-        SELECT * FROM base WHERE hours > 24 ORDER BY hours DESC LIMIT 5000
+        SELECT * FROM base b WHERE b.hours > 24 ${techClause} ORDER BY b.hours DESC LIMIT 5000
       `, params);
 
       res.json(rows);
@@ -5555,6 +5568,19 @@ export async function registerRoutes(
       let dateClause = "";
       if (dateFrom) { params.push(dateFrom); dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+
+      // الفنى: يرى أرقامه المكررة فقط — سواء هو فنى الإغلاق أو فنى المنطقة (على الأسماء المحسوبة)
+      let techClause = "";
+      if (req.user?.role === ROLES.TECH) {
+        const wc = String((req.user as any).workerCode || "").trim();
+        let myTech = "";
+        if (wc) {
+          const tr = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [wc]);
+          myTech = tr.rows[0]?.tech_name || "";
+        }
+        params.push(myTech);
+        techClause = ` AND (d."closeByName" = $${params.length} OR d."areaTechName" = $${params.length})`;
+      }
 
       let srcCTE: string;
       if (srcTab === "closed") {
@@ -5604,6 +5630,7 @@ export async function registerRoutes(
         repeated AS (
           SELECT * FROM phone_occ WHERE appearances > 1
         )
+        SELECT * FROM (
         SELECT
           r.complain_no                                                                AS "complainNo",
           r.phone_number                                                               AS "phoneNumber",
@@ -5635,7 +5662,9 @@ export async function registerRoutes(
              JOIN phone_ports pp ON pp.phone_number = pl.full_phone
              WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "frame"
         FROM repeated r
-        ORDER BY r.phone_number, r.complain_time
+        ) d
+        WHERE TRUE ${techClause}
+        ORDER BY d."phoneNumber", d."complainTime"
         LIMIT 5000
       `, params);
 

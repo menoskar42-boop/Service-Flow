@@ -368,14 +368,10 @@ export function TechPerformanceReport() {
 
   // ── حوارات التفاصيل: الأرقام المكررة + أعطال تجاوزت 24 ساعة ──
   const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString("ar-EG") : "");
-  // فلترة الفني: يرى أرقامه فقط (فنى الإغلاق أو فنى المنطقة)؛ الأدمن يرى الكل
-  const mineOnly = <T extends { closeByName: string; areaTechName: string }>(arr: T[] | null): T[] => {
-    const d = arr ?? [];
-    if (!techView) return d;
-    return d.filter((r) => r.closeByName === myTech || r.areaTechName === myTech);
-  };
-  const repFiltered = mineOnly(repDetailData);
-  const b24Filtered = mineOnly(b24Data);
+  // الفلترة بتتم على مستوى الـ server (الفني يرى أرقامه فقط — فنى الإغلاق أو فنى المنطقة؛
+  // الأدمن يرى الكل)، فهنا بنعرض اللى رجع من الـ API مباشرة.
+  const repFiltered = repDetailData ?? [];
+  const b24Filtered = b24Data ?? [];
 
   const loadDetail = async (
     endpoint: string,
