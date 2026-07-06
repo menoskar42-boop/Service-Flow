@@ -48,6 +48,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const [yearFilter, setYearFilter] = useState<YearFilter>("all");
   const [msanFilter, setMsanFilter] = useState("");
   const [fccFilter, setFccFilter] = useState("");
+  const [techFilter, setTechFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const { user } = useAuth();
@@ -56,13 +57,14 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const isAdmin = user?.role === ROLES.ADMIN;
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
-    queryKey: ["/api/ftth-orders", bucket, q, yearFilter, msanFilter, fccFilter, dateFrom, dateTo],
+    queryKey: ["/api/ftth-orders", bucket, q, yearFilter, msanFilter, fccFilter, techFilter, dateFrom, dateTo],
     queryFn: async () => {
       const p = new URLSearchParams({ bucket });
       if (q.trim()) p.set("q", q.trim());
       if (yearFilter !== "all") p.set("yearFilter", yearFilter);
       if (msanFilter.trim()) p.set("msanFilter", msanFilter.trim());
       if (fccFilter.trim()) p.set("fccFilter", fccFilter.trim());
+      if (techFilter.trim()) p.set("techFilter", techFilter.trim());
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       const res = await fetch(`/api/ftth-orders?${p}`, { credentials: "include" });
@@ -275,6 +277,19 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             <option value="DRGAT">DRGAT</option>
             <option value="NGOAT">NGOAT</option>
           </select>
+          {isAdmin && (
+            <div className="w-full sm:w-44">
+              <SearchableCombobox
+                options={[...techNames, "غير معروف"]}
+                value={techFilter}
+                onChange={setTechFilter}
+                placeholder="كل الفنيين"
+                searchPlaceholder="ابحث باسم الفنى..."
+                emptyText="لا يوجد فنيون"
+                className="h-9 text-sm"
+              />
+            </div>
+          )}
           <select
             value={yearFilter}
             onChange={(e) => setYearFilter(e.target.value as YearFilter)}
@@ -291,9 +306,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <label className="text-xs text-muted-foreground whitespace-nowrap">إلى:</label>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="border rounded-md text-sm px-2 py-1.5 bg-white" />
-          {(msanFilter || fccFilter || dateFrom || dateTo) && (
+          {(msanFilter || fccFilter || techFilter || dateFrom || dateTo) && (
             <button
-              onClick={() => { setMsanFilter(""); setFccFilter(""); setDateFrom(""); setDateTo(""); }}
+              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setDateFrom(""); setDateTo(""); }}
               className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
             >مسح الفلاتر</button>
           )}

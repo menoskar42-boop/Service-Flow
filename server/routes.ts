@@ -3842,7 +3842,7 @@ export async function registerRoutes(
   //   soy      = متعذرات بداية السنة (التراكمى)
   //   resolved = متعذرات تم فكها (موجودة فى SOY وغير موجودة فى الحالى بمفتاح المسلسل+order ids)
   app.get("/api/ftth-orders", requireAuth, async (req, res) => {
-    const { q, all, bucket, year, yearFilter, msanFilter, fccFilter, dateFrom, dateTo } = req.query as Record<string, string>;
+    const { q, all, bucket, year, yearFilter, msanFilter, fccFilter, techFilter, dateFrom, dateTo } = req.query as Record<string, string>;
     const table = bucket === "current" ? "ftth_orders_current"
                 : bucket === "archive" ? "ftth_orders_archive"
                 : (bucket === "soy" || bucket === "resolved") ? "ftth_orders_soy"
@@ -3893,8 +3893,13 @@ export async function registerRoutes(
       params.push(dateTo.trim());
       conds.push(`fo.order_create_time < ($${params.length}::date + INTERVAL '1 day')::timestamptz`);
     }
-    // الفنى: يرى متعذراته فقط (كود MSAN مربوط بكباينه عبر cabinet_technicians أو الإسناد اليدوى)،
-    // + المتعذرات اللى ملهاش كود MSAN تظهر للجميع.
+    // فلتر اسم الفنى (للأدمن — من الدروب ليست): يطابق الفنى المحسوب للمتعذر
+    // ("غير معروف" = المتعذرات اللى مفيش لها فنى)
+    if (techFilter?.trim()) {
+      params.push(techFilter.trim());
+      conds.push(`COALESCE(tn.tech_name, mto.tech_name, 'غير معروف') = $${params.length}`);
+    }
+    // الفنى: يرى متعذراته فقط (اسم الفنى = اسمه)، + المتعذرات اللى مفيش لها اسم فنى (غير معروف) تظهر للجميع.
     if (req.user?.role === ROLES.TECH) {
       const wc = String((req.user as any).workerCode || "").trim();
       let myTech = "";
@@ -3903,15 +3908,8 @@ export async function registerRoutes(
           `SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [wc]);
         myTech = tr.rows[0]?.tech_name || "";
       }
-      params.push(wc);
-      const wp = `$${params.length}`;
       params.push(myTech);
-      const tp = `$${params.length}`;
-      conds.push(`(
-        fo.msan_code IS NULL OR TRIM(fo.msan_code) = ''
-        OR EXISTS (SELECT 1 FROM cabinet_technicians ctx WHERE ctx.cabin_code = fo.msan_code AND ctx.worker_code = ${wp})
-        OR EXISTS (SELECT 1 FROM msan_tech_overrides mtx WHERE mtx.cabin_code = fo.msan_code AND mtx.tech_name = ${tp})
-      )`);
+      conds.push(`(COALESCE(tn.tech_name, mto.tech_name) = $${params.length} OR (tn.tech_name IS NULL AND mto.tech_name IS NULL))`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const yearCol = bucket === "archive" ? `fo.archived_year AS "archivedYear",` : "";
