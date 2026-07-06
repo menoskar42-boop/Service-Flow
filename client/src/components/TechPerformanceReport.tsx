@@ -87,7 +87,7 @@ export function TechPerformanceReport() {
   const [dateTo,   setDateTo]   = useState(today);
   // حوارات التفاصيل (نفس منطق تقارير التكرار/الإزالة)
   const [repOpen, setRepOpen] = useState(false);
-  const [repData, setRepData] = useState<RepDetailRow[] | null>(null);
+  const [repDetailData, setRepDetailData] = useState<RepDetailRow[] | null>(null);
   const [repLoading, setRepLoading] = useState(false);
   const [b24Open, setB24Open] = useState(false);
   const [b24Data, setB24Data] = useState<Beyond24Row[] | null>(null);
@@ -374,7 +374,7 @@ export function TechPerformanceReport() {
     if (!techView) return d;
     return d.filter((r) => r.closeByName === myTech || r.areaTechName === myTech);
   };
-  const repFiltered = mineOnly(repData);
+  const repFiltered = mineOnly(repDetailData);
   const b24Filtered = mineOnly(b24Data);
 
   const loadDetail = async (
@@ -395,7 +395,7 @@ export function TechPerformanceReport() {
     } catch { setData([]); }
     setLoading(false);
   };
-  const loadRep = () => loadDetail("/api/reports/repetition-detail", setRepData, setRepLoading, setRepOpen);
+  const loadRep = () => loadDetail("/api/reports/repetition-detail", setRepDetailData, setRepLoading, setRepOpen);
   const loadB24 = () => loadDetail("/api/reports/removal-beyond24", setB24Data, setB24Loading, setB24Open);
 
   const exportRep = () => {
