@@ -7,10 +7,24 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat2, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+
+interface RepDetailRow {
+  phoneNumber: string; centralName: string; lineCabin: string | null; lineBox: string | null;
+  msanCode: string | null; frame: string | null; appearances: number; complainNo: string;
+  complainTime: string | null; closeTime: string | null; closeCode: string | null;
+  closeByName: string; areaTechName: string;
+}
+interface Beyond24Row {
+  complainNo: string; phoneNumber: string; centralName: string; cabinetNo: string;
+  complainTime: string; closeTime: string; closeCode: string | null; hours: number;
+  closeByName: string; areaTechName: string; lineCabin: string | null; lineBox: string | null;
+  msanCode: string | null; frame: string | null;
+}
 
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 const REP_TARGET  = 4;  // مستهدف التكرار 4%
@@ -71,6 +85,13 @@ export function TechPerformanceReport() {
   const monthStart = format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd");
   const [dateFrom, setDateFrom] = useState(monthStart);
   const [dateTo,   setDateTo]   = useState(today);
+  // حوارات التفاصيل (نفس منطق تقارير التكرار/الإزالة)
+  const [repOpen, setRepOpen] = useState(false);
+  const [repData, setRepData] = useState<RepDetailRow[] | null>(null);
+  const [repLoading, setRepLoading] = useState(false);
+  const [b24Open, setB24Open] = useState(false);
+  const [b24Data, setB24Data] = useState<Beyond24Row[] | null>(null);
+  const [b24Loading, setB24Loading] = useState(false);
   const [central, setCentral]   = useState("");
 
   const buildParams = (extra?: Record<string, string>) => {
@@ -345,6 +366,64 @@ export function TechPerformanceReport() {
   const myIdx = rows.findIndex((r) => String(r.techName || "").trim() === myTech);
   const visRows = techView ? (myIdx >= 0 ? [rows[myIdx]] : []) : rows;
 
+  // ── حوارات التفاصيل: الأرقام المكررة + أعطال تجاوزت 24 ساعة ──
+  const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString("ar-EG") : "");
+  // فلترة الفني: يرى أرقامه فقط (فنى الإغلاق أو فنى المنطقة)؛ الأدمن يرى الكل
+  const mineOnly = <T extends { closeByName: string; areaTechName: string }>(arr: T[] | null): T[] => {
+    const d = arr ?? [];
+    if (!techView) return d;
+    return d.filter((r) => r.closeByName === myTech || r.areaTechName === myTech);
+  };
+  const repFiltered = mineOnly(repData);
+  const b24Filtered = mineOnly(b24Data);
+
+  const loadDetail = async (
+    endpoint: string,
+    setData: (v: any) => void,
+    setLoading: (v: boolean) => void,
+    setOpen: (v: boolean) => void,
+  ) => {
+    setOpen(true);
+    setLoading(true);
+    const p = new URLSearchParams({ tab: "combined" });
+    if (dateFrom) p.set("dateFrom", dateFrom);
+    if (dateTo) p.set("dateTo", dateTo);
+    if (central) p.set("central", central);
+    try {
+      const r = await fetch(`${endpoint}?${p}`, { credentials: "include" });
+      setData(r.ok ? await r.json() : []);
+    } catch { setData([]); }
+    setLoading(false);
+  };
+  const loadRep = () => loadDetail("/api/reports/repetition-detail", setRepData, setRepLoading, setRepOpen);
+  const loadB24 = () => loadDetail("/api/reports/removal-beyond24", setB24Data, setB24Loading, setB24Open);
+
+  const exportRep = () => {
+    if (!repFiltered.length) return;
+    const ws = XLSX.utils.json_to_sheet(repFiltered.map((r, i) => ({
+      "#": i + 1, "رقم التليفون": r.phoneNumber, "السنترال": r.centralName,
+      "الكابينه": r.lineCabin ?? "", "البكس": r.lineBox ?? "", "MSAN": r.msanCode ?? "", "الفريم": r.frame ?? "",
+      "عدد المرات": r.appearances, "رقم الشكوى": r.complainNo,
+      "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
+      "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "الأرقام المكررة");
+    XLSX.writeFile(wb, `repeated-${dateFrom}-${dateTo}.xlsx`);
+  };
+  const exportB24 = () => {
+    if (!b24Filtered.length) return;
+    const ws = XLSX.utils.json_to_sheet(b24Filtered.map((r, i) => ({
+      "#": i + 1, "رقم التليفون": r.phoneNumber, "السنترال": r.centralName,
+      "الكابينه": r.lineCabin ?? r.cabinetNo ?? "", "البكس": r.lineBox ?? "", "MSAN": r.msanCode ?? "",
+      "رقم الشكوى": r.complainNo, "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
+      "عدد الساعات": Math.round(r.hours), "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "تجاوزت 24 ساعة");
+    XLSX.writeFile(wb, `beyond24-${dateFrom}-${dateTo}.xlsx`);
+  };
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* Toolbar */}
@@ -367,6 +446,12 @@ export function TechPerformanceReport() {
           </select>
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+          <Button variant="outline" size="sm" onClick={loadRep} className="text-purple-700 border-purple-200 gap-1">
+            <Repeat2 className="w-4 h-4" /> الأرقام المكررة
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadB24} className="text-orange-700 border-orange-200 gap-1">
+            <Clock className="w-4 h-4" /> تجاوزت 24 ساعة
+          </Button>
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={rows.length === 0} className="text-green-700 border-green-200 gap-1">
             <FileSpreadsheet className="w-4 h-4" /> Excel
           </Button>
@@ -454,6 +539,109 @@ export function TechPerformanceReport() {
           </Table>
         </div>
       </Card>
+
+      {/* ── حوار: الأرقام المكررة ── */}
+      <Dialog open={repOpen} onOpenChange={setRepOpen}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Repeat2 className="w-5 h-5 text-purple-700" />
+              الأرقام المكررة{repFiltered.length ? ` (${repFiltered.length})` : ""}
+              {techView && <span className="text-xs font-normal text-muted-foreground">— أرقامك فقط</span>}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={exportRep} disabled={!repFiltered.length} className="text-green-700 border-green-200 gap-1">
+              <FileSpreadsheet className="w-4 h-4" /> Excel
+            </Button>
+          </div>
+          <div className="overflow-auto">
+            {repLoading ? (
+              <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
+            ) : !repFiltered.length ? (
+              <div className="py-14 text-center text-muted-foreground">لا توجد أرقام مكررة</div>
+            ) : (
+              <Table className="text-right text-xs" dir="rtl">
+                <TableHeader>
+                  <TableRow className="bg-purple-800 hover:bg-purple-800">
+                    {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                      <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {repFiltered.map((r, i) => (
+                    <TableRow key={r.complainNo + "-" + i} className="hover:bg-muted/30">
+                      <TableCell className="text-center">{i + 1}</TableCell>
+                      <TableCell className="text-center">{r.phoneNumber}</TableCell>
+                      <TableCell>{r.centralName}</TableCell>
+                      <TableCell className="text-center">{r.lineCabin ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.lineBox ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.msanCode ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.frame ?? "-"}</TableCell>
+                      <TableCell className="text-center font-bold">{r.appearances}</TableCell>
+                      <TableCell className="text-center">{r.complainNo}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.closeByName}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.areaTechName}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── حوار: أعطال تجاوزت 24 ساعة ── */}
+      <Dialog open={b24Open} onOpenChange={setB24Open}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-orange-700" />
+              أعطال تجاوزت 24 ساعة{b24Filtered.length ? ` (${b24Filtered.length})` : ""}
+              {techView && <span className="text-xs font-normal text-muted-foreground">— أرقامك فقط</span>}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={exportB24} disabled={!b24Filtered.length} className="text-green-700 border-green-200 gap-1">
+              <FileSpreadsheet className="w-4 h-4" /> Excel
+            </Button>
+          </div>
+          <div className="overflow-auto">
+            {b24Loading ? (
+              <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
+            ) : !b24Filtered.length ? (
+              <div className="py-14 text-center text-muted-foreground">لا توجد أعطال تجاوزت 24 ساعة</div>
+            ) : (
+              <Table className="text-right text-xs" dir="rtl">
+                <TableHeader>
+                  <TableRow className="bg-orange-700 hover:bg-orange-700">
+                    {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "رقم الشكوى", "وقت الشكوى", "ساعات", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                      <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {b24Filtered.map((r, i) => (
+                    <TableRow key={r.complainNo + "-" + i} className="hover:bg-muted/30">
+                      <TableCell className="text-center">{i + 1}</TableCell>
+                      <TableCell className="text-center">{r.phoneNumber}</TableCell>
+                      <TableCell>{r.centralName}</TableCell>
+                      <TableCell className="text-center">{r.lineCabin ?? r.cabinetNo ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.lineBox ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.complainNo}</TableCell>
+                      <TableCell className="text-center whitespace-nowrap">{fmtDT(r.complainTime)}</TableCell>
+                      <TableCell className="text-center font-bold text-red-600">{Math.round(r.hours)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.closeByName}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.areaTechName}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
