@@ -158,8 +158,8 @@ export default function Dashboard() {
   const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders", "phone-lookup"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "phone-lookup"];
-  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات"];
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "phone-lookup", "om-current"];
+  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM"];
   const visibleGroups = REPORT_GROUPS
     .filter((g) =>
       (user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label)) &&

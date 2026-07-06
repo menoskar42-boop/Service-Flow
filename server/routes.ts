@@ -3888,6 +3888,26 @@ export async function registerRoutes(
       params.push(dateTo.trim());
       conds.push(`fo.order_create_time < ($${params.length}::date + INTERVAL '1 day')::timestamptz`);
     }
+    // الفنى: يرى متعذراته فقط (كود MSAN مربوط بكباينه عبر cabinet_technicians أو الإسناد اليدوى)،
+    // + المتعذرات اللى ملهاش كود MSAN تظهر للجميع.
+    if (req.user?.role === ROLES.TECH) {
+      const wc = String((req.user as any).workerCode || "").trim();
+      let myTech = "";
+      if (wc) {
+        const tr = await pool.query(
+          `SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [wc]);
+        myTech = tr.rows[0]?.tech_name || "";
+      }
+      params.push(wc);
+      const wp = `$${params.length}`;
+      params.push(myTech);
+      const tp = `$${params.length}`;
+      conds.push(`(
+        fo.msan_code IS NULL OR TRIM(fo.msan_code) = ''
+        OR EXISTS (SELECT 1 FROM cabinet_technicians ctx WHERE ctx.cabin_code = fo.msan_code AND ctx.worker_code = ${wp})
+        OR EXISTS (SELECT 1 FROM msan_tech_overrides mtx WHERE mtx.cabin_code = fo.msan_code AND mtx.tech_name = ${tp})
+      )`);
+    }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const yearCol = bucket === "archive" ? `fo.archived_year AS "archivedYear",` : "";
     const { rows } = await pool.query(
