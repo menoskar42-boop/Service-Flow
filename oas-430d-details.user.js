@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.6 — ملء الخانات صراحةً (username=الإيميل) + submit الفورم مباشرة + طباعة action الفورم.
-// @version      0.6.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.7 — دعم Knockout/Oracle JET (bitech-login-form): تحديث الـ observables بسلسلة أحداث كاملة + ضغط زر Sign In الـ KO-bound.
+// @version      0.7.0
 // @match        https://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -147,60 +147,71 @@
   }
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  /* ================== LOGIN ================== */
-  function nudge(el) { if (el) ["input", "change", "blur"].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true }))); }
+  /* ================== LOGIN (Knockout / Oracle JET — bitech-login-form) ================== */
+  // كتابة فى الخانة مع سلسلة أحداث كاملة عشان Knockout يحدّث الـ observable
+  // (bindings: value=change | textInput=input) وإلا الـ Sign In بيبعت بيانات فاضية.
+  function typeInto(el, val) {
+    if (!el) return;
+    try { el.focus(); } catch (e) {}
+    const proto = Object.getPrototypeOf(el);
+    const desc = Object.getOwnPropertyDescriptor(proto, "value");
+    if (desc && desc.set) desc.set.call(el, val); else el.value = val;
+    ["keydown", "keypress", "input", "keyup", "change", "blur"].forEach(t => {
+      try {
+        el.dispatchEvent(t.indexOf("key") === 0
+          ? new KeyboardEvent(t, { bubbles: true, key: "a" })
+          : new Event(t, { bubbles: true }));
+      } catch (e) {}
+    });
+  }
   function fillLoginFields() {
     const pw = document.querySelector("input[type='password']");
     if (!pw || !visible(pw)) return null;
-    const uf = document.querySelector("input[name='j_username'], input[type='text']:not([type='hidden']), input[type='email'], input[name*='user' i], input[id*='user' i]");
-    // نملأ صراحةً دايمًا — قيمة الـ autofill أحيانًا مش موجودة فى الـ DOM فالـ submit بيبعت فاضى
-    if (uf) setInputValue(uf, USER);
-    setInputValue(pw, PASS);
+    const uf = document.querySelector(
+      "form.bitech-login-form input[type='text'], form.bitech-login-form input[type='email']," +
+      "input[name='j_username'], input[type='text']:not([type='hidden']), input[type='email'], input[name*='user' i]");
+    if (uf) typeInto(uf, USER);
+    typeInto(pw, PASS);
     return pw;
   }
+  // زر Sign In: أصغر عنصر نصّه "Sign In" (الورقة) — الضغط بيطلع bubbling للـ KO click binding
   function findSignIn() {
-    const re = /sign ?in|log ?in|دخول/i;
-    return [...document.querySelectorAll("input[type='submit'], button, a, div, span, [role='button']")]
-      .find(b => {
-        if (!visible(b)) return false;
-        const txt = norm(b.textContent), val = b.value || "";
-        return (val && re.test(val)) || (txt.length <= 20 && re.test(txt));
-      });
+    const re = /^\s*(sign\s*in|log\s*in|دخول)\s*$/i;
+    const cands = [...document.querySelectorAll(
+      "form.bitech-login-form *, input[type='submit'], button, a, [role='button']")]
+      .filter(e => visible(e) && (re.test(norm(e.textContent)) || re.test(e.value || "")));
+    cands.sort((a, b) => norm(a.textContent).length - norm(b.textContent).length);
+    return cands[0] || null;
+  }
+  function clickEl(b) {
+    if (!b) return;
+    ["pointerover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(t => {
+      try { b.dispatchEvent(new (t.indexOf("pointer") === 0 ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+    });
+    try { b.click(); } catch (e) {}
   }
   function submitLogin(pw) {
-    const f = pw.closest("form") || document.querySelector("form");
-    log("📋 form action:", (f && f.action) || "(مفيش form)", "method:", f && f.method);
-    const b = findSignIn();
-    if (b) {
-      log("🔐 ضغط Sign In:", b.tagName, "«" + norm(b.textContent || b.value) + "» id=" + b.id + " class=" + (b.className || "").slice(0, 40));
-      // ضغط شامل (pointer + mouse + native) — بعض الأزرار بترفض واحدة وتقبل التانية
-      ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(t => {
-        try { b.dispatchEvent(new (t.indexOf("pointer") === 0 ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
-      });
-      try { b.click(); } catch (e) {}
-    } else { warn("مش لاقى زر Sign In"); }
-    // Enter على خانة الباسورد
-    ["keydown", "keypress", "keyup"].forEach(t =>
-      pw.dispatchEvent(new KeyboardEvent(t, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true })));
-    // submit الفورم مباشرة — الأضمن لفورم Oracle (j_security_check)
+    fillLoginFields(); // تأكيد تحديث الـ observables قبل الضغط
     setTimeout(() => {
-      if (!document.querySelector("input[type='password']")) { log("✅ خرجنا من اللوجين"); return; }
-      if (f) { log("🔐 form submit"); try { f.requestSubmit(); } catch (e) { try { f.submit(); } catch (e2) { warn("submit فشل", e2); } } }
-    }, 1200);
+      const b = findSignIn();
+      log("🔐 Sign In element:", b ? (b.tagName + " «" + norm(b.textContent || b.value) + "» id=" + b.id + " class=" + (b.className || "").slice(0, 45)) : "مش لاقيه");
+      if (b) clickEl(b); else warn("مش لاقى زر Sign In");
+      // Enter على الباسورد كإضافة
+      ["keydown", "keypress", "keyup"].forEach(t =>
+        pw.dispatchEvent(new KeyboardEvent(t, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true })));
+    }, 500);
   }
   function tryLogin() {
     if (!document.querySelector("input[type='password']")) return false;
-    // صفحة لوجين: املأ + انبض الخانات، استنى استقرار، ثم submit بكل الطرق
     let done = false, tries = 0;
     const iv = setInterval(() => {
       tries++;
       const pw = fillLoginFields();
       if (!pw) { if (tries > 40) clearInterval(iv); return; }
       const b = findSignIn();
-      if (b) log("لقيت زر محتمل:", b.tagName, "«" + norm(b.textContent || b.value) + "»");
-      if (!done && (b || tries >= 6)) {
+      if (!done && (b || tries >= 8)) {
         done = true; clearInterval(iv);
-        setTimeout(() => submitLogin(pw), 900);
+        setTimeout(() => submitLogin(pw), 1000);
       } else if (tries > 40) { clearInterval(iv); }
     }, 500);
     return true;
@@ -217,7 +228,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.6)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.7)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
