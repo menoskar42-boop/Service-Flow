@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { openCustomer360 } from "@/lib/customer360";
 
 // بوابة DZS expresse — تُفتح فى تاب جديد ويُمرَّر رقم الأكونت فى الـ hash ليقيسه
 // الـ Tampermonkey script (dzs-expresse-v10.user.js) ويرفع النتيجة لشيت 138.
@@ -151,16 +152,27 @@ export function PhoneLookupReport() {
           </Button>
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
-              <Button
-                variant="outline"
-                onClick={measureDZS}
-                disabled={!line.accountNo}
-                className="bg-white gap-2 text-blue-700 border-blue-200"
-                title={line.accountNo ? "فتح DZS وقياس هذا الرقم" : "لا يوجد رقم أكونت لهذا الخط"}
-              >
-                <Radar className="w-4 h-4" />
-                قياس DZS
-              </Button>
+              {line.accountNo ? (
+                <Button
+                  variant="outline"
+                  onClick={measureDZS}
+                  className="bg-white gap-2 text-blue-700 border-blue-200"
+                  title="فتح DZS وقياس هذا الرقم"
+                >
+                  <Radar className="w-4 h-4" />
+                  قياس DZS
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => openCustomer360([line.fullPhone])}
+                  className="bg-white gap-2 text-purple-700 border-purple-200"
+                  title="لا يوجد رقم أكونت — فتح Customer360 لجلب رقم الأكونت تلقائياً"
+                >
+                  <IdCard className="w-4 h-4" />
+                  جلب الأكونت من Customer360
+                </Button>
+              )}
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
                 Excel
