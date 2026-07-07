@@ -226,7 +226,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
         h2 { text-align: center; font-size: 14px; margin: 0 0 4px; }
         .pageno { text-align: center; font-size: 10px; color: #64748b; margin-bottom: 8px; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; } td, th { word-break: break-word; overflow-wrap: anywhere; }
         th { background: #1e50a0 !important; color: #fff !important; padding: 6px 3px; border: 1px solid #15407f; font-size: 10px; }
         td { border: 1px solid #ccc; padding: 4px 3px; text-align: center; color: #111; }
         tbody tr:nth-child(even) { background: #eef2fb !important; }

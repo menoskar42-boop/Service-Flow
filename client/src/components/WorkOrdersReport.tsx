@@ -145,7 +145,7 @@ export function WorkOrdersReport() {
         h2 { text-align: center; font-size: 15px; margin: 0 0 4px; }
         .pageno { text-align: center; font-size: 10px; color: #64748b; margin-bottom: 8px; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        table { width: 100%; border-collapse: collapse; }
+        table { width: 100%; border-collapse: collapse; } td, th { word-break: break-word; overflow-wrap: anywhere; }
         th { background: #1e50a0 !important; color: #ffffff !important; padding: 7px 4px;
           border: 1px solid #15407f; font-weight: bold; font-size: 12px; }
         td { border: 1px solid #ccc; padding: 5px 4px; text-align: right; color: #111; }
