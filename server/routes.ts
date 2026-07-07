@@ -2054,34 +2054,40 @@ export async function registerRoutes(
     if (box) { params.push(box); plConds.push(`pl.box_number = $${params.length}`); }
 
     const regCte = `WITH reg AS (
-       SELECT cd.phone_number AS short FROM complaint_details cd
+       SELECT cd.phone_number AS short, cd.exchange_name AS ex FROM complaint_details cd
          WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
            AND (cd.close_time AT TIME ZONE 'Africa/Cairo')::date BETWEEN $1::date AND $2::date
        UNION
-       SELECT rc.phone_number FROM remaining_complaints rc
+       SELECT rc.phone_number, rc.exchange_name FROM remaining_complaints rc
          WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
            AND COALESCE(rc.close_time, rc.complain_time)::date BETWEEN $1::date AND $2::date
+    ), reg1 AS (
+       SELECT DISTINCT ON (short) short, ex FROM reg WHERE COALESCE(short,'') <> '' ORDER BY short
     )`;
-    const joinClause = `FROM phone_lines pl
-       JOIN reg ON reg.short = pl.tel_no
-       LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+    // نبدأ من الأعطال المنتظمة (reg) و LEFT JOIN مع الخطوط: تظهر اللى ليها بيانات فنية واللى ملهاش
+    // (أعمدة فنية فاضية). بدون أكونت = مفيش سجل فى line_accounts (بالرقم الكامل من الخط أو 88+القصير).
+    const joinClause = `FROM reg1
+       LEFT JOIN phone_lines pl ON pl.tel_no = reg1.short
+       LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, '88' || reg1.short)
        LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone`;
     const where = `WHERE ${plConds.join(" AND ")}`;
 
-    const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT pl.full_phone)::int AS c ${joinClause} ${where}`, params);
+    const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT reg1.short)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
       `${regCte}
-       SELECT DISTINCT ON (pl.full_phone)
-              pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+       SELECT DISTINCT ON (reg1.short)
+              pl.id, reg1.short AS "telNo", COALESCE(pl.central, reg1.ex) AS central,
+              pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
               pl.cabinet_in AS "cabinetIn", pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
-              COALESCE(pp.frame, pl.port) AS port, pl.len, pl.full_phone AS "fullPhone"
+              COALESCE(pp.frame, pl.port) AS port, pl.len,
+              COALESCE(pl.full_phone, '88' || reg1.short) AS "fullPhone"
        ${joinClause} ${where}
-       ORDER BY pl.full_phone, pl.id
+       ORDER BY reg1.short, pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
