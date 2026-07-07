@@ -607,7 +607,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
                      SELECT 1 FROM complaint_details cd
                      WHERE cd.close_time IS NOT NULL
                        AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
-                       AND date_trunc('month', cd.close_time) = date_trunc('month', t.complaint_time)
+                       AND date_trunc('month', cd.complain_time) = date_trunc('month', t.complaint_time)
                        AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
                    )
               THEN 'مكرر' ELSE '' END AS "repeatStatus",
@@ -4471,16 +4471,16 @@ export async function registerRoutes(
              t.ticket_id             AS "ticketId",
              t.central_name          AS "centralName",
              t.phone_number          AS "phoneShort",
-             -- مكرر: الرقم موجود في شيت التفاصيل (430D) وتاريخ الإغلاق (Close Time)
-             -- هناك يقع في نفس شهر/سنة الشكوى الحالية، بتاريخ (يوم) مختلف.
-             -- (المقارنة بتاريخ الإغلاق لأن شكوى التفاصيل قد تبدأ آخر الشهر السابق
-             --  وتُغلق في نفس شهر الشكوى الحالية — وتُعتبر تكراراً.)
+             -- مكرر: يوجد شكوى مغلقة سابقة (complaint_details) لنفس الرقم، تاريخ شكواها
+             -- (Complain Time) يقع في نفس شهر الشكوى الحالية، بيوم مختلف.
+             -- (المقارنة بتاريخ الشكوى وليس الإغلاق: شكوى تاريخها الشهر السابق وأُغلقت
+             --  هذا الشهر لا تُعتبر تكراراً لهذا الشهر.)
              CASE WHEN t.phone_number IS NOT NULL AND t.phone_number <> '' AND t.complaint_time IS NOT NULL
                        AND EXISTS (
                          SELECT 1 FROM complaint_details cd
                          WHERE cd.close_time IS NOT NULL
                            AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
-                           AND date_trunc('month', cd.close_time) = date_trunc('month', t.complaint_time)
+                           AND date_trunc('month', cd.complain_time) = date_trunc('month', t.complaint_time)
                            AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
