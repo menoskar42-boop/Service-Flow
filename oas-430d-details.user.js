@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.5 — ضغط Sign In بكل الطرق (زر + Enter + submit الفورم) + طباعة تفاصيل الزر.
-// @version      0.5.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.6 — ملء الخانات صراحةً (username=الإيميل) + submit الفورم مباشرة + طباعة action الفورم.
+// @version      0.6.0
 // @match        https://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -12,7 +12,7 @@
   "use strict";
 
   /* ================== CONFIG ================== */
-  const USER = "mena.haleem";
+  const USER = "mena.haleem@te.eg"; // زى ما ظاهر فى خانة اللوجين
   const PASS = "Mon_oskar352";
   const GROUP  = "قطاع وسط الصعيد";
   const REGION = "منطقة تليفونات أسيوط";
@@ -152,10 +152,10 @@
   function fillLoginFields() {
     const pw = document.querySelector("input[type='password']");
     if (!pw || !visible(pw)) return null;
-    const uf = document.querySelector("input[type='text']:not([type='hidden']), input[type='email'], input[name*='user' i], input[id*='user' i]");
-    // نملأ بس لو فاضية (ما نكتبش فوق الـ autofill)، ومع نبضة events عشان يتفعّل زر Sign In
-    if (uf && !uf.value.trim()) setInputValue(uf, USER); else nudge(uf);
-    if (!pw.value) setInputValue(pw, PASS); else nudge(pw);
+    const uf = document.querySelector("input[name='j_username'], input[type='text']:not([type='hidden']), input[type='email'], input[name*='user' i], input[id*='user' i]");
+    // نملأ صراحةً دايمًا — قيمة الـ autofill أحيانًا مش موجودة فى الـ DOM فالـ submit بيبعت فاضى
+    if (uf) setInputValue(uf, USER);
+    setInputValue(pw, PASS);
     return pw;
   }
   function findSignIn() {
@@ -168,6 +168,8 @@
       });
   }
   function submitLogin(pw) {
+    const f = pw.closest("form") || document.querySelector("form");
+    log("📋 form action:", (f && f.action) || "(مفيش form)", "method:", f && f.method);
     const b = findSignIn();
     if (b) {
       log("🔐 ضغط Sign In:", b.tagName, "«" + norm(b.textContent || b.value) + "» id=" + b.id + " class=" + (b.className || "").slice(0, 40));
@@ -180,12 +182,11 @@
     // Enter على خانة الباسورد
     ["keydown", "keypress", "keyup"].forEach(t =>
       pw.dispatchEvent(new KeyboardEvent(t, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true })));
-    // fallback: submit الفورم بعد ثانية ونص لو لسه فى صفحة اللوجين
+    // submit الفورم مباشرة — الأضمن لفورم Oracle (j_security_check)
     setTimeout(() => {
-      if (!document.querySelector("input[type='password']")) return; // خرجنا من اللوجين
-      const f = pw.closest("form") || document.querySelector("form");
-      if (f) { log("🔐 form submit (fallback)"); try { f.requestSubmit(); } catch (e) { try { f.submit(); } catch (e2) {} } }
-    }, 1500);
+      if (!document.querySelector("input[type='password']")) { log("✅ خرجنا من اللوجين"); return; }
+      if (f) { log("🔐 form submit"); try { f.requestSubmit(); } catch (e) { try { f.submit(); } catch (e2) { warn("submit فشل", e2); } } }
+    }, 1200);
   }
   function tryLogin() {
     if (!document.querySelector("input[type='password']")) return false;
@@ -216,7 +217,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.5)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.6)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
