@@ -3,9 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+
+// بوابة DZS expresse — تُفتح فى تاب جديد ويُمرَّر رقم الأكونت فى الـ hash ليقيسه
+// الـ Tampermonkey script (dzs-expresse-v10.user.js) ويرفع النتيجة لشيت 138.
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+const buildDZSUrl = (accounts: string[]) =>
+  `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
 
 interface LineData {
   telNo: string;
@@ -62,6 +68,13 @@ export function PhoneLookupReport() {
   const line = data?.found ? (data.line as LineData) : null;
   const search = () => setPhone(input.trim());
 
+  // فتح بوابة DZS وقياس رقم الأكونت الخاص بالخط
+  const measureDZS = () => {
+    const acc = (line?.accountNo ?? "").toString().trim();
+    if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط — لا يمكن القياس"); return; }
+    window.open(buildDZSUrl([acc]), "_blank");
+  };
+
   const fields: [string, ReactNode][] = line
     ? [
         ["رقم التليفون الكامل", dash(line.fullPhone)],
@@ -70,6 +83,7 @@ export function PhoneLookupReport() {
         ["رقم الكابينة", dash(line.cabinNumber)],
         ["رقم البكس", dash(line.boxNumber)],
         ["رقم الفريم", dash(line.frame)],
+        ["رقم الأكونت", dash(line.accountNo)],
         ["السرعة الحالية", dash(line.currentSpeed)],
         ["أقصى سرعة", dash(line.maxSpeed)],
         ["الاسكور", scoreBadge(line.score)],
@@ -137,6 +151,16 @@ export function PhoneLookupReport() {
           </Button>
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
+              <Button
+                variant="outline"
+                onClick={measureDZS}
+                disabled={!line.accountNo}
+                className="bg-white gap-2 text-blue-700 border-blue-200"
+                title={line.accountNo ? "فتح DZS وقياس هذا الرقم" : "لا يوجد رقم أكونت لهذا الخط"}
+              >
+                <Radar className="w-4 h-4" />
+                قياس DZS
+              </Button>
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
                 Excel
