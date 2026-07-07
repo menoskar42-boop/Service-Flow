@@ -94,6 +94,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const [speedMin, setSpeedMin] = useState("");
   const [speedMax, setSpeedMax] = useState("");
   const [accountQ, setAccountQ] = useState("");
+  // فلتر "أقدم من N يوم": يعرض فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم
+  // أو التى لم تُقَس من قبل. عدد الأيام يكتبه المستخدم (افتراضى 7).
+  const [staleDays, setStaleDays] = useState("7");
+  const [staleOn, setStaleOn] = useState(false);
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -121,7 +125,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
@@ -129,6 +133,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
       if (box) params.set("box", box);
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
+      if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -219,6 +224,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
       if (box) params.set("box", box);
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
+      if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (accountQ.trim()) params.set("accountQ", accountQ.trim());
@@ -254,6 +260,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     if (box) params.set("box", box);
     if (!box && boxFrom) params.set("boxFrom", boxFrom);
     if (!box && boxTo)   params.set("boxTo",   boxTo);
+    if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -294,6 +301,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -422,6 +430,27 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
                 className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
                 dir="ltr"
               />
+            </div>
+            <div className={`flex items-center gap-1 border rounded-md px-2 py-1 text-xs ${staleOn ? "border-purple-300 bg-purple-50 text-purple-700" : "border-gray-200 bg-white text-gray-500"}`}>
+              <span className="whitespace-nowrap">أقدم من</span>
+              <Input
+                type="number"
+                min={1}
+                value={staleDays}
+                onChange={(e) => { setStaleDays(e.target.value); setPage(1); }}
+                className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+              />
+              <span className="whitespace-nowrap">يوم</span>
+              <Button
+                variant={staleOn ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setStaleOn((v) => !v); setPage(1); }}
+                className={`h-6 px-2 text-xs ${staleOn ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-purple-700 border-purple-200"}`}
+                title="عرض فقط الخطوط التى مرّ على آخر قياس لها أكثر من العدد المحدد من الأيام أو لم تُقَس من قبل"
+              >
+                {staleOn ? "مفعّل" : "تفعيل"}
+              </Button>
             </div>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS

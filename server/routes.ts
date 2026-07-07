@@ -1680,7 +1680,7 @@ export async function registerRoutes(
   // GET /api/phone-lines/with-account — lines that have an entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/with-account", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", boxFrom = "", boxTo = "",
-            page = "1", limit = "50", accountQ = "",
+            page = "1", limit = "50", accountQ = "", staleDays = "",
             scoreGt = "", scoreLt = "", speedGt = "", speedLt = "", neverMeasured = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
@@ -1715,6 +1715,14 @@ export async function registerRoutes(
     if (req.user?.role === ROLES.TECH) {
       params.push(String((req.user as any).workerCode || "").trim());
       conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctx WHERE ctx.central_name = pl.central AND ctx.cabin_number = pl.cabin_number AND ctx.worker_code = $${params.length})`);
+    }
+    // فلتر "أقدم من N يوم": يُظهر فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم،
+    // أو التى لم تُقَس من قبل (لا يوجد سجل فى شيت 138 → uploaded_at = NULL).
+    // يشيل الخطوط التى قِيست خلال آخر N يوم. يُطبَّق أيضاً على القياس والتصدير (server-side).
+    const staleN = parseInt(staleDays);
+    if (staleDays !== "" && !isNaN(staleN) && staleN > 0) {
+      params.push(staleN);
+      conds.push(`(c138p.uploaded_at IS NULL OR c138p.uploaded_at < now() - make_interval(days => $${params.length}))`);
     }
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
