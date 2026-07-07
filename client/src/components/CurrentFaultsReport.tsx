@@ -8,8 +8,9 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History } from "lucide-react";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 
 interface CurrentFault extends Measurement138 {
@@ -121,6 +122,20 @@ export function CurrentFaultsReport() {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [repeatedOnly, setRepeatedOnly] = useState(false);
+  // حوار تفاصيل التكرار (الشكاوى المغلقة السابقة فى نفس الشهر لنفس الرقم)
+  const [repeatFor, setRepeatFor] = useState<CurrentFault | null>(null);
+  const [repeatData, setRepeatData] = useState<any[] | null>(null);
+  const [repeatLoading, setRepeatLoading] = useState(false);
+  const openRepeat = async (f: CurrentFault) => {
+    setRepeatFor(f); setRepeatData(null); setRepeatLoading(true);
+    const p = new URLSearchParams({ phone: f.phoneShort || "", refDate: (f.complainTime || "").slice(0, 10) });
+    try {
+      const res = await fetch(`/api/reports/repeat-details?${p}`, { credentials: "include" });
+      const j = res.ok ? await res.json() : { prev: [] };
+      setRepeatData(j.prev || []);
+    } catch { setRepeatData([]); }
+    setRepeatLoading(false);
+  };
 
   const { data: faults = [], isFetching } = useQuery<CurrentFault[]>({
     queryKey: ["/api/reports/current-faults", central, q],
@@ -410,7 +425,13 @@ export function CurrentFaultsReport() {
                     <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
                     <TableCell>
                       {f.repeatStatus === "مكرر" ? (
-                        <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>
+                        <button
+                          onClick={() => openRepeat(f)}
+                          title="تفاصيل الشكاوى المغلقة السابقة فى نفس الشهر"
+                          className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <History className="w-3 h-3" /> مكرر
+                        </button>
                       ) : ""}
                     </TableCell>
                     <TableCell className="max-w-[140px] truncate">{dispStatus(f.statusCode)}</TableCell>
@@ -457,6 +478,91 @@ export function CurrentFaultsReport() {
           </Table>
         </div>
       </Card>
+
+      {/* ── حوار تفاصيل التكرار ── */}
+      <Dialog open={!!repeatFor} onOpenChange={(o) => { if (!o) setRepeatFor(null); }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto" dir="rtl">
+          {repeatFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <History className="w-5 h-5 text-orange-600" />
+                  تفاصيل التكرار — {repeatFor.phoneShort}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="text-sm">
+                <div className="font-semibold text-orange-700 mb-1">البيانات الفنية</div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-100 rounded overflow-hidden">
+                  {([
+                    ["السنترال", repeatFor.centralName],
+                    ["الكابينة", repeatFor.cabinetNo],
+                    ["البكس", repeatFor.boxNo],
+                    ["الفريم", repeatFor.frame],
+                    ["MSAN", repeatFor.msanCode],
+                    ["DP Terminal", repeatFor.dpTerminal],
+                  ] as [string, any][]).map(([k, v]) => (
+                    <div key={k} className="bg-white px-3 py-2 flex justify-between gap-2">
+                      <span className="text-muted-foreground text-xs">{k}</span>
+                      <span className="font-semibold text-xs">{v || "-"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-sm mt-3">
+                <div className="font-semibold text-blue-700 mb-1">آخر قياس للخط</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded overflow-hidden">
+                  {([
+                    ["الاسكور", repeatFor.lastMeasScore],
+                    ["السرعة الحالية", (repeatFor as any).lineCurrentSpeed],
+                    ["أقصى سرعة", (repeatFor as any).lineMaxSpeed],
+                    ["تاريخ آخر قياس", repeatFor.lastMeasTime ? fmtDt(repeatFor.lastMeasTime) : "-"],
+                  ] as [string, any][]).map(([k, v]) => (
+                    <div key={k} className="bg-white px-3 py-2 flex justify-between gap-2">
+                      <span className="text-muted-foreground text-xs">{k}</span>
+                      <span className="font-semibold text-xs">{(v ?? "") === "" ? "-" : v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-sm mt-3">
+                <div className="font-semibold text-green-700 mb-1">الشكاوى المغلقة السابقة (نفس الشهر)</div>
+                {repeatLoading ? (
+                  <div className="py-6 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
+                ) : !repeatData || !repeatData.length ? (
+                  <div className="py-6 text-center text-muted-foreground">لا توجد شكاوى مغلقة سابقة فى نفس الشهر</div>
+                ) : (
+                  <div className="overflow-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-green-700 text-white">
+                          {["#", "رقم الشكوى", "تاريخ الشكوى", "تاريخ الإغلاق", "كود الإغلاق", "فنى الإغلاق"].map((h) => (
+                            <th key={h} className="border border-green-800 px-2 py-1 whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {repeatData.map((r, i) => (
+                          <tr key={r.complainNo + "-" + i} className="odd:bg-gray-50">
+                            <td className="border px-2 py-1 text-center">{i + 1}</td>
+                            <td className="border px-2 py-1 text-center">{r.complainNo}</td>
+                            <td className="border px-2 py-1 text-center whitespace-nowrap">{fmtDt(r.complainTime)}</td>
+                            <td className="border px-2 py-1 text-center whitespace-nowrap">{fmtDt(r.closeTime)}</td>
+                            <td className="border px-2 py-1 text-center">{r.closeCode || "-"}</td>
+                            <td className="border px-2 py-1 whitespace-nowrap">{r.closeByName || "-"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

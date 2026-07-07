@@ -4567,6 +4567,36 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/repeat-details?phone=<القصير>&refDate=<YYYY-MM-DD>
+  // تفاصيل الشكاوى المغلقة السابقة لنفس الرقم فى نفس شهر الشكوى المرجعية (لزر «مكرر»)
+  app.get("/api/reports/repeat-details", requireAuth, async (req, res) => {
+    try {
+      const { phone = "", refDate = "" } = req.query as Record<string, string>;
+      const ph = String(phone).replace(/\D/g, "").trim();
+      if (!ph || !refDate) return res.json({ prev: [] });
+      const { rows } = await pool.query(
+        `SELECT cd.complain_no AS "complainNo",
+                (cd.complain_time AT TIME ZONE 'Africa/Cairo') AS "complainTime",
+                (cd.close_time    AT TIME ZONE 'Africa/Cairo') AS "closeTime",
+                cd.close_code AS "closeCode",
+                COALESCE(
+                  (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
+                  NULLIF(cd.close_by, ''), 'غير معروف'
+                ) AS "closeByName"
+         FROM complaint_details cd
+         WHERE cd.close_time IS NOT NULL
+           AND regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || $1
+           AND date_trunc('month', cd.complain_time) = date_trunc('month', $2::timestamptz)
+         ORDER BY cd.complain_time DESC
+         LIMIT 200`,
+        [ph, refDate],
+      );
+      res.json({ prev: rows });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // GET /api/reports/regularized-faults — الأعطال المنتظمة اليوم
   // العطل يُعتبر "منتظماً اليوم" إذا:
   //   (أ) كان موجوداً بملف الشكاوى الحالى (ticket_dsl_current) وتاريخ إغلاقه = اليوم، أو
