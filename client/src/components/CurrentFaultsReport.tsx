@@ -18,6 +18,7 @@ interface CurrentFault extends Measurement138 {
   centralName: string | null;
   phoneShort: string | null;
   repeatStatus: string;
+  monthRepeat: boolean;
   statusCode: string | null;
   msanCode: string | null;
   frame: string | null;
@@ -122,6 +123,8 @@ export function CurrentFaultsReport() {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [repeatedOnly, setRepeatedOnly] = useState(false);
+  // زر مستقل: الأعطال التى لها رقم شكوى آخر خلال شهر من تاريخها (بدون كلمة «مكرر»)
+  const [monthRepeatOnly, setMonthRepeatOnly] = useState(false);
   // حوار تفاصيل التكرار (الشكاوى المغلقة السابقة فى نفس الشهر لنفس الرقم)
   const [repeatFor, setRepeatFor] = useState<CurrentFault | null>(null);
   const [repeatData, setRepeatData] = useState<any[] | null>(null);
@@ -149,9 +152,9 @@ export function CurrentFaultsReport() {
     },
   });
 
-  const displayed = repeatedOnly
-    ? faults.filter((f) => f.repeatStatus === "مكرر")
-    : faults;
+  const displayed = faults
+    .filter((f) => (repeatedOnly ? f.repeatStatus === "مكرر" : true))
+    .filter((f) => (monthRepeatOnly ? f.monthRepeat === true : true));
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -331,6 +334,15 @@ export function CurrentFaultsReport() {
           className={`gap-1 ${repeatedOnly ? "bg-orange-600 hover:bg-orange-700 text-white" : "text-orange-700 border-orange-200"}`}
         >
           <Repeat className="w-4 h-4" /> {repeatedOnly ? "عرض الكل" : "المكرر فقط"}
+        </Button>
+        <Button
+          variant={monthRepeatOnly ? "default" : "outline"}
+          size="sm"
+          onClick={() => setMonthRepeatOnly((v) => !v)}
+          className={`gap-1 ${monthRepeatOnly ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-purple-700 border-purple-200"}`}
+          title="الأعطال التى لها رقم شكوى آخر خلال شهر من تاريخها (نفس الشهر أو الشهر السابق)"
+        >
+          <History className="w-4 h-4" /> {monthRepeatOnly ? "عرض الكل" : "مكرر خلال شهر"}
         </Button>
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
         <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">

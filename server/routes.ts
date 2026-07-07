@@ -4508,6 +4508,27 @@ export async function registerRoutes(
                            AND (cd.complain_time IS NULL OR cd.complain_time::date <> t.complaint_time::date)
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
+             -- monthRepeat: منطق مستقل عن «مكرر» — يوجد رقم شكوى آخر لنفس الرقم خلال شهر
+             -- (±30 يوم) من تاريخ الشكوى الحالية، سواء نفس الشهر أو الشهر السابق. لا يُكتب «مكرر».
+             (t.phone_number IS NOT NULL AND t.phone_number <> '' AND t.complaint_time IS NOT NULL
+              AND (
+                EXISTS (
+                  SELECT 1 FROM complaint_details cd
+                  WHERE regexp_replace(COALESCE(cd.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
+                    AND cd.complain_no <> t.ticket_id
+                    AND cd.complain_time IS NOT NULL
+                    AND cd.complain_time >= t.complaint_time - interval '1 month'
+                    AND cd.complain_time <= t.complaint_time + interval '1 month'
+                )
+                OR EXISTS (
+                  SELECT 1 FROM remaining_complaints rc
+                  WHERE regexp_replace(COALESCE(rc.phone_number,''), '\\D', '', 'g') LIKE '%' || t.phone_number
+                    AND rc.complain_no <> t.ticket_id
+                    AND rc.complain_time IS NOT NULL
+                    AND rc.complain_time >= t.complaint_time - interval '1 month'
+                    AND rc.complain_time <= t.complaint_time + interval '1 month'
+                )
+              )) AS "monthRepeat",
              t.status_code           AS "statusCode",
              ct.cabin_code           AS "msanCode",
              pp.frame                AS "frame",
