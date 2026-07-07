@@ -1944,61 +1944,69 @@ export async function registerRoutes(
     const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const needComplaint = requireComplaint === "1" || requireComplaint === "true";
     const params: any[] = [];
     const conds: string[] = [];
-    if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
-    if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
-    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
 
-    const joinClause = `FROM phone_lines pl
-      LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone
-      LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
-      LEFT JOIN LATERAL (
-        SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+    // مصدر التقرير = أحدث قياس لكل رقم فى case_138 (مش phone_lines) — علشان تظهر كل الأرقام
+    // المحتاجة رفع سرعة سواء لها بيانات فنية (موجودة فى phone_lines) أو لأ، وسواء لها شكوى أو لأ.
+    // السنترال/الكابينة بتيجى من phone_lines، ولو الرقم مش موجود فيها بتيجى من سجل الشكوى.
+    const joinClause = `FROM (
+        SELECT DISTINCT ON (c.full_phone)
+               c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
                NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
                NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
-        FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
-      ) c138p ON true
+        FROM case_138 c
+        WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
+        ORDER BY c.full_phone, c.id DESC
+      ) m
+      LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
+      LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone
+      LEFT JOIN line_accounts la ON la.full_phone = m.full_phone
       LEFT JOIN LATERAL (
-        SELECT u.complain_no, u.complain_time FROM (
-          SELECT complain_no, complain_time FROM complaint_details WHERE phone_number = pl.tel_no
+        SELECT u.complain_no, u.complain_time, u.central_name, u.cabinet_no FROM (
+          SELECT complain_no, complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
+            FROM complaint_details
+            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
           UNION ALL
-          SELECT complain_no, complain_time FROM remaining_complaints WHERE phone_number = pl.tel_no
+          SELECT complain_no, complain_time, exchange_name AS central_name, cabinet_no
+            FROM remaining_complaints
+            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
-    // معيار رفع السرعة
-    conds.push(`c138p.score IS NOT NULL`);
-    conds.push(`NOT (COALESCE(c138p.cur_n, 0) < 200 AND COALESCE(c138p.mx_n, 0) < 200)`);
+    // معيار رفع السرعة (على أحدث قياس فى case_138)
+    conds.push(`m.score IS NOT NULL`);
+    conds.push(`NOT (COALESCE(m.cur_n, 0) < 200 AND COALESCE(m.mx_n, 0) < 200)`);
     conds.push(`(
-       (c138p.mx_n > 0 AND c138p.cur_n / c138p.mx_n < 0.6 AND c138p.score > 15 AND c138p.score < 101)
-       OR (c138p.score < 16 AND c138p.cur_n < 10000)
+       (m.mx_n > 0 AND m.cur_n / m.mx_n < 0.6 AND m.score > 15 AND m.score < 101)
+       OR (m.score < 16 AND m.cur_n < 10000)
     )`);
-    if (requireComplaint === "1" || requireComplaint === "true") {
-      conds.push(`(
-        EXISTS (SELECT 1 FROM complaint_details cd WHERE cd.phone_number = pl.tel_no
-                AND cd.complain_time >= now() - interval '1 month')
-        OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE rc.phone_number = pl.tel_no
-                AND rc.complain_time >= now() - interval '1 month')
-      )`);
+    if (needComplaint) {
+      conds.push(`cpl.complain_time >= now() - interval '1 month'`);
     }
+    if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
+    if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
+    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
     const where = `WHERE ${conds.join(" AND ")}`;
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
-      `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
-              pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
-              COALESCE(pp.frame, pl.port) AS port, pl.len, pl.full_phone AS "fullPhone",
+      `SELECT pl.id, COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) AS "telNo",
+              COALESCE(pl.central, cpl.central_name) AS central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+              COALESCE(pl.cabin_number, cpl.cabinet_no) AS "cabinNumber", pl.box_number AS "boxNumber",
+              pl.dp_terminal AS "dpTerminal", COALESCE(pp.frame, pl.port) AS port, pl.len, m.full_phone AS "fullPhone",
               la.account_no AS "accountNo", la.source AS "accountSource",
-              c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
-              c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
-              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              m.current_speed AS "lineCurrentSpeed", m.max_speed AS "lineMaxSpeed",
+              m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
+              (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               cpl.complain_no AS "complaintNo",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime"
        ${joinClause} ${where}
-       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), c138p.score DESC NULLS LAST, pl.id
+       ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
+                LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.score DESC NULLS LAST, m.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
