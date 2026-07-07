@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.2 — إلغاء اختيار القطاع/المنطقة (كل السنترالات بتظهر بدونهم). نصف-أوتوماتيك بلوحة تحكم.
-// @version      0.2.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.3 — فتح التقرير أوتوماتيك من /dv/ui/home.jsp + زر يدوى، واللوجين ميكتبش فوق الـ autofill.
+// @version      0.3.0
 // @match        https://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -19,6 +19,9 @@
   const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
   const TAB_DETAILS   = "التفاصيل";
   const TAB_REMAINING = "تفاصيل متبقى";
+  // رابط فتح التقرير مباشرة (بدل البحث والضغط فى الكتالوج)
+  const REPORT_URL = "https://we-oas.te.eg/analytics/saw.dll?bipublisherEntry&action=open&bippath=" +
+    encodeURIComponent("/FCC Prod/430D القطاع-TEDATA - Details متابعة اعطال.xdo") + "&itemtype=.xdo";
 
   const log  = (...a) => console.log("%c[OAS]", "color:#0a0;font-weight:bold", ...a);
   const warn = (...a) => console.warn("[OAS]", ...a);
@@ -149,8 +152,9 @@
     const pw = document.querySelector("input[type='password']");
     if (!pw || !visible(pw)) return false;
     const uf = document.querySelector("input[type='text']:not([type='hidden']), input[name*='user' i], input[id*='user' i]");
-    if (uf) setInputValue(uf, USER);
-    setInputValue(pw, PASS);
+    // نملأ بس لو الخانة فاضية — عشان ما نكتبش فوق الـ autofill (اللى فيه الإيميل الصحيح)
+    if (uf && !uf.value.trim()) setInputValue(uf, USER);
+    if (!pw.value) setInputValue(pw, PASS);
     const btn = [...document.querySelectorAll("button, input[type='submit'], a, span")]
       .find(b => visible(b) && /log ?in|sign ?in|دخول|submit/i.test((b.textContent || "") + " " + (b.value || "")));
     setTimeout(() => {
@@ -171,7 +175,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.1)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.3)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
@@ -191,10 +195,34 @@
     log("لوحة التحكم ظهرت — الـ frame ده فيه الدروب-ليست ✔");
   }
 
+  /* ================== HOME PAGE (فتح التقرير) ================== */
+  function buildHomeButton() {
+    if (document.getElementById("oas-home-btn")) return;
+    const b = document.createElement("button");
+    b.id = "oas-home-btn";
+    b.textContent = "▶️ افتح تقرير 430D متابعة اعطال";
+    b.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#2563eb;color:#fff;border:0;" +
+      "border-radius:8px;padding:10px 14px;font:bold 13px Arial;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.4)";
+    b.onclick = () => { location.href = REPORT_URL; };
+    (document.body || document.documentElement).appendChild(b);
+  }
+  function isHomePage() {
+    return /\/dv\/ui\/home\.jsp/i.test(location.pathname) || /pageid=home/i.test(location.search);
+  }
+
   /* ================== BOOT ================== */
   function boot() {
     if (!document.body) { setTimeout(boot, 400); return; }
     if (tryLogin()) { log("🔐 صفحة لوجين — بيدخل…"); return; }
+    // صفحة الهوم: زرّ لفتح التقرير + فتح أوتوماتيك مرة واحدة فى الجلسة
+    if (isHomePage()) {
+      buildHomeButton();
+      if (!sessionStorage.getItem("oas_opened")) {
+        sessionStorage.setItem("oas_opened", "1");
+        setTimeout(() => { log("🏠 صفحة الهوم — بفتح التقرير أوتوماتيك…"); location.href = REPORT_URL; }, 2000);
+      }
+      return;
+    }
     // استنى دروب-ليست السنترالات تظهر ثم اعرض اللوحة
     const iv = setInterval(() => { if (findSelectByOption("الغنايم")) { clearInterval(iv); buildPanel(); } }, 800);
     setTimeout(() => clearInterval(iv), 120000);
