@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.7 — دعم Knockout/Oracle JET (bitech-login-form): تحديث الـ observables بسلسلة أحداث كاملة + ضغط زر Sign In الـ KO-bound.
-// @version      0.7.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.8 — استهداف زر #btn_login مباشرة + jQuery trigger click + الحفاظ على الباسورد المحفوظ (مزامنة بدل الكتابة).
+// @version      0.8.0
 // @match        https://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -164,27 +164,35 @@
       } catch (e) {}
     });
   }
+  // مزامنة قيمة الخانة (المحفوظة/autofill) للـ KO/jQuery من غير ما نغيّرها
+  function syncField(el) {
+    if (!el) return;
+    ["input", "keyup", "change", "blur"].forEach(t => { try { el.dispatchEvent(new Event(t, { bubbles: true })); } catch (e) {} });
+    try { if (window.jQuery) window.jQuery(el).trigger("change"); } catch (e) {}
+  }
   function fillLoginFields() {
     const pw = document.querySelector("input[type='password']");
     if (!pw || !visible(pw)) return null;
     const uf = document.querySelector(
       "form.bitech-login-form input[type='text'], form.bitech-login-form input[type='email']," +
       "input[name='j_username'], input[type='text']:not([type='hidden']), input[type='email'], input[name*='user' i]");
-    if (uf) typeInto(uf, USER);
-    typeInto(pw, PASS);
+    // نحافظ على القيمة المحفوظة (autofill) ونزامنها؛ نملأ بس لو فاضية
+    if (uf) { if (!uf.value.trim()) typeInto(uf, USER); else syncField(uf); }
+    if (!pw.value) typeInto(pw, PASS); else syncField(pw);
     return pw;
   }
-  // زر Sign In: أصغر عنصر نصّه "Sign In" (الورقة) — الضغط بيطلع bubbling للـ KO click binding
+  // زر Sign In معروف: <button id="btn_login" class="bitech-signin-button">
   function findSignIn() {
+    let b = document.querySelector("#btn_login, .bitech-signin-button");
+    if (b && visible(b)) return b;
     const re = /^\s*(sign\s*in|log\s*in|دخول)\s*$/i;
-    const cands = [...document.querySelectorAll(
-      "form.bitech-login-form *, input[type='submit'], button, a, [role='button']")]
-      .filter(e => visible(e) && (re.test(norm(e.textContent)) || re.test(e.value || "")));
-    cands.sort((a, b) => norm(a.textContent).length - norm(b.textContent).length);
-    return cands[0] || null;
+    return [...document.querySelectorAll("input[type='submit'], button, a, [role='button']")]
+      .find(e => visible(e) && (re.test(norm(e.textContent)) || re.test(e.value || ""))) || null;
   }
   function clickEl(b) {
     if (!b) return;
+    // الأضمن: jQuery trigger (الزر متسجّل بـ jQuery click handler)
+    try { if (window.jQuery) { window.jQuery(b).trigger("click"); log("🔐 jQuery trigger click"); } } catch (e) {}
     ["pointerover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(t => {
       try { b.dispatchEvent(new (t.indexOf("pointer") === 0 ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
     });
@@ -228,7 +236,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.7)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.8)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
