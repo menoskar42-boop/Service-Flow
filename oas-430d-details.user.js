@@ -1,15 +1,18 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.8 — استهداف زر #btn_login مباشرة + jQuery trigger click + الحفاظ على الباسورد المحفوظ (مزامنة بدل الكتابة).
-// @version      0.8.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.9 — @grant unsafeWindow لتجاوز CSP (السكريبت مكانش بيشتغل أصلاً) + مربع ظاهر على صفحة اللوجين + jQuery عبر unsafeWindow.
+// @version      0.9.0
 // @match        https://we-oas.te.eg/*
-// @grant        none
+// @grant        unsafeWindow
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
   "use strict";
+
+  // نشغّل فى sandbox (بسبب @grant) لتجاوز CSP بتاع Oracle؛ نوصل لـ jQuery بتاع الصفحة عبر unsafeWindow
+  const PAGE = (typeof unsafeWindow !== "undefined" && unsafeWindow) ? unsafeWindow : window;
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem@te.eg"; // زى ما ظاهر فى خانة اللوجين
@@ -168,7 +171,7 @@
   function syncField(el) {
     if (!el) return;
     ["input", "keyup", "change", "blur"].forEach(t => { try { el.dispatchEvent(new Event(t, { bubbles: true })); } catch (e) {} });
-    try { if (window.jQuery) window.jQuery(el).trigger("change"); } catch (e) {}
+    try { if (PAGE.jQuery) PAGE.jQuery(el).trigger("change"); } catch (e) {}
   }
   function fillLoginFields() {
     const pw = document.querySelector("input[type='password']");
@@ -192,7 +195,7 @@
   function clickEl(b) {
     if (!b) return;
     // الأضمن: jQuery trigger (الزر متسجّل بـ jQuery click handler)
-    try { if (window.jQuery) { window.jQuery(b).trigger("click"); log("🔐 jQuery trigger click"); } } catch (e) {}
+    try { if (PAGE.jQuery) { PAGE.jQuery(b).trigger("click"); log("🔐 jQuery trigger click"); } } catch (e) {}
     ["pointerover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(t => {
       try { b.dispatchEvent(new (t.indexOf("pointer") === 0 ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
     });
@@ -209,8 +212,18 @@
         pw.dispatchEvent(new KeyboardEvent(t, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true })));
     }, 500);
   }
+  function loginBadge() {
+    if (document.getElementById("oas-login-badge")) return;
+    const d = document.createElement("div");
+    d.id = "oas-login-badge";
+    d.textContent = "🔐 OAS: بيحاول يسجّل دخول…";
+    d.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#16a34a;color:#fff;" +
+      "font:bold 13px Arial;padding:8px 12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.4);direction:rtl";
+    (document.body || document.documentElement).appendChild(d);
+  }
   function tryLogin() {
     if (!document.querySelector("input[type='password']")) return false;
+    loginBadge();
     let done = false, tries = 0;
     const iv = setInterval(() => {
       tries++;
@@ -236,7 +249,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.8)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.9)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
