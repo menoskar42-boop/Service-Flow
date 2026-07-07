@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
@@ -153,6 +153,16 @@ export function PhoneLookupReport() {
           <Button onClick={search} disabled={!input.trim() || isFetching} className="gap-2">
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             بحث
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setSearchSeq((s) => s + 1)}
+            disabled={!phone || isFetching}
+            className="gap-2"
+            title="إعادة تحميل بيانات هذا الرقم من السيرفر (بعد جلب الأكونت أو قياس جديد)"
+          >
+            <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
+            تحديث
           </Button>
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
