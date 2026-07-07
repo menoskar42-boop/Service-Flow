@@ -53,9 +53,12 @@ const scoreBadge = (v: number | null) => {
 export function PhoneLookupReport() {
   const [input, setInput] = useState("");
   const [phone, setPhone] = useState("");
+  // عدّاد يتزايد مع كل ضغطة «بحث» — يدخل فى queryKey لإجبار إعادة التحميل حتى لو الرقم
+  // نفسه لم يتغيّر (مثلاً بعد جلب الأكونت من Customer360 فى تاب تانى نرجع ونبحث فيتحدّث).
+  const [searchSeq, setSearchSeq] = useState(0);
 
   const { data, isFetching, error } = useQuery({
-    queryKey: ["/api/phone-lines/lookup", phone],
+    queryKey: ["/api/phone-lines/lookup", phone, searchSeq],
     queryFn: async () => {
       const res = await fetch(`/api/phone-lines/lookup?phone=${encodeURIComponent(phone)}`, {
         credentials: "include",
@@ -64,10 +67,11 @@ export function PhoneLookupReport() {
       return res.json() as Promise<{ found: boolean; line?: LineData }>;
     },
     enabled: !!phone,
+    staleTime: 0,
   });
 
   const line = data?.found ? (data.line as LineData) : null;
-  const search = () => setPhone(input.trim());
+  const search = () => { setPhone(input.trim()); setSearchSeq((s) => s + 1); };
 
   // فتح بوابة DZS وقياس رقم الأكونت الخاص بالخط
   const measureDZS = () => {
