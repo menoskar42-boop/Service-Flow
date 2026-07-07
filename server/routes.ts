@@ -2870,7 +2870,7 @@ export async function registerRoutes(
         const iPhone    = find("التليفون", "tel no", "رقم التليفون");
         const iMsan     = find("msan id", "msan");
         const iCabinet  = find("cabinet no", "الكابينة");
-        const iCloseCode    = find("close code", "كود الإغلاق");
+        const iCloseCode    = find("close code", "كود الاغلاق", "كود الإغلاق");
         const iStatusCode   = find("status code", "حالة الشكوى", "حالة الشكوي");
         const iComplainTime = find("compalin time", "complain time", "وقت الشكوى");
         const iCloseTime    = find("close time", "وقت الإغلاق");
@@ -2926,24 +2926,34 @@ export async function registerRoutes(
       }
 
       // ── Sheet: تفاصيل متبقى (full replace) ──
-      const ws2 = wb.Sheets["تفاصيل متبقى"];
+      // بالاسم، وإلا بالمحتوى: أى شيت (غير شيت التفاصيل) فيه "status code" + "complain no"
+      // — عشان الملف لو اترفع منفصل بشيت اسمه "Sheet1" يتعرّف عليه من الأعمدة.
+      let ws2 = wb.Sheets["تفاصيل متبقى"] || (wb.SheetNames.map((name) => {
+        if (name === detailsSheetName) return null;
+        const cand = wb.Sheets[name];
+        if (!cand) return null;
+        const { header, dataRows } = smartSheet(sheetRows(cand), ["complain no", "رقم الشكوى"]);
+        const hasStatus = header.some((h) => h.includes("status code") || h.includes("حالة"));
+        const hasNo = header.some((h) => h.includes("complain no") || h.includes("رقم الشكوى"));
+        return (hasStatus && hasNo && dataRows.length > 0) ? cand : null;
+      }).find(Boolean) || null);
       if (ws2) {
         const rows2: any[][] = sheetRows(ws2);
         const { find, header, dataRows } = smartSheet(rows2, ["complain no"]);
-        const iNo = find("complain no");
-        const iSector = find("sector");
-        const iRegion = find("region");
-        const iExchange = find("exchange name", "exchange");
-        const iPhone = find("tel no", "التليفون");
-        const iComplainTime = find("complain time");
+        const iNo = find("complain no", "رقم الشكوى");
+        const iSector = find("sector", "القطاع");
+        const iRegion = find("region", "المنطقة");
+        const iExchange = find("exchange name", "exchange", "السنترال");
+        const iPhone = find("tel no", "التليفون", "رقم التليفون");
+        const iComplainTime = find("complain time", "وقت الشكوى");
         const iDispatchTime = find("dispatch time");
         const iDispatchUser = find("dispatch user");
         const iMsan = find("msan id", "msan");
-        const iCloseTime = find("close time");
-        const iCloseCode = find("close code");
+        const iCloseTime = find("close time", "وقت الإغلاق");
+        const iCloseCode = find("close code", "كود الاغلاق", "كود الإغلاق");
         const iCloseBy = find("close by");
-        const iStatus = find("status code");
-        const iCabinet = find("cabinet no");
+        const iStatus = find("status code", "حالة الشكوى", "حالة الشكوي");
+        const iCabinet = find("cabinet no", "الكابينة", "الكابينه");
         // "Complain Type" (not "Complain Type Code")
         const iType = (() => {
           const exact = find("complain type");
