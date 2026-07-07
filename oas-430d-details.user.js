@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.4 — إصلاح ضغط Sign In (انتظار الزر + نبض الخانات + محاولات).
-// @version      0.4.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.5 — ضغط Sign In بكل الطرق (زر + Enter + submit الفورم) + طباعة تفاصيل الزر.
+// @version      0.5.0
 // @match        https://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -167,27 +167,40 @@
         return (val && re.test(val)) || (txt.length <= 20 && re.test(txt));
       });
   }
+  function submitLogin(pw) {
+    const b = findSignIn();
+    if (b) {
+      log("🔐 ضغط Sign In:", b.tagName, "«" + norm(b.textContent || b.value) + "» id=" + b.id + " class=" + (b.className || "").slice(0, 40));
+      // ضغط شامل (pointer + mouse + native) — بعض الأزرار بترفض واحدة وتقبل التانية
+      ["pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(t => {
+        try { b.dispatchEvent(new (t.indexOf("pointer") === 0 ? PointerEvent : MouseEvent)(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+      });
+      try { b.click(); } catch (e) {}
+    } else { warn("مش لاقى زر Sign In"); }
+    // Enter على خانة الباسورد
+    ["keydown", "keypress", "keyup"].forEach(t =>
+      pw.dispatchEvent(new KeyboardEvent(t, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true })));
+    // fallback: submit الفورم بعد ثانية ونص لو لسه فى صفحة اللوجين
+    setTimeout(() => {
+      if (!document.querySelector("input[type='password']")) return; // خرجنا من اللوجين
+      const f = pw.closest("form") || document.querySelector("form");
+      if (f) { log("🔐 form submit (fallback)"); try { f.requestSubmit(); } catch (e) { try { f.submit(); } catch (e2) {} } }
+    }, 1500);
+  }
   function tryLogin() {
     if (!document.querySelector("input[type='password']")) return false;
-    // صفحة لوجين: املأ + انبض الخانات، استنى زر Sign In، ثم دوسه مرة واحدة (مع fallback form.submit)
-    let clicked = false, tries = 0;
+    // صفحة لوجين: املأ + انبض الخانات، استنى استقرار، ثم submit بكل الطرق
+    let done = false, tries = 0;
     const iv = setInterval(() => {
       tries++;
       const pw = fillLoginFields();
-      if (!pw) { if (tries > 30) clearInterval(iv); return; }
+      if (!pw) { if (tries > 40) clearInterval(iv); return; }
       const b = findSignIn();
-      if (b && !clicked) {
-        clicked = true; clearInterval(iv);
-        setTimeout(() => {
-          ["mousedown", "mouseup", "click"].forEach(t =>
-            b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
-          try { b.click(); } catch (e) {}
-          log("🔐 اتضغط Sign In");
-        }, 800);
-      } else if (tries > 30) {
-        clearInterval(iv);
-        const f = pw.closest("form"); if (f) { f.submit(); log("🔐 form.submit() fallback"); }
-      }
+      if (b) log("لقيت زر محتمل:", b.tagName, "«" + norm(b.textContent || b.value) + "»");
+      if (!done && (b || tries >= 6)) {
+        done = true; clearInterval(iv);
+        setTimeout(() => submitLogin(pw), 900);
+      } else if (tries > 40) { clearInterval(iv); }
     }, 500);
     return true;
   }
@@ -203,7 +216,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.4)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.5)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
