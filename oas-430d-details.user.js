@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
-// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.3 — فتح التقرير أوتوماتيك من /dv/ui/home.jsp + زر يدوى، واللوجين ميكتبش فوق الـ autofill.
-// @version      0.3.0
+// @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.4 — إصلاح ضغط Sign In (انتظار الزر + نبض الخانات + محاولات).
+// @version      0.4.0
 // @match        https://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -148,19 +148,47 @@
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   /* ================== LOGIN ================== */
-  function tryLogin() {
+  function nudge(el) { if (el) ["input", "change", "blur"].forEach(ev => el.dispatchEvent(new Event(ev, { bubbles: true }))); }
+  function fillLoginFields() {
     const pw = document.querySelector("input[type='password']");
-    if (!pw || !visible(pw)) return false;
-    const uf = document.querySelector("input[type='text']:not([type='hidden']), input[name*='user' i], input[id*='user' i]");
-    // نملأ بس لو الخانة فاضية — عشان ما نكتبش فوق الـ autofill (اللى فيه الإيميل الصحيح)
-    if (uf && !uf.value.trim()) setInputValue(uf, USER);
-    if (!pw.value) setInputValue(pw, PASS);
-    const btn = [...document.querySelectorAll("button, input[type='submit'], a, span")]
-      .find(b => visible(b) && /log ?in|sign ?in|دخول|submit/i.test((b.textContent || "") + " " + (b.value || "")));
-    setTimeout(() => {
-      if (btn) { btn.click(); log("🔐 login submitted"); }
-      else { const f = pw.closest("form"); if (f) f.submit(); }
-    }, 600);
+    if (!pw || !visible(pw)) return null;
+    const uf = document.querySelector("input[type='text']:not([type='hidden']), input[type='email'], input[name*='user' i], input[id*='user' i]");
+    // نملأ بس لو فاضية (ما نكتبش فوق الـ autofill)، ومع نبضة events عشان يتفعّل زر Sign In
+    if (uf && !uf.value.trim()) setInputValue(uf, USER); else nudge(uf);
+    if (!pw.value) setInputValue(pw, PASS); else nudge(pw);
+    return pw;
+  }
+  function findSignIn() {
+    const re = /sign ?in|log ?in|دخول/i;
+    return [...document.querySelectorAll("input[type='submit'], button, a, div, span, [role='button']")]
+      .find(b => {
+        if (!visible(b)) return false;
+        const txt = norm(b.textContent), val = b.value || "";
+        return (val && re.test(val)) || (txt.length <= 20 && re.test(txt));
+      });
+  }
+  function tryLogin() {
+    if (!document.querySelector("input[type='password']")) return false;
+    // صفحة لوجين: املأ + انبض الخانات، استنى زر Sign In، ثم دوسه مرة واحدة (مع fallback form.submit)
+    let clicked = false, tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      const pw = fillLoginFields();
+      if (!pw) { if (tries > 30) clearInterval(iv); return; }
+      const b = findSignIn();
+      if (b && !clicked) {
+        clicked = true; clearInterval(iv);
+        setTimeout(() => {
+          ["mousedown", "mouseup", "click"].forEach(t =>
+            b.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })));
+          try { b.click(); } catch (e) {}
+          log("🔐 اتضغط Sign In");
+        }, 800);
+      } else if (tries > 30) {
+        clearInterval(iv);
+        const f = pw.closest("form"); if (f) { f.submit(); log("🔐 form.submit() fallback"); }
+      }
+    }, 500);
     return true;
   }
 
@@ -175,7 +203,7 @@
     panelEl.style.cssText = "position:fixed;top:8px;left:8px;z-index:2147483647;background:#0f172a;color:#fff;" +
       "font:13px/1.5 Arial;padding:10px 12px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.4);width:270px;direction:rtl";
     panelEl.innerHTML =
-      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.3)</div>' +
+      '<div style="font-weight:bold;margin-bottom:6px">📊 OAS 430D — تشغيل (v0.4)</div>' +
       '<select id="oas-central" style="width:100%;padding:5px;border-radius:6px;margin-bottom:6px">' +
       CENTRALS.map(c => `<option>${c}</option>`).join("") + "</select>" +
       '<div id="oas-status" style="min-height:30px;color:#b2ff59;margin-bottom:6px;font-size:12px"></div>' +
