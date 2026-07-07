@@ -4882,6 +4882,104 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/repeated-within-month — الأعطال المكررة خلال شهر من تاريخه
+  // تقرير تفصيلى: لكل رقم يُنظر لتاريخ آخر شكوى له؛ لو له شكوى سابقة خلال شهر (±30 يوم
+  // قبل آخر شكوى) → يظهر الرقم. المصدر = نفس مصدر الأعطال المنتظمة (تفاصيل مغلقة + متبقى
+  // 138/135، غنايم). الفلتر بتاريخ آخر شكوى، الافتراضى من أول الشهر إلى اليوم.
+  app.get("/api/reports/repeated-within-month", requireAuth, async (req, res) => {
+    try {
+      const { central = "", q = "", dateFrom = "", dateTo = "" } = req.query as Record<string, string>;
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const defFrom = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+      const defTo = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const from = dateFrom || defFrom;
+      const to = dateTo || defTo;
+      const params: any[] = [from, to]; // $1 = from، $2 = to
+      let centralParam = "";
+      if (central) { params.push(central); centralParam = `$${params.length}`; }
+      let qParam = "";
+      if (q.trim()) { params.push(`%${q.trim()}%`); qParam = `$${params.length}`; }
+      const cdCentral = central ? `AND cd.exchange_name = ${centralParam}` : "";
+      const rcCentral = central ? `AND rc.exchange_name = ${centralParam}` : "";
+      const phoneQ = q.trim() ? `AND lc.phone ILIKE ${qParam}` : "";
+
+      const { rows } = await pool.query(
+        `WITH comps AS (
+           SELECT cd.phone_number AS phone, cd.complain_no AS no, cd.complain_time AS ct,
+                  cd.exchange_name AS central, cd.cabinet_no AS cabinet
+           FROM complaint_details cd
+           WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
+             AND cd.phone_number IS NOT NULL AND cd.phone_number <> '' AND cd.complain_time IS NOT NULL
+             ${cdCentral}
+           UNION ALL
+           SELECT rc.phone_number, rc.complain_no, rc.complain_time, rc.exchange_name, rc.cabinet_no
+           FROM remaining_complaints rc
+           WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
+             AND rc.phone_number IS NOT NULL AND rc.phone_number <> '' AND rc.complain_time IS NOT NULL
+             ${rcCentral}
+         ),
+         last_c AS (
+           -- آخر شكوى لكل رقم
+           SELECT DISTINCT ON (phone) phone, no AS last_no, ct AS last_time, central, cabinet
+           FROM comps ORDER BY phone, ct DESC
+         ),
+         qual AS (
+           SELECT lc.phone, lc.last_no, lc.last_time, lc.central, lc.cabinet,
+                  p.prev_no, p.prev_time, rc.rep_count
+           FROM last_c lc
+           LEFT JOIN LATERAL (
+             SELECT c.no AS prev_no, c.ct AS prev_time
+             FROM comps c
+             WHERE c.phone = lc.phone AND c.no <> lc.last_no
+               AND c.ct < lc.last_time AND c.ct >= lc.last_time - interval '1 month'
+             ORDER BY c.ct DESC LIMIT 1
+           ) p ON true
+           LEFT JOIN LATERAL (
+             SELECT COUNT(*)::int AS rep_count
+             FROM comps c
+             WHERE c.phone = lc.phone
+               AND c.ct <= lc.last_time AND c.ct >= lc.last_time - interval '1 month'
+           ) rc ON true
+           WHERE lc.last_time::date >= $1::date AND lc.last_time::date <= $2::date
+             AND p.prev_no IS NOT NULL
+             ${phoneQ}
+         )
+         SELECT qual.phone                         AS "phoneShort",
+                COALESCE(pl.central, qual.central)  AS "centralName",
+                COALESCE(pl.cabin_number, qual.cabinet) AS "cabinetNo",
+                pl.box_number                       AS "boxNo",
+                pl.dp_terminal                      AS "dpTerminal",
+                COALESCE(tn.tech_name, '')          AS "techName",
+                qual.last_no                        AS "lastComplainNo",
+                (qual.last_time AT TIME ZONE 'Africa/Cairo') AS "lastComplainTime",
+                qual.prev_no                        AS "prevComplainNo",
+                (qual.prev_time AT TIME ZONE 'Africa/Cairo') AS "prevComplainTime",
+                qual.rep_count                      AS "repeatCount",
+                c138.account_no                     AS "accountNo",
+                c138.score                          AS "lastMeasScore",
+                c138.current_speed                  AS "lineCurrentSpeed",
+                c138.max_speed                      AS "lineMaxSpeed",
+                (c138.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
+         FROM qual
+         LEFT JOIN phone_lines pl ON pl.tel_no = qual.phone
+         LEFT JOIN cabinet_technicians ct
+           ON ct.central_name = COALESCE(pl.central, qual.central)
+          AND ct.cabin_number = COALESCE(pl.cabin_number, qual.cabinet)
+         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+         LEFT JOIN LATERAL (
+           SELECT c.account_no, c.score, c.current_speed, c.max_speed, c.uploaded_at
+           FROM case_138 c WHERE c.full_phone = '88' || qual.phone ORDER BY c.id DESC LIMIT 1
+         ) c138 ON true
+         ORDER BY qual.last_time DESC NULLS LAST`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // GET /api/reports/cabinet-adsl-faults — لكل كابينة: عدد الشغال ADSL (ثابت من ملف
   // مشتركى FTTH/ADSL حسب كود MSAN) + عدد الأعطال خلال فترة (من 430D حسب كود الكابينة)
   // + اسم الفنى + رقم الكابينة. العمود الفقرى = cabinet_technicians (cabin_code = كود MSAN).
