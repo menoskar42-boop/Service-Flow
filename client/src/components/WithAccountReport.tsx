@@ -79,10 +79,12 @@ interface WithAccountReportProps {
   scoreGt?: number;
   /** فلتر اختيارى: عرض فقط الخطوط التى لم يتم قياسها من قبل (لا يوجد لها سجل فى شيت 138) */
   neverMeasured?: boolean;
+  /** القيمة الافتراضية لعدد أيام فلتر «أقدم من N يوم» (الفلتر نفسه يظل مطفياً حتى تفعيله) */
+  defaultStaleDays?: string;
   title?: string;
 }
 
-export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccountReportProps = {}) {
+export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "7", title }: WithAccountReportProps = {}) {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -96,7 +98,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const [accountQ, setAccountQ] = useState("");
   // فلتر "أقدم من N يوم": يعرض فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم
   // أو التى لم تُقَس من قبل. عدد الأيام يكتبه المستخدم (افتراضى 7).
-  const [staleDays, setStaleDays] = useState("10");
+  const [staleDays, setStaleDays] = useState(defaultStaleDays);
   const [staleOn, setStaleOn] = useState(false);
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");

@@ -472,7 +472,7 @@ export default function Dashboard() {
               {reportTab === "om-soy"      && <OmRejectionsReport bucket="soy"      title="متعذرات بداية السنة (OM)" />}
               {reportTab === "om-resolved" && <OmRejectionsReport bucket="resolved" title="متعذرات تم فكها (OM)" />}
               {reportTab === "om-stats"    && <OmStatsReport />}
-              {reportTab === "with-account"        && <WithAccountReport />}
+              {reportTab === "with-account"        && <WithAccountReport defaultStaleDays="10" />}
               {reportTab === "account-never-measured" && <WithAccountReport neverMeasured title="خطوط لها رقم أكونت ولم يتم قياسها من قبل" />}
               {reportTab === "high-score"          && <WithAccountReport scoreGt={100} title="الخطوط التى أسكورها أعلى من 100" />}
               {reportTab === "no-account"          && <NoAccountTab />}
