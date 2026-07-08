@@ -100,6 +100,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   // أو التى لم تُقَس من قبل. عدد الأيام يكتبه المستخدم (افتراضى 7).
   const [staleDays, setStaleDays] = useState(defaultStaleDays);
   const [staleOn, setStaleOn] = useState(false);
+  // زر (فى تقرير «لم تُقَس»): يفلتر الأرقام التى لها شكوى
+  const [hasComplaintOn, setHasComplaintOn] = useState(false);
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -127,7 +129,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, hasComplaintOn],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
@@ -136,6 +138,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (hasComplaintOn) params.set("hasComplaint", "1");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -227,6 +230,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (hasComplaintOn) params.set("hasComplaint", "1");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (accountQ.trim()) params.set("accountQ", accountQ.trim());
@@ -263,6 +267,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (!box && boxFrom) params.set("boxFrom", boxFrom);
     if (!box && boxTo)   params.set("boxTo",   boxTo);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+    if (hasComplaintOn) params.set("hasComplaint", "1");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -304,6 +309,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+    if (hasComplaintOn) params.set("hasComplaint", "1");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -389,6 +395,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 disabled={!cabin}
               />
             </div>
+            {/* فلترا السرعة والاسكور — بلا معنى لتقرير «لم تُقَس» فنخفيهما هناك */}
+            {!neverMeasured && (
             <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
               <span className="whitespace-nowrap">السرعة الحالية:</span>
               <Input
@@ -411,6 +419,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 dir="ltr"
               />
             </div>
+            )}
+            {!neverMeasured && (
             <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
               <span className="whitespace-nowrap">الاسكور:</span>
               <Input
@@ -433,6 +443,9 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 dir="ltr"
               />
             </div>
+            )}
+            {/* فلتر «أقدم من N يوم» — بلا معنى لتقرير «لم تُقَس» (كلها بدون قياس) فنخفيه هناك */}
+            {!neverMeasured && (
             <div className={`flex items-center gap-1 border rounded-md px-2 py-1 text-xs ${staleOn ? "border-purple-300 bg-purple-50 text-purple-700" : "border-gray-200 bg-white text-gray-500"}`}>
               <span className="whitespace-nowrap">أقدم من</span>
               <Input
@@ -454,6 +467,17 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 {staleOn ? "مفعّل" : "تفعيل"}
               </Button>
             </div>
+            )}
+            {/* زر «لها شكوى» — يفلتر الأرقام التى لها رقم شكوى (سابقة) — فى كل التقارير */}
+            <Button
+              variant={hasComplaintOn ? "default" : "outline"}
+              size="sm"
+              onClick={() => { setHasComplaintOn((v) => !v); setPage(1); }}
+              className={`gap-1 ${hasComplaintOn ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-purple-700 border-purple-200"}`}
+              title="عرض فقط الأرقام التى لها رقم شكوى"
+            >
+              {hasComplaintOn ? "لها شكوى ✓" : "لها شكوى"}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
             </Button>
@@ -489,13 +513,13 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 <TableHeader className="bg-muted/50">
                   <TableRow>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
-                    <TableHead className="text-right font-bold whitespace-nowrap">تاريخ آخر قياس</TableHead>
+                    {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">تاريخ آخر قياس</TableHead>}
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">المصدر</TableHead>
-                    <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>
-                    <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
-                    <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
-                    <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>
+                    {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>}
+                    {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>}
+                    {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>}
+                    {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>}
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
@@ -515,7 +539,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                   {data?.data.map((r, idx) => (
                     <TableRow key={idx} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-mono font-semibold text-blue-700">{r.fullPhone || "-"}</TableCell>
-                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-muted-foreground">{fmtMeasDate(r.lastMeasTime)}</TableCell>
+                      {!neverMeasured && <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-muted-foreground">{fmtMeasDate(r.lastMeasTime)}</TableCell>}
                       <TableCell dir="ltr" className="text-left font-mono">
                         {editingPhone === r.fullPhone ? (
                           <span className="inline-flex items-center gap-1">
@@ -590,10 +614,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                           <span className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-blue-100 text-blue-700">شيت 138</span>
                         )}
                       </TableCell>
-                      <TableCell><Measurement138Button m={r} /></TableCell>
-                      <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>
-                      <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>
-                      <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
+                      {!neverMeasured && <TableCell><Measurement138Button m={r} /></TableCell>}
+                      {!neverMeasured && <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>}
+                      {!neverMeasured && <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>}
+                      {!neverMeasured && <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>}
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>

@@ -1680,7 +1680,7 @@ export async function registerRoutes(
   // GET /api/phone-lines/with-account — lines that have an entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/with-account", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", boxFrom = "", boxTo = "",
-            page = "1", limit = "50", accountQ = "", staleDays = "",
+            page = "1", limit = "50", accountQ = "", staleDays = "", hasComplaint = "",
             scoreGt = "", scoreLt = "", speedGt = "", speedLt = "", neverMeasured = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
@@ -1693,6 +1693,13 @@ export async function registerRoutes(
     // فلتر "لم يتم قياسها من قبل": لا يوجد أى سجل لهذا الخط فى شيت 138 (case_138)
     if (neverMeasured === "1" || neverMeasured === "true") {
       conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone)`);
+    }
+    // فلتر "لها شكوى": الرقم له شكوى فى شيت التفاصيل أو المتبقى (مطابقة برقم التليفون القصير)
+    if (hasComplaint === "1" || hasComplaint === "true") {
+      conds.push(`(
+        EXISTS (SELECT 1 FROM complaint_details cd WHERE cd.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
+        OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE rc.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
+      )`);
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
