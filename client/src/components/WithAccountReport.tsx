@@ -84,7 +84,7 @@ interface WithAccountReportProps {
   title?: string;
 }
 
-export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "7", title }: WithAccountReportProps = {}) {
+export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title }: WithAccountReportProps = {}) {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");

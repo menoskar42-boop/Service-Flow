@@ -2033,26 +2033,44 @@ export async function registerRoutes(
     // مطابقة الرقم الكامل أو القصير (مع/بدون بادئة 88)
     const short = phone.replace(/^88/, "");
     const full = phone.startsWith("88") ? phone : "88" + phone;
+    // نبحث فى phone_lines (بيانات فنية) وإلا نرجّع البيانات من line_accounts / case_138 /
+    // الشكاوى — علشان يظهر أى رقم له أكونت أو قياس أو شكوى حتى لو مالوش بيانات فنية.
     const { rows } = await pool.query(
-      `SELECT pl.tel_no AS "telNo", pl.central, pl.cabin_number AS "cabinNumber",
+      `WITH t AS (SELECT $1::text AS raw, $2::text AS short, $3::text AS full)
+       SELECT COALESCE(pl.tel_no, t.short) AS "telNo",
+              COALESCE(pl.central, cpl.central_name) AS central,
+              COALESCE(pl.cabin_number, cpl.cabinet_no) AS "cabinNumber",
               pl.box_number AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
-              pl.dp_terminal AS "dpTerminal", pl.full_phone AS "fullPhone",
+              pl.dp_terminal AS "dpTerminal",
+              COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
-              c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
-       FROM phone_lines pl
-       LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone
-       LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+              c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL) AS "hasData"
+       FROM t
+       LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
+       LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
+       LEFT JOIN phone_ports pp ON pp.phone_number = COALESCE(pl.full_phone, t.full)
        LEFT JOIN LATERAL (
-         SELECT current_speed, max_speed, score, uploaded_at
-         FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
+         SELECT c2.full_phone, c2.current_speed, c2.max_speed, c2.score, c2.uploaded_at
+         FROM case_138 c2 WHERE c2.full_phone = COALESCE(pl.full_phone, t.full) ORDER BY c2.id DESC LIMIT 1
        ) c ON true
-       WHERE pl.full_phone = $1 OR pl.tel_no = $2 OR pl.full_phone = $3
+       LEFT JOIN LATERAL (
+         SELECT u.complain_no, u.central_name, u.cabinet_no FROM (
+           SELECT complain_no, complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
+             FROM complaint_details WHERE phone_number = COALESCE(pl.tel_no, t.short)
+           UNION ALL
+           SELECT complain_no, complain_time, exchange_name AS central_name, cabinet_no
+             FROM remaining_complaints WHERE phone_number = COALESCE(pl.tel_no, t.short)
+         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
+       ) cpl ON true
        LIMIT 1`,
       [phone, short, full],
     );
-    if (!rows.length) return res.json({ found: false });
-    res.json({ found: true, line: rows[0] });
+    const line = rows[0];
+    if (!line || !line.hasData) return res.json({ found: false });
+    delete line.hasData;
+    res.json({ found: true, line });
   });
 
   // GET /api/reports/regularized-no-account — الأعطال المنتظمة خلال فترة التى ليس لها رقم أكونت (تقرير 1)
