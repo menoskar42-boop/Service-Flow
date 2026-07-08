@@ -2052,6 +2052,7 @@ export async function registerRoutes(
               COALESCE(pl.cabin_number, cpl.cabinet_no) AS "cabinNumber",
               pl.box_number AS "boxNumber", pp.frame AS frame,
               ctc.cabin_code AS "msanCode",
+              COALESCE(mto.tech_name, ctc.ct_tech, '') AS "techName",
               pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.primary_block_no AS "primaryBlockNo", pl.cabinet_in AS "cabinetIn",
               pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
@@ -2067,11 +2068,14 @@ export async function registerRoutes(
        LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
        LEFT JOIN phone_ports pp ON pp.phone_number = COALESCE(pl.full_phone, t.full)
        LEFT JOIN LATERAL (
-         SELECT ct.cabin_code FROM cabinet_technicians ct
+         SELECT ct.cabin_code, tn.tech_name AS ct_tech
+         FROM cabinet_technicians ct
+         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
          WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
-           AND ct.cabin_code IS NOT NULL AND ct.cabin_code <> ''
+         ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, tn.tech_name NULLS LAST
          LIMIT 1
        ) ctc ON true
+       LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = ctc.cabin_code
        LEFT JOIN LATERAL (
          SELECT c2.full_phone, c2.current_speed, c2.max_speed, c2.score, c2.uploaded_at
          FROM case_138 c2 WHERE c2.full_phone = COALESCE(pl.full_phone, t.full) ORDER BY c2.id DESC LIMIT 1
