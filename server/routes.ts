@@ -2128,7 +2128,7 @@ export async function registerRoutes(
     if (box) { params.push(box); plConds.push(`pl.box_number = $${params.length}`); }
     // لا قياس بعد تاريخ الشكوى المرجعى لكل رقم
     plConds.push(`NOT EXISTS (
-       SELECT 1 FROM case_138 c WHERE c.full_phone = pl.full_phone AND c.uploaded_at > regm.ref_time
+       SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone AND c.uploaded_at > regm.ref_time
     )`);
 
     const regCte = `WITH reg AS (
@@ -2144,33 +2144,35 @@ export async function registerRoutes(
     ), regm AS (
        SELECT short, MAX(ref_time) AS ref_time FROM reg GROUP BY short
     )`;
-    const joinClause = `FROM phone_lines pl
-       JOIN regm ON regm.short = pl.tel_no
-       JOIN line_accounts la ON la.full_phone = pl.full_phone
-       LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone
+    // نبنى من الشكاوى (regm) + line_accounts علشان يظهر أى رقم له شكوى وله أكونت حتى لو
+    // مالوش بيانات فنية (مش موجود فى phone_lines). phone_lines اختيارى (LEFT JOIN).
+    const joinClause = `FROM regm
+       JOIN line_accounts la ON la.full_phone = '88' || regm.short
+       LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone
+       LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone
        LEFT JOIN LATERAL (
          SELECT c.current_speed, c.max_speed, c.score, c.uploaded_at
-         FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
+         FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1
        ) c138p ON true`;
     const where = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
 
-    const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT pl.full_phone)::int AS c ${joinClause} ${where}`, params);
+    const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT la.full_phone)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
       `${regCte}
-       SELECT DISTINCT ON (pl.full_phone)
-              pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+       SELECT DISTINCT ON (la.full_phone)
+              pl.id, COALESCE(pl.tel_no, regm.short) AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
-              COALESCE(pp.frame, pl.port) AS port, pl.len, pl.full_phone AS "fullPhone",
+              COALESCE(pp.frame, pl.port) AS port, pl.len, la.full_phone AS "fullPhone",
               la.account_no AS "accountNo", la.source AS "accountSource",
               (regm.ref_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${where}
-       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.full_phone, pl.id
+       ORDER BY la.full_phone, pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
