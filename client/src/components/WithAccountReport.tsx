@@ -96,7 +96,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, title }: WithAccount
   const [accountQ, setAccountQ] = useState("");
   // فلتر "أقدم من N يوم": يعرض فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم
   // أو التى لم تُقَس من قبل. عدد الأيام يكتبه المستخدم (افتراضى 7).
-  const [staleDays, setStaleDays] = useState("7");
+  const [staleDays, setStaleDays] = useState("10");
   const [staleOn, setStaleOn] = useState(false);
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");

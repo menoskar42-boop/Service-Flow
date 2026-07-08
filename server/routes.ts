@@ -1686,11 +1686,13 @@ export async function registerRoutes(
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
 
-    const conds: string[] = ["la.full_phone IS NOT NULL"];
+    // التقرير مبنى على line_accounts (الأرقام اللى لها أكونت) وليس phone_lines — علشان
+    // يظهر أى رقم له أكونت حتى لو مالوش بيانات فنية (مش موجود فى phone_lines).
+    const conds: string[] = ["la.account_no IS NOT NULL", "la.account_no <> ''"];
     const params: any[] = [];
     // فلتر "لم يتم قياسها من قبل": لا يوجد أى سجل لهذا الخط فى شيت 138 (case_138)
     if (neverMeasured === "1" || neverMeasured === "true") {
-      conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = pl.full_phone)`);
+      conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone)`);
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -1704,7 +1706,7 @@ export async function registerRoutes(
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;
-      conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p} OR LOWER(la.account_no) LIKE ${p})`);
+      conds.push(`(LOWER(la.full_phone) LIKE ${p} OR LOWER(COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88',''))) LIKE ${p} OR LOWER(COALESCE(pl.central,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabin_number,'')) LIKE ${p} OR LOWER(COALESCE(pl.box_number,'')) LIKE ${p} OR LOWER(la.account_no) LIKE ${p})`);
     }
     // بحث مخصّص برقم الأكونت فقط
     if (accountQ.trim()) {
@@ -1725,8 +1727,8 @@ export async function registerRoutes(
       conds.push(`(c138p.uploaded_at IS NULL OR c138p.uploaded_at < now() - make_interval(days => $${params.length}))`);
     }
     const where = `WHERE ${conds.join(" AND ")}`;
-    const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
-    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
+    const joinClause = `FROM line_accounts la LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone`;
+    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
     // فلاتر اختيارية على الاسكور والسرعة — تحتاج c138Join دائماً (موجود فى الـ query)
     // ملاحظة: current_speed مخزّنة كنص → لازم نحوّلها لرقم قبل المقارنة (وإلا تتعمل مقارنة نصية غلط)
     const numCurSpeed = `NULLIF(regexp_replace(COALESCE(c138p.current_speed, ''), '[^0-9]', '', 'g'), '')::numeric`;
@@ -1742,19 +1744,20 @@ export async function registerRoutes(
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
-      `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+      `SELECT pl.id, COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')) AS "telNo",
+              pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
               pl.cabinet_in AS "cabinetIn", pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
-              pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone",
+              pl.tel_num_txt AS "telNumTxt", la.full_phone AS "fullPhone",
               la.account_no AS "accountNo", la.source AS "accountSource",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}${c138Where}
-       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
+       ORDER BY pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), la.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
