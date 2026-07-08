@@ -18,6 +18,7 @@ import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { WithAccountReport } from "@/components/WithAccountReport";
 import { NoAccountTab } from "@/components/NoAccountTab";
 import { NeedsSpeedTab } from "@/components/NeedsSpeedTab";
+import { NeedsSpeedReport } from "@/components/NeedsSpeedReport";
 import { ComplaintNoMeasureReport } from "@/components/ComplaintNoMeasureReport";
 import { CabinetScoreReport } from "@/components/CabinetScoreReport";
 import { BoxScoreReport } from "@/components/BoxScoreReport";
@@ -45,7 +46,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -72,6 +73,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "no-account",          label: "بدون أكونت" },
       { id: "ground-network",      label: "أعطال الشبكة الأرضية" },
       { id: "needs-speed",         label: "محتاجة رفع سرعة" },
+      { id: "needs-po-stop",       label: "تحتاج إيقاف PO" },
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
       { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
       { id: "box-score-avg",       label: "متوسط القياسات" },
@@ -478,6 +480,7 @@ export default function Dashboard() {
               {reportTab === "no-account"          && <NoAccountTab />}
               {reportTab === "ground-network" && <GroundNetworkFaultsTab />}
               {reportTab === "needs-speed"            && <NeedsSpeedTab />}
+              {reportTab === "needs-po-stop"          && <NeedsSpeedReport endpoint="/api/phone-lines/needs-po-stop" title="أرقام تحتاج إيقاف PO (لا تحتاج رفع سرعة + قِيست خلال 3 أيام)" />}
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
               {reportTab === "box-score-avg"       && <BoxScoreReport />}
               {reportTab === "phone-lookup"        && <PhoneLookupReport />}

@@ -2065,6 +2065,78 @@ export async function registerRoutes(
     res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
   });
 
+  // GET /api/phone-lines/needs-po-stop — خطوط تحتاج إيقاف PO
+  // المعيار: لها رقم أكونت + آخر قياس مرّ عليه أقل من 3 أيام + لا تحتاج رفع سرعة (عكس معيار
+  //   محتاجة رفع سرعة). دى غالباً خطوط اتعملها Profile Optimization ومحتاجة إيقاف الـ nightly PO.
+  app.get("/api/phone-lines/needs-po-stop", requireAuth, async (req, res) => {
+    const { central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page));
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const params: any[] = [];
+    const conds: string[] = [];
+
+    const joinClause = `FROM (
+        SELECT * FROM (
+          SELECT DISTINCT ON (c.full_phone)
+                 c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+                 NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
+                 NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
+          FROM case_138 c
+          WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
+          ORDER BY c.full_phone, c.id DESC
+        ) latest
+        WHERE latest.score IS NOT NULL
+          AND latest.uploaded_at >= now() - interval '3 days'   -- آخر قياس مرّ عليه أقل من 3 أيام
+          AND NOT (                                              -- لا تحتاج رفع سرعة (عكس معيار needs-speed)
+            NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
+            AND (
+              (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
+              OR (latest.score < 16 AND latest.cur_n < 10000)
+            )
+          )
+      ) m
+      JOIN line_accounts la ON la.full_phone = m.full_phone AND la.account_no IS NOT NULL AND la.account_no <> ''
+      LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
+      LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone
+      LEFT JOIN LATERAL (
+        SELECT u.central_name, u.cabinet_no FROM (
+          SELECT complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
+            FROM complaint_details
+            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+          UNION ALL
+          SELECT complain_time, exchange_name AS central_name, cabinet_no
+            FROM remaining_complaints
+            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+        ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
+      ) cpl ON true`;
+
+    if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
+    if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
+    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
+    const total = totalRes.rows[0].c as number;
+    const offset = (pageNum - 1) * pageSize;
+    params.push(pageSize); params.push(offset);
+    const dataRes = await pool.query(
+      `SELECT pl.id, COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) AS "telNo",
+              COALESCE(pl.central, cpl.central_name) AS central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+              COALESCE(pl.cabin_number, cpl.cabinet_no) AS "cabinNumber", pl.box_number AS "boxNumber",
+              pl.dp_terminal AS "dpTerminal", COALESCE(pp.frame, pl.port) AS port, pl.len, m.full_phone AS "fullPhone",
+              la.account_no AS "accountNo", la.source AS "accountSource",
+              m.current_speed AS "lineCurrentSpeed", m.max_speed AS "lineMaxSpeed",
+              m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
+              (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              NULL AS "complaintNo", NULL AS "complaintTime"
+       ${joinClause} ${where}
+       ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
+                LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.uploaded_at DESC, m.full_phone
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+  });
+
   // GET /api/phone-lines/lookup?phone=<رقم> — بحث برقم التليفون → بياناته الفنية + آخر قياس
   // متاح لكل المستخدمين ما عدا المبيعات. يقبل الرقم الكامل (88..) أو رقم التليفون القصير.
   app.get("/api/phone-lines/lookup", requireAuth, async (req, res) => {

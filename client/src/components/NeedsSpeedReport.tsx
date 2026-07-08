@@ -71,10 +71,12 @@ const fmtDate = (d: string | null) => {
 interface NeedsSpeedReportProps {
   /** تقرير 2: فقط الأرقام التى لها شكوى خلال آخر شهر. بدونها (تقرير 4): الكل. */
   requireComplaint?: boolean;
+  /** الـ endpoint المصدر — افتراضى محتاجة رفع سرعة؛ يُستخدم لإعادة الاستخدام (مثلاً «تحتاج إيقاف PO»). */
+  endpoint?: string;
   title?: string;
 }
 
-export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeedReportProps) {
+export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/phone-lines/needs-speed", title }: NeedsSpeedReportProps) {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -103,9 +105,9 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/needs-speed", central, cabin, box, page, requireComplaint],
+    queryKey: [endpoint, central, cabin, box, page, requireComplaint],
     queryFn: async () => {
-      const res = await fetch(`/api/phone-lines/needs-speed?${buildParams()}`, { credentials: "include" });
+      const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: SpeedLine[]; total: number }>;
     },
@@ -125,7 +127,7 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
     setDzsLoading(true);
     setDzsCount(null);
     try {
-      const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
+      const res = await fetch(`${endpoint}?${buildParams(true)}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as SpeedLine[]) ?? [];
       const seen = new Set<string>();
@@ -150,7 +152,7 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
       : false;
     setDzsLoading(true);
     try {
-      const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
+      const res = await fetch(`${endpoint}?${buildParams(true)}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as SpeedLine[]) ?? [];
       const seen = new Set<string>();
@@ -167,7 +169,7 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
   };
 
   const handleExport = async () => {
-    const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
+    const res = await fetch(`${endpoint}?${buildParams(true)}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as SpeedLine[]).map((r) => ({
       "رقم التليفون الكامل": r.fullPhone,
@@ -191,7 +193,7 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
   };
 
   const handleExportPDF = async () => {
-    const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
+    const res = await fetch(`${endpoint}?${buildParams(true)}`, { credentials: "include" });
     const json = await res.json();
     const all = json.data as SpeedLine[];
     printTablePDF({
