@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
-// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. v0.3: وضع «إيقاف فقط» (sf_stop=1): لو الحالة In Nightly PO يوقفها فقط ويرجّعها Not Started بدون Start Realtime PO؛ لو Not Started مايعملش حاجة. v0.2: لو In Nightly PO يوقف الـ Nightly PO أولاً ثم يبدأ. v0.1: login → profileOptimization?lineId → Start Realtime PO → Confirm (per-tone ✓) → Yes → التالى. يُفعَّل فقط عند وجود #sf_po فى الهاش أو علامة PO_ACTIVE.
-// @version      0.3.0
+// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. v0.4: الوضع الكامل يستنى الأوبتميزيشن يخلّص (~5 دقايق) ثم يوقف الـ Nightly PO الناتج فترجع Not Started. v0.3: وضع «إيقاف فقط» (sf_stop=1). v0.2: يوقف الـ Nightly PO أولاً لو شغّال ثم يبدأ. v0.1: login → Start Realtime PO → Confirm (per-tone ✓) → Yes. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
+// @version      0.4.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @grant        none
 // @run-at       document-idle
@@ -31,8 +31,8 @@
   const PO_MODE_KEY = "PO_MODE"; // "full" = إيقاف nightly (لو موجود) ثم Start Realtime PO | "stop" = إيقاف الـ nightly فقط
 
   const POLL_MS = 800;
-  const PER_ACCOUNT_TIMEOUT_MS = 3 * 60 * 1000; // مهلة قصوى لتشغيل الـ PO لكل رقم قبل ما نعدّى
-  const SETTLE_AFTER_YES_MS = 9000;             // ننتظر بعد Yes ليتسجّل الطلب قبل الرقم التالى
+  const PER_ACCOUNT_TIMEOUT_MS = 12 * 60 * 1000; // مهلة قصوى لكل رقم (الأوبتميزيشن ~5 دقايق + إيقاف الـ nightly)
+  const SETTLE_AFTER_YES_MS = 9000;              // ننتظر بعد Yes ليتسجّل الطلب
 
   /* ================== منع نوم الشاشة (زى سكربت القياس) ================== */
   (function keepScreenAwake() {
@@ -164,9 +164,13 @@
     return false;
   }
 
-  /* ================== ماكينة الحالة ================== */
-  let phase = "init"; // init → [confirm-stop → await-not-started → init] → confirm-start → started
-  let dialogShown = false, yesDone = false;
+  /* ================== ماكينة الحالة ==================
+     الوضع الكامل (full): [لو nightly شغّال: أوقفه] → Start Realtime PO → انتظار اكتمال الأوبتميزيشن
+       (~5 دقايق) → إيقاف الـ nightly PO الناتج → التالى.
+     وضع الإيقاف فقط (stop): [لو nightly شغّال: أوقفه فقط] → التالى. */
+  let phase = "init"; // init → confirm-stop → await-not-started → (init | wait-complete-done)
+  let dialogShown = false;
+  let optimizationDone = false; // بقى true بعد ما نبعت Start Realtime PO (فالإيقاف الجاى = إيقاف الـ nightly الناتج)
   const startedAt = Date.now();
 
   function advance() {
@@ -223,9 +227,11 @@
     // ---- await-not-started: بعد الإيقاف نستنى الحالة ترجع Not Started ----
     if (phase === "await-not-started") {
       if (/not\s*started/i.test(status)) {
-        // وضع الإيقاف فقط: خلصنا لهذا الرقم (مانبدأش Realtime PO) → التالى
+        // وضع الإيقاف فقط: خلصنا لهذا الرقم → التالى
         if (MODE === "stop") { banner("✅ اتوقف الـ Nightly PO للرقم " + CURRENT + " — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); return; }
-        phase = "init"; // وضع كامل: نبدأ Start Realtime PO
+        // وضع كامل: لو ده كان إيقاف الـ nightly الناتج بعد الأوبتميزيشن → خلصنا الرقم ده
+        if (optimizationDone) { banner("✅ رفع سرعة + إيقاف الـ Nightly تم للرقم " + CURRENT + " — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); return; }
+        phase = "init"; // كان إيقاف nightly قبل البدء → دلوقتى ابدأ Start Realtime PO
       }
       return;
     }
@@ -235,8 +241,23 @@
       const dlg = /confirm\s*action|options\s*for\s*the\s*realtime\s*po|per\s*tone\s*data/i.test(txt());
       if (dlg) {
         dialogShown = true;
-        if (confirmDialogYes()) { phase = "started"; banner("✅ اتبعت طلب رفع السرعة — التالى…", "#2e7d32"); setTimeout(() => { clearInterval(tick); advance(); }, SETTLE_AFTER_YES_MS); }
+        if (confirmDialogYes()) { optimizationDone = true; phase = "wait-complete"; banner("⏳ الأوبتميزيشن شغّال — استنى يخلّص (~5 دقايق)…", "#1565c0"); }
       } else if (!dialogShown) selectAction(RE_START);
+      return;
+    }
+
+    // ---- wait-complete: بعد تشغيل الأوبتميزيشن نستنى يخلّص، وبعدين نوقف الـ nightly PO الناتج ----
+    if (phase === "wait-complete") {
+      const mins = Math.floor((Date.now() - startedAt) / 60000);
+      banner("⏳ رفع السرعة شغّال للرقم " + CURRENT + " (" + mins + " دق) — استنى يخلّص…", "#1565c0");
+      if (/nightly/i.test(status)) {
+        // الأوبتميزيشن خلّص وجدول nightly PO جديد → أوقفه
+        if (selectAction(RE_STOP)) { phase = "confirm-stop"; dialogShown = false; banner("⛔ إيقاف الـ Nightly PO الناتج…", "#ef6c00"); }
+      } else if (/not\s*started/i.test(status)) {
+        // خلّص من غير جدولة nightly → عدّى
+        banner("✅ رفع السرعة تم للرقم " + CURRENT + " — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200);
+      }
+      // لسه "Currently under Real-time PO" → نفضل نستنى
       return;
     }
   }, POLL_MS);
