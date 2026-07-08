@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.9.1
+// @version      0.9.2
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -280,7 +280,7 @@
         }
       } else if (/not\s*started/i.test(status)) {
         // وضع الإيقاف فقط: مفيش nightly شغّال → مفيش حاجة نعملها، عدّى
-        if (MODE === "stop") { banner("ℹ️ " + CURRENT + " أصلاً Not Started — مفيش nightly لإيقافه.", "#607d8b"); clearInterval(tick); setTimeout(advance, 1200); return; }
+        if (MODE === "stop") { postPoEvent(CURRENT, "stop"); banner("ℹ️ " + CURRENT + " أصلاً Not Started — سُجّل كـ إيقاف PO.", "#607d8b"); clearInterval(tick); setTimeout(advance, 1200); return; }
         // ابدأ Start Realtime PO
         if (selectAction(RE_START)) { phase = "confirm-start"; dialogShown = false; banner("▶️ Start Realtime PO…", "#1565c0"); }
       } else if (/nightly/i.test(status)) {
@@ -299,7 +299,7 @@
       const mins = Math.floor((Date.now() - startedAt) / 60000);
       banner("⏳ Real-time PO شغّال للرقم " + CURRENT + " (" + mins + " دق) — استنى يخلّص للإيقاف…", "#1565c0");
       if (/nightly/i.test(status)) { if (selectAction(RE_STOP)) { phase = "confirm-stop"; dialogShown = false; banner("⛔ خلّص — إيقاف الـ Nightly PO…", "#ef6c00"); } }
-      else if (/not\s*started/i.test(status)) { banner("✅ خلّص بدون nightly — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); }
+      else if (/not\s*started/i.test(status)) { postPoEvent(CURRENT, "stop"); banner("✅ خلّص بدون nightly — سُجّل كـ إيقاف PO.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); }
       return;
     }
 
