@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.5.0
+// @version      0.6.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @grant        none
 // @run-at       document-idle
@@ -144,23 +144,29 @@
   const RE_START = /start\s*realtime\s*po/i;
   const RE_STOP  = /stop\s*nightly\s*po/i;
 
-  // فى نافذة Confirm Action: يحطّ الشيك مارك (per-tone) ويضغط Yes
-  function confirmDialogYes() {
-    // الديالوج الظاهر اللى فيه نص Confirm/Realtime PO
-    const dialogs = [...document.querySelectorAll("div")].filter(d => d.offsetParent !== null && /confirm\s*action|options\s*for\s*the\s*realtime\s*po|per\s*tone\s*data/i.test(d.textContent || ""));
-    const scope = dialogs.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length)[0] || document;
-    // الشيك مارك — native أو PrimeFaces
-    let checked = false;
-    const nativeChk = scope.querySelector('input[type="checkbox"]');
-    if (nativeChk) { if (!nativeChk.checked) { nativeChk.click(); } checked = true; }
-    if (!checked) {
-      const pfBox = scope.querySelector(".ui-chkbox-box");
-      if (pfBox && !pfBox.querySelector(".ui-icon-check")) { pfBox.click(); checked = true; }
-      else if (pfBox) checked = true;
+  // العنصر ظاهر فعلاً؟ (getClientRects أدقّ من offsetParent مع ديالوجات position:fixed)
+  const isVisible = (el) => { try { return el.getClientRects().length > 0; } catch (e) { return false; } };
+
+  // فى نافذة Confirm Action: (اختيارى) يحطّ شيك مارك per-tone ثم يضغط Yes.
+  // ملاحظة: فى PrimeFaces الأزرار (Yes/No) بتكون فى buttonpane منفصل عن نص الرسالة،
+  // فبندوّر على زر Yes فى كل الصفحة (العنصر الظاهر اللى نصّه "Yes" بالظبط) — مش جوّه div النص.
+  function confirmDialogYes(wantCheckbox) {
+    // الشيك مارك (للـ Start Realtime PO فقط) — الظاهر فقط
+    if (wantCheckbox) {
+      const nativeChks = [...document.querySelectorAll('input[type="checkbox"]')].filter(isVisible);
+      if (nativeChks.length) {
+        nativeChks.forEach(c => { if (!c.checked) c.click(); });
+      } else {
+        [...document.querySelectorAll(".ui-chkbox-box")].filter(isVisible)
+          .forEach(b => { if (!b.querySelector(".ui-icon-check")) b.click(); });
+      }
     }
-    // زر Yes
-    const yes = [...scope.querySelectorAll("button, a, span, input[type='button']")].find(b => b.offsetParent !== null && /^\s*yes\s*$/i.test((b.textContent || b.value || "").trim()));
-    if (yes) { yes.click(); return true; }
+    // زر Yes — نجرّب أنواع العناصر بالترتيب (button أولاً) وناخد أول عنصر ظاهر نصّه "Yes"
+    const sels = ["button", "input[type='button']", "input[type='submit']", "a", "span", "div", "td"];
+    for (const sel of sels) {
+      const el = [...document.querySelectorAll(sel)].find(b => isVisible(b) && /^yes$/i.test((b.textContent || b.value || "").trim()));
+      if (el) { el.click(); return true; }
+    }
     return false;
   }
 
@@ -217,7 +223,7 @@
     // ---- confirm-stop: تأكيد إيقاف الـ Nightly PO (Yes بدون شيك مارك) ----
     if (phase === "confirm-stop") {
       const dlg = /confirm\s*action|stop\s*nightly\s*po|are\s*you\s*sure/i.test(txt());
-      if (dlg) { dialogShown = true; if (confirmDialogYes()) { phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
+      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
       else if (!dialogShown) selectAction(RE_STOP);
       return;
     }
@@ -237,7 +243,7 @@
       const dlg = /confirm\s*action|options\s*for\s*the\s*realtime\s*po|per\s*tone\s*data/i.test(txt());
       if (dlg) {
         dialogShown = true;
-        if (confirmDialogYes()) { phase = "started"; banner("✅ اتبعت طلب رفع السرعة — التالى…", "#2e7d32"); setTimeout(() => { clearInterval(tick); advance(); }, SETTLE_AFTER_YES_MS); }
+        if (confirmDialogYes(true)) { phase = "started"; banner("✅ اتبعت طلب رفع السرعة — التالى…", "#2e7d32"); setTimeout(() => { clearInterval(tick); advance(); }, SETTLE_AFTER_YES_MS); }
       } else if (!dialogShown) selectAction(RE_START);
       return;
     }
