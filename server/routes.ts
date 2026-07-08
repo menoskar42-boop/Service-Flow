@@ -1954,6 +1954,37 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // GET /api/reports/marked-no-account — الأرقام المعلَّمة "بدون رقم أكونت" (اتشالت من تقرير الخطوط
+  // بدون أكونت بالحذف اليدوى، أو Customer360 رجّع "this subscriber does not exist"). المصدر = lines_no_account.
+  app.get("/api/reports/marked-no-account", requireAuth, async (req, res) => {
+    const { central = "", q = "" } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+    if (q.trim()) {
+      params.push(`%${q.trim().toLowerCase()}%`);
+      const p = `$${params.length}`;
+      conds.push(`(LOWER(na.full_phone) LIKE ${p} OR LOWER(COALESCE(pl.tel_no,'')) LIKE ${p} OR LOWER(COALESCE(pl.central,'')) LIKE ${p} OR LOWER(COALESCE(na.marked_by_name,'')) LIKE ${p})`);
+    }
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const { rows } = await pool.query(
+      `SELECT na.full_phone AS "fullPhone",
+              COALESCE(pl.tel_no, regexp_replace(na.full_phone, '^88', '')) AS "telNo",
+              pl.central, pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber",
+              pp.frame AS frame, pl.dp_terminal AS "dpTerminal",
+              na.marked_by_name AS "markedByName",
+              (na.marked_at AT TIME ZONE 'Africa/Cairo') AS "markedAt"
+       FROM lines_no_account na
+       LEFT JOIN phone_lines pl ON pl.full_phone = na.full_phone
+       LEFT JOIN phone_ports pp ON pp.phone_number = na.full_phone
+       ${where}
+       ORDER BY na.marked_at DESC
+       LIMIT 20000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // GET /api/phone-lines/needs-speed — أرقام محتاجة رفع سرعة (تقريرا 2 و 4)
   // المعيار: نستبعد الخطوط غير المتزامنة (السرعة الحالية وأقصى سرعة < 200 معاً)، ثم نعتبر الخط
   //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).

@@ -2,13 +2,15 @@ import { useState } from "react";
 import { WithoutAccountReport } from "@/components/WithoutAccountReport";
 import { RegularizedNoAccountReport } from "@/components/RegularizedNoAccountReport";
 import { GroundFaultsNoAccountReport } from "@/components/GroundFaultsNoAccountReport";
+import { MarkedNoAccountReport } from "@/components/MarkedNoAccountReport";
 
-type SubTab = "lines" | "regularized" | "ground";
+type SubTab = "lines" | "regularized" | "ground" | "marked";
 
 const TABS: { id: SubTab; label: string }[] = [
   { id: "lines",       label: "الخطوط بدون رقم أكونت" },
   { id: "regularized", label: "أعطال منتظمة بدون أكونت" },
   { id: "ground",      label: "أعطال أرضية بدون رقم أكونت" },
+  { id: "marked",      label: "معلَّمة بدون أكونت (محذوفة / غير موجودة)" },
 ];
 
 export function NoAccountTab() {
@@ -35,6 +37,7 @@ export function NoAccountTab() {
       {tab === "lines"       && <WithoutAccountReport />}
       {tab === "regularized" && <RegularizedNoAccountReport />}
       {tab === "ground"      && <GroundFaultsNoAccountReport />}
+      {tab === "marked"      && <MarkedNoAccountReport />}
     </div>
   );
 }
