@@ -260,8 +260,11 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
 
   const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)], scoreGt != null), "_blank");
 
-  // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد. stopOnly=true → إيقاف الـ Nightly PO فقط.
-  const handleRaiseSpeed = async (stopOnly = false) => {
+  // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد. kind: "raise" = رفع سرعة | "stop" = إيقاف Nightly فقط.
+  const handleRaiseSpeed = async (kind: "raise" | "stop") => {
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
     setDzsLoading(true);
     try {
       const params = new URLSearchParams({ page: "1", limit: "20000" });
@@ -282,7 +285,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const accounts = (json.data as PhoneLine[]).map((r) => (r.accountNo ?? "").toString().trim());
-      openProfileOptimization(accounts, stopOnly);
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");
     } finally {
