@@ -41,6 +41,8 @@ interface Row {
   lineMaxSpeed: string | null;
   lastMeasScore: number | null;
   lastMeasTime: string | null;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
 }
 
 interface FilterOptions {
@@ -65,6 +67,13 @@ const fmtDate = (d: string | null) => {
   if (isNaN(t.getTime())) return "-";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())}`;
+};
+const fmtPoDt = (d: string | null) => {
+  if (!d) return "-";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "-";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 const scoreBadge = (v: number | null | undefined) => {
   if (v == null) return <span className="text-gray-400">-</span>;
@@ -185,6 +194,8 @@ export function ComplaintNoMeasureReport() {
       "رقم البكس": r.boxNumber,
       "رقم التليفون": r.telNo,
       "DP Terminal": r.dpTerminal,
+      "آخر رفع سرعة": fmtPoDt(r.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtPoDt(r.lastPoStopAt),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -303,6 +314,8 @@ export function ComplaintNoMeasureReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -334,6 +347,8 @@ export function ComplaintNoMeasureReport() {
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
                       <TableCell>{r.dpTerminal || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtPoDt(r.lastPoRaiseAt)}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtPoDt(r.lastPoStopAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

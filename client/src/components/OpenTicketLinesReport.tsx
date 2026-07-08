@@ -30,8 +30,17 @@ interface OpenTicketLine {
   ticketNumber: string;
   faultType: string;
   ticketCreatedAt: string;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
 }
 
+const fmtPoDt = (d: string | null) => {
+  if (!d) return "-";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "-";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
 const scoreBadge = (v: string | number | null | undefined) => {
   if (v == null || v === "") return <span className="text-gray-400">-</span>;
   const n = Number(v);
@@ -127,6 +136,8 @@ export function OpenTicketLinesReport() {
       "رقم الكابينه": l.cabinNumber,
       "رقم البكس": l.boxNumber,
       "DP Terminal": l.dpTerminal,
+      "آخر رفع سرعة": fmtPoDt(l.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtPoDt(l.lastPoStopAt),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -243,6 +254,8 @@ export function OpenTicketLinesReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -277,6 +290,8 @@ export function OpenTicketLinesReport() {
                     <TableCell className="font-medium">{l.cabinNumber || "-"}</TableCell>
                     <TableCell className="font-medium">{l.boxNumber || "-"}</TableCell>
                     <TableCell>{l.dpTerminal || "-"}</TableCell>
+                    <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtPoDt(l.lastPoRaiseAt)}</TableCell>
+                    <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtPoDt(l.lastPoStopAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

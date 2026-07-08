@@ -39,6 +39,8 @@ interface RegularizedFault extends Measurement138 {
   slot: string | null;
   portNumber: string | null;
   centralCode: string | null;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
   dataSource: "تفاصيل" | "متبقى";
 }
 
@@ -192,6 +194,8 @@ export function RegularizedFaultsRangeReport() {
       "LastOfSlot": f.slot,
       "LastOfPort number": f.portNumber,
       "كود السنترال": f.centralCode,
+      "آخر رفع سرعة": fmtDt(f.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtDt(f.lastPoStopAt),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -405,6 +409,8 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">Slot</TableHead>
                 <TableHead className="text-right font-bold text-white">Port</TableHead>
                 <TableHead className="text-right font-bold text-white">كود السنترال</TableHead>
+                <TableHead className="text-right font-bold text-white whitespace-nowrap">آخر رفع سرعة</TableHead>
+                <TableHead className="text-right font-bold text-white whitespace-nowrap">آخر إيقاف PO</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -479,6 +485,8 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell>{f.slot || "-"}</TableCell>
                   <TableCell>{f.portNumber || "-"}</TableCell>
                   <TableCell>{f.centralCode || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtDt(f.lastPoRaiseAt)}</TableCell>
+                  <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtDt(f.lastPoStopAt)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

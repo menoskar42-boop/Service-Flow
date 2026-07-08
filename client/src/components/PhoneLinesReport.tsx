@@ -46,7 +46,17 @@ interface PhoneLine extends Measurement138 {
   fiberOut: string;
   telNumTxt: string;
   fullPhone: string;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
 }
+
+const fmtPoDt = (d: string | null) => {
+  if (!d) return "-";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "-";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
 
 interface FilterOptions {
   centrals: string[];
@@ -191,6 +201,8 @@ export function PhoneLinesReport() {
       "DP Terminal": r.dpTerminal,
       "Port": r.port,
       "LEN": r.len,
+      "آخر رفع سرعة": fmtPoDt(r.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtPoDt(r.lastPoStopAt),
       "Fiber Block": r.fiberBlock,
       "Fiber Out": r.fiberOut,
     }));
@@ -308,6 +320,8 @@ export function PhoneLinesReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">LEN</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Fiber Block</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Fiber Out</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -345,6 +359,8 @@ export function PhoneLinesReport() {
                       <TableCell>{r.len || "-"}</TableCell>
                       <TableCell>{r.fiberBlock || "-"}</TableCell>
                       <TableCell>{r.fiberOut || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtPoDt(r.lastPoRaiseAt)}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtPoDt(r.lastPoStopAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
