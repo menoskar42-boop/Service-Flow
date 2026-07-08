@@ -5,7 +5,8 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, RefreshCw, AlertCircle, Radar, FileSpreadsheet, FileText } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, Radar, FileSpreadsheet, FileText, Gauge } from "lucide-react";
+import { openProfileOptimization } from "@/lib/profile-optimization";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 
@@ -103,6 +104,15 @@ export function OpenTicketLinesReport() {
     setDzsCount(accounts.length);
   };
 
+  const handleRaisePO = (kind: "raise" | "stop") => {
+    const accounts = [...new Set(filtered.map((l) => (l.accountNo ?? "").toString().trim()).filter(Boolean))];
+    if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى الخطوط المعروضة"); return; }
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
+    openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
+  };
+
   const handleExportExcel = () => {
     const rows = filtered.map((l) => ({
       "رقم التذكرة": l.ticketNumber,
@@ -182,6 +192,12 @@ export function OpenTicketLinesReport() {
             </label>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaisePO("raise")} className="text-emerald-700 border-emerald-200 gap-1" title="رفع السرعة (Profile Optimization) للخطوط المعروضة">
+              <Gauge className="w-4 h-4" /> رفع سرعة
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط للخطوط المعروضة">
+              <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel

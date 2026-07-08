@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge } from "lucide-react";
+import { openProfileOptimization } from "@/lib/profile-optimization";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 
@@ -146,6 +147,28 @@ export function ComplaintNoMeasureReport() {
     }
   };
 
+  const handleRaisePO = async (kind: "raise" | "stop") => {
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
+    setDzsLoading(true);
+    try {
+      const res = await fetch(`/api/reports/complaint-no-measure?${buildParams(true)}`, { credentials: "include" });
+      const json = await res.json();
+      const all = (json.data as Row[]) ?? [];
+      const seen = new Set<string>();
+      const accounts = all
+        .map((r) => (r.accountNo ?? "").toString().trim())
+        .filter((a) => a && !seen.has(a) && seen.add(a));
+      if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
+    } catch {
+      alert("تعذّر تحميل بيانات النطاق");
+    } finally {
+      setDzsLoading(false);
+    }
+  };
+
   const handleExport = async () => {
     const res = await fetch(`/api/reports/complaint-no-measure?${buildParams(true)}`, { credentials: "include" });
     const json = await res.json();
@@ -230,6 +253,12 @@ export function ComplaintNoMeasureReport() {
             />
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaisePO("raise")} className="text-emerald-700 border-emerald-200 gap-1" title="رفع السرعة (Profile Optimization) لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> رفع سرعة
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">

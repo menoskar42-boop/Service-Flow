@@ -8,7 +8,8 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge } from "lucide-react";
+import { openProfileOptimization } from "@/lib/profile-optimization";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
@@ -175,6 +176,19 @@ export function CurrentFaultsReport() {
       return;
     }
     window.open(buildDZSUrl(items), "_blank");
+  };
+
+  // رفع السرعة / إيقاف PO لأرقام الأعطال المعروضة. kind: "raise" = رفع سرعة | "stop" = إيقاف PO فقط.
+  const handleRaisePO = (kind: "raise" | "stop") => {
+    const seen = new Set<string>();
+    const accounts = displayed
+      .map((f) => (f.accountNo ?? "").toString().trim())
+      .filter((a) => a && !seen.has(a) && seen.add(a));
+    if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى الأعطال المعروضة"); return; }
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
+    openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
   };
 
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
@@ -359,6 +373,12 @@ export function CurrentFaultsReport() {
           title="فتح DZS وقياس أرقام الأكونت المعروضة"
         >
           <Radar className="w-4 h-4" /> قياس DZS
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => handleRaisePO("raise")} className="text-emerald-700 border-emerald-200 gap-1" title="رفع السرعة (Profile Optimization) لأرقام الأعطال المعروضة">
+          <Gauge className="w-4 h-4" /> رفع سرعة
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام الأعطال المعروضة">
+          <Gauge className="w-4 h-4" /> إيقاف PO
         </Button>
         <RefreshButton />
         <Button

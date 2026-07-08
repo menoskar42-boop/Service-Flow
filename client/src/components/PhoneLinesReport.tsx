@@ -11,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, Gauge } from "lucide-react";
+import { openProfileOptimization } from "@/lib/profile-optimization";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -134,6 +135,31 @@ export function PhoneLinesReport() {
     }
   };
 
+  // رفع السرعة / إيقاف PO لأرقام النطاق المحدد.
+  const handleRaisePO = async (kind: "raise" | "stop") => {
+    if (!central && !cabin && !box) { alert("اختر سنترال أو كابينه أو بكس أولاً"); return; }
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "20000" });
+      if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (box) params.set("box", box);
+      const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
+      const json = await res.json();
+      const all = (json.data as PhoneLine[]) ?? [];
+      const seen = new Set<string>();
+      const accounts = all
+        .map((r) => (toItem(r).account ?? "").toString().trim())
+        .filter((a) => a && !seen.has(a) && seen.add(a));
+      if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
+    } catch {
+      alert("تعذّر تحميل بيانات النطاق");
+    }
+  };
+
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
   const openDZSSingle = (r: PhoneLine) => {
     window.open(buildDZSUrl([toItem(r)]), "_blank");
@@ -238,6 +264,12 @@ export function PhoneLinesReport() {
 
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaisePO("raise")} className="text-emerald-700 border-emerald-200 gap-1" title="رفع السرعة (Profile Optimization) لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> رفع سرعة
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
