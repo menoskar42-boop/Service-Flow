@@ -195,7 +195,7 @@ export function PhoneLookupReport() {
                     title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"
                   >
                     <Gauge className="w-4 h-4" />
-                    إيقاف Nightly
+                    إيقاف PO
                   </Button>
                 </>
               ) : (

@@ -247,7 +247,7 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
               <Gauge className="w-4 h-4" /> رفع سرعة
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(true)} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
-              <Gauge className="w-4 h-4" /> إيقاف Nightly
+              <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
