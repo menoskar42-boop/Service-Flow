@@ -38,6 +38,7 @@ interface SpeedLine {
   lineCurrentSpeed: string | null;
   lineMaxSpeed: string | null;
   lastMeasScore: number | null;
+  lastMeasTime: string | null;
   complaintNo: string | null;
   complaintTime: string | null;
 }
@@ -66,6 +67,15 @@ const fmtDate = (d: string | null) => {
   if (isNaN(t.getTime())) return "-";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())}`;
+};
+
+// تاريخ + توقيت (لآخر قياس)
+const fmtDateTime = (d: string | null) => {
+  if (!d) return "-";
+  const t = new Date(d);
+  if (isNaN(t.getTime())) return "-";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
 interface NeedsSpeedReportProps {
@@ -177,6 +187,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
       "الاسكور": r.lastMeasScore ?? "",
       "السرعة الحالية": r.lineCurrentSpeed ?? "",
       "أقصى سرعة": r.lineMaxSpeed ?? "",
+      "تاريخ آخر قياس": fmtDateTime(r.lastMeasTime),
       "رقم الشكوى": r.complaintNo ?? "",
       "تاريخ الشكوى": fmtDate(r.complaintTime),
       "السنترال": r.central,
@@ -290,6 +301,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                     <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">تاريخ آخر قياس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الشكوى</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الشكوى</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
@@ -322,6 +334,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                       <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
                       <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>
                       <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-muted-foreground">{fmtDateTime(r.lastMeasTime)}</TableCell>
                       <TableCell className="font-mono">{r.complaintNo ?? "-"}</TableCell>
                       <TableCell className="whitespace-nowrap">{fmtDate(r.complaintTime)}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
