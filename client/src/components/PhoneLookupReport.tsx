@@ -22,7 +22,18 @@ interface LineData {
   cabinNumber: string | null;
   boxNumber: string | null;
   frame: string | null;
+  msanCode: string | null;
+  iduNo: string | null;
+  oduNo: string | null;
+  primaryBlockNo: string | null;
+  cabinetIn: string | null;
+  secBlockNo: string | null;
+  cabinetOut: string | null;
   dpTerminal: string | null;
+  port: string | null;
+  len: string | null;
+  fiberBlock: string | null;
+  fiberOut: string | null;
   fullPhone: string;
   accountNo: string | null;
   currentSpeed: string | null;
@@ -89,12 +100,24 @@ export function PhoneLookupReport() {
         ["السنترال", dash(line.central)],
         ["رقم الكابينة", dash(line.cabinNumber)],
         ["رقم البكس", dash(line.boxNumber)],
+        ["كود الكابينة (MSAN)", dash(line.msanCode)],
         ["رقم الفريم", dash(line.frame)],
         ["رقم الأكونت", dash(line.accountNo)],
         ["السرعة الحالية", dash(line.currentSpeed)],
         ["أقصى سرعة", dash(line.maxSpeed)],
         ["الاسكور", scoreBadge(line.score)],
         ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
+        ["IDU", dash(line.iduNo)],
+        ["ODU", dash(line.oduNo)],
+        ["Primary Block", dash(line.primaryBlockNo)],
+        ["Cabinet In", dash(line.cabinetIn)],
+        ["Sec Block", dash(line.secBlockNo)],
+        ["Cabinet Out", dash(line.cabinetOut)],
+        ["DP Terminal", dash(line.dpTerminal)],
+        ["Port", dash(line.port)],
+        ["LEN", dash(line.len)],
+        ["Fiber Block", dash(line.fiberBlock)],
+        ["Fiber Out", dash(line.fiberOut)],
       ]
     : [];
 
@@ -106,11 +129,24 @@ export function PhoneLookupReport() {
       "السنترال": line.central,
       "رقم الكابينة": line.cabinNumber ?? "",
       "رقم البكس": line.boxNumber ?? "",
+      "كود الكابينة (MSAN)": line.msanCode ?? "",
       "رقم الفريم": line.frame ?? "",
+      "رقم الأكونت": line.accountNo ?? "",
       "السرعة الحالية": line.currentSpeed ?? "",
       "أقصى سرعة": line.maxSpeed ?? "",
       "الاسكور": line.score ?? "",
       "تاريخ آخر قياس": fmtDate(line.lastMeasTime),
+      "IDU": line.iduNo ?? "",
+      "ODU": line.oduNo ?? "",
+      "Primary Block": line.primaryBlockNo ?? "",
+      "Cabinet In": line.cabinetIn ?? "",
+      "Sec Block": line.secBlockNo ?? "",
+      "Cabinet Out": line.cabinetOut ?? "",
+      "DP Terminal": line.dpTerminal ?? "",
+      "Port": line.port ?? "",
+      "LEN": line.len ?? "",
+      "Fiber Block": line.fiberBlock ?? "",
+      "Fiber Out": line.fiberOut ?? "",
     };
     const ws = XLSX.utils.json_to_sheet([row]);
     const wb = XLSX.utils.book_new();
@@ -122,10 +158,12 @@ export function PhoneLookupReport() {
     if (!line) return;
     printTablePDF({
       title: `بيانات الخط ${line.fullPhone}`,
-      columns: ["السنترال", "الكابينة", "البكس", "الفريم", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس"],
+      columns: ["السنترال", "الكابينة", "البكس", "كود MSAN", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out"],
       rows: [[
-        line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", line.frame ?? "-",
+        line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", line.msanCode ?? "-", line.frame ?? "-", line.accountNo ?? "-",
         line.currentSpeed ?? "-", line.maxSpeed ?? "-", line.score ?? "-", fmtDate(line.lastMeasTime),
+        line.iduNo ?? "-", line.oduNo ?? "-", line.primaryBlockNo ?? "-", line.cabinetIn ?? "-", line.secBlockNo ?? "-",
+        line.cabinetOut ?? "-", line.dpTerminal ?? "-", line.port ?? "-", line.len ?? "-", line.fiberBlock ?? "-", line.fiberOut ?? "-",
       ]],
     });
   };
