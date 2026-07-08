@@ -597,7 +597,8 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
   }
   const where = "WHERE " + conds.join(" AND ");
   const { rows } = await pool.query(
-    `SELECT * FROM (
+    `SELECT x.*, (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+            (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt" FROM (
        SELECT DISTINCT ON (t.ticket_id)
          t.ticket_id             AS "ticketId",
          t.central_name          AS "centralName",
@@ -686,6 +687,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
        ${where}
        ORDER BY t.ticket_id, t.id DESC
      ) x
+     LEFT JOIN line_po_events pe ON pe.account_no = x."accountNo"
      ORDER BY x."complainTime" ASC NULLS LAST`,
     params,
   );
@@ -1620,7 +1622,8 @@ export async function registerRoutes(
         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
         FROM case_138 c WHERE c.full_phone = pl.full_phone
         ORDER BY c.id DESC LIMIT 1
-      ) c138p ON true`;
+      ) c138p ON true
+      LEFT JOIN line_po_events pe ON pe.account_no = c138p.account_no`;
     const dataRes = await pool.query(
       `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
@@ -1634,7 +1637,9 @@ export async function registerRoutes(
               c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
               c138p.complain_no AS "lastMeasComplainNo",
-              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
        ${joinClause} ${c138Join} ${where}
        ORDER BY pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -2305,6 +2310,7 @@ export async function registerRoutes(
     // مالوش بيانات فنية (مش موجود فى phone_lines). phone_lines اختيارى (LEFT JOIN).
     const joinClause = `FROM regm
        JOIN line_accounts la ON la.full_phone = '88' || regm.short
+       LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
        LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone
        LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone
        LEFT JOIN LATERAL (
@@ -2327,7 +2333,9 @@ export async function registerRoutes(
               (regm.ref_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
-              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
        ${joinClause} ${where}
        ORDER BY la.full_phone, pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -4686,7 +4694,8 @@ export async function registerRoutes(
 
       // DISTINCT ON (ticket_id) — آخر حالة لكل شكوى (أعلى id)، ثم ترتيب بوقت الشكوى.
       const { rows } = await pool.query(
-        `SELECT * FROM (
+        `SELECT x.*, (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+                (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt" FROM (
            SELECT DISTINCT ON (t.ticket_id)
              t.ticket_id             AS "ticketId",
              t.central_name          AS "centralName",
@@ -4799,6 +4808,7 @@ export async function registerRoutes(
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x
+         LEFT JOIN line_po_events pe ON pe.account_no = x."accountNo"
          ORDER BY x."complainTime" ASC NULLS LAST`,
         params,
       );
@@ -5058,7 +5068,8 @@ export async function registerRoutes(
                  MAX("closeDate") AS last_close
           FROM combined GROUP BY "ticketId"
         )
-        SELECT * FROM (
+        SELECT d.*, (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt" FROM (
           -- شكوى واحدة لكل complain_no: نحتفظ بأحدث سجل (آخر تاريخ إغلاق) فيكون
           -- الـ Status Code هو الأخير، ونرفق أول/آخر تاريخ إغلاق
           SELECT DISTINCT ON (c."ticketId")
@@ -5069,6 +5080,7 @@ export async function registerRoutes(
           JOIN agg a ON a.k = c."ticketId"
           ORDER BY c."ticketId", c."closeDate" DESC NULLS LAST
         ) d
+        LEFT JOIN line_po_events pe ON pe.account_no = d."accountNo"
         ORDER BY d."lastCloseDate" ASC NULLS LAST`,
         params,
       );
@@ -6280,9 +6292,12 @@ export async function registerRoutes(
                 pl.idu_no AS "iduNo", pl.dp_terminal AS "dpTerminal",
                 la.account_no AS "accountNo", la.source AS "accountSource",
                 c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
-                c138p.score AS "lastMeasScore"
+                c138p.score AS "lastMeasScore",
+                (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+                (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
          FROM phone_lines pl
          LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+         LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
          LEFT JOIN LATERAL (
            SELECT c.current_speed, c.max_speed, c.score
            FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
