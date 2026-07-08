@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.16.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.17.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -10,6 +10,13 @@
 
 (function () {
   "use strict";
+
+  /* ===== حارس التعارض مع سكربت «رفع السرعة» (Profile Optimization) =====
+     لو فيه run رفع سرعة شغّال (هاش #sf_po أو علامة PO_ACTIVE فى localStorage) نوقف سكربت القياس
+     بالكامل على كل الصفحات المشتركة (login/welcome/profileOptimization) لتجنّب أى تعارض.
+     run القياس (#sf_accounts) يمسح العلامة ويكمّل عادى. سطر إضافى فقط — مايغيّرش منطق القياس. */
+  if (/[#&]sf_accounts=/.test(location.hash)) { try { localStorage.removeItem("PO_ACTIVE"); } catch (e) {} }
+  else if (/[#&]sf_po=/.test(location.hash) || localStorage.getItem("PO_ACTIVE") === "1") { console.log("⏸️ DZS measure paused — PO (رفع سرعة) run active"); return; }
 
   /* ===== منع الشاشة/الجهاز من النوم أثناء القياس ===== */
   // النوم/الاسكرين سيفر بيفصل القياس. نحاول Wake Lock (HTTPS فقط) + fallback فيديو مكتوم شغّال.

@@ -12,9 +12,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { openProfileOptimization } from "@/lib/profile-optimization";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -142,6 +143,26 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
     }
   };
 
+  // رفع السرعة (Profile Optimization) للنطاق المحدد — يفتح تاب PO ويشغّل Start Realtime PO لكل رقم
+  const handleRaiseSpeed = async () => {
+    setDzsLoading(true);
+    try {
+      const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
+      const json = await res.json();
+      const all = (json.data as SpeedLine[]) ?? [];
+      const seen = new Set<string>();
+      const accounts = all
+        .map((r) => (r.accountNo ?? "").toString().trim())
+        .filter((a) => a && !seen.has(a) && seen.add(a));
+      if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      openProfileOptimization(accounts);
+    } catch {
+      alert("تعذّر تحميل بيانات النطاق لرفع السرعة");
+    } finally {
+      setDzsLoading(false);
+    }
+  };
+
   const handleExport = async () => {
     const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
     const json = await res.json();
@@ -221,6 +242,9 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
             />
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleRaiseSpeed} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> رفع سرعة
             </Button>
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">

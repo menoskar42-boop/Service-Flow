@@ -7,6 +7,8 @@ import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, Refres
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
+import { openProfileOptimization } from "@/lib/profile-optimization";
+import { Gauge } from "lucide-react";
 
 // بوابة DZS expresse — تُفتح فى تاب جديد ويُمرَّر رقم الأكونت فى الـ hash ليقيسه
 // الـ Tampermonkey script (dzs-expresse-v10.user.js) ويرفع النتيجة لشيت 138.
@@ -167,15 +169,26 @@ export function PhoneLookupReport() {
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
               {line.accountNo ? (
-                <Button
-                  variant="outline"
-                  onClick={measureDZS}
-                  className="bg-white gap-2 text-blue-700 border-blue-200"
-                  title="فتح DZS وقياس هذا الرقم"
-                >
-                  <Radar className="w-4 h-4" />
-                  قياس DZS
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={measureDZS}
+                    className="bg-white gap-2 text-blue-700 border-blue-200"
+                    title="فتح DZS وقياس هذا الرقم"
+                  >
+                    <Radar className="w-4 h-4" />
+                    قياس DZS
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => openProfileOptimization([line.accountNo])}
+                    className="bg-white gap-2 text-emerald-700 border-emerald-200"
+                    title="تشغيل Profile Optimization (رفع السرعة) لهذا الرقم"
+                  >
+                    <Gauge className="w-4 h-4" />
+                    رفع سرعة
+                  </Button>
+                </>
               ) : (
                 <Button
                   variant="outline"
