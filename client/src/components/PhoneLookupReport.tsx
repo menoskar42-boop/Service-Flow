@@ -181,7 +181,10 @@ export function PhoneLookupReport() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => openProfileOptimization([line.accountNo])}
+                    onClick={() => {
+                      const afterStop = window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة ثم إيقاف الـ Nightly الناتج\nإلغاء = رفع السرعة فقط");
+                      openProfileOptimization([line.accountNo], { afterStop });
+                    }}
                     className="bg-white gap-2 text-emerald-700 border-emerald-200"
                     title="تشغيل Profile Optimization (رفع السرعة) لهذا الرقم"
                   >
@@ -190,7 +193,7 @@ export function PhoneLookupReport() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => openProfileOptimization([line.accountNo], true)}
+                    onClick={() => openProfileOptimization([line.accountNo], { stopOnly: true })}
                     className="bg-white gap-2 text-orange-700 border-orange-200"
                     title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"
                   >

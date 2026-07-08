@@ -512,10 +512,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(false)} disabled={dzsLoading} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed("raise")} disabled={dzsLoading} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> رفع سرعة
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(true)} disabled={dzsLoading} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed("stop")} disabled={dzsLoading} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             <RefreshButton />

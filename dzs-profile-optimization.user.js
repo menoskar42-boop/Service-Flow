@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.7.0
+// @version      0.8.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @grant        none
 // @run-at       document-idle
@@ -28,11 +28,13 @@
 
   const PO_ACCOUNTS_KEY = "PO_ACCOUNTS";
   const PO_INDEX_KEY = "PO_INDEX";
-  const PO_MODE_KEY = "PO_MODE"; // "full" = إيقاف nightly (لو موجود) ثم Start Realtime PO | "stop" = إيقاف الـ nightly فقط
+  const PO_MODE_KEY = "PO_MODE";   // "full" = رفع سرعة (Start Realtime PO) | "stop" = إيقاف الـ nightly فقط
+  const PO_AFTER_KEY = "PO_AFTER"; // "1" = بعد رفع السرعة لكل الأرقام، نفّذ مرحلة الإيقاف لكلهم
 
   const POLL_MS = 800;
-  const PER_ACCOUNT_TIMEOUT_MS = 3 * 60 * 1000; // مهلة قصوى لكل رقم قبل ما نعدّى
-  const SETTLE_AFTER_YES_MS = 9000;             // ننتظر بعد Yes ليتسجّل الطلب قبل الرقم التالى
+  const PER_ACCOUNT_TIMEOUT_MS = 10 * 60 * 1000; // مهلة قصوى لكل رقم (تكفّى انتظار اكتمال Real-time PO ~5 دقايق)
+  const SETTLE_AFTER_YES_MS = 9000;              // ننتظر بعد Yes ليتسجّل الطلب قبل الرقم التالى
+  const RE_RT = /currently\s*under\s*real-?time\s*po|under\s*real-?time\s*po/i; // «Currently under Real-time PO»
 
   /* ================== منع نوم الشاشة (زى سكربت القياس) ================== */
   (function keepScreenAwake() {
@@ -70,10 +72,12 @@
     localStorage.setItem(PO_INDEX_KEY, "0");
     localStorage.setItem(PO_ACTIVE_KEY, "1");
     localStorage.setItem(PO_MODE_KEY, /[#&]sf_stop=1\b/.test(hash) ? "stop" : "full");
+    localStorage.setItem(PO_AFTER_KEY, /[#&]sf_after=1\b/.test(hash) ? "1" : "0");
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-    console.log("⚡ PO: " + fromHash.length + " رقم أكونت (" + (localStorage.getItem(PO_MODE_KEY)) + ").");
+    console.log("⚡ PO: " + fromHash.length + " رقم (" + localStorage.getItem(PO_MODE_KEY) + ", after=" + localStorage.getItem(PO_AFTER_KEY) + ").");
   }
   const MODE = localStorage.getItem(PO_MODE_KEY) || "full";
+  const AFTER = localStorage.getItem(PO_AFTER_KEY) === "1"; // رفع سرعة ثم إيقاف لكل الأرقام
   const ACCOUNTS = JSON.parse(localStorage.getItem(PO_ACCOUNTS_KEY) || "[]");
   function getIndex() { const i = parseInt(localStorage.getItem(PO_INDEX_KEY) || "0", 10); return isNaN(i) ? 0 : i; }
   function setIndex(i) { localStorage.setItem(PO_INDEX_KEY, String(i)); }
@@ -204,7 +208,16 @@
 
     // ---- init: قرّر حسب الحالة ----
     if (phase === "init") {
-      if (/not\s*started/i.test(status)) {
+      if (RE_RT.test(status) || RE_RT.test(txt())) {
+        // «Currently under Real-time PO» — فيه أوبتميزيشن شغّال دلوقتى
+        if (MODE === "stop") {
+          phase = "wait-rt-then-stop"; banner("⏳ فيه Real-time PO شغّال — استنى يخلّص عشان الإيقاف…", "#1565c0");
+        } else {
+          // رفع السرعة: متعملش حاجة — عدّى للخط اللى بعده
+          banner("ℹ️ " + CURRENT + " تحت Real-time PO بالفعل — تخطّى.", "#ef6c00");
+          clearInterval(tick); setTimeout(advance, 1500);
+        }
+      } else if (/not\s*started/i.test(status)) {
         // وضع الإيقاف فقط: مفيش nightly شغّال → مفيش حاجة نعملها، عدّى
         if (MODE === "stop") { banner("ℹ️ " + CURRENT + " أصلاً Not Started — مفيش nightly لإيقافه.", "#607d8b"); clearInterval(tick); setTimeout(advance, 1200); return; }
         // ابدأ Start Realtime PO
@@ -213,10 +226,19 @@
         // «In Nightly PO» → لازم نوقف الـ nightly PO الأول ثم نبدأ
         if (selectAction(RE_STOP)) { phase = "confirm-stop"; dialogShown = false; banner("⛔ إيقاف الـ Nightly PO أولاً…", "#ef6c00"); }
       } else if (status) {
-        // شغّالة فعلاً (Currently under Real-time PO) أو حالة أخرى → تخطّى
+        // حالة أخرى غير معروفة → تخطّى
         banner("ℹ️ الرقم " + CURRENT + " حالته: " + status + " — تخطّى.", "#ef6c00");
         clearInterval(tick); setTimeout(advance, 1500);
       }
+      return;
+    }
+
+    // ---- wait-rt-then-stop: (وضع الإيقاف) استنى الـ Real-time PO يخلّص ثم أوقف الـ nightly ----
+    if (phase === "wait-rt-then-stop") {
+      const mins = Math.floor((Date.now() - startedAt) / 60000);
+      banner("⏳ Real-time PO شغّال للرقم " + CURRENT + " (" + mins + " دق) — استنى يخلّص للإيقاف…", "#1565c0");
+      if (/nightly/i.test(status)) { if (selectAction(RE_STOP)) { phase = "confirm-stop"; dialogShown = false; banner("⛔ خلّص — إيقاف الـ Nightly PO…", "#ef6c00"); } }
+      else if (/not\s*started/i.test(status)) { banner("✅ خلّص بدون nightly — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); }
       return;
     }
 
@@ -247,13 +269,38 @@
       const dlg = /confirm\s*action|options\s*for\s*the\s*realtime\s*po|per\s*tone\s*data/i.test(txt());
       if (dlg) {
         dialogShown = true;
-        if (confirmDialogYes(true)) { phase = "started"; banner("✅ اتبعت طلب رفع السرعة — التالى…", "#2e7d32"); setTimeout(() => { clearInterval(tick); advance(); }, SETTLE_AFTER_YES_MS); }
+        if (confirmDialogYes(true)) {
+          const isLast = (idx >= ACCOUNTS.length - 1);
+          if (AFTER && isLast) {
+            // وضع «رفع سرعة + إيقاف»، وده آخر خط: نستنى الأوبتميزيشن يخلّص (In Nightly PO)
+            // ثم نبدأ مرحلة الإيقاف لكل الأرقام من الأول.
+            phase = "wait-last-nightly"; banner("⏳ آخر خط — استنى يخلّص ثم نبدأ الإيقاف لكل الأرقام…", "#1565c0");
+          } else {
+            phase = "started"; banner("✅ اتبعت طلب رفع السرعة — التالى…", "#2e7d32"); setTimeout(() => { clearInterval(tick); advance(); }, SETTLE_AFTER_YES_MS);
+          }
+        }
       } else if (!dialogShown) selectAction(RE_START);
+      return;
+    }
+
+    // ---- wait-last-nightly: (رفع سرعة + إيقاف) بعد رفع سرعة آخر خط نستنى يتحوّل لـ In Nightly PO
+    //      ثم نبدأ مرحلة الإيقاف لكل الأرقام من أول رقم ----
+    if (phase === "wait-last-nightly") {
+      const mins = Math.floor((Date.now() - startedAt) / 60000);
+      banner("⏳ آخر خط تحت Real-time PO (" + mins + " دق) — استنى In Nightly PO لبدء الإيقاف…", "#1565c0");
+      if (/nightly/i.test(status)) {
+        localStorage.setItem(PO_MODE_KEY, "stop");
+        localStorage.setItem(PO_AFTER_KEY, "0");
+        setIndex(0);
+        clearInterval(tick);
+        banner("↻ رفع السرعة اكتمل — بدء مرحلة الإيقاف لكل الأرقام…", "#ef6c00");
+        setTimeout(() => { location.href = PO_URL + encodeURIComponent(ACCOUNTS[0]); }, 1500);
+      }
       return;
     }
   }, POLL_MS);
 
   // أدوات كونسول
-  window.PO_reset = () => { ["PO_ACCOUNTS", "PO_INDEX", "PO_ACTIVE", "PO_MODE"].forEach(k => localStorage.removeItem(k)); location.reload(); };
+  window.PO_reset = () => { ["PO_ACCOUNTS", "PO_INDEX", "PO_ACTIVE", "PO_MODE", "PO_AFTER"].forEach(k => localStorage.removeItem(k)); location.reload(); };
   window.PO_state = () => console.log({ accounts: ACCOUNTS, index: getIndex(), current: CURRENT });
 })();

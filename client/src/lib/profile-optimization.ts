@@ -4,18 +4,29 @@
 // منفصل تماماً عن تدفّق القياس (sf_accounts) — السكربتان لا يتعارضان (حارس PO_ACTIVE).
 const PO_BASE = "https://10.42.187.101:8080/expresse/profileOptimization";
 
+interface POOptions {
+  /** إيقاف الـ Nightly PO فقط (يرجّع Not Started) بدون Start Realtime PO. */
+  stopOnly?: boolean;
+  /** بعد رفع السرعة لكل الأرقام، نفّذ مرحلة الإيقاف لكلهم (رفع سرعة + إيقاف). */
+  afterStop?: boolean;
+}
+
 /**
  * يفتح تاب رفع السرعة ومعاه قائمة أرقام الأكونت فى الـ hash للسكربت يقراها.
- * stopOnly = true: وضع «إيقاف Nightly PO فقط» — يوقف الـ nightly لو شغّال ويرجّع الحالة Not Started
- * بدون تشغيل Start Realtime PO (ولو أصلاً Not Started مايعملش حاجة).
+ * - stopOnly: إيقاف الـ nightly فقط.
+ * - afterStop: رفع سرعة لكل الأرقام ثم إيقاف الـ nightly الناتج لكلهم.
+ * - بدون الاتنين: رفع سرعة فقط.
  */
-export function openProfileOptimization(accounts: (string | number | null | undefined)[], stopOnly = false): void {
+export function openProfileOptimization(
+  accounts: (string | number | null | undefined)[],
+  opts: POOptions = {},
+): void {
   const accs = [...new Set(accounts.map((a) => String(a ?? "").trim()).filter(Boolean))];
   if (accs.length === 0) {
-    alert(stopOnly ? "لا توجد أرقام أكونت لإيقاف الـ Nightly PO" : "لا توجد أرقام أكونت لرفع السرعة");
+    alert(opts.stopOnly ? "لا توجد أرقام أكونت لإيقاف الـ Nightly PO" : "لا توجد أرقام أكونت لرفع السرعة");
     return;
   }
-  const stop = stopOnly ? "&sf_stop=1" : "";
-  const url = `${PO_BASE}?lineId=${encodeURIComponent(accs[0])}#sf_po=${encodeURIComponent(accs.join(","))}${stop}`;
+  const flags = opts.stopOnly ? "&sf_stop=1" : (opts.afterStop ? "&sf_after=1" : "");
+  const url = `${PO_BASE}?lineId=${encodeURIComponent(accs[0])}#sf_po=${encodeURIComponent(accs.join(","))}${flags}`;
   window.open(url, "_blank");
 }

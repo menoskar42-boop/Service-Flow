@@ -143,8 +143,11 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
     }
   };
 
-  // رفع السرعة (Profile Optimization) للنطاق المحدد. stopOnly=true → إيقاف الـ Nightly PO فقط.
-  const handleRaiseSpeed = async (stopOnly = false) => {
+  // رفع السرعة (Profile Optimization) للنطاق المحدد. kind: "raise" = رفع سرعة | "stop" = إيقاف Nightly فقط.
+  const handleRaiseSpeed = async (kind: "raise" | "stop") => {
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
     setDzsLoading(true);
     try {
       const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
@@ -155,7 +158,7 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
         .map((r) => (r.accountNo ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
-      openProfileOptimization(accounts, stopOnly);
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");
     } finally {
@@ -243,10 +246,10 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(false)} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed("raise")} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> رفع سرعة
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(true)} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             <RefreshButton />
