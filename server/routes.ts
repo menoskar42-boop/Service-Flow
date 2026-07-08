@@ -1969,14 +1969,24 @@ export async function registerRoutes(
     // مصدر التقرير = أحدث قياس لكل رقم فى case_138 (مش phone_lines) — علشان تظهر كل الأرقام
     // المحتاجة رفع سرعة سواء لها بيانات فنية (موجودة فى phone_lines) أو لأ، وسواء لها شكوى أو لأ.
     // السنترال/الكابينة بتيجى من phone_lines، ولو الرقم مش موجود فيها بتيجى من سجل الشكوى.
+    // ⚡ الأداء: نفلتر معيار رفع السرعة جوّه الـ subquery (m) قبل أى join/lateral — فالـ join
+    // مع الشكاوى بيتعمل فقط للأرقام المؤهّلة (قليلة) بدل كل الأرقام المتقاسة (آلاف).
     const joinClause = `FROM (
-        SELECT DISTINCT ON (c.full_phone)
-               c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
-               NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
-               NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
-        FROM case_138 c
-        WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
-        ORDER BY c.full_phone, c.id DESC
+        SELECT * FROM (
+          SELECT DISTINCT ON (c.full_phone)
+                 c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+                 NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
+                 NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
+          FROM case_138 c
+          WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
+          ORDER BY c.full_phone, c.id DESC
+        ) latest
+        WHERE latest.score IS NOT NULL
+          AND NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
+          AND (
+            (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
+            OR (latest.score < 16 AND latest.cur_n < 10000)
+          )
       ) m
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone
@@ -1993,20 +2003,13 @@ export async function registerRoutes(
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
-    // معيار رفع السرعة (على أحدث قياس فى case_138)
-    conds.push(`m.score IS NOT NULL`);
-    conds.push(`NOT (COALESCE(m.cur_n, 0) < 200 AND COALESCE(m.mx_n, 0) < 200)`);
-    conds.push(`(
-       (m.mx_n > 0 AND m.cur_n / m.mx_n < 0.6 AND m.score > 15 AND m.score < 101)
-       OR (m.score < 16 AND m.cur_n < 10000)
-    )`);
     if (needComplaint) {
       conds.push(`cpl.complain_time >= now() - interval '1 month'`);
     }
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
-    const where = `WHERE ${conds.join(" AND ")}`;
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
     const offset = (pageNum - 1) * pageSize;

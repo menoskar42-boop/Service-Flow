@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.6.0
+// @version      0.7.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @grant        none
 // @run-at       document-idle
@@ -233,7 +233,11 @@
       if (/not\s*started/i.test(status)) {
         // وضع الإيقاف فقط: خلصنا لهذا الرقم (مانبدأش Realtime PO) → التالى
         if (MODE === "stop") { banner("✅ اتوقف الـ PO للرقم " + CURRENT + " — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); return; }
-        phase = "init"; // وضع كامل: نبدأ Start Realtime PO
+        // وضع كامل: نعيد تحميل الصفحة نظيفة (بعد الإيقاف الدروب ليست بتفضل فى حالة مش نظيفة)
+        // ثم نبدأ Start Realtime PO من صفحة جديدة حالتها Not Started.
+        banner("↻ اتوقف الـ Nightly — إعادة تحميل للبدء برفع السرعة…", "#1565c0");
+        clearInterval(tick);
+        setTimeout(() => { location.href = PO_URL + encodeURIComponent(CURRENT); }, 1500);
       }
       return;
     }
