@@ -188,6 +188,15 @@ export function PhoneLookupReport() {
                     <Gauge className="w-4 h-4" />
                     رفع سرعة
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => openProfileOptimization([line.accountNo], true)}
+                    className="bg-white gap-2 text-orange-700 border-orange-200"
+                    title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"
+                  >
+                    <Gauge className="w-4 h-4" />
+                    إيقاف Nightly
+                  </Button>
                 </>
               ) : (
                 <Button

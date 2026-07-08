@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
-// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. v0.2: لو الحالة «In Nightly PO» يوقف الـ Nightly PO أولاً (Stop Nightly PO → Yes) لحد ما ترجع Not Started ثم يبدأ. v0.1: login → profileOptimization?lineId → Choose Action → Start Realtime PO → Confirm (per-tone ✓) → Yes → التالى. يُفعَّل فقط عند وجود #sf_po فى الهاش أو علامة PO_ACTIVE (فمايشتغلش مع القياس ولا التصفّح العادى).
-// @version      0.2.0
+// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. v0.3: وضع «إيقاف فقط» (sf_stop=1): لو الحالة In Nightly PO يوقفها فقط ويرجّعها Not Started بدون Start Realtime PO؛ لو Not Started مايعملش حاجة. v0.2: لو In Nightly PO يوقف الـ Nightly PO أولاً ثم يبدأ. v0.1: login → profileOptimization?lineId → Start Realtime PO → Confirm (per-tone ✓) → Yes → التالى. يُفعَّل فقط عند وجود #sf_po فى الهاش أو علامة PO_ACTIVE.
+// @version      0.3.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @grant        none
 // @run-at       document-idle
@@ -28,6 +28,7 @@
 
   const PO_ACCOUNTS_KEY = "PO_ACCOUNTS";
   const PO_INDEX_KEY = "PO_INDEX";
+  const PO_MODE_KEY = "PO_MODE"; // "full" = إيقاف nightly (لو موجود) ثم Start Realtime PO | "stop" = إيقاف الـ nightly فقط
 
   const POLL_MS = 800;
   const PER_ACCOUNT_TIMEOUT_MS = 3 * 60 * 1000; // مهلة قصوى لتشغيل الـ PO لكل رقم قبل ما نعدّى
@@ -68,9 +69,11 @@
     localStorage.setItem(PO_ACCOUNTS_KEY, JSON.stringify(fromHash));
     localStorage.setItem(PO_INDEX_KEY, "0");
     localStorage.setItem(PO_ACTIVE_KEY, "1");
+    localStorage.setItem(PO_MODE_KEY, /[#&]sf_stop=1\b/.test(hash) ? "stop" : "full");
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
-    console.log("⚡ PO: " + fromHash.length + " رقم أكونت لرفع السرعة.");
+    console.log("⚡ PO: " + fromHash.length + " رقم أكونت (" + (localStorage.getItem(PO_MODE_KEY)) + ").");
   }
+  const MODE = localStorage.getItem(PO_MODE_KEY) || "full";
   const ACCOUNTS = JSON.parse(localStorage.getItem(PO_ACCOUNTS_KEY) || "[]");
   function getIndex() { const i = parseInt(localStorage.getItem(PO_INDEX_KEY) || "0", 10); return isNaN(i) ? 0 : i; }
   function setIndex(i) { localStorage.setItem(PO_INDEX_KEY, String(i)); }
@@ -194,6 +197,8 @@
     // ---- init: قرّر حسب الحالة ----
     if (phase === "init") {
       if (/not\s*started/i.test(status)) {
+        // وضع الإيقاف فقط: مفيش nightly شغّال → مفيش حاجة نعملها، عدّى
+        if (MODE === "stop") { banner("ℹ️ " + CURRENT + " أصلاً Not Started — مفيش nightly لإيقافه.", "#607d8b"); clearInterval(tick); setTimeout(advance, 1200); return; }
         // ابدأ Start Realtime PO
         if (selectAction(RE_START)) { phase = "confirm-start"; dialogShown = false; banner("▶️ Start Realtime PO…", "#1565c0"); }
       } else if (/nightly/i.test(status)) {
@@ -215,9 +220,13 @@
       return;
     }
 
-    // ---- await-not-started: بعد الإيقاف نستنى الحالة ترجع Not Started ثم نبدأ ----
+    // ---- await-not-started: بعد الإيقاف نستنى الحالة ترجع Not Started ----
     if (phase === "await-not-started") {
-      if (/not\s*started/i.test(status)) { phase = "init"; }
+      if (/not\s*started/i.test(status)) {
+        // وضع الإيقاف فقط: خلصنا لهذا الرقم (مانبدأش Realtime PO) → التالى
+        if (MODE === "stop") { banner("✅ اتوقف الـ Nightly PO للرقم " + CURRENT + " — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); return; }
+        phase = "init"; // وضع كامل: نبدأ Start Realtime PO
+      }
       return;
     }
 
@@ -233,6 +242,6 @@
   }, POLL_MS);
 
   // أدوات كونسول
-  window.PO_reset = () => { ["PO_ACCOUNTS", "PO_INDEX", "PO_ACTIVE"].forEach(k => localStorage.removeItem(k)); location.reload(); };
+  window.PO_reset = () => { ["PO_ACCOUNTS", "PO_INDEX", "PO_ACTIVE", "PO_MODE"].forEach(k => localStorage.removeItem(k)); location.reload(); };
   window.PO_state = () => console.log({ accounts: ACCOUNTS, index: getIndex(), current: CURRENT });
 })();

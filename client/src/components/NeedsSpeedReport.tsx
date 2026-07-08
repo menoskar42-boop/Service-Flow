@@ -143,8 +143,8 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
     }
   };
 
-  // رفع السرعة (Profile Optimization) للنطاق المحدد — يفتح تاب PO ويشغّل Start Realtime PO لكل رقم
-  const handleRaiseSpeed = async () => {
+  // رفع السرعة (Profile Optimization) للنطاق المحدد. stopOnly=true → إيقاف الـ Nightly PO فقط.
+  const handleRaiseSpeed = async (stopOnly = false) => {
     setDzsLoading(true);
     try {
       const res = await fetch(`/api/phone-lines/needs-speed?${buildParams(true)}`, { credentials: "include" });
@@ -155,9 +155,9 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
         .map((r) => (r.accountNo ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
-      openProfileOptimization(accounts);
+      openProfileOptimization(accounts, stopOnly);
     } catch {
-      alert("تعذّر تحميل بيانات النطاق لرفع السرعة");
+      alert("تعذّر تحميل بيانات النطاق");
     } finally {
       setDzsLoading(false);
     }
@@ -243,8 +243,11 @@ export function NeedsSpeedReport({ requireComplaint = false, title }: NeedsSpeed
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
-            <Button variant="outline" size="sm" onClick={handleRaiseSpeed} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(false)} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> رفع سرعة
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(true)} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> إيقاف Nightly
             </Button>
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">

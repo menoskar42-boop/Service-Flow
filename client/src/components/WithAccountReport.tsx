@@ -260,8 +260,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
 
   const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)], scoreGt != null), "_blank");
 
-  // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد
-  const handleRaiseSpeed = async () => {
+  // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد. stopOnly=true → إيقاف الـ Nightly PO فقط.
+  const handleRaiseSpeed = async (stopOnly = false) => {
     setDzsLoading(true);
     try {
       const params = new URLSearchParams({ page: "1", limit: "20000" });
@@ -282,9 +282,9 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const accounts = (json.data as PhoneLine[]).map((r) => (r.accountNo ?? "").toString().trim());
-      openProfileOptimization(accounts);
+      openProfileOptimization(accounts, stopOnly);
     } catch {
-      alert("تعذّر تحميل بيانات النطاق لرفع السرعة");
+      alert("تعذّر تحميل بيانات النطاق");
     } finally {
       setDzsLoading(false);
     }
@@ -512,8 +512,11 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
             </Button>
-            <Button variant="outline" size="sm" onClick={handleRaiseSpeed} disabled={dzsLoading} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(false)} disabled={dzsLoading} className="text-emerald-700 border-emerald-200 gap-1" title="تشغيل Profile Optimization (رفع السرعة) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> رفع سرعة
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed(true)} disabled={dzsLoading} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
+              <Gauge className="w-4 h-4" /> إيقاف Nightly
             </Button>
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
