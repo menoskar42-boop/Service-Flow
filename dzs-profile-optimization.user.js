@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.8.0
+// @version      0.8.1
 // @match        *://10.42.187.101:8080/expresse/*
 // @grant        none
 // @run-at       document-idle
@@ -53,7 +53,12 @@
         const v = document.createElement("video");
         v.srcObject = stream; v.muted = true; v.setAttribute("playsinline", ""); v.setAttribute("autoplay", ""); v.loop = true;
         v.style.cssText = "position:fixed;left:-100px;top:-100px;width:1px;height:1px;opacity:0;pointer-events:none;";
-        const mount = () => { (document.body || document.documentElement).appendChild(v); v.play().catch(() => {}); };
+        const mount = () => {
+          (document.body || document.documentElement).appendChild(v);
+          const p = () => v.play().catch(() => {});
+          p();
+          document.addEventListener("visibilitychange", () => { if (!document.hidden) p(); });
+        };
         document.body ? mount() : window.addEventListener("DOMContentLoaded", mount);
       }
     } catch (e) {}
