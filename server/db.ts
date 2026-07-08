@@ -842,4 +842,15 @@ export async function ensureSchema() {
       marked_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+
+  // line_po_events — آخر وقت رفع سرعة (Start Realtime PO) وآخر وقت إيقاف PO (Stop Nightly PO)
+  // لكل رقم أكونت. يُحدَّث من سكربت رفع السرعة عبر /api/po-events/ingest، ويظهر كعمودين فى تقارير القياس.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_po_events (
+      account_no text PRIMARY KEY,
+      last_raise_at timestamptz,
+      last_stop_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
 }

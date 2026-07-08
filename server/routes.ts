@@ -2022,6 +2022,7 @@ export async function registerRoutes(
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone
       LEFT JOIN line_accounts la ON la.full_phone = m.full_phone
+      LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
       LEFT JOIN LATERAL (
         SELECT u.complain_no, u.complain_time, u.central_name, u.cabinet_no FROM (
           SELECT complain_no, complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
@@ -2055,7 +2056,9 @@ export async function registerRoutes(
               m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
               (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               cpl.complain_no AS "complaintNo",
-              (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime"
+              (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
        ${joinClause} ${where}
        ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
                 LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.score DESC NULLS LAST, m.full_phone
@@ -2098,6 +2101,7 @@ export async function registerRoutes(
       JOIN line_accounts la ON la.full_phone = m.full_phone AND la.account_no IS NOT NULL AND la.account_no <> ''
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone
+      LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
       LEFT JOIN LATERAL (
         SELECT u.central_name, u.cabinet_no FROM (
           SELECT complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
@@ -2127,7 +2131,9 @@ export async function registerRoutes(
               m.current_speed AS "lineCurrentSpeed", m.max_speed AS "lineMaxSpeed",
               m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
               (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
-              NULL AS "complaintNo", NULL AS "complaintTime"
+              NULL AS "complaintNo", NULL AS "complaintTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
        ${joinClause} ${where}
        ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
                 LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.uploaded_at DESC, m.full_phone
@@ -3623,6 +3629,32 @@ export async function registerRoutes(
       inserted++;
     }
     res.json({ inserted });
+  });
+
+  // ===== استقبال أحداث رفع السرعة / إيقاف PO من سكربت رفع السرعة (token-based, CORS) =====
+  // body: { items: [{ accountNo, event: "raise" | "stop" }] } — يسجّل آخر وقت رفع/إيقاف لكل أكونت.
+  app.options("/api/po-events/ingest", (_req, res) => { setDzsCors(res); res.sendStatus(204); });
+  app.post("/api/po-events/ingest", async (req: any, res) => {
+    setDzsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) {
+      return res.status(401).json({ message: "invalid token" });
+    }
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    let saved = 0;
+    for (const it of items) {
+      const acc = (it?.accountNo ?? "").toString().trim();
+      const ev = (it?.event ?? "").toString().trim().toLowerCase();
+      if (!acc || (ev !== "raise" && ev !== "stop")) continue;
+      const col = ev === "raise" ? "last_raise_at" : "last_stop_at";
+      await pool.query(
+        `INSERT INTO line_po_events (account_no, ${col}, updated_at)
+         VALUES ($1, now(), now())
+         ON CONFLICT (account_no) DO UPDATE SET ${col} = now(), updated_at = now()`,
+        [acc],
+      );
+      saved++;
+    }
+    res.json({ saved });
   });
 
   // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====

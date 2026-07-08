@@ -41,6 +41,8 @@ interface SpeedLine {
   lastMeasTime: string | null;
   complaintNo: string | null;
   complaintTime: string | null;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
 }
 
 interface FilterOptions {
@@ -196,6 +198,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
       "رقم التليفون": r.telNo,
       "DP Terminal": r.dpTerminal,
       "Port": r.port,
+      "آخر رفع سرعة": fmtDateTime(r.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtDateTime(r.lastPoStopAt),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -310,6 +314,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Port</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -343,6 +349,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
                       <TableCell>{r.dpTerminal || "-"}</TableCell>
                       <TableCell>{r.port || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtDateTime(r.lastPoRaiseAt)}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtDateTime(r.lastPoStopAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

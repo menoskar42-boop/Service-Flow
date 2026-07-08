@@ -2,8 +2,9 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.8.2
+// @version      0.9.0
 // @match        *://10.42.187.101:8080/expresse/*
+// @connect      service-flow-menoskar42.replit.app
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -25,6 +26,21 @@
   const PASS = "xceed.lob@1234";
   const BASE = location.origin + "/expresse";
   const PO_URL = BASE + "/profileOptimization?lineId=";
+
+  // رفع تلقائى لأوقات رفع السرعة / إيقاف PO فى Service-Flow (يظهر كعمودين فى تقارير القياس)
+  const SF_API_BASE = "https://service-flow-menoskar42.replit.app"; // ← عدّليه لو الدومين اتغيّر
+  const SF_PO_TOKEN = "sf-dzs-138-ingest-2026"; // لازم يطابق DZS_INGEST_TOKEN فى السيرفر
+  function postPoEvent(accountNo, event) {
+    if (!SF_API_BASE || !accountNo) return;
+    try {
+      fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/po-events/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-DZS-Token": SF_PO_TOKEN },
+        body: JSON.stringify({ items: [{ accountNo: String(accountNo), event }] }),
+      }).then(r => r.json()).then(j => console.log("☁️ PO event:", event, accountNo, j))
+        .catch(e => console.warn("☁️ PO event failed:", e));
+    } catch (e) { console.warn("po-event err", e); }
+  }
 
   const PO_ACCOUNTS_KEY = "PO_ACCOUNTS";
   const PO_INDEX_KEY = "PO_INDEX";
@@ -256,7 +272,7 @@
     // ---- confirm-stop: تأكيد إيقاف الـ Nightly PO (Yes بدون شيك مارك) ----
     if (phase === "confirm-stop") {
       const dlg = /confirm\s*action|stop\s*nightly\s*po|are\s*you\s*sure/i.test(txt());
-      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
+      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { postPoEvent(CURRENT, "stop"); phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
       else if (!dialogShown) selectAction(RE_STOP);
       return;
     }
@@ -281,6 +297,7 @@
       if (dlg) {
         dialogShown = true;
         if (confirmDialogYes(true)) {
+          postPoEvent(CURRENT, "raise");
           const isLast = (idx >= ACCOUNTS.length - 1);
           if (AFTER && isLast) {
             // وضع «رفع سرعة + إيقاف»، وده آخر خط: نستنى الأوبتميزيشن يخلّص (In Nightly PO)
