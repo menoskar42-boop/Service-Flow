@@ -41,6 +41,8 @@ interface LineData {
   maxSpeed: string | null;
   score: number | null;
   lastMeasTime: string | null;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
 }
 
 const dash = (v: unknown) =>
@@ -120,6 +122,8 @@ export function PhoneLookupReport() {
         ["LEN", dash(line.len)],
         ["Fiber Block", dash(line.fiberBlock)],
         ["Fiber Out", dash(line.fiberOut)],
+        ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
+        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
       ]
     : [];
 
@@ -150,6 +154,8 @@ export function PhoneLookupReport() {
       "LEN": line.len ?? "",
       "Fiber Block": line.fiberBlock ?? "",
       "Fiber Out": line.fiberOut ?? "",
+      "آخر رفع سرعة": fmtDate(line.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtDate(line.lastPoStopAt),
     };
     const ws = XLSX.utils.json_to_sheet([row]);
     const wb = XLSX.utils.book_new();
@@ -161,12 +167,13 @@ export function PhoneLookupReport() {
     if (!line) return;
     printTablePDF({
       title: `بيانات الخط ${line.fullPhone}`,
-      columns: ["السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out"],
+      columns: ["السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO"],
       rows: [[
         line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", line.msanCode ?? "-", line.techName ?? "-", line.frame ?? "-", line.accountNo ?? "-",
         line.currentSpeed ?? "-", line.maxSpeed ?? "-", line.score ?? "-", fmtDate(line.lastMeasTime),
         line.iduNo ?? "-", line.oduNo ?? "-", line.primaryBlockNo ?? "-", line.cabinetIn ?? "-", line.secBlockNo ?? "-",
         line.cabinetOut ?? "-", line.dpTerminal ?? "-", line.port ?? "-", line.len ?? "-", line.fiberBlock ?? "-", line.fiberOut ?? "-",
+        fmtDate(line.lastPoRaiseAt), fmtDate(line.lastPoStopAt),
       ]],
     });
   };

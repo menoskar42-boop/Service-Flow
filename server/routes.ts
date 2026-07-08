@@ -1734,7 +1734,7 @@ export async function registerRoutes(
       conds.push(`(c138p.uploaded_at IS NULL OR c138p.uploaded_at < now() - make_interval(days => $${params.length}))`);
     }
     const where = `WHERE ${conds.join(" AND ")}`;
-    const joinClause = `FROM line_accounts la LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone`;
+    const joinClause = `FROM line_accounts la LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone LEFT JOIN line_po_events pe ON pe.account_no = la.account_no`;
     const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
     // فلاتر اختيارية على الاسكور والسرعة — تحتاج c138Join دائماً (موجود فى الـ query)
     // ملاحظة: current_speed مخزّنة كنص → لازم نحوّلها لرقم قبل المقارنة (وإلا تتعمل مقارنة نصية غلط)
@@ -1762,7 +1762,9 @@ export async function registerRoutes(
               la.account_no AS "accountNo", la.source AS "accountSource",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
-              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
        ${joinClause} ${c138Join} ${where}${c138Where}
        ORDER BY pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), la.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -2171,10 +2173,13 @@ export async function registerRoutes(
               la.account_no AS "accountNo",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
               c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL) AS "hasData"
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
        LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
+       LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
        LEFT JOIN phone_ports pp ON pp.phone_number = COALESCE(pl.full_phone, t.full)
        LEFT JOIN LATERAL (
          SELECT ct.cabin_code, tn.tech_name AS ct_tech

@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.9.0
+// @version      0.9.1
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -30,7 +30,15 @@
   // رفع تلقائى لأوقات رفع السرعة / إيقاف PO فى Service-Flow (يظهر كعمودين فى تقارير القياس)
   const SF_API_BASE = "https://service-flow-menoskar42.replit.app"; // ← عدّليه لو الدومين اتغيّر
   const SF_PO_TOKEN = "sf-dzs-138-ingest-2026"; // لازم يطابق DZS_INGEST_TOKEN فى السيرفر
+  const PO_RESULTS_KEY = "PO_RESULTS";       // [{ accountNo, event, time }]
+  const PO_DOWNLOADED_KEY = "PO_DOWNLOADED";
+  // يسجّل الحدث محلياً (للـ CSV) + يرفعه للموقع (للعمودين فى التقارير)
   function postPoEvent(accountNo, event) {
+    try {
+      const results = JSON.parse(localStorage.getItem(PO_RESULTS_KEY) || "[]");
+      results.push({ accountNo: String(accountNo || ""), event, time: new Date().toISOString() });
+      localStorage.setItem(PO_RESULTS_KEY, JSON.stringify(results));
+    } catch (e) {}
     if (!SF_API_BASE || !accountNo) return;
     try {
       fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/po-events/ingest", {
@@ -40,6 +48,29 @@
       }).then(r => r.json()).then(j => console.log("☁️ PO event:", event, accountNo, j))
         .catch(e => console.warn("☁️ PO event failed:", e));
     } catch (e) { console.warn("po-event err", e); }
+  }
+
+  // تنزيل CSV بأحداث رفع السرعة / الإيقاف (مرة واحدة عند انتهاء الرن)
+  function downloadPoCsv() {
+    if (localStorage.getItem(PO_DOWNLOADED_KEY) === "1") return;
+    const results = JSON.parse(localStorage.getItem(PO_RESULTS_KEY) || "[]");
+    if (!results.length) return;
+    localStorage.setItem(PO_DOWNLOADED_KEY, "1");
+    const SEP = ";";
+    const fmt = (iso) => { try { const d = new Date(iso); const p = n => String(n).padStart(2, "0"); return d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()); } catch (e) { return iso || ""; } };
+    const header = ["رقم الاكونت", "الحدث", "التاريخ والوقت"].join(SEP);
+    const rows = results.map(r => [r.accountNo || "", r.event === "raise" ? "رفع سرعة" : "إيقاف PO", fmt(r.time)].join(SEP)).join("\n");
+    const csv = "﻿" + header + "\n" + rows;
+    try {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "po_events_" + new Date().toISOString().slice(0, 10).replace(/-/g, "") + "_" + results.length + "rows.csv";
+      (document.body || document.documentElement).appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      console.log("📥 PO CSV downloaded:", results.length, "events");
+    } catch (e) { console.warn("csv err", e); }
   }
 
   const PO_ACCOUNTS_KEY = "PO_ACCOUNTS";
@@ -94,6 +125,8 @@
     localStorage.setItem(PO_ACTIVE_KEY, "1");
     localStorage.setItem(PO_MODE_KEY, /[#&]sf_stop=1\b/.test(hash) ? "stop" : "full");
     localStorage.setItem(PO_AFTER_KEY, /[#&]sf_after=1\b/.test(hash) ? "1" : "0");
+    localStorage.setItem(PO_RESULTS_KEY, "[]");
+    localStorage.removeItem(PO_DOWNLOADED_KEY);
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     console.log("⚡ PO: " + fromHash.length + " رقم (" + localStorage.getItem(PO_MODE_KEY) + ", after=" + localStorage.getItem(PO_AFTER_KEY) + ").");
   }
@@ -108,6 +141,7 @@
   const idx = getIndex();
   if (idx >= ACCOUNTS.length) {
     localStorage.removeItem(PO_ACTIVE_KEY);
+    downloadPoCsv();
     banner("✅ تم إرسال طلب رفع السرعة لكل الأرقام (" + ACCOUNTS.length + "). تقدر تقفل التاب.", "#2e7d32");
     return;
   }
@@ -204,7 +238,7 @@
 
   function advance() {
     setIndex(idx + 1);
-    if (idx + 1 >= ACCOUNTS.length) { localStorage.removeItem(PO_ACTIVE_KEY); banner("✅ خلص كل الأرقام. تقدر تقفل التاب.", "#2e7d32"); return; }
+    if (idx + 1 >= ACCOUNTS.length) { localStorage.removeItem(PO_ACTIVE_KEY); downloadPoCsv(); banner("✅ خلص كل الأرقام. تقدر تقفل التاب.", "#2e7d32"); return; }
     location.href = PO_URL + encodeURIComponent(ACCOUNTS[idx + 1]);
   }
 
@@ -329,6 +363,6 @@
   }, POLL_MS);
 
   // أدوات كونسول
-  window.PO_reset = () => { ["PO_ACCOUNTS", "PO_INDEX", "PO_ACTIVE", "PO_MODE", "PO_AFTER"].forEach(k => localStorage.removeItem(k)); location.reload(); };
+  window.PO_reset = () => { ["PO_ACCOUNTS", "PO_INDEX", "PO_ACTIVE", "PO_MODE", "PO_AFTER", "PO_RESULTS", "PO_DOWNLOADED"].forEach(k => localStorage.removeItem(k)); location.reload(); };
   window.PO_state = () => console.log({ accounts: ACCOUNTS, index: getIndex(), current: CURRENT });
 })();

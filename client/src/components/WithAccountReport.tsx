@@ -51,6 +51,8 @@ interface PhoneLine extends Measurement138 {
   fullPhone: string;
   accountNo: string;
   accountSource: string;
+  lastPoRaiseAt: string | null;
+  lastPoStopAt: string | null;
 }
 
 interface FilterOptions {
@@ -330,6 +332,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       "DP Terminal": r.dpTerminal,
       "Port": r.port,
       "LEN": r.len,
+      "آخر رفع سرعة": fmtMeasDate(r.lastPoRaiseAt),
+      "آخر إيقاف PO": fmtMeasDate(r.lastPoStopAt),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -573,6 +577,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                     <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Port</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">LEN</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -671,6 +677,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                       <TableCell>{r.dpTerminal || "-"}</TableCell>
                       <TableCell>{r.port || "-"}</TableCell>
                       <TableCell>{r.len || "-"}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtMeasDate(r.lastPoRaiseAt)}</TableCell>
+                      <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtMeasDate(r.lastPoStopAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
