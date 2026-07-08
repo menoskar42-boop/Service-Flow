@@ -2081,7 +2081,7 @@ export async function registerRoutes(
        SELECT COALESCE(pl.tel_no, t.short) AS "telNo",
               COALESCE(pl.central, cpl.central_name) AS central,
               COALESCE(pl.cabin_number, cpl.cabinet_no) AS "cabinNumber",
-              pl.box_number AS "boxNumber", pp.frame AS frame,
+              pl.box_number AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
               ctc.cabin_code AS "msanCode",
               COALESCE(mto.tech_name, ctc.ct_tech, '') AS "techName",
               pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
