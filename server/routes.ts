@@ -2225,10 +2225,12 @@ export async function registerRoutes(
              WHERE lm.full_phone = COALESCE(pl.full_phone, la.full_phone, t.full)
            UNION ALL
            SELECT mo.mobile AS m, false AS manual, 1 AS pr FROM maintenance_orders mo
-             WHERE mo.phone_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw) AND NULLIF(btrim(mo.mobile),'') IS NOT NULL
+             WHERE mo.phone_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw)
+               AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'   -- رقم حقيقى فقط (استبعاد المشفّر)
            UNION ALL
            SELECT fo.customer_mobile AS m, false AS manual, 2 AS pr FROM ftth_orders_current fo
-             WHERE fo.service_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw) AND NULLIF(btrim(fo.customer_mobile),'') IS NOT NULL
+             WHERE fo.service_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw)
+               AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
          ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
        ) mob ON true
        LIMIT 1`,
