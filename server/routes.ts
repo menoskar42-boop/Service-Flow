@@ -2172,7 +2172,7 @@ export async function registerRoutes(
               pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.primary_block_no AS "primaryBlockNo", pl.cabinet_in AS "cabinetIn",
               pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
-              pl.dp_terminal AS "dpTerminal", pl.port AS "port", pl.len AS "len",
+              pl.dp_terminal AS "dpTerminal", COALESCE(pp.port_number, pl.port) AS "port", pl.len AS "len",
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
               COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
