@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.0.2
+// @version      1.0.3
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -84,6 +84,7 @@
   }
   // ضبط قيمة input بشكل يفهمه Angular (native setter + input event)
   function setNgValue(input, value) {
+    try { input.focus(); } catch (e) {}
     try {
       const proto = input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
@@ -92,10 +93,37 @@
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
     input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+    input.dispatchEvent(new Event("blur", { bubbles: true }));
   }
   function findButtonByText(re) {
     const els = [...document.querySelectorAll("button, input[type='button'], input[type='submit'], a")];
     return els.find((b) => visible(b) && re.test(((b.textContent || b.value || "").trim())));
+  }
+  // زرّ Search بتاع الفورم تحديداً (مش «Search» بتاع القائمة الجانبية):
+  // نصعد من خانة Cabin Code لأعلى ونلاقى أقرب <button>/submit نصّه Search داخل نفس الفورم.
+  function findSearchButton(input) {
+    const re = /^\s*search\s*$|بحث/i;
+    let node = input;
+    for (let d = 0; d < 7 && node; d++) {
+      const btns = [...node.querySelectorAll("button, input[type='submit'], input[type='button']")]
+        .filter((b) => visible(b) && re.test((b.textContent || b.value || "")));
+      if (btns.length) return btns[btns.length - 1];
+      node = node.parentElement;
+    }
+    // احتياطى: أى button (مش <a> ومش داخل قائمة/شريط جانبى) نصّه Search
+    return [...document.querySelectorAll("button, input[type='submit']")]
+      .find((b) => visible(b) && re.test((b.textContent || b.value || "")) && !b.closest("nav,aside,.sidebar,.side-menu,.menu,ul")) || null;
+  }
+  // ضغط موثوق (mousedown/up + click) + محاولة submit للفورم
+  function clickEl(el) {
+    if (!el) return false;
+    try { el.scrollIntoView({ block: "center" }); } catch (e) {}
+    for (const type of ["mousedown", "mouseup", "click"]) {
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
+    const form = el.closest && el.closest("form");
+    if (form && typeof form.requestSubmit === "function") { try { form.requestSubmit(el.type === "submit" ? el : undefined); } catch (e) {} }
+    return true;
   }
 
   /* ================== UI ================== */
@@ -204,10 +232,11 @@
 
   async function searchAndRead(input, cabin) {
     setNgValue(input, cabin);
-    await sleep(300);
+    await sleep(400);
     const marker = captures.length;
-    const searchBtn = findButtonByText(/^search$|بحث/i);
-    if (searchBtn) searchBtn.click(); else { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, bubbles: true })); }
+    const searchBtn = findSearchButton(input);
+    if (searchBtn) { logln("🔍 ضغط Search لـ " + cabin); clickEl(searchBtn); }
+    else { logln("⚠️ لم أجد زر Search — أُرسل Enter."); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); input.dispatchEvent(new KeyboardEvent("keypress", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); }
     // انتظر التقاط شبكة جديد، أو ظهور صفوف بالجدول، أو رسالة «لا بيانات»
     const end = Date.now() + SEARCH_WAIT_MS;
     while (Date.now() < end) {
