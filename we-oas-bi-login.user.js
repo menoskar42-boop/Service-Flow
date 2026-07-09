@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.1
+// @version      1.1.2
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -89,7 +89,12 @@
   const fmtDate = (d) => pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "-" + d.getFullYear();
   const NOW = new Date();
   const TO_STR = fmtDate(NOW);
-  const FROM_STR = fmtDate(new Date(NOW.getFullYear(), NOW.getMonth() - 1, 25)); // يوم 25 من الشهر السابق
+  // from_date: لو اليوم ≤ 7 → يوم 25 من الشهر السابق؛ لو ≥ 8 → أول يوم فى الشهر الحالى
+  const FROM_STR = fmtDate(
+    NOW.getDate() <= 7
+      ? new Date(NOW.getFullYear(), NOW.getMonth() - 1, 25)
+      : new Date(NOW.getFullYear(), NOW.getMonth(), 1)
+  );
 
   /* ================== علامة التشغيل التلقائى عبر الصفحات ================== */
   const FLAG = "WEOAS_AUTO_430D";
