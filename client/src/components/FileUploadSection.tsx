@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3 } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -569,6 +569,14 @@ export function FileUploadSection() {
     <div className="space-y-5" dir="rtl">
       {/* زر تشغيل التقارير اليومية + زر تحديث منافذ MSAN من Provisioning Portal */}
       <div className="flex justify-end gap-2">
+        <Button
+          onClick={() => window.open("https://we-oas.te.eg/bi-security-login/login.jsp?msi=false&mt=false&profileMust=true&redirect=L2R2L3VpL2hvbWUuanNwP3BhZ2VpZD1ob21lJmhhc2g9aTRPeDNTVkNPXzVLUUswc2lHUThxUTFNQVp6MGRTLVg5aXgzRGQ5RmlHUVJKd3M5cnNZcGQyaURJRjZUZEZWZQ==", "_blank", "noopener,noreferrer")}
+          className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+          title="يفتح WE OAS BI ويسجّل الدخول تلقائياً"
+        >
+          <BarChart3 className="w-4 h-4" />
+          WE OAS BI
+        </Button>
         <Button
           onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank", "noopener,noreferrer")}
           className="gap-2 bg-cyan-600 hover:bg-cyan-700 text-white"
