@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, AlertCircle, Search, FileSpreadsheet, FileText, Radar } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, Search, FileSpreadsheet, FileText, Radar, Gauge } from "lucide-react";
 import * as XLSX from "xlsx";
+import { openProfileOptimization } from "@/lib/profile-optimization";
 
 const REFRESH_INTERVAL = 30;
 
@@ -157,6 +158,39 @@ export function CfmTicketsReport() {
       alert("تعذّر تحميل خطوط البكس للقياس");
     } finally {
       setMeasuringId(null);
+    }
+  };
+
+  // --- رفع السرعة / إيقاف PO لكل الخطوط التى لها أكونت على بكس التذكرة (نفس فكرة القياس) ---
+  const [poBusyId, setPoBusyId] = useState<string | null>(null);
+  const handleRaiseBox = async (t: CfmTicket, kind: "raise" | "stop") => {
+    const boxes = parseTicketBoxesClient(t.box);
+    if (boxes.length === 0) { alert("لا يوجد رقم بكس صالح لهذه التذكرة"); return; }
+    const central = t.central?.name ?? t.centralDepartment ?? "";
+    const cabin = t.cable?.number ?? "";
+    setPoBusyId(t.id);
+    try {
+      const seen = new Set<string>();
+      const accounts: string[] = [];
+      for (const bx of boxes) {
+        const params = new URLSearchParams({ limit: "20000", box: bx });
+        if (central) params.set("central", central);
+        if (cabin) params.set("cabin", cabin);
+        const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
+        const json = await res.json();
+        for (const r of ((json.data as any[]) ?? [])) {
+          const account = (r.accountNo ?? "").toString().trim();
+          if (!account || seen.has(account)) continue;
+          seen.add(account);
+          accounts.push(account);
+        }
+      }
+      if (accounts.length === 0) { alert("لا توجد خطوط لها أكونت على هذا البكس"); return; }
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : {});
+    } catch {
+      alert("تعذّر تحميل خطوط البكس");
+    } finally {
+      setPoBusyId(null);
     }
   };
 
@@ -553,8 +587,22 @@ export function CfmTicketsReport() {
                           {t.box && (
                             <button onClick={() => handleMeasureBox(t)} disabled={measuringId === t.id}
                               title="قياس DZS لكل الخطوط التى لها أكونت على هذا البكس"
-                              className="text-[10px] text-green-700 border border-green-200 rounded px-1 py-0.5 hover:bg-green-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
+                              className="text-[10px] text-blue-700 border border-blue-200 rounded px-1 py-0.5 hover:bg-blue-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
                               {measuringId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />} قياس
+                            </button>
+                          )}
+                          {t.box && (
+                            <button onClick={() => handleRaiseBox(t, "raise")} disabled={poBusyId === t.id}
+                              title="رفع سرعة (Profile Optimization) لكل الخطوط التى لها أكونت على هذا البكس"
+                              className="text-[10px] text-emerald-700 border border-emerald-200 rounded px-1 py-0.5 hover:bg-emerald-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
+                              {poBusyId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />} رفع سرعة
+                            </button>
+                          )}
+                          {t.box && (
+                            <button onClick={() => handleRaiseBox(t, "stop")} disabled={poBusyId === t.id}
+                              title="إيقاف الـ Nightly PO لكل الخطوط التى لها أكونت على هذا البكس"
+                              className="text-[10px] text-orange-700 border border-orange-200 rounded px-1 py-0.5 hover:bg-orange-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
+                              {poBusyId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />} إيقاف PO
                             </button>
                           )}
                           {hasBreakdown && (
