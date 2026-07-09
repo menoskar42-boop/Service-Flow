@@ -1997,7 +1997,7 @@ export async function registerRoutes(
   //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).
   // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
   app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", raisedBefore = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
@@ -2048,6 +2048,8 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    // فلتر: يستبعد اللى تم رفع سرعتها بعد هذا التاريخ/الوقت، ويُبقى الباقى بما فيهم اللى مالوش تاريخ رفع
+    if (raisedBefore) { params.push(raisedBefore); conds.push(`(pe.last_raise_at IS NULL OR (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;

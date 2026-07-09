@@ -92,8 +92,12 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
-  const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر: تم إيقاف الـ PO قبل تاريخ/وقت
-  const showPoStopFilter = endpoint.includes("needs-po-stop");
+  const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر تاريخ (إيقاف PO / رفع سرعة)
+  const isPoStopReport = endpoint.includes("needs-po-stop");
+  const isNeedsSpeedReport = endpoint.includes("needs-speed");
+  const showPoStopFilter = isPoStopReport || isNeedsSpeedReport;
+  const dateFilterLabel = isPoStopReport ? "استبعد إيقاف PO بعد:" : "استبعد رفع سرعة بعد:";
+  const dateFilterParam = isPoStopReport ? "poStoppedBefore" : "raisedBefore";
   const [page, setPage] = useState(1);
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
@@ -114,7 +118,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
-    if (showPoStopFilter && poStoppedBefore) params.set("poStoppedBefore", poStoppedBefore);
+    if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
     return params;
   };
@@ -265,7 +269,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
             />
             {showPoStopFilter && (
               <div className="flex items-center gap-1">
-                <label className="text-xs text-muted-foreground whitespace-nowrap">استبعد إيقاف PO بعد:</label>
+                <label className="text-xs text-muted-foreground whitespace-nowrap">{dateFilterLabel}</label>
                 <input
                   type="datetime-local"
                   value={poStoppedBefore}
