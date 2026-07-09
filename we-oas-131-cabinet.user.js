@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131 ارقام التليفونات على كابينة»، يختار P_CENTRAL_NAME=ديروط و P_CABINET_NO=1-1، Apply، ثم ينزّل Excel واحد بثلاث شيتات: نحاسي + فيبر + دوائر المعلومات. لا يرفع أى بيانات للموقع.
-// @version      1.0.1
+// @version      1.0.2
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -17,10 +17,11 @@
   const CENTRAL = "ديروط";     // قيمة P_CENTRAL_NAME
   const CABINET = "1-1";        // قيمة P_CABINET_NO
   // التبويبات المطلوبة بالترتيب (نحاسي هو الافتراضى)
+  // headRe = عمود مميّز فى هيدر جدول التبويب عشان نلقط الجدول الصح (مش أكبر جدول ظاهر)
   const TABS = [
-    { name: "نحاسي", re: /^\s*نحاسى?\s*$/ },
-    { name: "فيبر", re: /^\s*فيبر\s*$/ },
-    { name: "دوائر المعلومات", re: /دوائر\s*المعلومات/ },
+    { name: "نحاسي", re: /^\s*نحاسى?\s*$/, headRe: /line\s*eq\s*no|mdf\s*ex\s*side|رقم\s*الكاب/i },
+    { name: "فيبر", re: /^\s*فيبر\s*$/, headRe: /fiber|odu\s*no|idu\s*no/i },
+    { name: "دوائر المعلومات", re: /دوائر\s*المعلومات/, headRe: /circuit\s*no/i },
   ];
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -88,6 +89,11 @@
   function visibleReportTable() {
     // أكبر جدول ظاهر فيه أعمدة بيانات التقرير (نحاسي/فيبر/دوائر)
     const tables = qAll("table").filter((t) => visible(t) && /tel\s*no|السنترال|رقم\s*الكاب|المركز|dp\s*(no|terminal)|onu|pon|دائرة|circuit/i.test(t.textContent || ""));
+    return tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0] || null;
+  }
+  // جدول تبويب محدّد بالاعتماد على عمود مميّز فى الهيدر (بدل «أكبر جدول ظاهر»)
+  function tableByHeader(headRe) {
+    const tables = qAll("table").filter((t) => visible(t) && headRe.test(t.textContent || ""));
     return tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0] || null;
   }
   function scrapeRows(table) {
@@ -227,7 +233,6 @@
     await sleep(400);
 
     const sheets = [];
-    let prevSig = "";
     for (let i = 0; i < TABS.length; i++) {
       const tab = TABS[i];
       if (i > 0) {
@@ -237,17 +242,13 @@
       }
       banner("▶️ Apply (" + tab.name + ") — استنى النتائج…");
       fireClick(findBtn(/^\s*apply\s*$/i) || apply);
-      // استنى جدول تختلف بياناته عن السابق (تأكيد إن التبويب حمّل)
-      const tb = await waitFor(() => {
-        const t = visibleReportTable();
-        if (!t || t.querySelectorAll("tr").length < 1) return null;
-        const r = scrapeRows(t);
-        if (!r.length) return null;
-        return (i === 0 || rowsSig(r) !== prevSig) ? t : null;
-      }, 35000);
-      await sleep(1200);
-      const rows = tb ? scrapeRows(tb) : scrapeRows(visibleReportTable());
-      prevSig = rowsSig(rows);
+      // استنى جدول التبويب (بعموده المميّز) يظهر، ثم استنى تحميل البيانات
+      await waitFor(() => tableByHeader(tab.headRe), 30000);
+      await sleep(5000);
+      let tb = tableByHeader(tab.headRe);
+      let rows = scrapeRows(tb);
+      // لو لسه هيدر بس (ممكن البيانات لسه بتحمّل) استنى شوية وأعد القراءة
+      if (rows.length <= 1) { await sleep(4000); tb = tableByHeader(tab.headRe); rows = scrapeRows(tb); }
       banner("✔️ " + tab.name + ": " + Math.max(0, rows.length - 1) + " صف", "#2e7d32");
       sheets.push({ name: tab.name, rows: rows.length ? rows : [["لا توجد بيانات"]] });
     }
