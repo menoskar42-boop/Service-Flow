@@ -9,7 +9,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { Gauge } from "lucide-react";
-import { maintStatusBadge, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
+import { maintStatusBadge, boxCoords, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
 // بوابة DZS expresse — تُفتح فى تاب جديد ويُمرَّر رقم الأكونت فى الـ hash ليقيسه
 // الـ Tampermonkey script (dzs-expresse-v10.user.js) ويرفع النتيجة لشيت 138.
@@ -78,6 +78,7 @@ const scoreBadge = (v: number | null) => {
 
 // الحقول الفنية الباقية تُعرض كامل العرض (صف لكل حقل) بعد الصفوف المزدوجة (زى عمود الإكسيل اليمين)
 const FULL_WIDTH_FIELDS = new Set<string>([
+  "إحداثيات البكس",
   "operator", "shelf", "slot", "Port", "IDU", "ODU",
   "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out",
 ]);
@@ -157,6 +158,16 @@ export function PhoneLookupReport() {
          : <span className="text-sm px-2 py-0.5 rounded font-semibold bg-green-100 text-green-800">لا</span>)
     : <span className="text-gray-400">-</span>;
 
+  // إحداثيات البكس من بيانات الصيانة (لو رقم البكس معروف)
+  const coords = boxMaint ? boxCoords(boxMaint as any) : { text: "" };
+  const coordsCell: ReactNode = !line?.boxNumber
+    ? <span className="text-gray-400">-</span>
+    : (coords.text
+        ? (coords.lat && coords.lng
+            ? <a className="text-blue-600 underline text-sm" href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noreferrer">{coords.text}</a>
+            : <span className="text-sm">{coords.text}</span>)
+        : (maintLoading ? <span className="text-gray-400">…</span> : <span className="text-gray-400">-</span>));
+
   // فتح بوابة DZS وقياس رقم الأكونت الخاص بالخط
   const measureDZS = () => {
     const acc = (line?.accountNo ?? "").toString().trim();
@@ -182,6 +193,7 @@ export function PhoneLookupReport() {
         ["voice status", dash(line.voiceStatus)],        ["حالة صيانة البكس", boxMaintCell],
         ["data status", dash(line.dataStatus)],          ["هل البكس له تكت أرضية", groundCell],
         // الحقول الفنية الباقية — كامل العرض (صف لكل حقل، عمود يمين فقط زى الإكسيل)
+        ["إحداثيات البكس", coordsCell],
         ["operator", dash(line.operator)],
         ["shelf", dash(line.shelf)],
         ["slot", dash(line.slot)],

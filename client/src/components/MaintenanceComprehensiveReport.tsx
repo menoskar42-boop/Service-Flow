@@ -47,6 +47,32 @@ export function maintStatusBadge(status: string | null, ar: string | null) {
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold whitespace-nowrap ${cls}`}>{ar || "—"}</span>;
 }
 
+// يستخرج إحداثيات البكس من صف الصيانة (أسماء الحقول من الـ upstream قد تختلف فنجرّب المحتمل منها)
+export function boxCoords(r: any): { text: string; lat?: string; lng?: string } {
+  if (!r || typeof r !== "object") return { text: "" };
+  const norm = (k: string) => k.toLowerCase().replace(/[_\s-]/g, "");
+  const pick = (names: string[]) => {
+    for (const k of Object.keys(r)) {
+      const nk = norm(k);
+      if (names.some((n) => nk === n || nk === "box" + n || nk === n + "coordinate" || nk === n + "coord")) {
+        const v = r[k]; if (v != null && String(v).trim() !== "" && String(v).trim() !== "0") return String(v).trim();
+      }
+    }
+    return "";
+  };
+  const lat = pick(["latitude", "lat", "خطالعرض"]);
+  const lng = pick(["longitude", "lng", "long", "lon", "خطالطول"]);
+  let combined = "";
+  for (const k of Object.keys(r)) {
+    if (/(coordinates|gpslocation|geolocation|latlng|latlong|احداثيات|إحداثيات)/.test(norm(k))) {
+      const v = r[k]; if (v != null && String(v).trim() !== "") { combined = String(v).trim(); break; }
+    }
+  }
+  if (lat && lng) return { text: `${lat}, ${lng}`, lat, lng };
+  if (combined) return { text: combined };
+  return { text: lat || lng || "" };
+}
+
 interface Props {
   /** فلتر مبدئى اختيارى (لفتح التقرير على بكس واحد من زر التفاصيل) */
   initialCentral?: string;
@@ -232,6 +258,18 @@ export function MaintBoxDetail({ row, onClose }: { row: MaintRow; onClose: () =>
             <div><span className="text-muted-foreground">تاريخ الصيانة:</span> {row.work_date ?? "—"}</div>
             <div><span className="text-muted-foreground">المراقب:</span> {row.inspector_name ?? "—"}</div>
             <div><span className="text-muted-foreground">الفنى:</span> {row.technician_name ?? "—"}</div>
+            {(() => {
+              const c = boxCoords(row as any);
+              if (!c.text) return null;
+              return (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">إحداثيات البكس:</span>{" "}
+                  {c.lat && c.lng
+                    ? <a className="text-blue-600 underline" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`} target="_blank" rel="noreferrer">{c.text}</a>
+                    : c.text}
+                </div>
+              );
+            })()}
           </div>
           {row.inspection_notes && <div><span className="text-muted-foreground">ملاحظات الفحص:</span> {row.inspection_notes}</div>}
           {row.maintenance_notes && <div><span className="text-muted-foreground">ملاحظات الصيانة:</span> {row.maintenance_notes}</div>}
