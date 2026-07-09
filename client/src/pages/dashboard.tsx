@@ -45,7 +45,7 @@ import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, Clipboard
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
-type AdminTab = "orders" | "reports" | "data-completion" | "file-upload";
+type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
 type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
@@ -77,7 +77,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
       { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
       { id: "box-score-avg",       label: "متوسط القياسات" },
-      { id: "phone-lookup",        label: "بحث برقم التليفون" },
       { id: "account-edits",       label: "تعديلات الأكونت" },
     ],
   },
@@ -159,10 +158,10 @@ export default function Dashboard() {
 
   // مجموعات التقارير المعروضة حسب الدور
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
-  const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders", "phone-lookup"];
+  const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "phone-lookup", "om-current", "with-account"];
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account"];
   const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM"];
   const visibleGroups = REPORT_GROUPS
     .filter((g) =>
@@ -302,6 +301,20 @@ export default function Dashboard() {
                   >
                     <BarChart3 className="w-4 h-4" />
                     التقارير
+                  </button>
+                )}
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && (
+                  <button
+                    onClick={() => setAdminTab("phone-lookup")}
+                    data-testid="tab-admin-phone-lookup"
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                      adminTab === "phone-lookup"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Phone className="w-4 h-4" />
+                    بحث برقم التليفون
                   </button>
                 )}
                 {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
@@ -487,6 +500,13 @@ export default function Dashboard() {
               {reportTab === "account-edits"       && <AccountEditsReport />}
               {reportTab === "cfm-tickets"         && <CfmTicketsReport />}
             </div>
+          </div>
+        )}
+
+        {/* ── PHONE LOOKUP TAB (Admin, Tech & External) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && adminTab === "phone-lookup" && (
+          <div className="space-y-6" dir="rtl">
+            <PhoneLookupReport />
           </div>
         )}
 
