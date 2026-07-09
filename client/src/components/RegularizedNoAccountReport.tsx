@@ -46,10 +46,11 @@ interface FilterOptions {
 
 const PAGE_SIZE = 50;
 
-// افتراضى: من أول الشهر الحالى إلى اليوم
+// افتراضى: من أول الشهر السابق إلى اليوم
 const monthStart = () => {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  const p = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  return `${p.getFullYear()}-${String(p.getMonth() + 1).padStart(2, "0")}-01`;
 };
 const todayStr = () => {
   const d = new Date();

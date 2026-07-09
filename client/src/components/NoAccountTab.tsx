@@ -14,7 +14,7 @@ const TABS: { id: SubTab; label: string }[] = [
 ];
 
 export function NoAccountTab() {
-  const [tab, setTab] = useState<SubTab>("lines");
+  const [tab, setTab] = useState<SubTab>("regularized");
 
   return (
     <div className="space-y-4" dir="rtl">
