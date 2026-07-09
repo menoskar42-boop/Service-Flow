@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.0.0
+// @version      1.0.1
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -99,23 +99,26 @@
   }
 
   /* ================== UI ================== */
-  let bar, log;
+  let bar, log, startBtn;
   function ui() {
     if (bar) return;
+    // شريط الحالة أعلى الصفحة
     bar = document.createElement("div");
-    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:8px 12px;font:bold 13px Arial;color:#fff;background:#5b2a86;text-align:center;direction:rtl";
+    bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:8px 12px;font:bold 13px Arial;color:#fff;background:#5b2a86;text-align:center;direction:rtl;box-shadow:0 2px 8px rgba(0,0,0,.4)";
     bar.textContent = "⚙️ تحديث ملف البورتات — جاهز";
-    const btn = document.createElement("button");
-    btn.textContent = "🔄 ابدأ تحديث ملف البورتات";
-    btn.style.cssText = "margin-inline-start:12px;padding:4px 10px;border:0;border-radius:6px;background:#fff;color:#5b2a86;font:bold 13px Arial;cursor:pointer";
-    btn.onclick = () => { btn.disabled = true; run().catch((e) => banner("❌ " + (e && e.message || e), "#c62828")); };
-    bar.appendChild(btn);
+    // زرّ تشغيل عائم كبير أسفل يسار (لا يتغطّى بهيدر الموقع)
+    startBtn = document.createElement("button");
+    startBtn.textContent = "🔄 ابدأ تحديث ملف البورتات";
+    startBtn.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:2147483647;padding:14px 20px;border:0;border-radius:10px;background:#2e7d32;color:#fff;font:bold 15px Arial;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);direction:rtl";
+    startBtn.onmouseenter = () => (startBtn.style.background = "#1b5e20");
+    startBtn.onmouseleave = () => (startBtn.style.background = "#2e7d32");
+    startBtn.onclick = () => { startBtn.disabled = true; startBtn.style.background = "#9e9e9e"; startBtn.textContent = "⏳ جارٍ التحديث…"; run().catch((e) => banner("❌ " + (e && e.message || e), "#c62828")); };
     log = document.createElement("div");
-    log.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:22vh;overflow:auto;z-index:2147483647;padding:6px 12px;font:12px/1.5 monospace;color:#0f0;background:rgba(0,0,0,.82);direction:ltr;white-space:pre-wrap";
-    (document.body || document.documentElement).appendChild(bar);
-    (document.body || document.documentElement).appendChild(log);
+    log.style.cssText = "position:fixed;bottom:0;left:0;right:0;max-height:22vh;overflow:auto;z-index:2147483646;padding:6px 12px;font:12px/1.5 monospace;color:#0f0;background:rgba(0,0,0,.82);direction:ltr;white-space:pre-wrap";
+    const root = document.body || document.documentElement;
+    root.appendChild(bar); root.appendChild(startBtn); root.appendChild(log);
   }
-  function banner(msg, color) { ui(); bar.style.background = color || "#5b2a86"; bar.firstChild.textContent = msg; }
+  function banner(msg, color) { ui(); bar.style.background = color || "#5b2a86"; bar.textContent = msg; }
   function logln(msg) { ui(); log.textContent += msg + "\n"; log.scrollTop = log.scrollHeight; console.log(msg); }
 
   /* ================== Service-Flow ================== */
