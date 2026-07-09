@@ -3670,6 +3670,89 @@ export async function registerRoutes(
     res.json({ saved });
   });
 
+  // === Provisioning Portal Tampermonkey → تحديث ملف البورتات (phone_ports) تلقائياً ===
+  // يُستدعى cross-origin من provisioningportal.te.eg فلازم CORS + توكن (نفس DZS token).
+  const setPortsCors = (res: any) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-DZS-Token");
+  };
+  // قائمة أكواد الامسان المخزّنة فى الموقع (msan_code المميّزة فى phone_ports)
+  app.options("/api/phone-ports/cabins", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.get("/api/phone-ports/cabins", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) {
+      return res.status(401).json({ message: "invalid token" });
+    }
+    const { rows } = await pool.query(
+      `SELECT DISTINCT btrim(msan_code) AS "msanCode" FROM phone_ports
+        WHERE msan_code IS NOT NULL AND btrim(msan_code) <> ''
+        ORDER BY 1`,
+    );
+    res.json({ cabins: rows.map((r: any) => r.msanCode) });
+  });
+  // استقبال صفوف البورتات من Get MSAN Data → upsert على phone_number (يستبدل الموجود ويضيف الجديد)
+  app.options("/api/phone-ports/ingest", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.post("/api/phone-ports/ingest", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) {
+      return res.status(401).json({ message: "invalid token" });
+    }
+    // قراءة مفتاح مرن (case-insensitive، عدة أسماء محتملة)
+    const pick = (o: any, ...keys: string[]) => {
+      if (!o || typeof o !== "object") return "";
+      const lower: Record<string, any> = {};
+      for (const k of Object.keys(o)) lower[k.toLowerCase().replace(/[\s_]+/g, "")] = o[k];
+      for (const k of keys) { const v = lower[k.toLowerCase().replace(/[\s_]+/g, "")]; if (v != null && String(v).trim() !== "") return String(v).trim(); }
+      return "";
+    };
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const byPhone = new Map<string, any[]>();
+    for (const it of items) {
+      const phone = pick(it, "phonenumber", "phone", "phoneno", "msisdn", "رقمالتليفون");
+      if (!phone) continue;
+      byPhone.set(phone, [
+        phone,
+        pick(it, "areacode", "area", "كودالمنطقة") || null,
+        pick(it, "msancode", "msan", "msancodee") || null,
+        pick(it, "frame") || null,
+        pick(it, "shelf") || null,
+        pick(it, "slot") || null,
+        pick(it, "portnumber", "port", "portno") || null,
+        pick(it, "porttype") || null,
+        pick(it, "voicestatus", "voice") || null,
+        pick(it, "datastatus", "data") || null,
+        pick(it, "operator", "op") || null,
+        pick(it, "onu", "onuname", "onusn", "onuserial", "sn") || null,
+      ]);
+    }
+    const all = Array.from(byPhone.values());
+    let affected = 0;
+    const BATCH = 300;
+    for (let s = 0; s < all.length; s += BATCH) {
+      const chunk = all.slice(s, s + BATCH);
+      const ph = chunk.map((_, ci) => {
+        const o = ci * 12;
+        return "(" + Array.from({ length: 12 }, (_, k) => `$${o + k + 1}`).join(",") + ")";
+      }).join(",");
+      const r = await pool.query(
+        `INSERT INTO phone_ports
+           (phone_number, area_code, msan_code, frame, shelf, slot, port_number,
+            port_type, voice_status, data_status, operator, onu)
+         VALUES ${ph}
+         ON CONFLICT (phone_number) DO UPDATE SET
+           area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code,
+           frame = EXCLUDED.frame, shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
+           port_number = EXCLUDED.port_number, port_type = EXCLUDED.port_type,
+           voice_status = EXCLUDED.voice_status, data_status = EXCLUDED.data_status,
+           operator = EXCLUDED.operator, onu = EXCLUDED.onu, uploaded_at = now()`,
+        chunk.flat(),
+      );
+      affected += r.rowCount ?? 0;
+    }
+    res.json({ inserted: affected, total: all.length });
+  });
+
   // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====
   // التوكن: env C360_INGEST_TOKEN (وله قيمة افتراضية) — لازم يطابق التوكن فى سكربت التامبر منكى.
   const C360_INGEST_TOKEN = process.env.C360_INGEST_TOKEN || "sf-c360-account-ingest-2026";
