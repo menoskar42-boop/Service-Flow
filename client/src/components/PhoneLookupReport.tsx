@@ -53,6 +53,8 @@ interface LineData {
   operator: string | null;
   shelf: string | null;
   slot: string | null;
+  mobile: string | null;
+  mobileManual: boolean | null;
 }
 
 const dash = (v: unknown) =>
@@ -78,7 +80,7 @@ const scoreBadge = (v: number | null) => {
 
 // الحقول الفنية الباقية تُعرض كامل العرض (صف لكل حقل) بعد الصفوف المزدوجة (زى عمود الإكسيل اليمين)
 const FULL_WIDTH_FIELDS = new Set<string>([
-  "إحداثيات البكس",
+  "رقم الموبايل", "إحداثيات البكس",
   "operator", "shelf", "slot", "Port", "IDU", "ODU",
   "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out",
 ]);
@@ -105,6 +107,48 @@ export function PhoneLookupReport() {
 
   const line = data?.found ? (data.line as LineData) : null;
   const search = () => { setPhone(input.trim()); setSearchSeq((s) => s + 1); };
+
+  // ── رقم الموبايل: عرض + إضافة/تعديل يدوى (يُحفظ فى جدول line_mobiles) ──
+  const [editingMobile, setEditingMobile] = useState(false);
+  const [mobileInput, setMobileInput] = useState("");
+  const [savingMobile, setSavingMobile] = useState(false);
+  const saveMobile = async () => {
+    if (!line) return;
+    setSavingMobile(true);
+    try {
+      const res = await fetch("/api/line-mobiles", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullPhone: line.fullPhone, mobile: mobileInput.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      setEditingMobile(false);
+      setSearchSeq((s) => s + 1); // إعادة البحث ليظهر الموبايل المحدّث
+    } catch { alert("تعذّر حفظ رقم الموبايل"); }
+    finally { setSavingMobile(false); }
+  };
+  const mobileCell: ReactNode = !line ? <span className="text-gray-400">-</span>
+    : editingMobile
+      ? (
+        <span className="inline-flex items-center gap-1">
+          <input value={mobileInput} onChange={(e) => setMobileInput(e.target.value)} placeholder="رقم الموبايل"
+            className="border rounded px-2 py-0.5 text-sm w-36" dir="ltr" />
+          <button onClick={saveMobile} disabled={savingMobile}
+            className="text-[11px] text-white bg-emerald-600 hover:bg-emerald-700 rounded px-2 py-0.5 disabled:opacity-50">
+            {savingMobile ? "..." : "حفظ"}
+          </button>
+          <button onClick={() => setEditingMobile(false)} className="text-[11px] text-gray-500 px-1">إلغاء</button>
+        </span>
+      )
+      : (
+        <span className="inline-flex items-center gap-2">
+          <span className="font-semibold" dir="ltr">{line.mobile || "-"}</span>
+          <button onClick={() => { setMobileInput(line.mobile ?? ""); setEditingMobile(true); }}
+            className="text-[11px] text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50">
+            {line.mobile ? "تعديل" : "＋ إضافة"}
+          </button>
+        </span>
+      );
 
   // حالة صيانة البكس من تقرير الصيانة الشامل (تطابق بالسنترال + الكابينة + البكس، الأحدث)
   const { data: boxMaint, isFetching: maintLoading } = useQuery({
@@ -193,6 +237,7 @@ export function PhoneLookupReport() {
         ["Row", dash(line.rowNo)],                       ["حالة صيانة البكس", boxMaintCell],
         ["Column", dash(line.columnNo)],                 ["هل البكس له تكت أرضية", groundCell],
         // الحقول الفنية الباقية — كامل العرض (صف لكل حقل، عمود يمين فقط زى الإكسيل)
+        ["رقم الموبايل", mobileCell],
         ["إحداثيات البكس", coordsCell],
         ["operator", dash(line.operator)],
         ["shelf", dash(line.shelf)],
@@ -218,6 +263,7 @@ export function PhoneLookupReport() {
       "اسم الفنى": line.techName ?? "",
       "رقم الكابينة": line.cabinNumber ?? "",
       "رقم الأكونت": line.accountNo ?? "",
+      "رقم الموبايل": line.mobile ?? "",
       "رقم البكس": line.boxNumber ?? "",
       "السرعة الحالية": line.currentSpeed ?? "",
       "DP Terminal": line.dpTerminal ?? "",
