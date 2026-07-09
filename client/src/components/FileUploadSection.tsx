@@ -655,6 +655,15 @@ export function FileUploadSection() {
           color="border-cyan-200 bg-cyan-50/50"
           lastUpload={ut("/api/phone-ports/import")}
         />
+        <button
+          type="button"
+          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank")}
+          className="w-full flex items-center justify-center gap-2 rounded-md border border-cyan-300 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold py-2.5 transition-colors"
+          title="يفتح Provisioning Portal ويشغّل سكربت تحديث ملف البورتات تلقائياً لكل أكواد الأمسان المخزّنة"
+        >
+          <Network className="w-4 h-4" />
+          تحديث منافذ MSAN تلقائياً من Provisioning Portal
+        </button>
         <UploadCard
           label="الفنيين بأرقام الكباين — يستبدل القديم"
           icon={Users}

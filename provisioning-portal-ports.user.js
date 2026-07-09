@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.0.1
+// @version      1.0.2
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -262,6 +262,17 @@
 
   // أظهر الشريط + الزر
   if (document.body) ui(); else window.addEventListener("DOMContentLoaded", ui);
+
+  // تشغيل تلقائى لو اتفتحت الصفحة من زر Service-Flow (?sf_ports=1) — نستنى الـ SPA يجهز
+  const AUTO = /[?&#]sf_ports=1\b/.test(location.href);
+  if (AUTO) {
+    banner("⚙️ فتح تلقائى — سيبدأ التحديث خلال ثوانٍ… (لو مابدأش دوس الزر)", "#5b2a86");
+    waitFor(() => document.querySelector("input[type='password']") || !/#\/login/i.test(location.hash), 20000)
+      .then(() => sleep(1500))
+      .then(() => { if (startBtn) { startBtn.disabled = true; startBtn.style.background = "#9e9e9e"; startBtn.textContent = "⏳ جارٍ التحديث…"; } return run(); })
+      .catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+  }
+
   // أدوات كونسول
   window.SF_PORTS_run = run;
   window.SF_PORTS_captures = () => captures;
