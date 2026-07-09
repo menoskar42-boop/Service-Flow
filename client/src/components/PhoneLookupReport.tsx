@@ -43,6 +43,7 @@ interface LineData {
   lastMeasTime: string | null;
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
+  lastComplaintAt: string | null;
 }
 
 const dash = (v: unknown) =>
@@ -65,6 +66,12 @@ const scoreBadge = (v: number | null) => {
              "bg-green-100 text-green-800";
   return <span className={`text-sm px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
 };
+
+// حقول القياس تُعرض كعمود رأسى كامل العرض بالترتيب المطلوب
+const FULL_WIDTH_FIELDS = new Set<string>([
+  "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس",
+  "آخر رفع سرعة", "آخر إيقاف PO", "تاريخ آخر شكوى",
+]);
 
 export function PhoneLookupReport() {
   const [input, setInput] = useState("");
@@ -107,10 +114,6 @@ export function PhoneLookupReport() {
         ["اسم الفنى", dash(line.techName)],
         ["رقم الفريم", dash(line.frame)],
         ["رقم الأكونت", dash(line.accountNo)],
-        ["السرعة الحالية", dash(line.currentSpeed)],
-        ["أقصى سرعة", dash(line.maxSpeed)],
-        ["الاسكور", scoreBadge(line.score)],
-        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
         ["IDU", dash(line.iduNo)],
         ["ODU", dash(line.oduNo)],
         ["Primary Block", dash(line.primaryBlockNo)],
@@ -122,8 +125,14 @@ export function PhoneLookupReport() {
         ["LEN", dash(line.len)],
         ["Fiber Block", dash(line.fiberBlock)],
         ["Fiber Out", dash(line.fiberOut)],
+        // مجموعة القياس (عمود رأسى كامل العرض بالترتيب المطلوب)
+        ["السرعة الحالية", dash(line.currentSpeed)],
+        ["أقصى سرعة", dash(line.maxSpeed)],
+        ["الاسكور", scoreBadge(line.score)],
+        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
         ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
         ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
+        ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)],
       ]
     : [];
 
@@ -156,6 +165,7 @@ export function PhoneLookupReport() {
       "Fiber Out": line.fiberOut ?? "",
       "آخر رفع سرعة": fmtDate(line.lastPoRaiseAt),
       "آخر إيقاف PO": fmtDate(line.lastPoStopAt),
+      "تاريخ آخر شكوى": fmtDate(line.lastComplaintAt),
     };
     const ws = XLSX.utils.json_to_sheet([row]);
     const wb = XLSX.utils.book_new();
@@ -167,13 +177,13 @@ export function PhoneLookupReport() {
     if (!line) return;
     printTablePDF({
       title: `بيانات الخط ${line.fullPhone}`,
-      columns: ["السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO"],
+      columns: ["السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO", "آخر شكوى"],
       rows: [[
         line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", line.msanCode ?? "-", line.techName ?? "-", line.frame ?? "-", line.accountNo ?? "-",
         line.currentSpeed ?? "-", line.maxSpeed ?? "-", line.score ?? "-", fmtDate(line.lastMeasTime),
         line.iduNo ?? "-", line.oduNo ?? "-", line.primaryBlockNo ?? "-", line.cabinetIn ?? "-", line.secBlockNo ?? "-",
         line.cabinetOut ?? "-", line.dpTerminal ?? "-", line.port ?? "-", line.len ?? "-", line.fiberBlock ?? "-", line.fiberOut ?? "-",
-        fmtDate(line.lastPoRaiseAt), fmtDate(line.lastPoStopAt),
+        fmtDate(line.lastPoRaiseAt), fmtDate(line.lastPoStopAt), fmtDate(line.lastComplaintAt),
       ]],
     });
   };
@@ -286,12 +296,18 @@ export function PhoneLookupReport() {
       {line && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-gray-100">
-            {fields.map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-3 bg-white px-4 py-3">
-                <span className="text-sm text-muted-foreground">{label}</span>
-                <span className="text-sm font-semibold text-left">{value}</span>
-              </div>
-            ))}
+            {fields.map(([label, value]) => {
+              const fullWidth = FULL_WIDTH_FIELDS.has(label as string);
+              return (
+                <div
+                  key={label}
+                  className={`flex items-center justify-between gap-3 bg-white px-4 py-3 ${fullWidth ? "sm:col-span-2" : ""}`}
+                >
+                  <span className="text-sm text-muted-foreground">{label}</span>
+                  <span className="text-sm font-semibold text-left">{value}</span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}

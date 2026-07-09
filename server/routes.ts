@@ -2180,6 +2180,7 @@ export async function registerRoutes(
               c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
+              (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL) AS "hasData"
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
@@ -2200,7 +2201,7 @@ export async function registerRoutes(
          FROM case_138 c2 WHERE c2.full_phone = COALESCE(pl.full_phone, t.full) ORDER BY c2.id DESC LIMIT 1
        ) c ON true
        LEFT JOIN LATERAL (
-         SELECT u.complain_no, u.central_name, u.cabinet_no FROM (
+         SELECT u.complain_no, u.central_name, u.cabinet_no, u.complain_time FROM (
            SELECT complain_no, complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
              FROM complaint_details WHERE phone_number = COALESCE(pl.tel_no, t.short)
            UNION ALL
