@@ -265,13 +265,13 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
             />
             {showPoStopFilter && (
               <div className="flex items-center gap-1">
-                <label className="text-xs text-muted-foreground whitespace-nowrap">أُوقف PO قبل:</label>
+                <label className="text-xs text-muted-foreground whitespace-nowrap">استبعد إيقاف PO بعد:</label>
                 <input
                   type="datetime-local"
                   value={poStoppedBefore}
                   onChange={(e) => { setPoStoppedBefore(e.target.value); setPage(1); }}
                   className="border rounded-md px-2 py-1 text-sm"
-                  title="يعرض فقط الأرقام التى تم إيقاف الـ PO بتاعها قبل هذا التاريخ والوقت"
+                  title="يستبعد الأرقام التى تم إيقاف الـ PO بتاعها بعد هذا التاريخ والوقت، ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف"
                 />
                 {poStoppedBefore && (
                   <button onClick={() => { setPoStoppedBefore(""); setPage(1); }} className="text-muted-foreground hover:text-foreground" title="مسح الفلتر">

@@ -2124,8 +2124,9 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
-    // فلتر: اللى تم إيقاف الـ PO بتاعه قبل تاريخ/وقت معيّن (بتوقيت القاهرة) — يستبعد اللى مالوش إيقاف
-    if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at AT TIME ZONE 'Africa/Cairo') < $${params.length}::timestamp`); }
+    // فلتر: يستبعد الخطوط اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت (بتوقيت القاهرة)،
+    //        ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف (last_stop_at IS NULL).
+    if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
