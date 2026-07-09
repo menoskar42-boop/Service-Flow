@@ -570,6 +570,14 @@ export function FileUploadSection() {
       {/* زر تشغيل التقارير اليومية + زر تحديث منافذ MSAN من Provisioning Portal */}
       <div className="flex justify-end gap-2">
         <Button
+          onClick={() => window.open("https://we-oas.te.eg/analytics/saw.dll?bipublisherEntry&action=open&bippath=%2FFCC%20Prod%2F131%20%D8%A7%D8%B1%D9%82%D8%A7%D9%85%20%D8%A7%D9%84%D8%AA%D9%84%D9%8A%D9%81%D9%88%D9%86%D8%A7%D8%AA%20%D8%B9%D9%84%D9%89%20%D9%83%D8%A7%D8%A8%D9%8A%D9%86%D8%A9.xdo&itemtype=.xdo", "_blank", "noopener,noreferrer")}
+          className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
+          title="يفتح تقرير 131 أرقام التليفونات على كابينة (نحاسي/فيبر/دوائر) ويصدّره Excel تلقائياً"
+        >
+          <BarChart3 className="w-4 h-4" />
+          131
+        </Button>
+        <Button
           onClick={() => window.open("https://we-oas.te.eg/bi-security-login/login.jsp?msi=false&mt=false&profileMust=true&redirect=L2R2L3VpL2hvbWUuanNwP3BhZ2VpZD1ob21lJmhhc2g9aTRPeDNTVkNPXzVLUUswc2lHUThxUTFNQVp6MGRTLVg5aXgzRGQ5RmlHUVJKd3M5cnNZcGQyaURJRjZUZEZWZQ==", "_blank", "noopener,noreferrer")}
           className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
           title="يفتح WE OAS BI ويسجّل الدخول تلقائياً"
