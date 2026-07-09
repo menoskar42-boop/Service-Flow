@@ -146,6 +146,14 @@ export function PhoneLookupReport() {
         ["اسم الفنى", dash(line.techName)],
         ["رقم الفريم", dash(line.frame)],
         ["رقم الأكونت", dash(line.accountNo)],
+        // مجموعة القياس (عمود رأسى كامل العرض) مباشرةً تحت رقم الأكونت
+        ["السرعة الحالية", dash(line.currentSpeed)],
+        ["أقصى سرعة", dash(line.maxSpeed)],
+        ["الاسكور", scoreBadge(line.score)],
+        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
+        ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
+        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
+        ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)],
         ["IDU", dash(line.iduNo)],
         ["ODU", dash(line.oduNo)],
         ["Primary Block", dash(line.primaryBlockNo)],
@@ -157,14 +165,6 @@ export function PhoneLookupReport() {
         ["LEN", dash(line.len)],
         ["Fiber Block", dash(line.fiberBlock)],
         ["Fiber Out", dash(line.fiberOut)],
-        // مجموعة القياس (عمود رأسى كامل العرض بالترتيب المطلوب)
-        ["السرعة الحالية", dash(line.currentSpeed)],
-        ["أقصى سرعة", dash(line.maxSpeed)],
-        ["الاسكور", scoreBadge(line.score)],
-        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
-        ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
-        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
-        ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)],
       ]
     : [];
 
