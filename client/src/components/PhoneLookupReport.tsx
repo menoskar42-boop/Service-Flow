@@ -9,6 +9,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { Gauge } from "lucide-react";
+import { maintStatusBadge, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
 // بوابة DZS expresse — تُفتح فى تاب جديد ويُمرَّر رقم الأكونت فى الـ hash ليقيسه
 // الـ Tampermonkey script (dzs-expresse-v10.user.js) ويرفع النتيجة لشيت 138.
@@ -96,6 +97,36 @@ export function PhoneLookupReport() {
   const line = data?.found ? (data.line as LineData) : null;
   const search = () => { setPhone(input.trim()); setSearchSeq((s) => s + 1); };
 
+  // حالة صيانة البكس من تقرير الصيانة الشامل (تطابق بالسنترال + الكابينة + البكس، الأحدث)
+  const { data: boxMaint, isFetching: maintLoading } = useQuery({
+    queryKey: ["/api/proxy/maintenance-comprehensive", line?.cabinNumber, line?.boxNumber, line?.central],
+    enabled: !!line?.boxNumber,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (line?.cabinNumber) p.set("cabin", String(line.cabinNumber));
+      if (line?.boxNumber) p.set("box", String(line.boxNumber));
+      const res = await fetch(`/api/proxy/maintenance-comprehensive?${p}`, { credentials: "include" });
+      if (!res.ok) return null;
+      const j = await res.json();
+      const rows: MaintRow[] = Array.isArray(j?.data) ? j.data : [];
+      const bx = String(line?.boxNumber ?? "").trim();
+      const cb = String(line?.cabinNumber ?? "").trim();
+      const cn = String(line?.central ?? "").trim();
+      const matches = rows.filter((r) =>
+        String(r.box_number).trim() === bx &&
+        (!cb || String(r.cabin_number).trim() === cb) &&
+        (!cn || (r.central || "").includes(cn) || cn.includes(r.central || "")),
+      );
+      matches.sort((a, b) => String(b.inspection_date || "").localeCompare(String(a.inspection_date || "")));
+      return matches[0] || null;
+    },
+  });
+  const boxMaintCell: ReactNode = line?.boxNumber
+    ? (boxMaint ? maintStatusBadge(boxMaint.maintenance_status, boxMaint.maintenance_status_ar)
+                : (maintLoading ? <span className="text-gray-400">…</span> : <span className="text-gray-400">لا يوجد</span>))
+    : <span className="text-gray-400">-</span>;
+
   // فتح بوابة DZS وقياس رقم الأكونت الخاص بالخط
   const measureDZS = () => {
     const acc = (line?.accountNo ?? "").toString().trim();
@@ -110,6 +141,7 @@ export function PhoneLookupReport() {
         ["السنترال", dash(line.central)],
         ["رقم الكابينة", dash(line.cabinNumber)],
         ["رقم البكس", dash(line.boxNumber)],
+        ["حالة صيانة البكس", boxMaintCell],
         ["كود الكابينة (MSAN)", dash(line.msanCode)],
         ["اسم الفنى", dash(line.techName)],
         ["رقم الفريم", dash(line.frame)],
@@ -144,6 +176,7 @@ export function PhoneLookupReport() {
       "السنترال": line.central,
       "رقم الكابينة": line.cabinNumber ?? "",
       "رقم البكس": line.boxNumber ?? "",
+      "حالة صيانة البكس": boxMaint?.maintenance_status_ar ?? "",
       "كود الكابينة (MSAN)": line.msanCode ?? "",
       "اسم الفنى": line.techName ?? "",
       "رقم الفريم": line.frame ?? "",
@@ -177,9 +210,9 @@ export function PhoneLookupReport() {
     if (!line) return;
     printTablePDF({
       title: `بيانات الخط ${line.fullPhone}`,
-      columns: ["السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO", "آخر شكوى"],
+      columns: ["السنترال", "الكابينة", "البكس", "حالة صيانة البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO", "آخر شكوى"],
       rows: [[
-        line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", line.msanCode ?? "-", line.techName ?? "-", line.frame ?? "-", line.accountNo ?? "-",
+        line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", boxMaint?.maintenance_status_ar ?? "-", line.msanCode ?? "-", line.techName ?? "-", line.frame ?? "-", line.accountNo ?? "-",
         line.currentSpeed ?? "-", line.maxSpeed ?? "-", line.score ?? "-", fmtDate(line.lastMeasTime),
         line.iduNo ?? "-", line.oduNo ?? "-", line.primaryBlockNo ?? "-", line.cabinetIn ?? "-", line.secBlockNo ?? "-",
         line.cabinetOut ?? "-", line.dpTerminal ?? "-", line.port ?? "-", line.len ?? "-", line.fiberBlock ?? "-", line.fiberOut ?? "-",
