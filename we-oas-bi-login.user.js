@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.2.3
+// @version      1.2.4
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -327,11 +327,12 @@
 
   // نص الصفحة (عبر كل الـ iframes) — للتمييز بين تقارير we-oas (الـ URL بيتشال منه الـ bippath)
   function pageText() { let s = ""; for (const d of docsList()) { try { s += " " + (d.body ? d.body.innerText : ""); } catch (e) {} } return s; }
-  // تقرير 430D = فيه from_date/to_date، ومش فيه P_CABINET_NO (اللى بتاع 131)
+  // تقرير 430D = فيه from_date/to_date. العلامة المميّزة لـ 131 هى P_CABINET_NO فقط
+  // (ملاحظة: P_CENTRAL_NAME موجودة فى تقرير 430D أيضاً فلا تصلح للتمييز).
   async function is430ReportPage() {
     return await waitFor(() => {
       const t = pageText();
-      if (/P_CABINET_NO|P_CENTRAL_NAME|نحاسى?/i.test(t)) return false; // ده تقرير 131 مش بتاعنا
+      if (/P_CABINET_NO|نحاسى?/i.test(t)) return false; // ده تقرير 131 مش بتاعنا
       if (/from_?date/i.test(t) && /to_?date/i.test(t)) return true;
       return null; // لسه بيحمّل
     }, 20000);

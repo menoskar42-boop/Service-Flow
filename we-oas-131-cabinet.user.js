@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131 ارقام التليفونات على كابينة»، يختار P_CENTRAL_NAME=ديروط و P_CABINET_NO=1-1، Apply، ثم ينزّل Excel واحد بثلاث شيتات: نحاسي + فيبر + دوائر المعلومات. لا يرفع أى بيانات للموقع.
-// @version      1.0.3
+// @version      1.0.4
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -223,8 +223,8 @@
     banner("⚙️ ضبط البرومبت (ديروط / 1-1)…");
     const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
     if (!apply) { banner("❌ لم تُحمّل صفحة التقرير (لا يوجد Apply)", "#c62828"); return; }
-    // حاجز صارم: لازم يكون تقرير 131 (فيه P_CABINET_NO/P_CENTRAL_NAME) وإلا لا تعمل حاجة ولا تنزّل ملف
-    if (!/P_CABINET_NO|P_CENTRAL_NAME/i.test(pageText())) { banner("⏹️ مش تقرير 131 — تجاهل.", "#607d8b"); return; }
+    // حاجز صارم: لازم يكون تقرير 131 (العلامة المميّزة = P_CABINET_NO، لأن P_CENTRAL_NAME موجودة فى 430D كمان)
+    if (!/P_CABINET_NO/i.test(pageText())) { banner("⏹️ مش تقرير 131 — تجاهل.", "#607d8b"); return; }
     // P_CENTRAL_NAME = ديروط
     const okCentral = await selectPromptValue(/P_CENTRAL_NAME/i, new RegExp("^\\s*" + CENTRAL + "\\s*$"));
     if (!okCentral) { const ok2 = await selectPromptValue(/P_CENTRAL_NAME/i, new RegExp(CENTRAL)); if (!ok2) banner("⚠️ لم أستطع اختيار ديروط", "#ef6c00"); }
@@ -269,7 +269,7 @@
     return await waitFor(() => {
       const t = pageText();
       if (/from_?date/i.test(t) && /to_?date/i.test(t)) return false; // ده تقرير 430D
-      if (/P_CABINET_NO|P_CENTRAL_NAME/i.test(t) || (/نحاسى?/.test(t) && /دوائر\s*المعلومات/.test(t))) return true;
+      if (/P_CABINET_NO/i.test(t) || (/نحاسى?/.test(t) && /دوائر\s*المعلومات/.test(t))) return true;
       return null; // لسه بيحمّل
     }, 20000);
   }
