@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.0
+// @version      1.1.1
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -130,21 +130,38 @@
     else pass.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true }));
   }
 
-  /* ================== 2) صفحة Oracle Analytics (Home): بحث + فتح التقرير ================== */
+  /* ================== 2) صفحة Oracle Analytics (Home): فتح تقرير 430D من المفضلة مباشرة ================== */
+  // النص الظاهر على الكارت مقصوص ("430D القطاع-TEDATA - ...") فبنعتمد على 430D + TEDATA وبدون Trial.
+  function findReportCard() {
+    const leaves = qAll("*").filter((e) => {
+      if (e.children.length !== 0 || !visible(e)) return false;
+      const t = (e.textContent || "") + " " + (e.getAttribute && (e.getAttribute("title") || e.getAttribute("aria-label") || ""));
+      return /430D/i.test(t) && /TEDATA/i.test(t) && !/trial/i.test(t);
+    });
+    for (const leaf of leaves) {
+      // اصعد لأقرب حاوية تحتوى أيضاً على إيميل المالك (= كارت التقرير كامل) ثم اضغطها
+      let node = leaf;
+      for (let k = 0; k < 7 && node; k++) {
+        if (/@te\.eg|mohamed\.zaki/i.test(node.textContent || "")) return node;
+        node = node.parentElement;
+      }
+      return leaf.closest("a,[role='button'],[role='link'],li,div") || leaf;
+    }
+    return null;
+  }
   async function homeFlow() {
-    banner("🔎 بحث عن 430d…");
-    const box = await waitFor(() => qAll("input,textarea").find((i) => visible(i) && /search\s*everything/i.test(i.placeholder || "")), 25000);
-    if (!box) { banner("❌ لم أجد خانة البحث Search Everything", "#c62828"); return; }
-    setValue(box, "430d");
-    box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
-    await sleep(800);
-    const link = await waitFor(() => {
-      const cands = qAll("a,div,span,li,p").filter((e) => visible(e) && /متابعة\s*اعطال/.test(e.textContent || "") && /details/i.test(e.textContent || "") && !/trial/i.test(e.textContent || ""));
-      return cands.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length)[0] || null;
-    }, 25000);
-    if (!link) { banner("❌ لم تظهر نتيجة «القطاع-TEDATA - Details متابعة اعطال»", "#c62828"); return; }
+    banner("📂 البحث عن كارت تقرير 430D…");
+    // 1) جرّب تلاقيه فى المفضلة/اللوحات مباشرة (البحث مش لازم)
+    let card = await waitFor(findReportCard, 9000);
+    // 2) لو ملقاش، اكتب فى خانة البحث وحاول تانى
+    if (!card) {
+      const box = qAll("input,textarea").find((i) => visible(i) && /search\s*everything/i.test(i.placeholder || ""));
+      if (box) { setValue(box, "430d"); box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true })); box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); }
+      card = await waitFor(findReportCard, 20000);
+    }
+    if (!card) { banner("❌ لم أجد كارت «430D القطاع-TEDATA»", "#c62828"); return; }
     banner("📂 فتح التقرير…");
-    clickEl(link);
+    clickEl(card);
     // التقرير غالباً بيفتح فى تاب جديد — السكربت هيكمّل هناك تلقائياً (الفلاج شغّال)
   }
 
