@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131 ارقام التليفونات على كابينة»، يختار P_CENTRAL_NAME=ديروط و P_CABINET_NO=1-1، Apply، ثم ينزّل Excel واحد بثلاث شيتات: نحاسي + فيبر + دوائر المعلومات. لا يرفع أى بيانات للموقع.
-// @version      1.0.4
+// @version      1.0.5
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -225,11 +225,7 @@
     if (!apply) { banner("❌ لم تُحمّل صفحة التقرير (لا يوجد Apply)", "#c62828"); return; }
     // حاجز صارم: لازم يكون تقرير 131 (العلامة المميّزة = P_CABINET_NO، لأن P_CENTRAL_NAME موجودة فى 430D كمان)
     if (!/P_CABINET_NO/i.test(pageText())) { banner("⏹️ مش تقرير 131 — تجاهل.", "#607d8b"); return; }
-    // P_CENTRAL_NAME = ديروط
-    const okCentral = await selectPromptValue(/P_CENTRAL_NAME/i, new RegExp("^\\s*" + CENTRAL + "\\s*$"));
-    if (!okCentral) { const ok2 = await selectPromptValue(/P_CENTRAL_NAME/i, new RegExp(CENTRAL)); if (!ok2) banner("⚠️ لم أستطع اختيار ديروط", "#ef6c00"); }
-    await sleep(600);
-    // P_CABINET_NO = 1-1
+    // نكتفى بكتابة رقم الكابينة فقط (P_CENTRAL_NAME = All) — أسرع وبدون مشاكل الدروب ليست
     const cab = findLabeledInput(/P_CABINET_NO/i);
     if (cab) setValue(cab, CABINET); else banner("⚠️ لم أجد خانة P_CABINET_NO", "#ef6c00");
     await sleep(400);
@@ -254,7 +250,7 @@
       banner("✔️ " + tab.name + ": " + Math.max(0, rows.length - 1) + " صف", "#2e7d32");
       sheets.push({ name: tab.name, rows: rows.length ? rows : [["لا توجد بيانات"]] });
     }
-    downloadFile(buildXls(sheets), "131_" + CENTRAL + "_" + CABINET + ".xls", "application/vnd.ms-excel");
+    downloadFile(buildXls(sheets), "131_cabinet_" + CABINET + ".xls", "application/vnd.ms-excel");
     banner("📥 اتحمّل ملف Excel (نحاسي/فيبر/دوائر المعلومات).", "#2e7d32");
   }
 
