@@ -2079,7 +2079,7 @@ export async function registerRoutes(
   // المعيار: لها رقم أكونت + آخر قياس مرّ عليه أقل من 3 أيام + لا تحتاج رفع سرعة (عكس معيار
   //   محتاجة رفع سرعة). دى غالباً خطوط اتعملها Profile Optimization ومحتاجة إيقاف الـ nightly PO.
   app.get("/api/phone-lines/needs-po-stop", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", poStoppedBefore = "", page = "1", limit = "50" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const params: any[] = [];
@@ -2124,6 +2124,8 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    // فلتر: اللى تم إيقاف الـ PO بتاعه قبل تاريخ/وقت معيّن (بتوقيت القاهرة) — يستبعد اللى مالوش إيقاف
+    if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at AT TIME ZONE 'Africa/Cairo') < $${params.length}::timestamp`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;

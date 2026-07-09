@@ -92,6 +92,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
+  const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر: تم إيقاف الـ PO قبل تاريخ/وقت
+  const showPoStopFilter = endpoint.includes("needs-po-stop");
   const [page, setPage] = useState(1);
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
@@ -112,12 +114,13 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (showPoStopFilter && poStoppedBefore) params.set("poStoppedBefore", poStoppedBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, page, requireComplaint],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, page, requireComplaint],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -260,6 +263,23 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
+            {showPoStopFilter && (
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">أُوقف PO قبل:</label>
+                <input
+                  type="datetime-local"
+                  value={poStoppedBefore}
+                  onChange={(e) => { setPoStoppedBefore(e.target.value); setPage(1); }}
+                  className="border rounded-md px-2 py-1 text-sm"
+                  title="يعرض فقط الأرقام التى تم إيقاف الـ PO بتاعها قبل هذا التاريخ والوقت"
+                />
+                {poStoppedBefore && (
+                  <button onClick={() => { setPoStoppedBefore(""); setPage(1); }} className="text-muted-foreground hover:text-foreground" title="مسح الفلتر">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
