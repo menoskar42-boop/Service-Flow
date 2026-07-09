@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
-// @version      0.9.2
+// @version      0.9.3
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -257,8 +257,10 @@
     if (!onPoPage()) { banner("↪️ فتح صفحة رفع السرعة للرقم " + CURRENT + "…", "#1565c0"); location.href = PO_URL + encodeURIComponent(CURRENT); clearInterval(tick); return; }
 
     // 2.5) «Line ID Not Found» بعد البحث → الرقم غير موجود، تخطّى فوراً للتالى (مننتظرش timeout)
+    //      فى وضع الإيقاف نسجّله كـ إيقاف PO برده (فعلياً مفيش PO شغّال).
     if (/line\s*id\s*not\s*found|enter\s*a\s*valid\s*line\s*id/i.test(txt())) {
-      banner("⚠️ " + CURRENT + " غير موجود (Line ID Not Found) — تخطّى.", "#607d8b");
+      if (MODE === "stop") { postPoEvent(CURRENT, "stop"); banner("⚠️ " + CURRENT + " غير موجود — سُجّل كـ إيقاف PO وتخطّى.", "#607d8b"); }
+      else banner("⚠️ " + CURRENT + " غير موجود (Line ID Not Found) — تخطّى.", "#607d8b");
       clearInterval(tick); setTimeout(advance, 1200); return;
     }
 
