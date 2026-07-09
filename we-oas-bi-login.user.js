@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.3
+// @version      1.1.4
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -86,6 +86,8 @@
         el.dispatchEvent(new Ev(t, opts));
       } catch (e) { try { el.dispatchEvent(new MouseEvent(t.replace("pointer", "mouse"), opts)); } catch (e2) {} }
     }
+    // النقر الأصلى — ضرورى لروابط التبويبات <a href="javascript:void(0)" onclick=...>
+    try { if (typeof el.click === "function") el.click(); } catch (e) {}
     const form = el.closest && el.closest("form");
     if (form && typeof form.requestSubmit === "function") { try { form.requestSubmit(el.type === "submit" ? el : undefined); } catch (e) {} }
     return true;
@@ -198,6 +200,37 @@
       }
     }
   }
+  // يقرأ أكبر جدول نتائج (اللى فيه «التليفون»/«Complain No») ويحوّله CSV يفتح فى إكسيل
+  function scrapeReportCsv() {
+    const tables = qAll("table").filter((t) => /التليفون|complain\s*no/i.test(t.textContent || ""));
+    if (!tables.length) return null;
+    const table = tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0];
+    const rows = [...table.querySelectorAll("tr")]
+      .map((tr) => [...tr.querySelectorAll("th,td")].map((c) => (c.textContent || "").replace(/\s+/g, " ").trim()))
+      .filter((r) => r.length > 1 && r.some((c) => c));
+    if (!rows.length) return null;
+    const esc = (v) => '"' + String(v).replace(/"/g, '""') + '"';
+    return "﻿" + rows.map((r) => r.map(esc).join(";")).join("\r\n");
+  }
+  function downloadCsv(csv, name) {
+    try {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = name;
+      (document.body || document.documentElement).appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      return true;
+    } catch (e) { console.warn("csv err", e); return false; }
+  }
+  // يضغط تبويب بالاسم بشكل موثوق (يستهدف الرابط/الخلية القابلة للنقر)
+  async function clickTabByText(re) {
+    const el = await waitFor(() => qAll("a,span,div,td,li").find((e) => visible(e) && re.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 30), 15000);
+    if (!el) return false;
+    const target = el.closest("a,td,li") || el;
+    clickEl(target);
+    if (target !== el) clickEl(el);
+    return true;
+  }
   async function reportFlow() {
     banner("📅 ضبط التواريخ (" + FROM_STR + " → " + TO_STR + ")…");
     const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
@@ -211,16 +244,21 @@
     await sleep(500);
     banner("▶️ Apply (التفاصيل) — استنى النتائج…");
     clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-    await sleep(7000); // انتظار ورود النتائج
+    await sleep(7000); // انتظار ورود نتائج التفاصيل
     // تبويب «تفاصيل المتبقى»
-    const tab = await waitFor(() => qAll("a,span,div,td,li").find((e) => visible(e) && /تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 25), 15000);
-    if (tab) { banner("↪️ تبويب تفاصيل المتبقى…"); clickEl(tab); await sleep(1800); }
-    else banner("⚠️ لم أجد تبويب «تفاصيل المتبقى»", "#ef6c00");
+    banner("↪️ تبويب تفاصيل المتبقى…");
+    const okTab = await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
+    if (!okTab) banner("⚠️ لم أجد تبويب «تفاصيل المتبقى»", "#ef6c00");
+    await sleep(2500);
+    // Apply تانى (على تبويب المتبقى)
     banner("▶️ Apply (المتبقى) — استنى النتائج…");
-    const apply2 = findBtn(/^\s*apply\s*$/i);
-    if (apply2) clickEl(apply2);
+    clickEl(findBtn(/^\s*apply\s*$/i) || apply);
+    await sleep(9000); // انتظار ورود نتائج المتبقى
+    // تصدير شيت للتأكد من قراءة البيانات
+    const csv = scrapeReportCsv();
+    if (csv) { downloadCsv(csv, "430D_almotabaqi_" + FROM_STR + "_" + TO_STR + ".csv"); banner("📥 اتحمّل شيت «تفاصيل المتبقى» — راجعه للتأكد.", "#2e7d32"); }
+    else banner("⚠️ لم أجد جدول نتائج لتصديره (استنى شوية وجرّب OAS_export())", "#ef6c00");
     clearFlag();
-    banner("✅ خلص — المفروض ظهرت نتائج «تفاصيل المتبقى».", "#2e7d32");
   }
 
   /* ================== الراوتر ================== */
@@ -243,4 +281,7 @@
     // شغّل تلقائياً لو جايين من الدخول (الفلاج شغّال)، بعد ما الـ SPA يجهز
     if (flagOn()) waitFor(() => document.body, 10000).then(() => sleep(1800)).then(() => kickoff(false)).catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
   }
+
+  // تصدير يدوى من الكونسول لو حبيت تعيد التنزيل: OAS_export()
+  window.OAS_export = () => { const c = scrapeReportCsv(); if (c) { downloadCsv(c, "430D_export_" + FROM_STR + "_" + TO_STR + ".csv"); console.log("✅ اتحمّل"); } else console.warn("مفيش جدول"); };
 })();
