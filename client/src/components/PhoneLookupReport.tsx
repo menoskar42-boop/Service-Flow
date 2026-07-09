@@ -45,6 +45,14 @@ interface LineData {
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
   lastComplaintAt: string | null;
+  portType: string | null;
+  rowNo: string | null;
+  columnNo: string | null;
+  voiceStatus: string | null;
+  dataStatus: string | null;
+  operator: string | null;
+  shelf: string | null;
+  slot: string | null;
 }
 
 const dash = (v: unknown) =>
@@ -68,10 +76,10 @@ const scoreBadge = (v: number | null) => {
   return <span className={`text-sm px-2 py-0.5 rounded font-semibold ${cls}`}>{n}</span>;
 };
 
-// حقول القياس تُعرض كعمود رأسى كامل العرض بالترتيب المطلوب
+// الحقول الفنية الباقية تُعرض كامل العرض (صف لكل حقل) بعد الصفوف المزدوجة (زى عمود الإكسيل اليمين)
 const FULL_WIDTH_FIELDS = new Set<string>([
-  "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس",
-  "آخر رفع سرعة", "آخر إيقاف PO", "تاريخ آخر شكوى",
+  "operator", "shelf", "slot", "Port", "IDU", "ODU",
+  "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out",
 ]);
 
 export function PhoneLookupReport() {
@@ -127,6 +135,28 @@ export function PhoneLookupReport() {
                 : (maintLoading ? <span className="text-gray-400">…</span> : <span className="text-gray-400">لا يوجد</span>))
     : <span className="text-gray-400">-</span>;
 
+  // هل البكس له تذكرة عطل شبكة أرضية (CFM) مفتوحة؟
+  const { data: boxGround, isFetching: groundLoading } = useQuery({
+    queryKey: ["/api/proxy/box-ground-ticket", line?.central, line?.cabinNumber, line?.boxNumber],
+    enabled: !!line?.boxNumber,
+    staleTime: 2 * 60 * 1000,
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (line?.central) p.set("central", String(line.central));
+      if (line?.cabinNumber) p.set("cabin", String(line.cabinNumber));
+      if (line?.boxNumber) p.set("box", String(line.boxNumber));
+      const res = await fetch(`/api/proxy/box-ground-ticket?${p}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json() as Promise<{ hasOpenTicket: boolean }>;
+    },
+  });
+  const groundCell: ReactNode = line?.boxNumber
+    ? (groundLoading && !boxGround ? <span className="text-gray-400">…</span>
+       : boxGround?.hasOpenTicket
+         ? <span className="text-sm px-2 py-0.5 rounded font-semibold bg-red-100 text-red-800">نعم</span>
+         : <span className="text-sm px-2 py-0.5 rounded font-semibold bg-green-100 text-green-800">لا</span>)
+    : <span className="text-gray-400">-</span>;
+
   // فتح بوابة DZS وقياس رقم الأكونت الخاص بالخط
   const measureDZS = () => {
     const acc = (line?.accountNo ?? "").toString().trim();
@@ -134,35 +164,34 @@ export function PhoneLookupReport() {
     window.open(buildDZSUrl([acc]), "_blank");
   };
 
+  // الترتيب مطابق للإكسيل: الشبكة RTL تملأ الخلية اليمنى ثم اليسرى فى كل صف —
+  // فالمصفوفة مرتّبة: (يمين1, شمال1, يمين2, شمال2 …) للصفوف 1–12، ثم الحقول الفنية الباقية كامل العرض (صف لكل حقل).
   const fields: [string, ReactNode][] = line
     ? [
-        ["رقم التليفون الكامل", dash(line.fullPhone)],
-        ["رقم التليفون", dash(line.telNo)],
-        ["السنترال", dash(line.central)],
-        ["رقم الكابينة", dash(line.cabinNumber)],
-        ["رقم البكس", dash(line.boxNumber)],
-        ["حالة صيانة البكس", boxMaintCell],
-        ["كود الكابينة (MSAN)", dash(line.msanCode)],
-        ["اسم الفنى", dash(line.techName)],
-        ["رقم الفريم", dash(line.frame)],
-        ["رقم الأكونت", dash(line.accountNo)],
-        // مجموعة القياس (عمود رأسى كامل العرض) مباشرةً تحت رقم الأكونت
-        ["السرعة الحالية", dash(line.currentSpeed)],
-        ["أقصى سرعة", dash(line.maxSpeed)],
-        ["الاسكور", scoreBadge(line.score)],
-        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
-        ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
-        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
-        ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)],
+        // صف1: يمين | شمال
+        ["رقم التليفون الكامل", dash(line.fullPhone)], ["رقم التليفون", dash(line.telNo)],
+        ["السنترال", dash(line.central)],               ["اسم الفنى", dash(line.techName)],
+        ["رقم الكابينة", dash(line.cabinNumber)],        ["رقم الأكونت", dash(line.accountNo)],
+        ["رقم البكس", dash(line.boxNumber)],             ["السرعة الحالية", dash(line.currentSpeed)],
+        ["DP Terminal", dash(line.dpTerminal)],          ["أقصى سرعة", dash(line.maxSpeed)],
+        ["كود الكابينة (MSAN)", dash(line.msanCode)],    ["الاسكور", scoreBadge(line.score)],
+        ["رقم الفريم", dash(line.frame)],                ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
+        ["Port Type", dash(line.portType)],              ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
+        ["Row", dash(line.rowNo)],                       ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
+        ["Column", dash(line.columnNo)],                 ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)],
+        ["voice status", dash(line.voiceStatus)],        ["حالة صيانة البكس", boxMaintCell],
+        ["data status", dash(line.dataStatus)],          ["هل البكس له تكت أرضية", groundCell],
+        // الحقول الفنية الباقية — كامل العرض (صف لكل حقل، عمود يمين فقط زى الإكسيل)
+        ["operator", dash(line.operator)],
+        ["shelf", dash(line.shelf)],
+        ["slot", dash(line.slot)],
+        ["Port", dash(line.port)],
         ["IDU", dash(line.iduNo)],
         ["ODU", dash(line.oduNo)],
         ["Primary Block", dash(line.primaryBlockNo)],
         ["Cabinet In", dash(line.cabinetIn)],
         ["Sec Block", dash(line.secBlockNo)],
         ["Cabinet Out", dash(line.cabinetOut)],
-        ["DP Terminal", dash(line.dpTerminal)],
-        ["Port", dash(line.port)],
-        ["LEN", dash(line.len)],
         ["Fiber Block", dash(line.fiberBlock)],
         ["Fiber Out", dash(line.fiberOut)],
       ]
@@ -174,31 +203,40 @@ export function PhoneLookupReport() {
       "رقم التليفون الكامل": line.fullPhone,
       "رقم التليفون": line.telNo,
       "السنترال": line.central,
-      "رقم الكابينة": line.cabinNumber ?? "",
-      "رقم البكس": line.boxNumber ?? "",
-      "حالة صيانة البكس": boxMaint?.maintenance_status_ar ?? "",
-      "كود الكابينة (MSAN)": line.msanCode ?? "",
       "اسم الفنى": line.techName ?? "",
-      "رقم الفريم": line.frame ?? "",
+      "رقم الكابينة": line.cabinNumber ?? "",
       "رقم الأكونت": line.accountNo ?? "",
+      "رقم البكس": line.boxNumber ?? "",
       "السرعة الحالية": line.currentSpeed ?? "",
+      "DP Terminal": line.dpTerminal ?? "",
       "أقصى سرعة": line.maxSpeed ?? "",
+      "كود الكابينة (MSAN)": line.msanCode ?? "",
       "الاسكور": line.score ?? "",
+      "رقم الفريم": line.frame ?? "",
       "تاريخ آخر قياس": fmtDate(line.lastMeasTime),
+      "Port Type": line.portType ?? "",
+      "آخر رفع سرعة": fmtDate(line.lastPoRaiseAt),
+      "Row": line.rowNo ?? "",
+      "آخر إيقاف PO": fmtDate(line.lastPoStopAt),
+      "Column": line.columnNo ?? "",
+      "تاريخ آخر شكوى": fmtDate(line.lastComplaintAt),
+      "voice status": line.voiceStatus ?? "",
+      "حالة صيانة البكس": boxMaint?.maintenance_status_ar ?? "",
+      "data status": line.dataStatus ?? "",
+      "هل البكس له تكت أرضية": line.boxNumber ? (boxGround?.hasOpenTicket ? "نعم" : "لا") : "",
+      "operator": line.operator ?? "",
+      "shelf": line.shelf ?? "",
+      "slot": line.slot ?? "",
+      "Port": line.port ?? "",
       "IDU": line.iduNo ?? "",
       "ODU": line.oduNo ?? "",
       "Primary Block": line.primaryBlockNo ?? "",
       "Cabinet In": line.cabinetIn ?? "",
       "Sec Block": line.secBlockNo ?? "",
       "Cabinet Out": line.cabinetOut ?? "",
-      "DP Terminal": line.dpTerminal ?? "",
-      "Port": line.port ?? "",
-      "LEN": line.len ?? "",
       "Fiber Block": line.fiberBlock ?? "",
       "Fiber Out": line.fiberOut ?? "",
-      "آخر رفع سرعة": fmtDate(line.lastPoRaiseAt),
-      "آخر إيقاف PO": fmtDate(line.lastPoStopAt),
-      "تاريخ آخر شكوى": fmtDate(line.lastComplaintAt),
+      "LEN": line.len ?? "",
     };
     const ws = XLSX.utils.json_to_sheet([row]);
     const wb = XLSX.utils.book_new();
@@ -210,10 +248,11 @@ export function PhoneLookupReport() {
     if (!line) return;
     printTablePDF({
       title: `بيانات الخط ${line.fullPhone}`,
-      columns: ["السنترال", "الكابينة", "البكس", "حالة صيانة البكس", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO", "آخر شكوى"],
+      columns: ["السنترال", "الكابينة", "البكس", "حالة صيانة البكس", "تكت أرضية", "كود MSAN", "اسم الفنى", "الفريم", "الأكونت", "سرعة حالية", "أقصى سرعة", "الاسكور", "آخر قياس", "Port Type", "Row", "Column", "voice", "data", "operator", "shelf", "slot", "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "DP Terminal", "Port", "LEN", "Fiber Block", "Fiber Out", "آخر رفع سرعة", "آخر إيقاف PO", "آخر شكوى"],
       rows: [[
-        line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", boxMaint?.maintenance_status_ar ?? "-", line.msanCode ?? "-", line.techName ?? "-", line.frame ?? "-", line.accountNo ?? "-",
+        line.central, line.cabinNumber ?? "-", line.boxNumber ?? "-", boxMaint?.maintenance_status_ar ?? "-", line.boxNumber ? (boxGround?.hasOpenTicket ? "نعم" : "لا") : "-", line.msanCode ?? "-", line.techName ?? "-", line.frame ?? "-", line.accountNo ?? "-",
         line.currentSpeed ?? "-", line.maxSpeed ?? "-", line.score ?? "-", fmtDate(line.lastMeasTime),
+        line.portType ?? "-", line.rowNo ?? "-", line.columnNo ?? "-", line.voiceStatus ?? "-", line.dataStatus ?? "-", line.operator ?? "-", line.shelf ?? "-", line.slot ?? "-",
         line.iduNo ?? "-", line.oduNo ?? "-", line.primaryBlockNo ?? "-", line.cabinetIn ?? "-", line.secBlockNo ?? "-",
         line.cabinetOut ?? "-", line.dpTerminal ?? "-", line.port ?? "-", line.len ?? "-", line.fiberBlock ?? "-", line.fiberOut ?? "-",
         fmtDate(line.lastPoRaiseAt), fmtDate(line.lastPoStopAt), fmtDate(line.lastComplaintAt),
