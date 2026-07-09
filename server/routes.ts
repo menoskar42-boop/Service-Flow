@@ -3710,8 +3710,12 @@ export async function registerRoutes(
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     const byPhone = new Map<string, any[]>();
     for (const it of items) {
-      const phone = pick(it, "phonenumber", "phone", "phoneno", "msisdn", "رقمالتليفون");
-      if (!phone) continue;
+      const rawPhone = pick(it, "phonenumber", "phone", "phoneno", "msisdn", "رقمالتليفون").replace(/\D/g, "");
+      if (!rawPhone) continue;
+      const area = pick(it, "areacode", "area", "كودالمنطقة").replace(/\D/g, "").replace(/^0+/, "");
+      // نخزّن الرقم الكامل (كود المنطقة بدون صفر + الرقم القصير) ليطابق joins الموقع (pl.full_phone = 88…)
+      // Portal بيدّى الرقم القصير + Area Code منفصل، فلو الرقم أقصر من 9 خانات نبنى الكامل.
+      const phone = rawPhone.length >= 9 ? rawPhone : ((area || "88") + rawPhone);
       byPhone.set(phone, [
         phone,
         pick(it, "areacode", "area", "كودالمنطقة") || null,
