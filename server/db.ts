@@ -673,6 +673,8 @@ export async function ensureSchema() {
     )
   `);
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS onu text`);
+  await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS row_no text`);
+  await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS column_no text`);
 
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`

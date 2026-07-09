@@ -578,6 +578,8 @@ export const phonePorts = pgTable("phone_ports", {
   areaCode: text("area_code"),
   msanCode: text("msan_code"),
   frame: text("frame"),
+  rowNo: text("row_no"),
+  columnNo: text("column_no"),
   shelf: text("shelf"),
   slot: text("slot"),
   portNumber: text("port_number"),

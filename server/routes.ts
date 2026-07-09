@@ -2179,6 +2179,9 @@ export async function registerRoutes(
               pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
               pl.dp_terminal AS "dpTerminal", COALESCE(pp.port_number, pl.port) AS "port", pl.len AS "len",
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
+              pp.port_type AS "portType", pp.row_no AS "rowNo", pp.column_no AS "columnNo",
+              pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
+              pp.operator AS "operator", pp.shelf AS "shelf", pp.slot AS "slot",
               COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
@@ -3726,6 +3729,8 @@ export async function registerRoutes(
         pick(it, "areacode", "area", "كودالمنطقة") || null,
         pick(it, "msancode", "msan", "msancodee") || null,
         pick(it, "frame") || null,
+        pick(it, "rowno", "row") || null,
+        pick(it, "columnno", "column", "col") || null,
         pick(it, "shelf") || null,
         pick(it, "slot") || null,
         pick(it, "portnumber", "port", "portno") || null,
@@ -3738,21 +3743,23 @@ export async function registerRoutes(
     }
     const all = Array.from(byPhone.values());
     let affected = 0;
+    const COLS = 14;
     const BATCH = 300;
     for (let s = 0; s < all.length; s += BATCH) {
       const chunk = all.slice(s, s + BATCH);
       const ph = chunk.map((_, ci) => {
-        const o = ci * 12;
-        return "(" + Array.from({ length: 12 }, (_, k) => `$${o + k + 1}`).join(",") + ")";
+        const o = ci * COLS;
+        return "(" + Array.from({ length: COLS }, (_, k) => `$${o + k + 1}`).join(",") + ")";
       }).join(",");
       const r = await pool.query(
         `INSERT INTO phone_ports
-           (phone_number, area_code, msan_code, frame, shelf, slot, port_number,
+           (phone_number, area_code, msan_code, frame, row_no, column_no, shelf, slot, port_number,
             port_type, voice_status, data_status, operator, onu)
          VALUES ${ph}
          ON CONFLICT (phone_number) DO UPDATE SET
            area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code,
-           frame = EXCLUDED.frame, shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
+           frame = EXCLUDED.frame, row_no = EXCLUDED.row_no, column_no = EXCLUDED.column_no,
+           shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
            port_number = EXCLUDED.port_number, port_type = EXCLUDED.port_type,
            voice_status = EXCLUDED.voice_status, data_status = EXCLUDED.data_status,
            operator = EXCLUDED.operator, onu = EXCLUDED.onu, uploaded_at = now()`,
@@ -6421,6 +6428,38 @@ export async function registerRoutes(
       res.json({ lines, total: lines.length });
     } catch (e: any) {
       res.status(502).json({ message: `تعذّر جلب خطوط التذاكر المفتوحة: ${e.message}` });
+    }
+  });
+
+  // GET /api/proxy/box-ground-ticket?central=&cabin=&box= → هل للبكس تذكرة عطل شبكة أرضية (CFM) مفتوحة؟
+  app.get("/api/proxy/box-ground-ticket", requireAuth, async (req, res) => {
+    try {
+      const { central = "", cabin = "", box = "" } = req.query as Record<string, string>;
+      if (!box) return res.json({ hasOpenTicket: false });
+      const upstream = await cfmFetch("/api/tickets");
+      if (!upstream.ok) return res.status(502).json({ message: `CFM returned ${upstream.status}` });
+      const rawData = await upstream.json();
+      const tickets: any[] = Array.isArray(rawData) ? rawData : (rawData.data ?? rawData.tickets ?? []);
+      const wantCentral = normCentral(central);
+      const wantCabin = String(cabin).trim();
+      const wantBox = String(box).trim();
+      let hit: any = null;
+      for (const t of tickets) {
+        if (t?.status !== "open") continue;
+        const tCentral = normCentral(t?.central?.name ?? t?.centralDepartment);
+        const tCabin = String(t?.cable?.number ?? "").trim();
+        // طابق البكس؛ ولو عندنا سنترال/كابينة طابقهم كمان (loosely للسنترال)
+        if (wantCabin && tCabin && tCabin !== wantCabin) continue;
+        if (wantCentral && tCentral && !(tCentral.includes(wantCentral) || wantCentral.includes(tCentral))) continue;
+        const boxes = parseTicketBoxes(t?.box);
+        if (boxes.some((b) => String(b).trim() === wantBox)) {
+          hit = { ticketNumber: String(t?.ticketNumber ?? ""), faultType: String(t?.faultType?.name ?? ""), createdAt: String(t?.createdAt ?? "") };
+          break;
+        }
+      }
+      res.json({ hasOpenTicket: !!hit, ticket: hit });
+    } catch (e: any) {
+      res.status(502).json({ message: `تعذّر التحقق من تذاكر الشبكة الأرضية: ${e.message}` });
     }
   });
 
