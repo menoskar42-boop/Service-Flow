@@ -567,8 +567,16 @@ export function FileUploadSection() {
 
   return (
     <div className="space-y-5" dir="rtl">
-      {/* زر تشغيل التقارير اليومية */}
-      <div className="flex justify-end">
+      {/* زر تشغيل التقارير اليومية + زر تحديث منافذ MSAN من Provisioning Portal */}
+      <div className="flex justify-end gap-2">
+        <Button
+          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank", "noopener,noreferrer")}
+          className="gap-2 bg-cyan-600 hover:bg-cyan-700 text-white"
+          title="يفتح Provisioning Portal ويشغّل سكربت تحديث ملف البورتات تلقائياً لكل أكواد الأمسان المخزّنة"
+        >
+          <Network className="w-4 h-4" />
+          تحديث منافذ MSAN
+        </Button>
         <Button
           onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank", "noopener,noreferrer")}
           className="gap-2 bg-green-600 hover:bg-green-700 text-white"
