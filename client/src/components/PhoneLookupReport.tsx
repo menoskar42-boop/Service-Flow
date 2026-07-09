@@ -254,6 +254,18 @@ export function PhoneLookupReport() {
       ]
     : [];
 
+  // ترتيب مخصّص للموبايل (عمود واحد) — مستقل عن ترتيب الديسكتوب (عمودين)
+  const MOBILE_ORDER = [
+    "رقم التليفون الكامل", "رقم الموبايل", "اسم الفنى", "السنترال", "رقم الكابينة", "رقم البكس",
+    "DP Terminal", "كود الكابينة (MSAN)", "رقم الفريم", "رقم الأكونت", "السرعة الحالية", "أقصى سرعة",
+    "الاسكور", "تاريخ آخر قياس", "آخر رفع سرعة", "آخر إيقاف PO", "تاريخ آخر شكوى", "إحداثيات البكس",
+    "Port Type", "voice status", "data status", "Row", "Column", "operator",
+    "حالة صيانة البكس", "هل البكس له تكت أرضية", "shelf", "slot", "Port", "IDU", "ODU",
+    "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out", "رقم التليفون",
+  ];
+  const byLabel = new Map(fields.map((f) => [f[0], f]));
+  const mobileFields = MOBILE_ORDER.map((l) => byLabel.get(l)).filter(Boolean) as [string, ReactNode][];
+
   const handleExportExcel = () => {
     if (!line) return;
     const row = {
@@ -425,19 +437,29 @@ export function PhoneLookupReport() {
 
       {line && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-gray-100">
+          {/* الديسكتوب: عمودين بالترتيب المطابق للإكسيل */}
+          <div className="hidden sm:grid grid-cols-2 gap-px bg-gray-100">
             {fields.map(([label, value]) => {
               const fullWidth = FULL_WIDTH_FIELDS.has(label as string);
               return (
                 <div
                   key={label}
-                  className={`flex items-center justify-between gap-3 bg-white px-4 py-3 ${fullWidth ? "sm:col-span-2" : ""}`}
+                  className={`flex items-center justify-between gap-3 bg-white px-4 py-3 ${fullWidth ? "col-span-2" : ""}`}
                 >
                   <span className="text-sm text-muted-foreground">{label}</span>
                   <span className="text-sm font-semibold text-left">{value}</span>
                 </div>
               );
             })}
+          </div>
+          {/* الموبايل: عمود واحد بترتيب مخصّص */}
+          <div className="grid sm:hidden grid-cols-1 gap-px bg-gray-100">
+            {mobileFields.map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-3 bg-white px-4 py-3">
+                <span className="text-sm text-muted-foreground">{label}</span>
+                <span className="text-sm font-semibold text-left">{value}</span>
+              </div>
+            ))}
           </div>
         </Card>
       )}
