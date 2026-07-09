@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.5
+// @version      1.1.6
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -227,13 +227,36 @@
     } catch (e) { console.warn("csv err", e); return false; }
   }
   // يضغط تبويب بالاسم بشكل موثوق (يستهدف الرابط/الخلية القابلة للنقر)
+  // ضغط شامل جداً — تسلسل أحداث كامل + النقر الأصلى (لتبويبات OBIEE العنيدة)
+  function fireClick(el) {
+    if (!el) return;
+    try { el.scrollIntoView({ block: "center" }); } catch (e) {}
+    const o = { bubbles: true, cancelable: true, view: window };
+    for (const t of ["pointerover", "mouseover", "mouseenter", "pointerdown", "mousedown", "focus", "pointerup", "mouseup", "click"]) {
+      try {
+        const E = t.startsWith("pointer") && typeof PointerEvent === "function" ? PointerEvent : (t === "focus" ? FocusEvent : MouseEvent);
+        el.dispatchEvent(new E(t, o));
+      } catch (e) { try { el.dispatchEvent(new MouseEvent(t.replace("pointer", "mouse"), o)); } catch (e2) {} }
+    }
+    try { if (typeof el.click === "function") el.click(); } catch (e) {}
+  }
+  const tagRank = (el) => (el.tagName === "A" ? 0 : el.tagName === "TD" ? 1 : 2);
   async function clickTabByText(re) {
-    const el = await waitFor(() => qAll("a,span,div,td,li").find((e) => visible(e) && re.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 30), 15000);
-    if (!el) return false;
-    const target = el.closest("a,td,li") || el;
-    clickEl(target);
-    if (target !== el) clickEl(el);
-    return true;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const cands = qAll("a,td,span,div,li").filter((e) => visible(e) && re.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 30);
+      cands.sort((x, y) => tagRank(x) - tagRank(y)); // الروابط أولاً
+      const el = cands[0];
+      if (el) {
+        const clickable = el.closest("a") || el.closest("td") || el;
+        console.log("[430D] ضغط تبويب على:", clickable.tagName, JSON.stringify((clickable.textContent || "").trim().slice(0, 30)), clickable.outerHTML && clickable.outerHTML.slice(0, 160));
+        fireClick(clickable);
+        if (clickable !== el) fireClick(el);
+        await sleep(1800);
+        return true;
+      }
+      await sleep(1200);
+    }
+    return false;
   }
   async function reportFlow() {
     banner("📅 ضبط التواريخ (" + FROM_STR + " → " + TO_STR + ")…");
