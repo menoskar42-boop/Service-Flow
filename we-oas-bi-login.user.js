@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.2.1
+// @version      1.2.2
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -323,21 +323,36 @@
   const isReport = /saw\.dll|\/analytics\//i.test(path);
   const isHome   = !isReport && (/\/dv\//i.test(path) || /home\.jsp/i.test(path));
 
-  const is430Report = /430D/i.test(location.href); // تقرير 430D تحديداً (مش تقارير we-oas تانية)
+  // نص الصفحة (عبر كل الـ iframes) — للتمييز بين تقارير we-oas (الـ URL بيتشال منه الـ bippath)
+  function pageText() { let s = ""; for (const d of docsList()) { try { s += " " + (d.body ? d.body.innerText : ""); } catch (e) {} } return s; }
+  // تقرير 430D = فيه from_date/to_date، ومش فيه P_CABINET_NO (اللى بتاع 131)
+  async function is430ReportPage() {
+    return await waitFor(() => {
+      const t = pageText();
+      if (/P_CABINET_NO|P_CENTRAL_NAME|نحاسى?/i.test(t)) return false; // ده تقرير 131 مش بتاعنا
+      if (/from_?date/i.test(t) && /to_?date/i.test(t)) return true;
+      return null; // لسه بيحمّل
+    }, 20000);
+  }
   let started = false;
   async function kickoff(manual) {
     if (started) return; started = true;
-    if (isReport) { if (!manual && !is430Report) return; await reportFlow(); } // ماتشتغلش على تقارير we-oas التانية
+    if (isReport) await reportFlow();
     else if (isHome) await homeFlow();
   }
 
   if (isLogin) {
     autoLogin();
-  } else {
-    const mine = isHome || is430Report; // اعرض الواجهة فقط على صفحات 430D
-    if (mine) ui();
-    // شغّل تلقائياً لو جايين من الدخول (الفلاج شغّال)، بعد ما الـ SPA يجهز
-    if (mine && flagOn()) waitFor(() => document.body, 10000).then(() => sleep(1800)).then(() => kickoff(false)).catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+  } else if (isHome) {
+    ui();
+    if (flagOn()) waitFor(() => document.body, 10000).then(() => sleep(1800)).then(() => kickoff(false)).catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+  } else if (isReport) {
+    // اتأكد من المحتوى إنه تقرير 430D (مش 131) قبل ما نظهر أى حاجة أو نشتغل
+    is430ReportPage().then((ok) => {
+      if (!ok) return; // مش تقرير 430D — سيبها للسكربت التانى
+      ui();
+      if (flagOn()) sleep(800).then(() => kickoff(false)).catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+    }).catch(() => {});
   }
 
   // تصدير يدوى من الكونسول لو حبيت تعيد التنزيل: OAS_export()

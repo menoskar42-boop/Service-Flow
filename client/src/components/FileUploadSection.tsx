@@ -580,10 +580,10 @@ export function FileUploadSection() {
         <Button
           onClick={() => window.open("https://we-oas.te.eg/bi-security-login/login.jsp?msi=false&mt=false&profileMust=true&redirect=L2R2L3VpL2hvbWUuanNwP3BhZ2VpZD1ob21lJmhhc2g9aTRPeDNTVkNPXzVLUUswc2lHUThxUTFNQVp6MGRTLVg5aXgzRGQ5RmlHUVJKd3M5cnNZcGQyaURJRjZUZEZWZQ==", "_blank", "noopener,noreferrer")}
           className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
-          title="يفتح WE OAS BI ويسجّل الدخول تلقائياً"
+          title="يفتح WE OAS BI ويسجّل الدخول ويشغّل تقرير 430D تلقائياً"
         >
           <BarChart3 className="w-4 h-4" />
-          WE OAS BI
+          430D
         </Button>
         <Button
           onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank", "noopener,noreferrer")}

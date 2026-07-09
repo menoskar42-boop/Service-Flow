@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131 ارقام التليفونات على كابينة»، يختار P_CENTRAL_NAME=ديروط و P_CABINET_NO=1-1، Apply، ثم ينزّل Excel واحد بثلاث شيتات: نحاسي + فيبر + دوائر المعلومات. لا يرفع أى بيانات للموقع.
-// @version      1.0.0
+// @version      1.0.1
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -255,11 +255,21 @@
     banner("📥 اتحمّل ملف Excel (نحاسي/فيبر/دوائر المعلومات).", "#2e7d32");
   }
 
-  /* ================== الراوتر ================== */
+  /* ================== الراوتر ==================
+     ملاحظة: OBIEE بيشيل الـ bippath من الـ URL، فبنميّز التقرير من محتوى الصفحة مش الـ URL. */
   const url = location.href;
-  let urlDec = url; try { urlDec = decodeURIComponent(url); } catch (e) {}
   const isLogin = /bi-security-login/i.test(url);
-  const is131 = /saw\.dll/i.test(url) && /131/.test(urlDec) && /كابين/.test(urlDec);
+  const isSaw = /saw\.dll|\/analytics\//i.test(url);
+  function pageText() { let s = ""; for (const d of docsList()) { try { s += " " + (d.body ? d.body.innerText : ""); } catch (e) {} } return s; }
+  // تقرير 131 = فيه P_CABINET_NO/P_CENTRAL_NAME أو تبويبات نحاسى+دوائر المعلومات، ومش فيه from_date (بتاع 430D)
+  async function is131ReportPage() {
+    return await waitFor(() => {
+      const t = pageText();
+      if (/from_?date/i.test(t) && /to_?date/i.test(t)) return false; // ده تقرير 430D
+      if (/P_CABINET_NO|P_CENTRAL_NAME/i.test(t) || (/نحاسى?/.test(t) && /دوائر\s*المعلومات/.test(t))) return true;
+      return null; // لسه بيحمّل
+    }, 20000);
+  }
 
   let started = false;
   async function kickoff(manual) {
@@ -269,9 +279,12 @@
 
   if (isLogin) {
     autoLogin();
-  } else if (is131) {
-    ui();
-    waitFor(() => document.body, 10000).then(() => sleep(1800)).then(() => kickoff(false)).catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+  } else if (isSaw) {
+    is131ReportPage().then((ok) => {
+      if (!ok) return; // مش تقرير 131 — سيبها لسكربت 430D
+      ui();
+      sleep(800).then(() => kickoff(false)).catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+    }).catch(() => {});
   }
 
   // تصدير يدوى للتبويب الظاهر: WEOAS131_export()
