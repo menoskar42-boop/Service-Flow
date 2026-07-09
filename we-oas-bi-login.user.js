@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.6
+// @version      1.2.0
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -202,29 +202,42 @@
   }
   // جدول النتائج الظاهر فقط (تبويب النشط) — مش الجداول المخفية للتبويبات التانية
   function visibleReportTable() {
-    const tables = qAll("table").filter((t) => visible(t) && /التليفون|complain\s*no/i.test(t.textContent || ""));
+    const tables = qAll("table").filter((t) => visible(t) && /التليفون|tel\s*no|complain\s*no/i.test(t.textContent || ""));
     return tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0] || null;
   }
-  // يقرأ الجدول الظاهر ويحوّله CSV يفتح فى إكسيل
-  function scrapeReportCsv() {
-    const table = visibleReportTable();
-    if (!table) return null;
-    const rows = [...table.querySelectorAll("tr")]
+  // يقرأ صفوف الجدول الظاهر → Array من Arrays (أول صف = العناوين)
+  function scrapeRows(table) {
+    if (!table) return [];
+    return [...table.querySelectorAll("tr")]
       .map((tr) => [...tr.querySelectorAll("th,td")].map((c) => (c.textContent || "").replace(/\s+/g, " ").trim()))
       .filter((r) => r.length > 1 && r.some((c) => c));
-    if (!rows.length) return null;
-    const esc = (v) => '"' + String(v).replace(/"/g, '""') + '"';
-    return "﻿" + rows.map((r) => r.map(esc).join(";")).join("\r\n");
   }
-  function downloadCsv(csv, name) {
+  const rowsSig = (rows) => rows.length + "|" + ((rows[1] || []).join("~"));
+  // بناء ملف Excel (SpreadsheetML 2003 XML) بعدة شيتات — بدون مكتبات خارجية
+  const xmlEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  function buildXls(sheets) {
+    let x = '<?xml version="1.0"?>\r\n<?mso-application progid="Excel.Sheet"?>\r\n';
+    x += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\r\n';
+    for (const s of sheets) {
+      const nm = (s.name || "Sheet").replace(/[\\\/\?\*\[\]:]/g, " ").slice(0, 31);
+      x += '<Worksheet ss:Name="' + xmlEsc(nm) + '"><Table>\r\n';
+      for (const r of (s.rows || [])) {
+        x += "<Row>" + r.map((c) => '<Cell><Data ss:Type="String">' + xmlEsc(c) + "</Data></Cell>").join("") + "</Row>\r\n";
+      }
+      x += "</Table></Worksheet>\r\n";
+    }
+    x += "</Workbook>";
+    return x;
+  }
+  function downloadFile(content, name, mime) {
     try {
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const blob = new Blob(["﻿" + content], { type: (mime || "text/plain") + ";charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = url; a.download = name;
       (document.body || document.documentElement).appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 5000);
       return true;
-    } catch (e) { console.warn("csv err", e); return false; }
+    } catch (e) { console.warn("download err", e); return false; }
   }
   // يضغط تبويب بالاسم بشكل موثوق (يستهدف الرابط/الخلية القابلة للنقر)
   // ضغط شامل جداً — تسلسل أحداث كامل + النقر الأصلى (لتبويبات OBIEE العنيدة)
@@ -269,25 +282,38 @@
     if (toI) setValue(toI, TO_STR); else banner("⚠️ لم أجد خانة to_date", "#ef6c00");
     closeDatePopup();
     await sleep(500);
+    // ===== 1) تبويب التفاصيل =====
     banner("▶️ Apply (التفاصيل) — استنى النتائج…");
     clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-    await sleep(7000); // انتظار ورود نتائج التفاصيل
-    // تبويب «تفاصيل المتبقى»
-    banner("↪️ تبويب تفاصيل المتبقى…");
+    const detailsTable = await waitFor(() => { const tb = visibleReportTable(); return tb && tb.querySelectorAll("tr").length > 2 ? tb : null; }, 35000);
+    await sleep(1500);
+    const detailsRows = scrapeRows(visibleReportTable());
+    const detailsSig = rowsSig(detailsRows);
+    banner("✔️ التفاصيل: " + Math.max(0, detailsRows.length - 1) + " صف — للمتبقى…", "#2e7d32");
+    // ===== 2) تبويب تفاصيل المتبقى =====
     const okTab = await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
     if (!okTab) banner("⚠️ لم أجد تبويب «تفاصيل المتبقى»", "#ef6c00");
-    await sleep(4000); // انتظار إعادة رسم صفحة المتبقى (going to redraw the tabs…)
-    // Apply تانى (على صفحة المتبقى)
+    await sleep(4000); // انتظار إعادة رسم صفحة المتبقى
     banner("▶️ Apply (المتبقى) — استنى النتائج…");
     clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-    // استنى صفوف تظهر فى الجدول الظاهر (حتى 30 ثانية)
-    const t = await waitFor(() => { const tb = visibleReportTable(); return tb && tb.querySelectorAll("tr").length > 2 ? tb : null; }, 30000);
+    // استنى جدول تختلف بياناته عن التفاصيل (= تبويب المتبقى فعلاً حمّل)
+    const motTable = await waitFor(() => {
+      const tb = visibleReportTable();
+      if (!tb || tb.querySelectorAll("tr").length <= 2) return null;
+      const r = scrapeRows(tb);
+      return rowsSig(r) !== detailsSig ? tb : null;
+    }, 40000);
     await sleep(1500);
-    // تصدير الجدول الظاهر (المتبقى)
-    const csv = scrapeReportCsv();
-    if (csv) { downloadCsv(csv, "430D_almotabaqi_" + FROM_STR + "_" + TO_STR + ".csv"); banner("📥 اتحمّل شيت «تفاصيل المتبقى» — راجعه للتأكد.", "#2e7d32"); }
-    else if (t) { banner("ℹ️ تبويب المتبقى ظهر لكن بدون صفوف (فاضى للفترة دى).", "#ef6c00"); }
-    else banner("⚠️ لم تظهر نتائج المتبقى (استنى وجرّب OAS_export())", "#ef6c00");
+    const motRows = motTable ? scrapeRows(motTable) : [];
+    // ===== 3) ملف Excel واحد بشيتين =====
+    const sheets = [];
+    if (detailsRows.length) sheets.push({ name: "التفاصيل", rows: detailsRows });
+    if (motRows.length) sheets.push({ name: "تفاصيل المتبقى", rows: motRows });
+    if (sheets.length) {
+      downloadFile(buildXls(sheets), "430D_" + FROM_STR + "_" + TO_STR + ".xls", "application/vnd.ms-excel");
+      banner("📥 اتحمّل ملف Excel: التفاصيل (" + Math.max(0, detailsRows.length - 1) + ") + المتبقى (" + Math.max(0, motRows.length - 1) + ").", "#2e7d32");
+    } else banner("⚠️ لم تظهر نتائج لتصديرها", "#ef6c00");
+    if (detailsRows.length && !motRows.length) banner("ℹ️ التفاصيل فقط اتصدّرت — المتبقى لم يحمّل/فاضى.", "#ef6c00");
     clearFlag();
   }
 
@@ -313,5 +339,5 @@
   }
 
   // تصدير يدوى من الكونسول لو حبيت تعيد التنزيل: OAS_export()
-  window.OAS_export = () => { const c = scrapeReportCsv(); if (c) { downloadCsv(c, "430D_export_" + FROM_STR + "_" + TO_STR + ".csv"); console.log("✅ اتحمّل"); } else console.warn("مفيش جدول"); };
+  window.OAS_export = () => { const r = scrapeRows(visibleReportTable()); if (r.length) { downloadFile(buildXls([{ name: "بيانات", rows: r }]), "430D_export_" + FROM_STR + "_" + TO_STR + ".xls", "application/vnd.ms-excel"); console.log("✅ اتحمّل"); } else console.warn("مفيش جدول ظاهر"); };
 })();
