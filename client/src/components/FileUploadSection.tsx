@@ -594,7 +594,15 @@ export function FileUploadSection() {
           تحديث منافذ MSAN
         </Button>
         <Button
-          onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank", "noopener,noreferrer")}
+          onClick={() => {
+            // يفتح FCC دائماً؛ وأول ضغطة فى اليوم يفتح كمان تحديث منافذ MSAN تلقائياً
+            const today = new Date().toISOString().slice(0, 10);
+            if (localStorage.getItem("sf_msan_auto_date") !== today) {
+              localStorage.setItem("sf_msan_auto_date", today);
+              window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank", "noopener,noreferrer");
+            }
+            window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank", "noopener,noreferrer");
+          }}
           className="gap-2 bg-green-600 hover:bg-green-700 text-white"
         >
           <RefreshCw className="w-4 h-4" />
