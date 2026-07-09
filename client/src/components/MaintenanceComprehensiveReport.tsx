@@ -47,30 +47,33 @@ export function maintStatusBadge(status: string | null, ar: string | null) {
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold whitespace-nowrap ${cls}`}>{ar || "—"}</span>;
 }
 
-// يستخرج إحداثيات البكس من صف الصيانة (أسماء الحقول من الـ upstream قد تختلف فنجرّب المحتمل منها)
-export function boxCoords(r: any): { text: string; lat?: string; lng?: string } {
+// يستخرج إحداثيات البكس من صف الصيانة (عمود «الإحداثيات» — قد يكون lat/lng أو لينك خرايط أو نص)
+export function boxCoords(r: any): { text: string; lat?: string; lng?: string; url?: string } {
   if (!r || typeof r !== "object") return { text: "" };
   const norm = (k: string) => k.toLowerCase().replace(/[_\s-]/g, "");
-  const pick = (names: string[]) => {
+  const findVal = (pred: (nk: string) => boolean) => {
     for (const k of Object.keys(r)) {
-      const nk = norm(k);
-      if (names.some((n) => nk === n || nk === "box" + n || nk === n + "coordinate" || nk === n + "coord")) {
-        const v = r[k]; if (v != null && String(v).trim() !== "" && String(v).trim() !== "0") return String(v).trim();
-      }
+      if (pred(norm(k))) { const v = r[k]; if (v != null && String(v).trim() !== "" && String(v).trim() !== "0") return String(v).trim(); }
     }
     return "";
   };
-  const lat = pick(["latitude", "lat", "خطالعرض"]);
-  const lng = pick(["longitude", "lng", "long", "lon", "خطالطول"]);
-  let combined = "";
-  for (const k of Object.keys(r)) {
-    if (/(coordinates|gpslocation|geolocation|latlng|latlong|احداثيات|إحداثيات)/.test(norm(k))) {
-      const v = r[k]; if (v != null && String(v).trim() !== "") { combined = String(v).trim(); break; }
-    }
+  let lat = findVal((nk) => ["latitude", "lat", "boxlat", "boxlatitude", "خطالعرض"].includes(nk));
+  let lng = findVal((nk) => ["longitude", "lng", "lon", "long", "boxlng", "boxlongitude", "خطالطول"].includes(nk));
+  // حقل «الإحداثيات» المجمّع (لينك خرايط أو نص lat,lng)
+  const raw = findVal((nk) => /(coordinate|احداثيات|إحداثيات|latlng|latlong|gps|geolocation|maplocation|mapurl|googlemap|gmap|maplink|location|map)/.test(nk));
+  let url = "";
+  if (raw && /^https?:\/\//i.test(raw)) {
+    url = raw;
+    const m = raw.match(/[?&]q=(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/) || raw.match(/@(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/) || raw.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+    if (m) { lat = lat || m[1]; lng = lng || m[2]; }
+  } else if (raw && (!lat || !lng)) {
+    const m = raw.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/);
+    if (m) { lat = lat || m[1]; lng = lng || m[2]; }
   }
-  if (lat && lng) return { text: `${lat}, ${lng}`, lat, lng };
-  if (combined) return { text: combined };
-  return { text: lat || lng || "" };
+  if (lat && lng) return { text: `${lat}, ${lng}`, lat, lng, url: url || undefined };
+  if (url) return { text: "فتح على الخريطة", url };
+  if (raw) return { text: raw };
+  return { text: "" };
 }
 
 interface Props {
@@ -264,8 +267,8 @@ export function MaintBoxDetail({ row, onClose }: { row: MaintRow; onClose: () =>
               return (
                 <div className="col-span-2">
                   <span className="text-muted-foreground">إحداثيات البكس:</span>{" "}
-                  {c.lat && c.lng
-                    ? <a className="text-blue-600 underline" href={`https://www.google.com/maps?q=${c.lat},${c.lng}`} target="_blank" rel="noreferrer">{c.text}</a>
+                  {(c.url || (c.lat && c.lng))
+                    ? <a className="text-blue-600 underline" href={c.url || `https://www.google.com/maps?q=${c.lat},${c.lng}`} target="_blank" rel="noreferrer">{c.text} 📍</a>
                     : c.text}
                 </div>
               );

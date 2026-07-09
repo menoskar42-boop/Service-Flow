@@ -163,8 +163,8 @@ export function PhoneLookupReport() {
   const coordsCell: ReactNode = !line?.boxNumber
     ? <span className="text-gray-400">-</span>
     : (coords.text
-        ? (coords.lat && coords.lng
-            ? <a className="text-blue-600 underline text-sm" href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noreferrer">{coords.text}</a>
+        ? ((coords.url || (coords.lat && coords.lng))
+            ? <a className="text-blue-600 underline text-sm" href={coords.url || `https://www.google.com/maps?q=${coords.lat},${coords.lng}`} target="_blank" rel="noreferrer">{coords.text} 📍</a>
             : <span className="text-sm">{coords.text}</span>)
         : (maintLoading ? <span className="text-gray-400">…</span> : <span className="text-gray-400">-</span>));
 
