@@ -80,7 +80,7 @@ const scoreBadge = (v: number | null) => {
 
 // الحقول الفنية الباقية تُعرض كامل العرض (صف لكل حقل) بعد الصفوف المزدوجة (زى عمود الإكسيل اليمين)
 const FULL_WIDTH_FIELDS = new Set<string>([
-  "رقم الموبايل", "إحداثيات البكس",
+  "رقم التليفون الكامل", "إحداثيات البكس",
   "operator", "shelf", "slot", "Port", "IDU", "ODU",
   "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out",
 ]);
@@ -223,8 +223,8 @@ export function PhoneLookupReport() {
   // فالمصفوفة مرتّبة: (يمين1, شمال1, يمين2, شمال2 …) للصفوف 1–12، ثم الحقول الفنية الباقية كامل العرض (صف لكل حقل).
   const fields: [string, ReactNode][] = line
     ? [
-        // صف1: يمين | شمال
-        ["رقم التليفون الكامل", dash(line.fullPhone)], ["رقم التليفون", dash(line.telNo)],
+        // صف1: يمين | شمال (رقم الموبايل مكان رقم التليفون الكامل)
+        ["رقم الموبايل", mobileCell], ["رقم التليفون", dash(line.telNo)],
         ["السنترال", dash(line.central)],               ["اسم الفنى", dash(line.techName)],
         ["رقم الكابينة", dash(line.cabinNumber)],        ["رقم الأكونت", dash(line.accountNo)],
         ["رقم البكس", dash(line.boxNumber)],             ["السرعة الحالية", dash(line.currentSpeed)],
@@ -237,7 +237,7 @@ export function PhoneLookupReport() {
         ["Row", dash(line.rowNo)],                       ["حالة صيانة البكس", boxMaintCell],
         ["Column", dash(line.columnNo)],                 ["هل البكس له تكت أرضية", groundCell],
         // الحقول الفنية الباقية — كامل العرض (صف لكل حقل، عمود يمين فقط زى الإكسيل)
-        ["رقم الموبايل", mobileCell],
+        ["رقم التليفون الكامل", dash(line.fullPhone)],
         ["إحداثيات البكس", coordsCell],
         ["operator", dash(line.operator)],
         ["shelf", dash(line.shelf)],
