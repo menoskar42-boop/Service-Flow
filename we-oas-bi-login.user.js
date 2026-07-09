@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.4
+// @version      1.1.5
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -200,11 +200,15 @@
       }
     }
   }
-  // يقرأ أكبر جدول نتائج (اللى فيه «التليفون»/«Complain No») ويحوّله CSV يفتح فى إكسيل
+  // جدول النتائج الظاهر فقط (تبويب النشط) — مش الجداول المخفية للتبويبات التانية
+  function visibleReportTable() {
+    const tables = qAll("table").filter((t) => visible(t) && /التليفون|complain\s*no/i.test(t.textContent || ""));
+    return tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0] || null;
+  }
+  // يقرأ الجدول الظاهر ويحوّله CSV يفتح فى إكسيل
   function scrapeReportCsv() {
-    const tables = qAll("table").filter((t) => /التليفون|complain\s*no/i.test(t.textContent || ""));
-    if (!tables.length) return null;
-    const table = tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0];
+    const table = visibleReportTable();
+    if (!table) return null;
     const rows = [...table.querySelectorAll("tr")]
       .map((tr) => [...tr.querySelectorAll("th,td")].map((c) => (c.textContent || "").replace(/\s+/g, " ").trim()))
       .filter((r) => r.length > 1 && r.some((c) => c));
@@ -249,15 +253,18 @@
     banner("↪️ تبويب تفاصيل المتبقى…");
     const okTab = await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
     if (!okTab) banner("⚠️ لم أجد تبويب «تفاصيل المتبقى»", "#ef6c00");
-    await sleep(2500);
-    // Apply تانى (على تبويب المتبقى)
+    await sleep(4000); // انتظار إعادة رسم صفحة المتبقى (going to redraw the tabs…)
+    // Apply تانى (على صفحة المتبقى)
     banner("▶️ Apply (المتبقى) — استنى النتائج…");
     clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-    await sleep(9000); // انتظار ورود نتائج المتبقى
-    // تصدير شيت للتأكد من قراءة البيانات
+    // استنى صفوف تظهر فى الجدول الظاهر (حتى 30 ثانية)
+    const t = await waitFor(() => { const tb = visibleReportTable(); return tb && tb.querySelectorAll("tr").length > 2 ? tb : null; }, 30000);
+    await sleep(1500);
+    // تصدير الجدول الظاهر (المتبقى)
     const csv = scrapeReportCsv();
     if (csv) { downloadCsv(csv, "430D_almotabaqi_" + FROM_STR + "_" + TO_STR + ".csv"); banner("📥 اتحمّل شيت «تفاصيل المتبقى» — راجعه للتأكد.", "#2e7d32"); }
-    else banner("⚠️ لم أجد جدول نتائج لتصديره (استنى شوية وجرّب OAS_export())", "#ef6c00");
+    else if (t) { banner("ℹ️ تبويب المتبقى ظهر لكن بدون صفوف (فاضى للفترة دى).", "#ef6c00"); }
+    else banner("⚠️ لم تظهر نتائج المتبقى (استنى وجرّب OAS_export())", "#ef6c00");
     clearFlag();
   }
 
