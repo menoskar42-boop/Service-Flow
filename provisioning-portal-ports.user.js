@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.0.3
+// @version      1.1.0
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -252,10 +252,30 @@
     return null; // timeout
   }
 
+  /* ================== شيت تشخيص: كل الأرقام اللى اتلقطت واترفعت ================== */
+  const pickKey = (o, re) => { if (!o || typeof o !== "object") return ""; for (const k of Object.keys(o)) if (re.test(k)) { const v = o[k]; if (v != null && String(v).trim() !== "") return String(v).trim(); } return ""; };
+  function downloadDiagCsv(rows) {
+    if (!rows.length) return;
+    const SEP = ";";
+    const esc = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+    const header = ["كود الأمسان", "رقم التليفون", "Frame", "Row", "Column", "Port", "Port Type"].join(SEP);
+    const body = rows.map((r) => [r.cabin, r.phone, r.frame, r.row, r.col, r.port, r.ptype].map(esc).join(SEP)).join("\r\n");
+    const csv = "﻿" + header + "\n" + body;
+    try {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = "ports_captured_" + rows.length + "rows.csv";
+      (document.body || document.documentElement).appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      logln("📥 اتحمّل شيت التشخيص: " + rows.length + " رقم.");
+    } catch (e) { logln("csv err: " + (e && e.message || e)); }
+  }
+
   /* ================== التشغيل الرئيسى ================== */
   let running = false;
   async function run() {
     if (running) return; running = true;
+    const allCaptured = []; // كل الأرقام اللى اتلقطت (للتشخيص)
     try {
       banner("🔐 التأكد من تسجيل الدخول…", "#6a1b9a");
       await ensureLoggedIn();
@@ -276,6 +296,16 @@
         const rows = await searchAndRead(input, cabin);
         if (rows == null) { failCabins++; logln("⏱️ " + cabin + " — انتهت المهلة بدون بيانات."); await sleep(BETWEEN_CABINS_MS); continue; }
         if (!rows.length) { logln("• " + cabin + " — 0 صف."); okCabins++; await sleep(BETWEEN_CABINS_MS); continue; }
+        // سجّل كل الأرقام اللى اتلقطت لهذا الأمسان (للتشخيص)
+        for (const o of rows) allCaptured.push({
+          cabin,
+          phone: pickKey(o, /phone|msisdn|رقم/i),
+          frame: pickKey(o, /frame/i),
+          row: pickKey(o, /^row$|(^|_)row/i),
+          col: pickKey(o, /column|(^|_)col/i),
+          port: pickKey(o, /port\s*number|^port$|portno/i),
+          ptype: pickKey(o, /port\s*type/i),
+        });
         try {
           const res = await sfPostPorts(cabin, rows);
           const up = (res && (res.inserted ?? res.total)) || 0;
@@ -286,6 +316,8 @@
       }
       banner("✅ خلص. أمسان ناجح: " + okCabins + " / صفوف: " + totalRows + " / محدَّث: " + totalUp + (failCabins ? " / فشل: " + failCabins : ""), "#2e7d32");
       logln("=== انتهى: " + okCabins + " أمسان، " + totalRows + " صف، " + totalUp + " محدَّث/مضاف، " + failCabins + " فشل ===");
+      // شيت تشخيص بكل الأرقام اللى اتلقطت
+      downloadDiagCsv(allCaptured);
     } finally { running = false; }
   }
 
