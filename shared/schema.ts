@@ -594,6 +594,16 @@ export const phonePorts = pgTable("phone_ports", {
 
 export type PhonePort = typeof phonePorts.$inferSelect;
 
+// أرقام الموبايل المُدخَلة يدوياً لكل خط (تُستخدم فى بحث برقم التليفون لو الخط مالوش موبايل من مصدر آخر)
+export const lineMobiles = pgTable("line_mobiles", {
+  fullPhone: text("full_phone").primaryKey(),
+  mobile: text("mobile").notNull(),
+  updatedById: integer("updated_by_id").references(() => users.id),
+  updatedByName: text("updated_by_name"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type LineMobile = typeof lineMobiles.$inferSelect;
+
 // ─── Ticket snapshot tables (mirror ticket_queue + onu) ─────────────────────
 // Defined here so drizzle-kit treats them as managed and never drops them on
 // publish. Column types mirror the raw SQL in server/db.ts (timestamptz).

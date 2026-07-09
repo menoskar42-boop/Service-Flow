@@ -676,6 +676,17 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS row_no text`);
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS column_no text`);
 
+  // line_mobiles — أرقام موبايل مُدخَلة يدوياً لكل خط
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_mobiles (
+      full_phone text PRIMARY KEY,
+      mobile text NOT NULL,
+      updated_by_id integer REFERENCES users(id),
+      updated_by_name text,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS case_138 (

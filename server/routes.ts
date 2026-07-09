@@ -2182,6 +2182,7 @@ export async function registerRoutes(
               pp.port_type AS "portType", pp.row_no AS "rowNo", pp.column_no AS "columnNo",
               pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
               pp.operator AS "operator", pp.shelf AS "shelf", pp.slot AS "slot",
+              mob.m AS "mobile", mob.manual AS "mobileManual",
               COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
@@ -2217,6 +2218,19 @@ export async function registerRoutes(
              FROM remaining_complaints WHERE phone_number = COALESCE(pl.tel_no, t.short)
          ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
        ) cpl ON true
+       LEFT JOIN LATERAL (
+         -- رقم الموبايل: الأولوية للمُدخَل يدوياً، ثم من أوامر الشغل (wfm)، ثم من طلبات FTTH
+         SELECT m, manual FROM (
+           SELECT lm.mobile AS m, true AS manual, 0 AS pr FROM line_mobiles lm
+             WHERE lm.full_phone = COALESCE(pl.full_phone, la.full_phone, t.full)
+           UNION ALL
+           SELECT mo.mobile AS m, false AS manual, 1 AS pr FROM maintenance_orders mo
+             WHERE mo.phone_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw) AND NULLIF(btrim(mo.mobile),'') IS NOT NULL
+           UNION ALL
+           SELECT fo.customer_mobile AS m, false AS manual, 2 AS pr FROM ftth_orders_current fo
+             WHERE fo.service_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw) AND NULLIF(btrim(fo.customer_mobile),'') IS NOT NULL
+         ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
+       ) mob ON true
        LIMIT 1`,
       [phone, short, full],
     );
@@ -2224,6 +2238,27 @@ export async function registerRoutes(
     if (!line || !line.hasData) return res.json({ found: false });
     delete line.hasData;
     res.json({ found: true, line });
+  });
+
+  // POST /api/line-mobiles — حفظ/تحديث رقم موبايل يدوى لخط (بحث برقم التليفون)
+  app.post("/api/line-mobiles", requireAuth, async (req: any, res) => {
+    if (req.user?.role === ROLES.SALES) return res.status(403).json({ message: "غير مسموح" });
+    const rawPhone = String(req.body?.fullPhone ?? "").replace(/\D/g, "");
+    const mobile = String(req.body?.mobile ?? "").trim();
+    if (!rawPhone) return res.status(400).json({ message: "رقم التليفون مطلوب" });
+    const full = rawPhone.length >= 9 ? rawPhone : ("88" + rawPhone);
+    if (!mobile) {
+      await pool.query(`DELETE FROM line_mobiles WHERE full_phone = $1`, [full]);
+      return res.json({ ok: true, mobile: "" });
+    }
+    await pool.query(
+      `INSERT INTO line_mobiles (full_phone, mobile, updated_by_id, updated_by_name, updated_at)
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (full_phone) DO UPDATE SET mobile = EXCLUDED.mobile,
+         updated_by_id = EXCLUDED.updated_by_id, updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+      [full, mobile, req.user?.id ?? null, req.user?.username ?? req.user?.name ?? ""],
+    );
+    res.json({ ok: true, mobile });
   });
 
   // GET /api/reports/regularized-no-account — الأعطال المنتظمة خلال فترة التى ليس لها رقم أكونت (تقرير 1)
