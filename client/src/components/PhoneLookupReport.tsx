@@ -223,8 +223,8 @@ export function PhoneLookupReport() {
   // فالمصفوفة مرتّبة: (يمين1, شمال1, يمين2, شمال2 …) للصفوف 1–12، ثم الحقول الفنية الباقية كامل العرض (صف لكل حقل).
   const fields: [string, ReactNode][] = line
     ? [
-        // صف1: يمين | شمال (رقم الموبايل مكان رقم التليفون الكامل)
-        ["رقم الموبايل", mobileCell], ["رقم التليفون الكامل", dash(line.fullPhone)],
+        // صف1: يمين | شمال (رقم التليفون الكامل يمين، رقم الموبايل شمال)
+        ["رقم التليفون الكامل", dash(line.fullPhone)], ["رقم الموبايل", mobileCell],
         ["السنترال", dash(line.central)],               ["اسم الفنى", dash(line.techName)],
         ["رقم الكابينة", dash(line.cabinNumber)],        ["رقم الأكونت", dash(line.accountNo)],
         ["رقم البكس", dash(line.boxNumber)],             ["السرعة الحالية", dash(line.currentSpeed)],
