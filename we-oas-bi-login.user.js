@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.1.2
+// @version      1.1.3
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -78,11 +78,21 @@
   function clickEl(el) {
     if (!el) return false;
     try { el.scrollIntoView({ block: "center" }); } catch (e) {}
-    for (const t of ["mousedown", "mouseup", "click"]) el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window }));
+    try { el.focus(); } catch (e) {}
+    const opts = { bubbles: true, cancelable: true, view: window };
+    for (const t of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      try {
+        const Ev = t.startsWith("pointer") && typeof PointerEvent === "function" ? PointerEvent : MouseEvent;
+        el.dispatchEvent(new Ev(t, opts));
+      } catch (e) { try { el.dispatchEvent(new MouseEvent(t.replace("pointer", "mouse"), opts)); } catch (e2) {} }
+    }
     const form = el.closest && el.closest("form");
     if (form && typeof form.requestSubmit === "function") { try { form.requestSubmit(el.type === "submit" ? el : undefined); } catch (e) {} }
     return true;
   }
+
+  // لينك التقرير الدائم (مسار الكتالوج — لا يحتوى توكن جلسة)
+  const REPORT_URL = "https://we-oas.te.eg/analytics/saw.dll?bipublisherEntry&action=open&bippath=%2FFCC%20Prod%2F430D%20%D8%A7%D9%84%D9%82%D8%B7%D8%A7%D8%B9-TEDATA%20-%20Details%20%D9%85%D8%AA%D8%A7%D8%A8%D8%B9%D8%A9%20%D8%A7%D8%B9%D8%B7%D8%A7%D9%84.xdo&itemtype=.xdo";
 
   /* ================== التواريخ (MM-DD-YYYY زى الموقع) ================== */
   const pad = (n) => String(n).padStart(2, "0");
@@ -155,34 +165,25 @@
     return null;
   }
   async function homeFlow() {
-    banner("📂 البحث عن كارت تقرير 430D…");
-    // 1) جرّب تلاقيه فى المفضلة/اللوحات مباشرة (البحث مش لازم)
-    let card = await waitFor(findReportCard, 9000);
-    // 2) لو ملقاش، اكتب فى خانة البحث وحاول تانى
-    if (!card) {
-      const box = qAll("input,textarea").find((i) => visible(i) && /search\s*everything/i.test(i.placeholder || ""));
-      if (box) { setValue(box, "430d"); box.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true })); box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); }
-      card = await waitFor(findReportCard, 20000);
-    }
-    if (!card) { banner("❌ لم أجد كارت «430D القطاع-TEDATA»", "#c62828"); return; }
-    banner("📂 فتح التقرير…");
-    clickEl(card);
-    // التقرير غالباً بيفتح فى تاب جديد — السكربت هيكمّل هناك تلقائياً (الفلاج شغّال)
+    // نفتح التقرير باللينك الدائم مباشرةً (أضمن من الضغط على الكارت). الفلاج شغّال فالسكربت هيكمّل فى صفحة التقرير.
+    banner("📂 فتح التقرير باللينك المباشر…");
+    location.href = REPORT_URL;
   }
 
   /* ================== 3) صفحة التقرير: التواريخ + Apply + تبويب المتبقى + Apply ================== */
+  // يرجّع الخانة التى تلى اللابل (from_date/to_date) مباشرةً فى ترتيب الصفحة —
+  // مش أى input فى الأب (اللى كان بيخلّى to_date ياخد نفس خانة from).
   function findLabeledInput(re) {
     for (const d of docsList()) {
       let lbl;
       try { lbl = [...d.querySelectorAll("*")].find((e) => e.children.length === 0 && re.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 20); } catch (e) {}
-      if (lbl) {
-        let node = lbl;
-        for (let k = 0; k < 6 && node; k++) {
-          const inp = [...node.querySelectorAll("input")].find((i) => visible(i) && i.type !== "hidden" && i.type !== "button" && i.type !== "submit");
-          if (inp) return inp;
-          node = node.parentElement;
-        }
-      }
+      if (!lbl) continue;
+      let inputs = [];
+      try { inputs = [...d.querySelectorAll("input")].filter((i) => visible(i) && i.type !== "hidden" && i.type !== "button" && i.type !== "submit" && i.type !== "checkbox" && i.type !== "radio"); } catch (e) {}
+      // الخانات التى تأتى بعد اللابل فى ترتيب DOM → أقربها هى خانة هذا اللابل
+      const following = inputs.filter((i) => lbl.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (following.length) return following[0];
+      if (inputs.length) return inputs[0];
     }
     return null;
   }
