@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.2.2
+// @version      1.2.3
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -278,8 +278,10 @@
     closeDatePopup();
     const fromI = findLabeledInput(/from_?date/i);
     const toI = findLabeledInput(/to_?date/i);
-    if (fromI) setValue(fromI, FROM_STR); else banner("⚠️ لم أجد خانة from_date", "#ef6c00");
-    if (toI) setValue(toI, TO_STR); else banner("⚠️ لم أجد خانة to_date", "#ef6c00");
+    // حاجز صارم: ده مش تقرير 430D (مفيش from/to date) → لا تعمل حاجة ولا تنزّل أى ملف
+    if (!fromI || !toI) { banner("⏹️ مش تقرير 430D (مفيش from/to date) — تجاهل.", "#607d8b"); clearFlag(); return; }
+    setValue(fromI, FROM_STR);
+    setValue(toI, TO_STR);
     closeDatePopup();
     await sleep(500);
     // ===== 1) تبويب التفاصيل =====
