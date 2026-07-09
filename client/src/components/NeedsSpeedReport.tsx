@@ -92,12 +92,10 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
-  const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر تاريخ (إيقاف PO / رفع سرعة)
-  const isPoStopReport = endpoint.includes("needs-po-stop");
-  const isNeedsSpeedReport = endpoint.includes("needs-speed");
-  const showPoStopFilter = isPoStopReport || isNeedsSpeedReport;
-  const dateFilterLabel = isPoStopReport ? "استبعد إيقاف PO بعد:" : "استبعد رفع سرعة بعد:";
-  const dateFilterParam = isPoStopReport ? "poStoppedBefore" : "raisedBefore";
+  const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد التاريخ
+  const showPoStopFilter = endpoint.includes("needs-po-stop") || endpoint.includes("needs-speed");
+  const dateFilterLabel = "استبعد إيقاف PO بعد:";
+  const dateFilterParam = "poStoppedBefore";
   const [page, setPage] = useState(1);
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
