@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.1
+// @version      1.2.3
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -105,6 +105,28 @@
     input.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
     input.dispatchEvent(new Event("blur", { bubbles: true }));
   }
+  // كتابة «بشرية» حرفاً بحرف — تجبر Angular/reactive-forms على تسجيل القيمة فى الـ FormControl
+  // (لأن مجرّد ضبط value + input أحياناً بيعرض القيمة بس ما بيسجّلهاش → "Invalid username or password")
+  function typeInto(input, text) {
+    const proto = input.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+    try { input.focus(); } catch (e) {}
+    input.dispatchEvent(new Event("focus", { bubbles: true }));
+    // مسح أى قيمة قديمة
+    setter.call(input, "");
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    let cur = "";
+    for (const ch of String(text)) {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: ch, bubbles: true }));
+      cur += ch;
+      setter.call(input, cur);
+      input.dispatchEvent(new InputEvent("input", { bubbles: true, data: ch, inputType: "insertText" }));
+      input.dispatchEvent(new KeyboardEvent("keyup", { key: ch, bubbles: true }));
+    }
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    input.dispatchEvent(new Event("blur", { bubbles: true }));
+  }
+
   function findButtonByText(re) {
     const els = [...document.querySelectorAll("button, input[type='button'], input[type='submit'], a")];
     return els.find((b) => visible(b) && re.test(((b.textContent || b.value || "").trim())));
@@ -182,6 +204,32 @@
   // هل إحنا على صفحة اللوجين؟ (وجود حقل باسورد = لوجين — مهم جداً عشان مانكتبش كود الكابينة فى خانة اليوزر)
   const onLoginPage = () => /#\/login/i.test(location.hash) || !!document.querySelector("input[type='password']");
 
+  // ابحث عن زرّ Login مهما كان نوع العنصر (button / a / div / span / role=button) — مش بس <button>.
+  // الزرّ فى Angular أحياناً <div>/<span>، فلازم نوسّع، مع تمييزه عن عنوان الصفحة «Login».
+  function findLoginButton() {
+    const re = /^\s*(login|log\s*in|sign\s*in|تسجيل\s*الدخول|دخول|تسجيل)\s*$/i;
+    const all = [...document.querySelectorAll("button, input[type='submit'], input[type='button'], a, [role='button'], div, span")].filter(visible);
+    // مرشّحون: نصّهم بالظبط Login/Sign in وليسوا عنوان (h1-h6)
+    const cand = all.filter((el) => {
+      if (/^H[1-6]$/.test(el.tagName)) return false;
+      const t = (el.textContent || el.value || "").trim();
+      return re.test(t);
+    });
+    if (!cand.length) return null;
+    // فضّل العناصر اللى فعلاً قابلة للضغط
+    const clickable = cand.filter((el) => {
+      try {
+        return el.tagName === "BUTTON" || /submit|button/i.test(el.type || "") || el.tagName === "A" ||
+          el.getAttribute("role") === "button" || /\bbtn\b|button/i.test(el.className || "") ||
+          getComputedStyle(el).cursor === "pointer";
+      } catch (e) { return false; }
+    });
+    const pool = clickable.length ? clickable : cand;
+    // اختر الأعمق (أقصر نص) لتفادى الحاوية الأب
+    pool.sort((a, b) => (a.textContent || "").length - (b.textContent || "").length);
+    return pool[0] || null;
+  }
+
   async function doLoginOnce() {
     const pass = await waitFor(() => document.querySelector("input[type='password']"), 15000);
     if (!pass) return !onLoginPage(); // مفيش حقل باسورد → غالباً بالفعل داخل
@@ -189,12 +237,28 @@
     const inputs = [...document.querySelectorAll("input")].filter(visible);
     const pIdx = inputs.indexOf(pass);
     const userInput = inputs.slice(0, pIdx).reverse().find((i) => !/password/i.test(i.type)) || inputs[0];
-    // امسح أى قيمة قديمة (ممكن يكون فيها كود كابينة من محاولة سابقة) واكتب اليوزر الصحيح
-    if (userInput) { setNgValue(userInput, ""); setNgValue(userInput, USER); }
-    setNgValue(pass, PASS);
-    await sleep(400);
-    const btn = findButtonByText(/^login$|تسجيل|دخول/i) || findButtonByText(/login/i);
-    if (btn) btn.click();
+    // اكتب اليوزر والباسورد «بشرياً» حرفاً بحرف عشان Angular يسجّلهم فى الـ FormControl فعلاً
+    if (userInput) { typeInto(userInput, USER); await sleep(150); }
+    typeInto(pass, PASS);
+    await sleep(500);
+    // تأكيد أن القيم اتكتبت فعلاً قبل الضغط
+    logln("👤 user=" + (userInput ? userInput.value : "?") + " / pass.len=" + (pass.value || "").length);
+    // اضغط Login بتسلسل أحداث ماوس حقيقى (زى Search) + محاولة submit — btn.click() لوحده مش كفاية مع Angular
+    const btn = findLoginButton();
+    if (btn) { logln("🖱️ ضغط زر Login…"); clickEl(btn); }
+    else { logln("⚠️ لم أجد زر Login — أُرسل Enter فى الباسورد."); }
+    await sleep(600);
+    // Fallback: لو لسه على اللوجين، جرّب Enter فى الباسورد + requestSubmit + إعادة ضغط
+    if (onLoginPage()) {
+      for (const ev of ["keydown", "keypress", "keyup"]) {
+        pass.dispatchEvent(new KeyboardEvent(ev, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+      }
+      const form = (btn && btn.closest && btn.closest("form")) || pass.closest("form");
+      if (form && typeof form.requestSubmit === "function") { try { form.requestSubmit(); } catch (e) {} }
+      await sleep(400);
+      const btn2 = findLoginButton();
+      if (onLoginPage() && btn2) clickEl(btn2);
+    }
     // انتظر مغادرة صفحة اللوجين فعلياً
     await waitFor(() => !onLoginPage(), 20000);
     await sleep(1200);
