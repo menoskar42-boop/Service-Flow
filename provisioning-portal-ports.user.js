@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.3
+// @version      1.2.4
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -24,7 +24,7 @@
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem";
-  const PASS = "Mon_oskar352";
+  const PASS = "Mon_oskar364";
   const SF_API_BASE = "https://service-flow-menoskar42.replit.app"; // دومين Service-Flow
   const SF_TOKEN = "sf-dzs-138-ingest-2026";                        // = DZS_INGEST_TOKEN فى السيرفر
   const GET_MSAN_HASH = "#/subscriber-management/get-msan-data";

@@ -2,7 +2,7 @@
 // @name         OAS 430D Details Auto (Service-Flow)
 // @namespace    service-flow.oas
 // @description  أتمتة تقرير 430D القطاع-TEDATA - Details على Oracle Analytics (we-oas): لوجين (Sign In أوتوماتيك) + فتح التقرير من صفحة الهوم + اختيار السنترال (select) + التاريخ (أول الشهر→اليوم) + Apply + تصدير Excel للتفاصيل وتفاصيل المتبقى. v0.9 — @grant unsafeWindow لتجاوز CSP (السكريبت مكانش بيشتغل أصلاً) + مربع ظاهر على صفحة اللوجين + jQuery عبر unsafeWindow.
-// @version      0.9.0
+// @version      0.9.1
 // @match        https://we-oas.te.eg/*
 // @grant        unsafeWindow
 // @run-at       document-idle
@@ -16,7 +16,7 @@
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem@te.eg"; // زى ما ظاهر فى خانة اللوجين
-  const PASS = "Mon_oskar352";
+  const PASS = "Mon_oskar364";
   const GROUP  = "قطاع وسط الصعيد";
   const REGION = "منطقة تليفونات أسيوط";
   const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];

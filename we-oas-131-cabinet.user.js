@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131 ارقام التليفونات على كابينة»، يختار P_CENTRAL_NAME=ديروط و P_CABINET_NO=1-1، Apply، ثم ينزّل Excel واحد بثلاث شيتات: نحاسي + فيبر + دوائر المعلومات. لا يرفع أى بيانات للموقع.
-// @version      1.0.5
+// @version      1.0.6
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -13,7 +13,7 @@
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem@te.eg";
-  const PASS = "Mon_oskar352";
+  const PASS = "Mon_oskar364";
   const CENTRAL = "ديروط";     // قيمة P_CENTRAL_NAME
   const CABINET = "1-1";        // قيمة P_CABINET_NO
   // التبويبات المطلوبة بالترتيب (نحاسي هو الافتراضى)

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.14
+// @version      2.15
 // @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.14: OSS now captures BOTH native form.submit() AND the submit event (jQuery/button) so formfortoken's CSRF download is intercepted reliably; only the downloadOrderExcel form is replayed.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
@@ -181,7 +181,7 @@
     setInterval(function () { try { const lays = document.querySelectorAll('.layui-layer'); for (let i = 0; i < lays.length; i++) { const lay = lays[i]; const t = (lay.textContent || '').toLowerCase(); if (t.includes('console') || t.includes('devtool') || t.includes('prohibit')) { const ok = lay.querySelector('.layui-layer-btn0') || lay.querySelector('.layui-layer-close'); if (ok) { try { ok.click(); } catch (e) {} } else { try { lay.remove(); } catch (e) {} } } } } catch (e) {} }, 1000);
   })();
 
-  const CREDS = { 'fcc.te.eg': { user: 'mena.haleem', pass: 'Mon_oskar352' }, 'wfm.te.eg': { user: 'mina109756', pass: 'Mon_oskar11' }, 'oss.te.eg:15204': { user: 'MENA.HALEEM', pass: 'Mon_oskar352' } };
+  const CREDS = { 'fcc.te.eg': { user: 'mena.haleem', pass: 'Mon_oskar364' }, 'wfm.te.eg': { user: 'mina109756', pass: 'Mon_oskar11' }, 'oss.te.eg:15204': { user: 'MENA.HALEEM', pass: 'Mon_oskar364' } };
   const LOGIN_URL = { 'fcc.te.eg': 'https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf', 'wfm.te.eg': 'https://wfm.te.eg/WorkOrder/faces/security/pages/Login.jsf', 'oss.te.eg:15201': 'https://oss.te.eg:15201/om', 'oss.te.eg:15204': 'https://oss.te.eg:15201/om' };
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));

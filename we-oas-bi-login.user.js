@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.2.4
+// @version      1.2.5
 // @match        *://we-oas.te.eg/*
 // @grant        none
 // @run-at       document-idle
@@ -13,7 +13,7 @@
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem@te.eg";
-  const PASS = "Mon_oskar352";
+  const PASS = "Mon_oskar364";
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (el) => { try { return !!el && el.getClientRects().length > 0; } catch (e) { return false; } };
