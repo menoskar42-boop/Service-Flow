@@ -2,15 +2,25 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.1.1
+// @version      1.2.0
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // ==/UserScript==
 
 (function () {
   "use strict";
+
+  /* ================== تشغيل تلقائى: التقاط النيّة مبكّراً ==================
+     البورتال (Angular) بيمسح ?sf_ports=1 من الـ URL بمجرّد ما يعمل redirect لـ #/home،
+     فلازم نلتقطه عند document-start قبل ما يختفى، ونحفظه فى sessionStorage علشان
+     يعيش عبر الـ redirect للّوجين وأى تنقّل داخلى لحد ما التحديث يخلص. */
+  const AUTO_KEY = "sf_ports_auto";
+  try {
+    if (/[?&#]sf_ports=1\b/.test(location.href)) sessionStorage.setItem(AUTO_KEY, "1");
+  } catch (e) {}
+  const AUTO = (() => { try { return sessionStorage.getItem(AUTO_KEY) === "1"; } catch (e) { return false; } })();
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem";
@@ -330,20 +340,33 @@
       logln("=== انتهى: " + okCabins + " أمسان، " + totalRows + " صف، " + totalUp + " محدَّث/مضاف، " + failCabins + " فشل ===");
       // شيت تشخيص بكل الأرقام اللى اتلقطت
       downloadDiagCsv(allCaptured);
-    } finally { running = false; }
+    } finally {
+      running = false;
+      // التحديث خلص → امسح نية التشغيل التلقائى علشان فتح البورتال يدوياً لاحقاً ما يعيدش التشغيل
+      try { sessionStorage.removeItem("sf_ports_auto"); } catch (e) {}
+    }
   }
 
-  // أظهر الشريط + الزر
+  // أظهر الشريط + الزر (بعد ما يجهز الـ body — إحنا شغّالين عند document-start)
   if (document.body) ui(); else window.addEventListener("DOMContentLoaded", ui);
 
-  // تشغيل تلقائى لو اتفتحت الصفحة من زر Service-Flow (?sf_ports=1) — نستنى الـ SPA يجهز
-  const AUTO = /[?&#]sf_ports=1\b/.test(location.href);
-  if (AUTO) {
-    banner("⚙️ فتح تلقائى — سيبدأ التحديث خلال ثوانٍ… (لو مابدأش دوس الزر)", "#5b2a86");
-    waitFor(() => document.querySelector("input[type='password']") || !/#\/login/i.test(location.hash), 20000)
-      .then(() => sleep(1500))
-      .then(() => { if (startBtn) { startBtn.disabled = true; startBtn.style.background = "#9e9e9e"; startBtn.textContent = "⏳ جارٍ التحديث…"; } return run(); })
-      .catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+  // تشغيل تلقائى فور فتح الصفحة من زر Service-Flow (بدون انتظار ضغط "ابدأ").
+  // النيّة محفوظة فى sessionStorage فتصمد أمام مسح الـ param و الـ redirect للّوجين.
+  if (AUTO && !window.__sfPortsAutoFired) {
+    window.__sfPortsAutoFired = true;
+    const startNow = () => {
+      banner("⚙️ فتح تلقائى — بدء التحديث الآن…", "#5b2a86");
+      // استنى الصفحة تجهز: يا إمّا فورم اللوجين ظهر (هيسجّل دخول) يا إمّا اتخطّينا اللوجين
+      waitFor(() => document.querySelector("input[type='password']") || !/#\/login/i.test(location.hash), 25000)
+        .then(() => sleep(1200))
+        .then(() => {
+          if (startBtn) { startBtn.disabled = true; startBtn.style.background = "#9e9e9e"; startBtn.textContent = "⏳ جارٍ التحديث…"; }
+          return run();
+        })
+        .catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+    };
+    // لو الـ body لسه مش جاهز (document-start)، استنّاه
+    if (document.body) startNow(); else window.addEventListener("DOMContentLoaded", startNow);
   }
 
   // أدوات كونسول
