@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.0
+// @version      1.2.1
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -179,34 +179,57 @@
   }
 
   /* ================== تسجيل الدخول ================== */
-  async function ensureLoggedIn() {
-    const onLogin = () => /#\/login/i.test(location.hash) || document.querySelector("input[type='password']");
-    if (!onLogin()) return true;
-    banner("🔐 تسجيل الدخول…", "#6a1b9a");
+  // هل إحنا على صفحة اللوجين؟ (وجود حقل باسورد = لوجين — مهم جداً عشان مانكتبش كود الكابينة فى خانة اليوزر)
+  const onLoginPage = () => /#\/login/i.test(location.hash) || !!document.querySelector("input[type='password']");
+
+  async function doLoginOnce() {
     const pass = await waitFor(() => document.querySelector("input[type='password']"), 15000);
-    if (!pass) return true; // غالباً بالفعل داخل
+    if (!pass) return !onLoginPage(); // مفيش حقل باسورد → غالباً بالفعل داخل
     // خانة المستخدم: أقرب input نصّى قبل الباسورد
     const inputs = [...document.querySelectorAll("input")].filter(visible);
     const pIdx = inputs.indexOf(pass);
     const userInput = inputs.slice(0, pIdx).reverse().find((i) => !/password/i.test(i.type)) || inputs[0];
-    if (userInput) setNgValue(userInput, USER);
+    // امسح أى قيمة قديمة (ممكن يكون فيها كود كابينة من محاولة سابقة) واكتب اليوزر الصحيح
+    if (userInput) { setNgValue(userInput, ""); setNgValue(userInput, USER); }
     setNgValue(pass, PASS);
-    await sleep(300);
+    await sleep(400);
     const btn = findButtonByText(/^login$|تسجيل|دخول/i) || findButtonByText(/login/i);
     if (btn) btn.click();
-    // انتظر مغادرة صفحة اللوجين
-    await waitFor(() => !onLogin(), 20000);
-    await sleep(1500);
-    return true;
+    // انتظر مغادرة صفحة اللوجين فعلياً
+    await waitFor(() => !onLoginPage(), 20000);
+    await sleep(1200);
+    return !onLoginPage();
+  }
+
+  // يعيد المحاولة أكثر من مرة (الجلسة أحياناً بتسقط ويحتاج re-login أثناء الشغل)
+  async function ensureLoggedIn() {
+    if (!onLoginPage()) return true;
+    banner("🔐 تسجيل الدخول…", "#6a1b9a");
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const ok = await doLoginOnce();
+      if (ok) { logln("🔓 تم تسجيل الدخول."); return true; }
+      logln("⚠️ محاولة تسجيل دخول " + attempt + " لم تنجح — إعادة…");
+      await sleep(1500);
+    }
+    return !onLoginPage();
   }
 
   /* ================== فتح Get MSAN Data ================== */
   async function gotoGetMsan() {
+    // لو الجلسة سقطت واترمينا على اللوجين → أعِد تسجيل الدخول أولاً (مهم: عشان مانكتبش كود الكابينة فى خانة اليوزر)
+    if (onLoginPage()) {
+      logln("🔁 الجلسة سقطت — إعادة تسجيل الدخول قبل فتح الصفحة…");
+      const ok = await ensureLoggedIn();
+      if (!ok) return null;
+      await sleep(800);
+    }
     if (!new RegExp(GET_MSAN_HASH.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(location.hash)) {
       location.hash = GET_MSAN_HASH;
     }
     // خانة Cabin Code: label «Cabin Code» ثم أقرب input، وإلا أول input نصّى ظاهر
     const input = await waitFor(() => {
+      // حماية: لو رجعنا للوجين لأى سبب، ماترجّعش أى input (خانة اليوزر) — استنى/أعِد اللوجين
+      if (onLoginPage()) return null;
       const lbl = [...document.querySelectorAll("label,span,div,th,h1,h2,h3,p")]
         .find((e) => visible(e) && /cabin\s*code/i.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 40);
       if (lbl) {
@@ -217,6 +240,8 @@
       const any = [...document.querySelectorAll("input[type='text'], input:not([type])")].filter(visible);
       return any[0] || null;
     }, 20000);
+    // فحص أخير: لو لسه على اللوجين، ماترجّعش الخانة الغلط
+    if (onLoginPage()) return null;
     return input;
   }
 
@@ -241,6 +266,8 @@
   }
 
   async function searchAndRead(input, cabin) {
+    // حماية أخيرة: لو الصفحة رجعت للوجين بين الفتح والكتابة، ماتكتبش كود الكابينة فى خانة اليوزر
+    if (onLoginPage() || !input || !input.isConnected) return null;
     setNgValue(input, cabin);
     await sleep(400);
     const marker = captures.length;
@@ -306,10 +333,22 @@
       const input0 = await gotoGetMsan();
       if (!input0) { banner("❌ لم أجد خانة Cabin Code.", "#c62828"); running = false; return; }
 
+      let loginFails = 0; // إلغاء لو الجلسة مش راضية ترجع
       for (let i = 0; i < cabins.length; i++) {
         const cabin = cabins[i];
         banner("⏳ (" + (i + 1) + "/" + cabins.length + ") أمسان " + cabin + " …", "#1565c0");
-        const input = (await gotoGetMsan()) || input0;
+        // خانة Cabin Code لهذه الدورة — يعيد تسجيل الدخول داخلياً لو الجلسة سقطت.
+        // لا نستخدم input0 كبديل أبداً (يبقى بايت/خانة لوجين لو حصل logout).
+        const input = await gotoGetMsan();
+        if (!input) {
+          loginFails++;
+          failCabins++;
+          logln("⛔ " + cabin + " — تعذّر فتح صفحة Cabin Code (الجلسة/اللوجين).");
+          if (loginFails >= 4) { banner("❌ تعذّر إبقاء الجلسة مفتوحة — تم الإيقاف. سجّل دخول يدوياً وأعد المحاولة.", "#c62828"); break; }
+          await sleep(BETWEEN_CABINS_MS);
+          continue;
+        }
+        loginFails = 0;
         const rows = await searchAndRead(input, cabin);
         if (rows == null) { failCabins++; logln("⏱️ " + cabin + " — انتهت المهلة بدون بيانات."); await sleep(BETWEEN_CABINS_MS); continue; }
         if (!rows.length) { logln("• " + cabin + " — 0 صف."); okCabins++; await sleep(BETWEEN_CABINS_MS); continue; }
