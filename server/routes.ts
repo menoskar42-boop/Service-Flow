@@ -1761,7 +1761,6 @@ export async function registerRoutes(
     // الإجمالى بعد فلتر «أقدم من»
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}`, params);
     const total = totalRes.rows[0].c as number;
-    console.log(`[with-account] staleDays="${staleDays}" staleN=${staleN} total=${total} grandTotal=${grandTotal}`);
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
