@@ -1730,14 +1730,6 @@ export async function registerRoutes(
       params.push(String((req.user as any).workerCode || "").trim());
       conds.push(`EXISTS (SELECT 1 FROM cabinet_technicians ctx WHERE ctx.central_name = pl.central AND ctx.cabin_number = pl.cabin_number AND ctx.worker_code = $${params.length})`);
     }
-    // فلتر "أقدم من N يوم": يُظهر فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم،
-    // أو التى لم تُقَس من قبل (لا يوجد سجل فى شيت 138 → uploaded_at = NULL).
-    // يشيل الخطوط التى قِيست خلال آخر N يوم. يُطبَّق أيضاً على القياس والتصدير (server-side).
-    const staleN = parseInt(staleDays);
-    if (staleDays !== "" && !isNaN(staleN) && staleN > 0) {
-      params.push(staleN);
-      conds.push(`(c138p.uploaded_at IS NULL OR c138p.uploaded_at < now() - make_interval(days => $${params.length}))`);
-    }
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM line_accounts la LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone LEFT JOIN line_po_events pe ON pe.account_no = la.account_no`;
     const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
@@ -1751,8 +1743,25 @@ export async function registerRoutes(
     if (speedLt !== "" && !isNaN(parseFloat(speedLt))) { params.push(parseFloat(speedLt)); c138Parts.push(`${numCurSpeed} < $${params.length}`); }
     const c138Where = c138Parts.length > 0 ? " AND " + c138Parts.join(" AND ") : "";
 
-    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}`, params);
+    // فلتر "أقدم من N يوم": يُظهر فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم،
+    // أو التى لم تُقَس من قبل (لا يوجد سجل فى شيت 138 → uploaded_at = NULL). يشيل الخطوط التى قِيست خلال آخر N يوم.
+    // يُطبَّق كشرط منفصل (بارامتره آخر واحد قبل الـ limit/offset) عشان نقدر نحسب الإجمالى بدونه كمان.
+    const staleN = parseInt(staleDays);
+    let staleClause = "";
+    if (staleDays !== "" && !isNaN(staleN) && staleN > 0) {
+      params.push(staleN);
+      staleClause = ` AND (c138p.uploaded_at IS NULL OR c138p.uploaded_at < now() - make_interval(days => $${params.length}))`;
+    }
+    // baseParams = كل البارامترات ما عدا بارامتر «أقدم من» (لحساب الإجمالى بدون الفلتر)
+    const baseParams = staleClause ? params.slice(0, -1) : params.slice();
+
+    // الإجمالى بدون فلتر «أقدم من» (مع باقى الفلاتر) — للعرض والتشخيص
+    const grandRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}`, baseParams);
+    const grandTotal = grandRes.rows[0].c as number;
+    // الإجمالى بعد فلتر «أقدم من»
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}`, params);
     const total = totalRes.rows[0].c as number;
+    console.log(`[with-account] staleDays="${staleDays}" staleN=${staleN} total=${total} grandTotal=${grandTotal}`);
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
@@ -1770,12 +1779,12 @@ export async function registerRoutes(
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
-       ${joinClause} ${c138Join} ${where}${c138Where}
+       ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}
        ORDER BY pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), la.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
-    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+    res.json({ data: dataRes.rows, total, grandTotal, page: pageNum, pageSize });
   });
 
   // GET /api/phone-lines/without-account — lines with no entry in line_accounts (paginated, same filters)

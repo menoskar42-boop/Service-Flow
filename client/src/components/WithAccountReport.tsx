@@ -151,7 +151,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (accountQ.trim()) params.set("accountQ", accountQ.trim());
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
+      return res.json() as Promise<{ data: PhoneLine[]; total: number; grandTotal?: number; page: number; pageSize: number }>;
     },
   });
 
@@ -377,6 +377,9 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
             {data && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 {data.total.toLocaleString("ar-EG")} سجل
+                {staleOn && data.grandTotal != null && data.grandTotal !== data.total && (
+                  <span className="text-purple-600"> {" "}(من إجمالى {data.grandTotal.toLocaleString("ar-EG")} — بعد فلتر «أقدم من {staleDays} يوم»)</span>
+                )}
               </p>
             )}
           </div>
