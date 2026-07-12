@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.17
+// @version      2.18
 // @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.17: يقفل التاب تلقائياً بعد رفع الملف لو التدفّق بدأ من زر "تحديث الملفات اليومية" فى Service-Flow (يُكتشف عبر window.name="fcc_daily" ويُمرَّر للتابات المتسلسلة عبر GM storage) — عشان مايتكدّسش تابات مع التشغيل كل نص ساعة.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
@@ -236,7 +236,9 @@
     log('STILL on login.');
   }
 
-  function chainTo(key, url) { try { const last = GM_getValue(key, 0); if (Date.now() - last > 60000) { GM_setValue(key, Date.now()); GM_openInTab(url, { active: true, setParent: true }); log('opening', url); } } catch (e) { log('chain error:', e.message); } }
+  // ملاحظة: بنفتح التاب المتسلسل مستقلاً (بدون setParent) — عشان لما تاب FCC يقفل نفسه (v2.17+)
+  // مايأثّرش على تاب WFM الابن ويقفله معاه. قفل التاب المتسلسل بيتم من autoCloseIfDaily بعد رفعه.
+  function chainTo(key, url) { try { const last = GM_getValue(key, 0); if (Date.now() - last > 60000) { GM_setValue(key, Date.now()); GM_openInTab(url, { active: true }); log('opening', url); } } catch (e) { log('chain error:', e.message); } }
 
   /* =======================================================================
      FCC  (Ticket Queue)
@@ -455,7 +457,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.17 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.18 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
