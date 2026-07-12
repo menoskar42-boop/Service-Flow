@@ -136,6 +136,8 @@ export function RegularizedNoAccountReport() {
         credentials: "include",
       });
       if (!res.ok) throw new Error("failed");
+      // شيل حالة "saving" فوراً عشان الـ 💾 ما يفضلش يلفّ، والـ refetch هيشيل الصف (الـ endpoint بيستبعد المُعلَّم)
+      setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; });
       qc.invalidateQueries({ queryKey: ["/api/reports/regularized-no-account"] });
     } catch {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));

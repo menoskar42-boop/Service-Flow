@@ -2291,7 +2291,11 @@ export async function registerRoutes(
     const from = dateFrom || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
     const to = dateTo || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const params: any[] = [from, to];
-    const plConds: string[] = ["la.full_phone IS NULL"];
+    // بدون أكونت = مفيش سجل فى line_accounts، مع استبعاد المُعلَّم يدوياً "بدون رقم أكونت" (lines_no_account)
+    const plConds: string[] = [
+      "la.full_phone IS NULL",
+      "NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = COALESCE(pl.full_phone, '88' || reg1.short))",
+    ];
     if (central) { params.push(central); plConds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); plConds.push(`pl.cabin_number = $${params.length}`); }
     if (box) { params.push(box); plConds.push(`pl.box_number = $${params.length}`); }
@@ -6456,6 +6460,7 @@ export async function registerRoutes(
            FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
          ) c138p ON true
          WHERE pl.cabin_number = ANY($1)
+           AND NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = pl.full_phone)
          ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''),8,'0'),
                   LPAD(COALESCE(pl.box_number,''),8,'0'), pl.full_phone`,
         [cabArr],
