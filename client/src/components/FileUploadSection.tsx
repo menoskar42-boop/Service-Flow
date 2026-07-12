@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3 } from "lucide-react";
+import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -403,6 +403,52 @@ export function FileUploadSection() {
   });
   const ut = (ep: string) => uploadTimes[ep];
 
+  // ─── التحديث اليومى + التشغيل التلقائى كل ساعة ────────────────────────────────
+  // نفس أفعال زر "حدّث التقارير اليومية" — قابلة لإعادة الاستخدام (زر يدوى + مؤقّت).
+  const runDailyUpdate = () => {
+    // أول مرة فى اليوم يفتح كمان تحديث منافذ MSAN (البورتال)
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem("sf_msan_auto_date") !== today) {
+      localStorage.setItem("sf_msan_auto_date", today);
+      window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
+    }
+    // FCC بتاب باسم ثابت (يُعاد استخدامه بدل تكديس تابات جديدة كل ساعة) — السكربت يسجّل دخول ويصدّر
+    window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
+  };
+
+  // التشغيل التلقائى كل ساعة — مُفعَّل على "هذا الجهاز فقط" عبر علامة فى localStorage.
+  // ⚠️ يتطلب السماح بالنوافذ المنبثقة (pop-ups) للموقع + إبقاء التاب مفتوحاً والجهاز غير نائم.
+  const HOURLY_MS = 60 * 60 * 1000;
+  const [hourlyAuto, setHourlyAuto] = useState(() => {
+    try { return localStorage.getItem("sf_hourly_auto") === "1"; } catch { return false; }
+  });
+  const [lastAutoRun, setLastAutoRun] = useState<number | null>(() => {
+    try { const v = localStorage.getItem("sf_hourly_last"); return v ? Number(v) : null; } catch { return null; }
+  });
+  const toggleHourly = () => {
+    setHourlyAuto((v) => {
+      const nv = !v;
+      try { localStorage.setItem("sf_hourly_auto", nv ? "1" : "0"); } catch {}
+      return nv;
+    });
+  };
+  useEffect(() => {
+    if (!hourlyAuto) return;
+    const tick = () => {
+      runDailyUpdate();
+      const now = Date.now();
+      setLastAutoRun(now);
+      try { localStorage.setItem("sf_hourly_last", String(now)); } catch {}
+    };
+    // لو عدّى أكتر من ساعة من آخر تشغيل (أو لسه مفيش) شغّل فوراً عند فتح/تفعيل الجهاز
+    let last = 0;
+    try { const v = localStorage.getItem("sf_hourly_last"); last = v ? Number(v) : 0; } catch {}
+    if (Date.now() - last >= HOURLY_MS) tick();
+    const id = setInterval(tick, HOURLY_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hourlyAuto]);
+
   const { data: maintenance = [], isFetching: fetchM } = useQuery<MaintenanceOrder[]>({
     queryKey: ["/api/maintenance-orders", dateFrom, dateTo, bucket],
     queryFn: async () => {
@@ -594,20 +640,26 @@ export function FileUploadSection() {
           تحديث منافذ MSAN
         </Button>
         <Button
-          onClick={() => {
-            // يفتح FCC دائماً؛ وأول ضغطة فى اليوم يفتح كمان تحديث منافذ MSAN تلقائياً
-            const today = new Date().toISOString().slice(0, 10);
-            if (localStorage.getItem("sf_msan_auto_date") !== today) {
-              localStorage.setItem("sf_msan_auto_date", today);
-              window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
-            }
-            window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank", "noopener,noreferrer");
-          }}
+          onClick={runDailyUpdate}
           className="gap-2 bg-green-600 hover:bg-green-700 text-white"
         >
           <RefreshCw className="w-4 h-4" />
           حدث التقارير اليومية
         </Button>
+        <Button
+          onClick={toggleHourly}
+          variant={hourlyAuto ? "default" : "outline"}
+          className={`gap-2 ${hourlyAuto ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "border-emerald-300 text-emerald-700"}`}
+          title="يشغّل «حدّث التقارير اليومية» تلقائياً كل ساعة على هذا الجهاز فقط، طالما الموقع مفتوح. يتطلب السماح بالنوافذ المنبثقة (pop-ups) للموقع."
+        >
+          <Clock className="w-4 h-4" />
+          {hourlyAuto ? "التحديث كل ساعة: مُفعَّل ✓" : "شغّل كل ساعة (هذا الجهاز)"}
+        </Button>
+        {hourlyAuto && lastAutoRun && (
+          <span className="text-xs text-muted-foreground self-center">
+            آخر تشغيل تلقائى: {format(new Date(lastAutoRun), "yyyy/MM/dd HH:mm")}
+          </span>
+        )}
       </div>
 
       {/* Upload Cards */}
