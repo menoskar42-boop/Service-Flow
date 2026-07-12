@@ -7,7 +7,7 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, RefreshCw, AlertCircle, Save, SaveAll, FileSpreadsheet, FileText, IdCard } from "lucide-react";
+import { Loader2, RefreshCw, AlertCircle, Save, SaveAll, FileSpreadsheet, FileText, IdCard, Ban } from "lucide-react";
 import { openCustomer360 } from "@/lib/customer360";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
@@ -103,6 +103,22 @@ export function GroundFaultsNoAccountReport() {
       // الخط بقى له أكونت — يختفى من القائمة
       setLines((ls) => ls.filter((l) => l.fullPhone !== fullPhone));
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+    } catch {
+      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+    }
+  };
+
+  // تعليم خط بأنه "بدون رقم أكونت" — يختفى من التقرير دون تسجيل رقم أكونت
+  const handleMarkNoAccount = async (fullPhone: string) => {
+    if (!confirm("تأكيد: هذا الخط ليس له رقم أكونت وسيختفى من التقرير؟")) return;
+    setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
+    try {
+      const res = await fetch(`/api/lines-no-account/${encodeURIComponent(fullPhone)}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("failed");
+      setLines((ls) => ls.filter((l) => l.fullPhone !== fullPhone));
     } catch {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
     }
@@ -304,6 +320,15 @@ export function GroundFaultsNoAccountReport() {
                             {saveState[l.fullPhone] === "saving"
                               ? <Loader2 className="w-4 h-4 animate-spin" />
                               : <Save className="w-4 h-4" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMarkNoAccount(l.fullPhone)}
+                            disabled={saveState[l.fullPhone] === "saving"}
+                            title="ليس له رقم أكونت — إخفاء من التقرير"
+                            className="text-orange-500 hover:text-orange-700 disabled:opacity-40"
+                          >
+                            <Ban className="w-4 h-4" />
                           </button>
                           {saveState[l.fullPhone] === "saved" && <span className="text-green-600 text-xs">✓</span>}
                           {saveState[l.fullPhone] === "error" && <span className="text-red-500 text-xs">!</span>}
