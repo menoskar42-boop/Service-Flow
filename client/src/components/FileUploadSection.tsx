@@ -403,17 +403,27 @@ export function FileUploadSection() {
   });
   const ut = (ep: string) => uploadTimes[ep];
 
+  // مرآة دائماً محدَّثة لأوقات الرفع — عشان runDailyUpdate يقراها بدون await فيحافظ على "ضغطة المستخدم"
+  // (لو عملنا await قبل window.open، المتصفح بيعتبرها مش ضغطة ويمنع الـ pop-up).
+  const uploadTimesRef = useRef(uploadTimes);
+  useEffect(() => { uploadTimesRef.current = uploadTimes; }, [uploadTimes]);
+  // تاريخ اليوم بتوقيت القاهرة (YYYY-MM-DD)
+  const cairoDay = (d: string | number | Date) =>
+    new Date(d).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+
   // ─── التحديث اليومى + التشغيل التلقائى كل نص ساعة ────────────────────────────────
   // نفس أفعال زر "حدّث التقارير اليومية" — قابلة لإعادة الاستخدام (زر يدوى + مؤقّت).
   const runDailyUpdate = () => {
-    // أول مرة فى اليوم يفتح كمان تحديث منافذ MSAN (البورتال)
-    const today = new Date().toISOString().slice(0, 10);
-    if (localStorage.getItem("sf_msan_auto_date") !== today) {
-      localStorage.setItem("sf_msan_auto_date", today);
+    // FCC بتاب باسم ثابت (يُعاد استخدامه بدل تكديس تابات جديدة) — السكربت يسجّل دخول ويصدّر
+    window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
+    // منافذ MSAN (البورتال): نفتحه فقط لو مالوش تحديث فعلى النهارده — بناءً على آخر uploaded_at
+    // فى phone_ports من السيرفر (مش مجرّد "اتفتح"). كده لو الرفع فشل (مثلاً مفيش شبكة الشركة 12:15)
+    // يفضل يحاول كل نص ساعة لحد ما يتحدث فعلاً؛ وأول ما يتحدث النهارده يبطّل يفتحه.
+    const portsIso = uploadTimesRef.current?.["/api/phone-ports/import"];
+    const portsDoneToday = !!portsIso && cairoDay(portsIso) === cairoDay(new Date());
+    if (!portsDoneToday) {
       window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
     }
-    // FCC بتاب باسم ثابت (يُعاد استخدامه بدل تكديس تابات جديدة كل نص ساعة) — السكربت يسجّل دخول ويصدّر
-    window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
   };
 
   // التشغيل التلقائى كل نصف ساعة — مُفعَّل على "هذا الجهاز فقط" عبر علامة فى localStorage.
@@ -660,6 +670,16 @@ export function FileUploadSection() {
             آخر تشغيل تلقائى: {format(new Date(lastAutoRun), "yyyy/MM/dd HH:mm")}
           </span>
         )}
+        <span className="text-xs self-center">
+          منافذ MSAN اليوم:{" "}
+          {(() => {
+            const iso = uploadTimes["/api/phone-ports/import"];
+            const done = !!iso && cairoDay(iso) === cairoDay(new Date());
+            return done
+              ? <span className="text-green-600 font-medium">اتحدّثت ✓</span>
+              : <span className="text-orange-600 font-medium">لسه</span>;
+          })()}
+        </span>
       </div>
 
       {/* Upload Cards */}
