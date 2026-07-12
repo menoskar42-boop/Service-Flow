@@ -604,6 +604,14 @@ export const lineMobiles = pgTable("line_mobiles", {
 });
 export type LineMobile = typeof lineMobiles.$inferSelect;
 
+// app_state — key/value عام للحالة (مثلاً وقت اكتمال آخر تشغيل كامل لتحديث البورتات)
+export const appState = pgTable("app_state", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type AppState = typeof appState.$inferSelect;
+
 // ─── Ticket snapshot tables (mirror ticket_queue + onu) ─────────────────────
 // Defined here so drizzle-kit treats them as managed and never drops them on
 // publish. Column types mirror the raw SQL in server/db.ts (timestamptz).

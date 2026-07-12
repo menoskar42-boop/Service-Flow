@@ -687,6 +687,15 @@ export async function ensureSchema() {
     )
   `);
 
+  // app_state — key/value عام للحالة (مثلاً وقت اكتمال آخر تشغيل كامل لتحديث البورتات)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      key text PRIMARY KEY,
+      value text,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS case_138 (

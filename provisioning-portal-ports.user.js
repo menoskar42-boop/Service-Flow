@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.6
+// @version      1.2.7
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -184,6 +184,15 @@
     });
     return r.json();
   }
+  // إشارة اكتمال التشغيل الكامل (بعد آخر كابينة) — الموقع بيستخدم وقتها كعلامة "اتحدّثت البورتات النهارده"
+  async function sfPortsRunComplete(cabins, updated) {
+    const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/phone-ports/run-complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN },
+      body: JSON.stringify({ cabins, updated }),
+    });
+    return r.json();
+  }
 
   /* ================== تسجيل الدخول ================== */
   // هل إحنا على صفحة اللوجين؟ (وجود حقل باسورد = لوجين — مهم جداً عشان مانكتبش كود الكابينة فى خانة اليوزر)
@@ -341,6 +350,7 @@
       if (!input0) { banner("❌ لم أجد خانة Cabin Code.", "#c62828"); running = false; return; }
 
       let loginFails = 0; // إلغاء لو الجلسة مش راضية ترجع
+      let aborted = false; // اتوقف بالغلط قبل ما يخلص كل الكباين؟
       for (let i = 0; i < cabins.length; i++) {
         const cabin = cabins[i];
         banner("⏳ (" + (i + 1) + "/" + cabins.length + ") أمسان " + cabin + " …", "#1565c0");
@@ -351,7 +361,7 @@
           loginFails++;
           failCabins++;
           logln("⛔ " + cabin + " — تعذّر فتح صفحة Cabin Code (الجلسة/اللوجين).");
-          if (loginFails >= 4) { banner("❌ تعذّر إبقاء الجلسة مفتوحة — تم الإيقاف. سجّل دخول يدوياً وأعد المحاولة.", "#c62828"); break; }
+          if (loginFails >= 4) { aborted = true; banner("❌ تعذّر إبقاء الجلسة مفتوحة — تم الإيقاف. سجّل دخول يدوياً وأعد المحاولة.", "#c62828"); break; }
           await sleep(BETWEEN_CABINS_MS);
           continue;
         }
@@ -384,6 +394,12 @@
       }
       banner("✅ خلص. أمسان ناجح: " + okCabins + " / صفوف: " + totalRows + " / محدَّث: " + totalUp + (failCabins ? " / فشل: " + failCabins : ""), "#2e7d32");
       logln("=== انتهى: " + okCabins + " أمسان، " + totalRows + " صف، " + totalUp + " محدَّث/مضاف، " + failCabins + " فشل ===");
+      // إشارة "اكتمال التشغيل" للموقع — فقط لو دخل آخر كابينة والكود خلص (مش متوقف بالغلط).
+      // الموقع بيعتمد على دى (مش على وقت الرفع) لمعرفة إن تحديث البورتات خلص النهارده.
+      if (!aborted) {
+        try { await sfPortsRunComplete(okCabins, totalUp); logln("📌 اتسجّل اكتمال التشغيل فى الموقع."); }
+        catch (e) { logln("⚠️ تعذّر تسجيل الاكتمال: " + (e && e.message || e)); }
+      }
       // شيت تشخيص بكل الأرقام اللى اتلقطت
       downloadDiagCsv(allCaptured);
     } finally {

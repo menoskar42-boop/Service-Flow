@@ -416,10 +416,11 @@ export function FileUploadSection() {
   const runDailyUpdate = () => {
     // FCC بتاب باسم ثابت (يُعاد استخدامه بدل تكديس تابات جديدة) — السكربت يسجّل دخول ويصدّر
     window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
-    // منافذ MSAN (البورتال): نفتحه فقط لو مالوش تحديث فعلى النهارده — بناءً على آخر uploaded_at
-    // فى phone_ports من السيرفر (مش مجرّد "اتفتح"). كده لو الرفع فشل (مثلاً مفيش شبكة الشركة 12:15)
-    // يفضل يحاول كل نص ساعة لحد ما يتحدث فعلاً؛ وأول ما يتحدث النهارده يبطّل يفتحه.
-    const portsIso = uploadTimesRef.current?.["/api/phone-ports/import"];
+    // منافذ MSAN (البورتال): نفتحه فقط لو التشغيل الكامل مخلّصش النهارده. البورتات بتتحدّث من
+    // كذا كابينة، فـ uploaded_at بيتغيّر مع كل كابينة — مش دليل إن كله خلص. فبنعتمد على إشارة
+    // "اكتمال التشغيل" (السكربت بيبعتها لما يدخل آخر كابينة والكود يخلص). كده لو فشل/اتقطع
+    // يفضل يحاول كل نص ساعة لحد ما يكمّل فعلاً؛ وأول ما يكمّل النهارده يبطّل يفتحه.
+    const portsIso = uploadTimesRef.current?.["ports_run_complete"];
     const portsDoneToday = !!portsIso && cairoDay(portsIso) === cairoDay(new Date());
     if (!portsDoneToday) {
       window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
@@ -673,7 +674,7 @@ export function FileUploadSection() {
         <span className="text-xs self-center">
           منافذ MSAN اليوم:{" "}
           {(() => {
-            const iso = uploadTimes["/api/phone-ports/import"];
+            const iso = uploadTimes["ports_run_complete"];
             const done = !!iso && cairoDay(iso) === cairoDay(new Date());
             return done
               ? <span className="text-green-600 font-medium">اتحدّثت ✓</span>

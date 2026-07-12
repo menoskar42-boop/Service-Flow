@@ -3827,6 +3827,24 @@ export async function registerRoutes(
     res.json({ inserted: affected, total: all.length });
   });
 
+  // إشارة "اكتمال تشغيل تحديث البورتات": السكربت بيرفع من كذا كابينة، فـ uploaded_at بيتغيّر
+  // مع كل كابينة — مش كافى لمعرفة إن كل التشغيل خلص. السكربت بيبعت هنا فقط لما يخلص كل الكباين
+  // (دخل آخر كابينة والكود خلص)، فنسجّل الوقت ونستخدمه كعلامة "اتحدّثت البورتات النهارده".
+  app.options("/api/phone-ports/run-complete", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.post("/api/phone-ports/run-complete", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) {
+      return res.status(401).json({ message: "invalid token" });
+    }
+    const cabins = Number(req.body?.cabins) || 0;
+    const updated = Number(req.body?.updated) || 0;
+    await pool.query(
+      `INSERT INTO app_state (key, value, updated_at) VALUES ('ports_run_completed_at', now()::text, now())
+       ON CONFLICT (key) DO UPDATE SET value = now()::text, updated_at = now()`,
+    );
+    res.json({ ok: true, cabins, updated });
+  });
+
   // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====
   // التوكن: env C360_INGEST_TOKEN (وله قيمة افتراضية) — لازم يطابق التوكن فى سكربت التامبر منكى.
   const C360_INGEST_TOKEN = process.env.C360_INGEST_TOKEN || "sf-c360-account-ingest-2026";
@@ -3987,6 +4005,11 @@ export async function registerRoutes(
         result[key] = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
       } catch { result[key] = null; }
     }
+    // وقت اكتمال آخر تشغيل كامل لتحديث البورتات (من السكربت لما يخلص كل الكباين) — علامة "اتحدّثت النهارده"
+    try {
+      const { rows } = await pool.query(`SELECT updated_at AS t FROM app_state WHERE key = 'ports_run_completed_at'`);
+      result["ports_run_complete"] = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
+    } catch { result["ports_run_complete"] = null; }
     res.json(result);
   });
 
