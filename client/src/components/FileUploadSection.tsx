@@ -586,7 +586,7 @@ export function FileUploadSection() {
           430D
         </Button>
         <Button
-          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank", "noopener,noreferrer")}
+          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto")}
           className="gap-2 bg-cyan-600 hover:bg-cyan-700 text-white"
           title="يفتح Provisioning Portal ويشغّل سكربت تحديث ملف البورتات تلقائياً لكل أكواد الأمسان المخزّنة"
         >
@@ -599,7 +599,7 @@ export function FileUploadSection() {
             const today = new Date().toISOString().slice(0, 10);
             if (localStorage.getItem("sf_msan_auto_date") !== today) {
               localStorage.setItem("sf_msan_auto_date", today);
-              window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank", "noopener,noreferrer");
+              window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
             }
             window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "_blank", "noopener,noreferrer");
           }}
@@ -689,7 +689,7 @@ export function FileUploadSection() {
         />
         <button
           type="button"
-          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "_blank")}
+          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto")}
           className="w-full flex items-center justify-center gap-2 rounded-md border border-cyan-300 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold py-2.5 transition-colors"
           title="يفتح Provisioning Portal ويشغّل سكربت تحديث ملف البورتات تلقائياً لكل أكواد الأمسان المخزّنة"
         >

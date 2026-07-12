@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.1
+// @version      1.2.5
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -13,12 +13,19 @@
   "use strict";
 
   /* ================== تشغيل تلقائى: التقاط النيّة مبكّراً ==================
-     البورتال (Angular) بيمسح ?sf_ports=1 من الـ URL بمجرّد ما يعمل redirect لـ #/home،
-     فلازم نلتقطه عند document-start قبل ما يختفى، ونحفظه فى sessionStorage علشان
-     يعيش عبر الـ redirect للّوجين وأى تنقّل داخلى لحد ما التحديث يخلص. */
+     مشكلة: لما المستخدم يكون مسجّل دخول بالفعل، البورتال (Angular) بيعمل redirect سريع
+     لصفحة get-msan-data و بيمسح ?sf_ports=1 من الـ URL قبل ما السكريبت يلحق يقراه (race).
+     الحل الأقوى: الزرّ فى Service-Flow بيفتح التبويب باسم target = "sf_ports_auto"
+     (window.name) — والـ browser بيحطه فور فتح التبويب و مفيش SPA يقدر يمسحه. نقرأه هنا،
+     ونحفظ النيّة فى sessionStorage علشان تعيش عبر الـ redirect وأى تنقّل داخلى لحد ما التحديث يخلص.
+     نسيب ?sf_ports=1 كـ fallback كمان. */
   const AUTO_KEY = "sf_ports_auto";
   try {
-    if (/[?&#]sf_ports=1\b/.test(location.href)) sessionStorage.setItem(AUTO_KEY, "1");
+    const fromName = (window.name === "sf_ports_auto");
+    const fromUrl = /[?&#]sf_ports=1\b/.test(location.href);
+    if (fromName || fromUrl) sessionStorage.setItem(AUTO_KEY, "1");
+    // نظّف الاسم فوراً بعد قراءته عشان reload يدوى لاحقاً مايشغّلش من نفسه
+    if (fromName) { try { window.name = ""; } catch (e) {} }
   } catch (e) {}
   const AUTO = (() => { try { return sessionStorage.getItem(AUTO_KEY) === "1"; } catch (e) { return false; } })();
 
