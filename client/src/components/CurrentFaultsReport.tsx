@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge, Undo2 } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -128,6 +128,8 @@ export function CurrentFaultsReport() {
   const [repeatedOnly, setRepeatedOnly] = useState(false);
   // زر مستقل: الأعطال التى لها رقم شكوى آخر خلال شهر من تاريخها (بدون كلمة «مكرر»)
   const [monthRepeatOnly, setMonthRepeatOnly] = useState(false);
+  // فلتر «الخطوط الراجعة» — Status Code = DSL-173
+  const [returnedOnly, setReturnedOnly] = useState(false);
   // حوار تفاصيل التكرار (الشكاوى المغلقة السابقة فى نفس الشهر لنفس الرقم)
   const [repeatFor, setRepeatFor] = useState<CurrentFault | null>(null);
   const [repeatData, setRepeatData] = useState<any[] | null>(null);
@@ -157,7 +159,8 @@ export function CurrentFaultsReport() {
 
   const displayed = faults
     .filter((f) => (repeatedOnly ? f.repeatStatus === "مكرر" : true))
-    .filter((f) => (monthRepeatOnly ? f.monthRepeat === true : true));
+    .filter((f) => (monthRepeatOnly ? f.monthRepeat === true : true))
+    .filter((f) => (returnedOnly ? dispStatus(f.statusCode) === "DSL-173" : true));
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -361,6 +364,15 @@ export function CurrentFaultsReport() {
           title="الأعطال التى لها رقم شكوى آخر خلال شهر من تاريخها (نفس الشهر أو الشهر السابق)"
         >
           <History className="w-4 h-4" /> {monthRepeatOnly ? "عرض الكل" : "مكرر خلال شهر"}
+        </Button>
+        <Button
+          variant={returnedOnly ? "default" : "outline"}
+          size="sm"
+          onClick={() => setReturnedOnly((v) => !v)}
+          className={`gap-1 ${returnedOnly ? "bg-teal-600 hover:bg-teal-700 text-white" : "text-teal-700 border-teal-200"}`}
+          title="الخطوط الراجعة فقط (Status Code = DSL-173)"
+        >
+          <Undo2 className="w-4 h-4" /> {returnedOnly ? "عرض الكل" : "الخطوط الراجعة"}
         </Button>
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
         <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">
