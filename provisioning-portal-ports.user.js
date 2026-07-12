@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.5
+// @version      1.2.6
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -390,6 +390,12 @@
       running = false;
       // التحديث خلص → امسح نية التشغيل التلقائى علشان فتح البورتال يدوياً لاحقاً ما يعيدش التشغيل
       try { sessionStorage.removeItem("sf_ports_auto"); } catch (e) {}
+      // لو اتفتح تلقائى من زر Service-Flow (تحديث الملفات اليومية): اقفل التاب بعد ما يخلص
+      // — عشان مايتكدّسش تابات مع التشغيل كل نص ساعة. (window.close يشتغل لأن التاب مفتوح بـ window.open).
+      if (AUTO) {
+        banner("✅ انتهى — إغلاق التبويب…", "#2e7d32");
+        setTimeout(() => { try { window.close(); } catch (e) {} }, 4000);
+      }
     }
   }
 

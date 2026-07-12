@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.16
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.14: OSS now captures BOTH native form.submit() AND the submit event (jQuery/button) so formfortoken's CSRF download is intercepted reliably; only the downloadOrderExcel form is replayed.
+// @version      2.17
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.17: يقفل التاب تلقائياً بعد رفع الملف لو التدفّق بدأ من زر "تحديث الملفات اليومية" فى Service-Flow (يُكتشف عبر window.name="fcc_daily" ويُمرَّر للتابات المتسلسلة عبر GM storage) — عشان مايتكدّسش تابات مع التشغيل كل نص ساعة.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -27,7 +27,7 @@
   /* ================================================================
      ⚙️ CONFIG — لو رابط موقعك اتغير عدّله هنا فقط (من غير / في الآخر)
      ================================================================ */
-  const SF_URL          = 'https://service-flow--menoskar42.replit.app';
+  const SF_URL          = 'https://service-flow-menoskar42.replit.app';
   const SF_UPLOAD_TOKEN = 'sf-auto-upload-2026';
   /* ================================================================ */
 
@@ -50,6 +50,25 @@
     };
   })();
 
+  /* ---------- التشغيل التلقائى اليومى: قفل التاب بعد الرفع ----------
+     زر "تحديث الملفات اليومية" فى Service-Flow بيفتح تاب FCC باسم target = "fcc_daily"
+     (window.name). لو التاب ده هو اللى شغّال، نقفله بعد ما يرفع ملفه — عشان مايتكدّسش
+     تابات مع التشغيل كل نص ساعة. والتابات المتسلسلة (WFM/OSS) بتعرف إنها ضمن نفس التدفّق
+     عبر علامة زمنية فى GM storage (sf_daily_flow_at) بنجدّدها طول ما التدفّق شغّال. */
+  const DAILY_AUTO = (() => { try { return window.name === 'fcc_daily'; } catch (e) { return false; } })();
+  function markDailyFlow() { try { GM_setValue('sf_daily_flow_at', Date.now()); } catch (e) {} }
+  function isDailyFlow() {
+    try { return DAILY_AUTO || (Date.now() - GM_getValue('sf_daily_flow_at', 0) < 30 * 60 * 1000); }
+    catch (e) { return DAILY_AUTO; }
+  }
+  let closingScheduled = false;
+  function autoCloseIfDaily(reason) {
+    if (closingScheduled || !isDailyFlow()) return;
+    closingScheduled = true;
+    log('✅ ' + (reason || 'انتهى') + ' — إغلاق التبويب (تحديث تلقائى)');
+    setTimeout(() => { try { window.close(); } catch (e) {} }, 4000);
+  }
+
   /* ---------- Service-Flow upload ---------- */
   function uploadToSF(blob, filename, endpoint) {
     if (!SF_URL || SF_URL.includes('YOUR-SERVICE-FLOW')) { log('⚠️ SF_URL غير مضبوط'); return; }
@@ -59,9 +78,9 @@
       method: 'POST', url: SF_URL + endpoint,
       headers: { 'X-Upload-Token': SF_UPLOAD_TOKEN },
       data: fd, timeout: 60000,
-      onload: r => { try { log('✅ SF:', JSON.stringify(JSON.parse(r.responseText))); } catch (e) { log('✅ SF', r.status, (r.responseText || '').slice(0, 120)); } },
-      onerror: r => log('❌ SF error — status:', (r && r.status), '|', (r && (r.error || r.statusText || r.finalUrl)) || 'فشل الاتصال'),
-      ontimeout: () => log('❌ SF timeout (60s)'),
+      onload: r => { try { log('✅ SF:', JSON.stringify(JSON.parse(r.responseText))); } catch (e) { log('✅ SF', r.status, (r.responseText || '').slice(0, 120)); } autoCloseIfDaily('تم الرفع'); },
+      onerror: r => { log('❌ SF error — status:', (r && r.status), '|', (r && (r.error || r.statusText || r.finalUrl)) || 'فشل الاتصال'); autoCloseIfDaily('فشل الرفع'); },
+      ontimeout: () => { log('❌ SF timeout (60s)'); autoCloseIfDaily('انتهت المهلة'); },
     });
   }
 
@@ -428,12 +447,15 @@
     let isTop=true; try{isTop=(window.top===window.self);}catch(e){isTop=false;}
     if(!isTop&&!document.querySelector('input[type=password]'))return;
     log('page:',location.host,location.pathname,isTop?'[top]':'[frame]');
+    // لو ضمن تدفّق "تحديث الملفات اليومية" (من زر Service-Flow) جدّد العلامة الزمنية — عشان التابات
+    // المتسلسلة (WFM/OSS) تقفل نفسها بعد الرفع كمان. الفتح اليدوى العادى مش بيفعّل ده.
+    if(isDailyFlow()) markDailyFlow();
     if(looksBroken()){const home=LOGIN_URL[location.host]||LOGIN_URL['fcc.te.eg'];let last=0;try{last=GM_getValue('recover_at',0);}catch(e){}if(Date.now()-last>8000){try{GM_setValue('recover_at',Date.now());}catch(e){}log('500 detected, restarting...');location.href=home;}else{log('500; just redirected.');}return;}
     const host=location.host;
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.14 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.17 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
