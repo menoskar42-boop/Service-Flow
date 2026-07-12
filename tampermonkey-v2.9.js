@@ -12,7 +12,7 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_xmlhttpRequest
-// @connect      service-flow--menoskar42.replit.app
+// @connect      service-flow-menoskar42.replit.app
 // @connect      replit.app
 // @connect      replit.dev
 // @connect      oss.te.eg
