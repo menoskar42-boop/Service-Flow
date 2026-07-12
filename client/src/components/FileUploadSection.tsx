@@ -403,7 +403,7 @@ export function FileUploadSection() {
   });
   const ut = (ep: string) => uploadTimes[ep];
 
-  // ─── التحديث اليومى + التشغيل التلقائى كل ساعة ────────────────────────────────
+  // ─── التحديث اليومى + التشغيل التلقائى كل نص ساعة ────────────────────────────────
   // نفس أفعال زر "حدّث التقارير اليومية" — قابلة لإعادة الاستخدام (زر يدوى + مؤقّت).
   const runDailyUpdate = () => {
     // أول مرة فى اليوم يفتح كمان تحديث منافذ MSAN (البورتال)
@@ -412,13 +412,13 @@ export function FileUploadSection() {
       localStorage.setItem("sf_msan_auto_date", today);
       window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
     }
-    // FCC بتاب باسم ثابت (يُعاد استخدامه بدل تكديس تابات جديدة كل ساعة) — السكربت يسجّل دخول ويصدّر
+    // FCC بتاب باسم ثابت (يُعاد استخدامه بدل تكديس تابات جديدة كل نص ساعة) — السكربت يسجّل دخول ويصدّر
     window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
   };
 
-  // التشغيل التلقائى كل ساعة — مُفعَّل على "هذا الجهاز فقط" عبر علامة فى localStorage.
+  // التشغيل التلقائى كل نصف ساعة — مُفعَّل على "هذا الجهاز فقط" عبر علامة فى localStorage.
   // ⚠️ يتطلب السماح بالنوافذ المنبثقة (pop-ups) للموقع + إبقاء التاب مفتوحاً والجهاز غير نائم.
-  const HOURLY_MS = 60 * 60 * 1000;
+  const AUTO_INTERVAL_MS = 30 * 60 * 1000;
   const [hourlyAuto, setHourlyAuto] = useState(() => {
     try { return localStorage.getItem("sf_hourly_auto") === "1"; } catch { return false; }
   });
@@ -443,8 +443,8 @@ export function FileUploadSection() {
     // لو عدّى أكتر من ساعة من آخر تشغيل (أو لسه مفيش) شغّل فوراً عند فتح/تفعيل الجهاز
     let last = 0;
     try { const v = localStorage.getItem("sf_hourly_last"); last = v ? Number(v) : 0; } catch {}
-    if (Date.now() - last >= HOURLY_MS) tick();
-    const id = setInterval(tick, HOURLY_MS);
+    if (Date.now() - last >= AUTO_INTERVAL_MS) tick();
+    const id = setInterval(tick, AUTO_INTERVAL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hourlyAuto]);
@@ -650,10 +650,10 @@ export function FileUploadSection() {
           onClick={toggleHourly}
           variant={hourlyAuto ? "default" : "outline"}
           className={`gap-2 ${hourlyAuto ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "border-emerald-300 text-emerald-700"}`}
-          title="يشغّل «حدّث التقارير اليومية» تلقائياً كل ساعة على هذا الجهاز فقط، طالما الموقع مفتوح. يتطلب السماح بالنوافذ المنبثقة (pop-ups) للموقع."
+          title="يشغّل «حدّث التقارير اليومية» تلقائياً كل نص ساعة على هذا الجهاز فقط، طالما الموقع مفتوح. يتطلب السماح بالنوافذ المنبثقة (pop-ups) للموقع."
         >
           <Clock className="w-4 h-4" />
-          {hourlyAuto ? "التحديث كل ساعة: مُفعَّل ✓" : "شغّل كل ساعة (هذا الجهاز)"}
+          {hourlyAuto ? "التحديث كل نص ساعة: مُفعَّل ✓" : "شغّل كل نص ساعة (هذا الجهاز)"}
         </Button>
         {hourlyAuto && lastAutoRun && (
           <span className="text-xs text-muted-foreground self-center">
