@@ -2021,8 +2021,12 @@ export async function registerRoutes(
         SELECT * FROM (
           SELECT DISTINCT ON (c.full_phone)
                  c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
-                 NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
-                 NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
+                 -- توحيد وحدة السرعة إلى Kbps: القيم اللى فيها كسر عشري (زى 0.5 / 2.5) مخزّنة بالميجابت → × 1024.
+                 -- بدون ده كان الشرط (< 200) بيعتبر خط VDSL بالميجابت (0.5/2.5) خطاً ميتاً ويستبعده بالغلط.
+                 CASE WHEN c.current_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
+                      ELSE NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9]','','g'),'')::numeric END AS cur_n,
+                 CASE WHEN c.max_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
+                      ELSE NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9]','','g'),'')::numeric END AS mx_n
           FROM case_138 c
           WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
           ORDER BY c.full_phone, c.id DESC
@@ -2099,8 +2103,12 @@ export async function registerRoutes(
         SELECT * FROM (
           SELECT DISTINCT ON (c.full_phone)
                  c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
-                 NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric AS cur_n,
-                 NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric AS mx_n
+                 -- توحيد وحدة السرعة إلى Kbps: القيم اللى فيها كسر عشري (زى 0.5 / 2.5) مخزّنة بالميجابت → × 1024.
+                 -- بدون ده كان الشرط (< 200) بيعتبر خط VDSL بالميجابت (0.5/2.5) خطاً ميتاً ويستبعده بالغلط.
+                 CASE WHEN c.current_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
+                      ELSE NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9]','','g'),'')::numeric END AS cur_n,
+                 CASE WHEN c.max_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
+                      ELSE NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9]','','g'),'')::numeric END AS mx_n
           FROM case_138 c
           WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
           ORDER BY c.full_phone, c.id DESC
