@@ -3997,6 +3997,29 @@ export async function registerRoutes(
        ON CONFLICT (phone_number) DO UPDATE SET ${updateSet}, fetched_at = now()`,
       params,
     );
+
+    // بيان التليفونات: يستبدل الرقم كامل لو موجود، ويُضاف لو مش موجود — لو عنده بيانات فنية (سنترال).
+    const short = phone.replace(/\D/g, "").replace(/^0*88/, "");
+    const full = short ? ("88" + short) : phone;
+    const central = clean(b.central);
+    if (central && short) {
+      await pool.query(
+        // ملاحظة: مابنخزّنش Port بتاع FCC فى phone_lines — لأن عمود "Port" فى بيان التليفونات
+        // بيعرض الفريم من البورتات (COALESCE(pp.frame, pl.port))، فمش عايزين نلوّثه. (Port موجود فى line_subscriber_info)
+        `INSERT INTO phone_lines (tel_no, full_phone, central, cabin_number, box_number, dp_terminal,
+            idu_no, odu_no, primary_block_no, cabinet_in, sec_block_no, cabinet_out, fiber_block, fiber_out)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (full_phone) DO UPDATE SET
+            central = COALESCE(EXCLUDED.central, phone_lines.central),
+            cabin_number = EXCLUDED.cabin_number, box_number = EXCLUDED.box_number, dp_terminal = EXCLUDED.dp_terminal,
+            idu_no = EXCLUDED.idu_no, odu_no = EXCLUDED.odu_no, primary_block_no = EXCLUDED.primary_block_no,
+            cabinet_in = EXCLUDED.cabinet_in, sec_block_no = EXCLUDED.sec_block_no, cabinet_out = EXCLUDED.cabinet_out,
+            fiber_block = EXCLUDED.fiber_block, fiber_out = EXCLUDED.fiber_out`,
+        [short, full, central, clean(b.cabinNumber), clean(b.boxNumber), clean(b.dpTerminal),
+         clean(b.iduNo), clean(b.oduNo), clean(b.primaryBlock), clean(b.cabinetIn), clean(b.secBlock),
+         clean(b.cabinetOut), clean(b.fiberBlock), clean(b.fiberOut)],
+      );
+    }
     res.json({ ok: true });
   });
 
