@@ -427,12 +427,17 @@ export function FileUploadSection() {
     // "خلص النهارده" = وصلت إشارة اكتمال التشغيل النهارده، أو اترفع ملف البورتات فعلاً النهارده
     // (لو السكربت اتقطع قبل ما يبعت إشارة الاكتمال لكن الملف اترفع، نعتبره خلص علشان ميفضلش يعيد فتحه).
     const today = cairoDay(new Date());
-    const portsIso = uploadTimesRef.current?.["ports_run_complete"];
-    const portsUploadIso = uploadTimesRef.current?.["/api/phone-ports/import"];
+    const pt = uploadTimesRef.current || {};
+    // البيانات اتحمّلت فعلاً من السيرفر؟ (قبل ما الـ query يرجع بتكون {} فاضية — سباق تحميل)
+    const queryLoaded = Object.keys(pt).length > 0;
+    const portsIso = pt["ports_run_complete"];
+    const portsUploadIso = pt["/api/phone-ports/import"];
     const portsDoneToday =
       (!!portsIso && cairoDay(portsIso) === today) ||
       (!!portsUploadIso && cairoDay(portsUploadIso) === today);
-    if (!portsDoneToday) {
+    // افتح البورتال فقط لو البيانات محمّلة وأكيد إن البورتات مش متحدثة النهارده. لو لسه بتتحمّل
+    // نتخطّى الفتح (نتجنّب فتح زائد بسبب سباق التحميل — كان بيفتح البورتال رغم إنها اتحدّثت).
+    if (queryLoaded && !portsDoneToday) {
       window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
     }
   };
