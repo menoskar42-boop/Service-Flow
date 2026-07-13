@@ -4512,8 +4512,11 @@ export async function registerRoutes(
       // تجميع لكل كود MSAN (كابينة): إجمالى البداية + تم فكها (من SOY) + الحالى.
       const { rows: byCabinet } = await pool.query(`
         WITH soy AS (
+          -- نسبة التحقيق تُحسب على متعذرات السنة الحالية فقط (2026) — حسب سنة تاريخ إنشاء الطلب.
           SELECT msan_code, serial_number, customer_order_id, service_order_id
-          FROM ftth_orders_soy WHERE ${FV}
+          FROM ftth_orders_soy
+          WHERE ${FV}
+            AND EXTRACT(YEAR FROM order_create_time AT TIME ZONE 'UTC') = EXTRACT(YEAR FROM now())::int
         ),
         cur AS (
           SELECT msan_code, serial_number, customer_order_id, service_order_id
