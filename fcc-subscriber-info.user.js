@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC — جلب اسم وعنوان العميل (Subscriber Info)
 // @namespace    te.eg.subinfo
-// @version      1.3.2
-// @description  v1.3.2: كشف قفل الحساب (LoginException) — يوقف المحاولات فوراً. v1.3.1: طريقة دخول FCC مطابقة تماماً لسكربت التصدير المجرَّب (اكتشاف الزر + إعادة المحاولة). v1.3.0: قفل دخول FCC مشترك يمنع الدخول المتزامن مع سكربت التصدير (LoginException). v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
+// @version      1.3.3
+// @description  v1.3.3: رجعنا فحص القفل الفضفاض (كان بيمنع الدخول بالغلط). v1.3.1: طريقة دخول FCC مطابقة تماماً لسكربت التصدير المجرَّب (اكتشاف الزر + إعادة المحاولة). v1.3.0: قفل دخول FCC مشترك يمنع الدخول المتزامن مع سكربت التصدير (LoginException). v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -105,11 +105,8 @@
     }
   }
   function releaseFccLock() { setTimeout(() => { try { localStorage.removeItem('sf_fcc_login_lock'); } catch (e) {} }, 9000); }
-  // كشف قفل/حظر الدخول (LoginException) — لو ظهرت نوقف فوراً ومانحاولش تاني (عشان مانهمرش الحساب فيتقفل أكتر)
-  function loginBlocked() { const t = norm(document.body ? document.body.textContent : '').toLowerCase(); return /loginexception|error during login|account.*(lock|disabled|blocked)|too many/.test(t); }
   // نفس منطق دخول FCC المجرَّب فى سكربت التصدير (اكتشاف الزر + إعادة المحاولة) — عشان يبقى متطابق تماماً
   async function doLogin() {
-    if (loginBlocked()) { log('🚫 الحساب مقفول مؤقتاً (LoginException) — إيقاف المحاولات.'); return; }
     await acquireFccLock(); releaseFccLock();
     const c = CREDS;
     if (c && c.pass) {
@@ -268,13 +265,13 @@
   async function main() {
     let isTop = true; try { isTop = (window.top === window.self); } catch (e) { isTop = false; }
     if (!isTop && !document.querySelector('input[type=password]')) return;
-    log('SubInfo v1.3.2 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
+    log('SubInfo v1.3.3 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
     if (!AUTO && !ONE) { log('ℹ️ افتح الصفحة من زر "مراجعة الاسم والعنوان" فى Service-Flow لبدء الجلب تلقائياً.'); return; }
     if (onLogin()) { log('تسجيل الدخول...'); await doLogin(); return; }   // بعد الدخول الصفحة هتعيد التحميل والسكربت يشتغل تانى
     if (ONE) await runOne(ONE); else await runAll();
   }
 
-  log('TE FCC SubInfo v1.3.2 loaded');
+  log('TE FCC SubInfo v1.3.3 loaded');
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();

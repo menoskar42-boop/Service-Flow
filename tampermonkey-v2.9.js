@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.38
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.38: كشف قفل الحساب (LoginException) — يوقف المحاولات فوراً بدل هَمر الحساب. v2.37: قفل دخول FCC مشترك يمنع الدخول المتزامن من تابين (تصدير + جلب اسم/عنوان) اللى بيسبّب LoginException. v2.36: سكربت التصدير يقف تماماً لو التاب اتفتح لجلب اسم/عنوان العميل (window.name=sf_subinfo_auto) — يمنع التعارض مع سكربت SubInfo الجديد. v2.35: OSS كمان يقفل بعد 15ث. v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.39
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.39: رجعنا فحص قفل الحساب (كان regex فضفاض account.*lock بيمنع الدخول بالغلط). v2.38: كشف قفل الحساب. v2.37: قفل دخول FCC مشترك يمنع الدخول المتزامن من تابين (تصدير + جلب اسم/عنوان) اللى بيسبّب LoginException. v2.36: سكربت التصدير يقف تماماً لو التاب اتفتح لجلب اسم/عنوان العميل (window.name=sf_subinfo_auto) — يمنع التعارض مع سكربت SubInfo الجديد. v2.35: OSS كمان يقفل بعد 15ث. v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -393,11 +393,8 @@
     }
   }
   function releaseFccLock() { if (/fcc\.te\.eg/i.test(location.host)) setTimeout(() => { try { localStorage.removeItem('sf_fcc_login_lock'); } catch (e) {} }, 9000); }
-  // كشف قفل/حظر الدخول (LoginException) — لو ظهرت نوقف فوراً ومانحاولش تاني (عشان مانهمرش الحساب فيتقفل أكتر)
-  function loginBlocked() { const t = norm(document.body ? document.body.textContent : '').toLowerCase(); return /loginexception|error during login|account.*(lock|disabled|blocked)|too many/.test(t); }
   async function doLogin() {
     const onLogin = () => /Login\.jsf/i.test(location.href) || /\/cas\//i.test(location.href);
-    if (loginBlocked()) { log('🚫 الحساب مقفول مؤقتاً (LoginException) — إيقاف المحاولات.'); return; }
     await acquireFccLock(); releaseFccLock();
     const c = CREDS[location.host];
     if (c && c.pass) { const pw = await waitFor(() => document.querySelector('input[type=password]'), { timeout: 15000, interval: 300, label: 'password' }).catch(() => null); if (pw) { const scope = pw.closest('form') || document; const userEl = scope.querySelector('input[type=text]') || document.querySelector('input[type=text]'); setField(userEl, c.user); setField(pw, c.pass); log('filled credentials:', c.user); await sleep(400); } }
@@ -407,14 +404,7 @@
     const rank = el => { const tag = el.tagName.toLowerCase(), type = (el.type||'').toLowerCase(); if (tag==='input'&&(type==='submit'||type==='image')) return 0; if (tag==='button') return 1; if (tag==='a'&&el.getAttribute('onclick')) return 2; if (tag==='input'&&type==='button') return 3; return 4; };
     let cands = [];
     try { await waitFor(() => { cands = Array.from(document.querySelectorAll('input[type=submit],button,input[type=image],input[type=button],a[onclick],a[role=button],a')).filter(isLogin).sort((a,b)=>rank(a)-rank(b)); return cands.length; }, { timeout: 20000, interval: 400, label: 'login candidates' }); } catch (e) {}
-    for (const btn of cands) {
-      try { btn.click(); } catch (e) {} await sleep(1600);
-      if (!onLogin()) { log('LOGIN OK'); return; }
-      if (loginBlocked()) { log('🚫 الحساب مقفول مؤقتاً — إيقاف المحاولات.'); return; }
-      realClick(btn); await sleep(1800);
-      if (!onLogin()) { log('LOGIN OK'); return; }
-      if (loginBlocked()) { log('🚫 الحساب مقفول مؤقتاً — إيقاف المحاولات.'); return; }
-    }
+    for (const btn of cands) { try { btn.click(); } catch (e) {} await sleep(1600); if (!onLogin()) { log('LOGIN OK'); return; } realClick(btn); await sleep(1800); if (!onLogin()) { log('LOGIN OK'); return; } }
     log('STILL on login.');
   }
 
@@ -657,7 +647,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.38 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.39 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
