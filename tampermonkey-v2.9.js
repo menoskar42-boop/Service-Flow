@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.22
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.23
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -279,6 +279,30 @@
           if (armed === cap) tryUploadBytes(b, r.headers.get('content-type') || '', r.headers.get('content-disposition') || '', 'anchor');
         }).catch(() => {});
       }, true);
+    } catch (e) {}
+    // hook URL.createObjectURL — أقوى مسار: HiveWorx بيولّد ملف Excel فى المتصفح (client-side) وينزّله كـ blob.
+    // أول ما يتعمل blob للملف نمسكه ونرفعه مباشرة (البلوب هو الملف). saveToDisk بتاعنا مش بيتأثر لأنه بيشتغل وقت armed=null.
+    try {
+      const _createObjectURL = URL.createObjectURL.bind(URL);
+      URL.createObjectURL = function (obj) {
+        const url = _createObjectURL(obj);
+        try {
+          if (armed && (obj instanceof Blob) && obj.size > 100) {
+            const cap = armed;
+            obj.arrayBuffer().then(buf => {
+              if (armed !== cap) return;
+              const u8 = new Uint8Array(buf);
+              const t = (obj.type || '').toLowerCase();
+              if (looksExcel(u8) || /excel|spreadsheet|octet|ms-excel/.test(t)) {
+                armed = null;
+                log('📸 captured blob (createObjectURL):', buf.byteLength, 'bytes | type:', t || '—');
+                uploadToSF(new Blob([buf]), cap.filename, cap.endpoint);
+              }
+            }).catch(() => {});
+          }
+        } catch (e) {}
+        return url;
+      };
     } catch (e) {}
     } // نهاية hooks الخاصة بـ WFM فقط
   })();
@@ -564,7 +588,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.22 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.23 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
