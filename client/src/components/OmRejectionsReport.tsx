@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, UserPlus, Pencil, X } from "lucide-react";
+import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -315,6 +316,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <div className="flex-1" />
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
           <span className="text-sm text-muted-foreground">إجمالي: <strong className="text-foreground">{displayRows.length}</strong> متعذر</span>
+          <LastUpdatedBadge endpoint="/api/ftth-orders/import" label="آخر تحديث OSS" />
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={displayRows.length === 0} className="text-green-700 border-green-200 gap-1">
             <FileSpreadsheet className="w-4 h-4" /> Excel
           </Button>

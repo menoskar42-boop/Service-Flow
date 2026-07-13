@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { format } from "date-fns";
 
 interface Installation {
@@ -56,7 +57,7 @@ const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغن
 
 export function InstallationsReport({
   endpoint, queryKey, title, regularized = false, sheetName, fileName,
-  showDates = false, extraParams, phoneLabel = "التليفون",
+  showDates = false, extraParams, phoneLabel = "التليفون", updateBadge,
 }: {
   endpoint: string;
   queryKey: string;
@@ -67,6 +68,7 @@ export function InstallationsReport({
   showDates?: boolean;
   extraParams?: Record<string, string>;
   phoneLabel?: string;
+  updateBadge?: { endpoint: string; label: string };
 }) {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
@@ -243,6 +245,7 @@ export function InstallationsReport({
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{items.length}</strong> أمر</span>
+        {updateBadge && <LastUpdatedBadge endpoint={updateBadge.endpoint} label={updateBadge.label} />}
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}

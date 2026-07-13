@@ -11,6 +11,7 @@ import {
 import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge, Undo2 } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
+import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 
@@ -375,6 +376,7 @@ export function CurrentFaultsReport() {
           <Undo2 className="w-4 h-4" /> {returnedOnly ? "عرض الكل" : "الخطوط الراجعة"}
         </Button>
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
+        <LastUpdatedBadge endpoint="/api/ticket-queue/import" label="آخر تحديث FCC" />
         <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">
           48 ساعة: <strong>{displayed.filter((f) => f.faultClass === "اعطال 48 ساعه").length}</strong>
         </span>

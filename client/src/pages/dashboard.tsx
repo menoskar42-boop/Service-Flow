@@ -425,6 +425,7 @@ export default function Dashboard() {
                   title="تقرير التركيبات والنقل الحالى"
                   sheetName="التركيبات الحالية"
                   fileName="current-installations"
+                  updateBadge={{ endpoint: "/api/maintenance-orders/import", label: "آخر تحديث WFM" }}
                 />
               )}
               {reportTab === "regularized-installations" && (
@@ -445,6 +446,7 @@ export default function Dashboard() {
                   sheetName="المعاينات الحالية"
                   fileName="current-surveys"
                   phoneLabel="المسلسل"
+                  updateBadge={{ endpoint: "/api/maintenance-orders/import", label: "آخر تحديث WFM" }}
                 />
               )}
               {reportTab === "regularized-surveys" && (
