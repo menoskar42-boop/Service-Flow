@@ -1303,15 +1303,49 @@ export async function registerRoutes(
     }
 
     if (user.role === ROLES.TECH) {
-      // Tech sees all orders EXCEPT those in needs_external state
+      // الفنى يشوف (عدا needs_external):
+      //  - الطلبات قيد الانتظار: المُسنَدة له (assign) أو غير المُسنَدة لأى حد (متاحة للكل).
+      //  - الطلبات غير قيد الانتظار: اللى ردّ عليها هو، أو المُسنَدة له.
       const allOrders = await storage.getOrders();
-      const techOrders = allOrders.filter(o => o.status !== ORDER_STATUS.NEEDS_EXTERNAL);
+      const techOrders = allOrders.filter((o: any) => {
+        if (o.status === ORDER_STATUS.NEEDS_EXTERNAL) return false;
+        if (o.status === ORDER_STATUS.PENDING) {
+          return o.assignedTechId == null || o.assignedTechId === user.id;
+        }
+        return o.techId === user.id || o.assignedTechId === user.id;
+      });
       return res.json(await attachCabinetTech(techOrders));
     }
 
     // Admin sees all orders
     const orders = await storage.getOrders();
     res.json(await attachCabinetTech(orders));
+  });
+
+  // PUT /api/orders/:id/assign — الأدمن بيعمل assign لطلب قيد الانتظار لفنى محدد (techId=null لإلغاء التعيين)
+  app.put("/api/orders/:id/assign", requireAuth, requireAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { techId } = req.body;
+      const cur = await pool.query(`SELECT id, status FROM orders WHERE id = $1`, [id]);
+      if (!cur.rows.length) return res.status(404).json({ message: "Order not found" });
+      if (cur.rows[0].status !== ORDER_STATUS.PENDING) {
+        return res.status(400).json({ message: "لا يمكن التعيين إلا لطلب قيد الانتظار" });
+      }
+      let aId: number | null = null, aName: string | null = null;
+      if (techId != null && techId !== "") {
+        const tech = await storage.getUser(Number(techId));
+        if (!tech || tech.role !== ROLES.TECH) return res.status(400).json({ message: "فنى غير صالح" });
+        aId = tech.id; aName = tech.username;
+      }
+      const upd = await pool.query(
+        `UPDATE orders SET assigned_tech_id = $1, assigned_tech_name = $2 WHERE id = $3 RETURNING *`,
+        [aId, aName, id],
+      );
+      res.json(upd.rows[0]);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "Error assigning order" });
+    }
   });
 
   app.post(api.orders.create.path, requireAuth, async (req, res) => {

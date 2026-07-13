@@ -70,6 +70,9 @@ export async function ensureSchema() {
   `);
 
   await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS serial_number text`);
+  // تعيين (assign): الأدمن بيسند طلباً قيد الانتظار لفنى محدد
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigned_tech_id integer`);
+  await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS assigned_tech_name text`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS phone_lines (

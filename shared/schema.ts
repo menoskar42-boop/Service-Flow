@@ -91,6 +91,10 @@ export const orders = pgTable("orders", {
   techName: text("tech_name"),
   techResponseAt: timestamp("tech_response_at"),
 
+  // تعيين (assign): الأدمن بيسند طلباً قيد الانتظار لفنى محدد. لو null → غير مُسنَد (يظهر لكل الفنيين)
+  assignedTechId: integer("assigned_tech_id").references(() => users.id),
+  assignedTechName: text("assigned_tech_name"),
+
   // External Affairs Inputs
   externalId: integer("external_id").references(() => users.id),
   externalName: text("external_name"),
