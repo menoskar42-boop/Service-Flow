@@ -4506,17 +4506,21 @@ export async function registerRoutes(
   // GET /api/reports/om-stats — إحصائية متعذرات OM (لكل كابينة + لكل فنى)
   //   بداية الفترة (SOY) / الحالى / تم فكها (موجود فى SOY وغير موجود فى الحالى)
   //   ونسبة التحقيق = تم فكها ÷ بداية الفترة.
-  app.get("/api/reports/om-stats", requireAuth, async (_req, res) => {
+  app.get("/api/reports/om-stats", requireAuth, async (req, res) => {
     try {
       const FV = `fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT') AND service_name = 'FV Survey'`;
+      // فلتر سنة اختيارى: yearFilter=current → السنة الحالية فقط (2026)، prior → الأعوام السابقة،
+      // بدونه = كل السنين (السلوك الأصلى لإحصائية متعذرات OM). حسب سنة order_create_time.
+      const yf = String((req.query as Record<string, string>).yearFilter || "");
+      const yearClause =
+        yf === "current" ? `AND EXTRACT(YEAR FROM order_create_time AT TIME ZONE 'UTC') = EXTRACT(YEAR FROM now())::int`
+        : yf === "prior" ? `AND EXTRACT(YEAR FROM order_create_time AT TIME ZONE 'UTC') < EXTRACT(YEAR FROM now())::int`
+        : "";
       // تجميع لكل كود MSAN (كابينة): إجمالى البداية + تم فكها (من SOY) + الحالى.
       const { rows: byCabinet } = await pool.query(`
         WITH soy AS (
-          -- نسبة التحقيق تُحسب على متعذرات السنة الحالية فقط (2026) — حسب سنة تاريخ إنشاء الطلب.
           SELECT msan_code, serial_number, customer_order_id, service_order_id
-          FROM ftth_orders_soy
-          WHERE ${FV}
-            AND EXTRACT(YEAR FROM order_create_time AT TIME ZONE 'UTC') = EXTRACT(YEAR FROM now())::int
+          FROM ftth_orders_soy WHERE ${FV} ${yearClause}
         ),
         cur AS (
           SELECT msan_code, serial_number, customer_order_id, service_order_id

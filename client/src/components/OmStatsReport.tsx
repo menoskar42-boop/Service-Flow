@@ -46,17 +46,19 @@ const pctBadge = (pct: number) => {
   return <span className={`text-xs px-2 py-0.5 rounded font-semibold ${cls}`}>{pct}%</span>;
 };
 
-export function OmStatsReport() {
+export function OmStatsReport({ yearFilter, title }: { yearFilter?: "current" | "prior"; title?: string } = {}) {
   const [activeTab, setActiveTab] = useState<"tech" | "cabinet">("tech");
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const isAdmin = user?.role === ROLES.ADMIN;
+  const qs = yearFilter ? `?yearFilter=${yearFilter}` : "";
+  const reportTitle = title ?? "إحصائية متعذرات OM";
 
   const { data, isFetching } = useQuery<StatsData>({
-    queryKey: ["/api/reports/om-stats"],
+    queryKey: ["/api/reports/om-stats", yearFilter ?? "all"],
     queryFn: async () => {
-      const res = await fetch("/api/reports/om-stats", { credentials: "include" });
+      const res = await fetch(`/api/reports/om-stats${qs}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
     },
@@ -196,7 +198,7 @@ export function OmStatsReport() {
       <td style="${pctStyle(Number(r.pctResolved))};${tdStyle}">${r.pctResolved}%</td>
     </tr>`).join("");
 
-    const title = "إحصائية متعذرات OM";
+    const title = reportTitle;
     const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8">
       <title>${esc(title)}</title>
       <style>
@@ -245,7 +247,7 @@ export function OmStatsReport() {
     <div className="space-y-6" dir="rtl">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-base font-bold">إحصائية متعذرات OM</h2>
+        <h2 className="text-base font-bold">{reportTitle}</h2>
         {/* تبديل التابات */}
         <div className="flex rounded-lg border overflow-hidden text-xs">
           {(["tech", "cabinet"] as const).map((tab) => (

@@ -136,8 +136,9 @@ export function TechPerformanceReport() {
     queryFn: () => fetchJson(`/api/reports/cabinet-adsl-faults?${buildParams()}`),
   });
   const { data: omData, isFetching: f4 } = useQuery({
-    queryKey: ["/api/reports/om-stats"],
-    queryFn: () => fetchJson(`/api/reports/om-stats`),
+    // نسبة تحقيق المتعذرات فى أداء الفنيين تُحسب على متعذرات السنة الحالية (2026) فقط
+    queryKey: ["/api/reports/om-stats", "current"],
+    queryFn: () => fetchJson(`/api/reports/om-stats?yearFilter=current`),
   });
 
   const isFetching = f1 || f2 || f3 || f4;
