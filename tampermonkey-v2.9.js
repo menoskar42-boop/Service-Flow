@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.21
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.22
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -218,6 +218,9 @@
         return origOpen.apply(this, arguments);
       };
     } catch (e) {}
+    // الـ hooks التالية (fetch/XHR/ضغطات روابط التحميل) مطلوبة لـ WFM (HiveWorx) فقط — بنقصرها عليه
+    // عشان ماتتداخلش مع تدفّق FCC/OSS المجرَّب (اللى بيعتمد على form submit / GM_xmlhttpRequest).
+    if (/wfm\.te\.eg/i.test(location.host)) {
     // hook fetch — لو armed ولاقى استجابة ملف Excel، ارفعها (لواجهات بتحمّل عبر fetch/blob زى HiveWorx)
     try {
       const _fetch = window.fetch;
@@ -277,6 +280,7 @@
         }).catch(() => {});
       }, true);
     } catch (e) {}
+    } // نهاية hooks الخاصة بـ WFM فقط
   })();
 
   /* ---------- anti-devtool guard ---------- */
@@ -560,7 +564,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.21 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.22 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
