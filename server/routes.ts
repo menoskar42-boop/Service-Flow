@@ -1116,6 +1116,10 @@ export async function registerRoutes(
 
   // الأدمن الأعلى (super_admin) بيعدّى أى فحص أدمن (وصول كامل)
   const hasAdminAccess = (role: string) => role === ROLES.ADMIN || role === ROLES.SUPER_ADMIN;
+  // مين يقدر يتحكّم في مين: الأدمن الأعلى يتحكّم في الكل. الأدمن العادى في باقى المستخدمين فقط
+  // (مش الأدمنز ولا الأدمنز الأعلى).
+  const canManageTarget = (requesterRole: string, targetRole: string) =>
+    requesterRole === ROLES.SUPER_ADMIN || (targetRole !== ROLES.ADMIN && targetRole !== ROLES.SUPER_ADMIN);
 
   const requireAdmin = (req: any, res: any, next: any) => {
     if (req.isAuthenticated() && hasAdminAccess(req.user.role)) return next();
@@ -1224,6 +1228,9 @@ export async function registerRoutes(
       if (!userToDelete) {
         return res.status(404).json({ message: "User not found" });
       }
+      if (!canManageTarget(currentUser.role, userToDelete.role)) {
+        return res.status(403).json({ message: "لا يمكنك التحكم فى حساب مدير — للأدمن الأعلى فقط" });
+      }
 
       await storage.deleteUser(userId);
       res.json({ message: "User deleted successfully" });
@@ -1246,6 +1253,9 @@ export async function registerRoutes(
       if (!userToSuspend) {
         return res.status(404).json({ message: "User not found" });
       }
+      if (!canManageTarget(currentUser.role, userToSuspend.role)) {
+        return res.status(403).json({ message: "لا يمكنك التحكم فى حساب مدير — للأدمن الأعلى فقط" });
+      }
 
       const updatedUser = await storage.suspendUser(userId, suspended);
       res.json({ id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, suspended: updatedUser.suspended });
@@ -1258,10 +1268,14 @@ export async function registerRoutes(
   app.put(api.users.setWorkerCode.path, requireAuth, requireAdmin, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
+      const currentUser = req.user as any;
       const { workerCode } = req.body;
       const userToEdit = await storage.getUser(userId);
       if (!userToEdit) {
         return res.status(404).json({ message: "User not found" });
+      }
+      if (!canManageTarget(currentUser.role, userToEdit.role)) {
+        return res.status(403).json({ message: "لا يمكنك التحكم فى حساب مدير — للأدمن الأعلى فقط" });
       }
       const updatedUser = await storage.updateUserWorkerCode(userId, (workerCode || "").trim());
       res.json({ id: updatedUser.id, username: updatedUser.username, role: updatedUser.role, workerCode: updatedUser.workerCode, suspended: updatedUser.suspended });

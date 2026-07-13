@@ -36,6 +36,9 @@ export function UsersList() {
   const [open, setOpen] = useState(false);
   const { users, isLoading, deleteUser, isDeleting, suspendUser, isSuspending, setWorkerCode, isSettingWorkerCode } = useUsers();
   const { user: currentUser } = useAuth();
+  // الأدمن الأعلى يتحكّم في الكل؛ الأدمن العادى في باقى المستخدمين فقط (مش الأدمنز)
+  const canManage = (u: { role: string }) =>
+    currentUser?.role === ROLES.SUPER_ADMIN || (u.role !== ROLES.ADMIN && u.role !== ROLES.SUPER_ADMIN);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   const getRoleBadge = (role: string) => {
@@ -141,6 +144,8 @@ export function UsersList() {
                     <TableCell>
                       {user.id === currentUser?.id ? (
                         <span className="text-xs text-muted-foreground">(حسابك)</span>
+                      ) : !canManage(user) ? (
+                        <span className="text-xs text-muted-foreground">(مدير — للأدمن الأعلى فقط)</span>
                       ) : (
                         <div className="flex items-center gap-2">
                           <Button
