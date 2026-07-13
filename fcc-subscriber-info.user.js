@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC — جلب اسم وعنوان العميل (Subscriber Info)
 // @namespace    te.eg.subinfo
-// @version      1.1.0
-// @description  v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
+// @version      1.2.0
+// @description  v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -241,13 +241,13 @@
   async function main() {
     let isTop = true; try { isTop = (window.top === window.self); } catch (e) { isTop = false; }
     if (!isTop && !document.querySelector('input[type=password]')) return;
-    log('SubInfo v1.1.0 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
+    log('SubInfo v1.2.0 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
     if (!AUTO && !ONE) { log('ℹ️ افتح الصفحة من زر "مراجعة الاسم والعنوان" فى Service-Flow لبدء الجلب تلقائياً.'); return; }
     if (onLogin()) { log('تسجيل الدخول...'); await doLogin(); return; }   // بعد الدخول الصفحة هتعيد التحميل والسكربت يشتغل تانى
     if (ONE) await runOne(ONE); else await runAll();
   }
 
-  log('TE FCC SubInfo v1.1.0 loaded');
+  log('TE FCC SubInfo v1.2.0 loaded');
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
