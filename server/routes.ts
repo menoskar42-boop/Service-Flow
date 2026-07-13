@@ -1377,6 +1377,25 @@ export async function registerRoutes(
           if (tech && tech.role === ROLES.TECH) { assignedTechId = tech.id; assignedTechName = tech.username; }
         }
       }
+      // لو المبيعات ساب "الكل" (مفيش إسناد يدوى) → إسناد تلقائى حسب كلمات فى العنوان.
+      // نطبّع الحروف العربية (ى/ي، ة/ه، الهمزات، التشكيل) عشان المطابقة تكون مضمونة.
+      if (assignedTechId == null) {
+        const normAr = (s: string) => (s || "")
+          .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+          .replace(/[ًٌٍَُِّْـ]/g, "").replace(/\s+/g, " ").trim();
+        const AUTO_RULES: { tech: string; keys: string[] }[] = [
+          { tech: "سامى",  keys: ["دير الجنادله", "دير الجنادلة"] },
+          { tech: "محمود", keys: ["مشايعه", "مشايعة"] },
+          { tech: "اسلام", keys: ["عزايزه", "عزايزة", "عامرى", "عامري"] },
+        ];
+        const addrN = normAr(String((input as any).customerAddress || ""));
+        const rule = AUTO_RULES.find((r) => r.keys.some((k) => addrN.includes(normAr(k))));
+        if (rule) {
+          const { rows } = await pool.query(`SELECT id, username FROM users WHERE role = $1`, [ROLES.TECH]);
+          const t = rows.find((u: any) => normAr(u.username).includes(normAr(rule.tech)));
+          if (t) { assignedTechId = t.id; assignedTechName = t.username; }
+        }
+      }
       const order = await storage.createOrder({
         ...input,
         assignedTechId,
