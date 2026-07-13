@@ -172,6 +172,34 @@ export function useOrders() {
     },
   });
 
+  const assignOrderMutation = useMutation({
+    mutationFn: async ({ orderId, techId }: { orderId: number; techId: number | null }) => {
+      const res = await fetch(`/api/orders/${orderId}/assign`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ techId }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to assign order");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.orders.list.path] });
+      toast({
+        title: variables.techId == null ? "تم إلغاء التعيين" : "تم تعيين الفني",
+        description: variables.techId == null
+          ? "الطلب متاح الآن لكل الفنيين"
+          : "تم إسناد الطلب للفني المحدد",
+      });
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "خطأ", description: error.message });
+    },
+  });
+
   const externalResponseMutation = useMutation({
     mutationFn: async ({ orderId, data }: { orderId: number; data: UpdateExternalResponse }) => {
       const url = buildUrl(api.orders.externalResponse.path, { id: orderId });
@@ -215,5 +243,7 @@ export function useOrders() {
     isRequestingExternal: requestExternalReviewMutation.isPending,
     externalResponse: externalResponseMutation.mutate,
     isSubmittingExternal: externalResponseMutation.isPending,
+    assignOrder: assignOrderMutation.mutate,
+    isAssigning: assignOrderMutation.isPending,
   };
 }

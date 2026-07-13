@@ -41,7 +41,7 @@ type ContractFilter = "all" | "contracted" | "not_contracted";
 
 export function OrdersTable({ orders }: OrdersTableProps) {
   const { user } = useAuth();
-  const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract, requestExternalReview, isRequestingExternal } = useOrders();
+  const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract, requestExternalReview, isRequestingExternal, assignOrder, isAssigning } = useOrders();
   const { users } = useUsers();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -394,7 +394,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 )}
 
                 <TableCell className="text-sm">
-                  {order.techName || <span className="text-muted-foreground">-</span>}
+                  {order.techName || (
+                    (order as any).assignedTechName ? (
+                      <span className="text-blue-600 text-xs">مُسنَد: {(order as any).assignedTechName}</span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )
+                  )}
                 </TableCell>
 
                 {/* Tech Response Cell */}
@@ -551,6 +557,33 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     {/* Admin actions */}
                     {user?.role === ROLES.ADMIN && (
                       <>
+                        {/* Assign pending order to a specific tech (null = متاح للكل) */}
+                        {order.status === ORDER_STATUS.PENDING && (
+                          <select
+                            value={(order as any).assignedTechId ?? ""}
+                            onChange={(e) =>
+                              assignOrder({
+                                orderId: order.id,
+                                techId: e.target.value ? Number(e.target.value) : null,
+                              })
+                            }
+                            disabled={isAssigning}
+                            className={`border rounded-md px-2 py-1.5 text-xs min-w-[130px] ${
+                              (order as any).assignedTechId ? "bg-blue-50 border-blue-300 text-blue-700" : "bg-white"
+                            }`}
+                            dir="rtl"
+                            title="إسناد الطلب لفني محدد (وإلا يبقى متاحاً لكل الفنيين)"
+                            data-testid={`select-assign-${order.id}`}
+                          >
+                            <option value="">— متاح للكل —</option>
+                            {techUsers.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.username}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
                         {/* Re-inspection button for admin on not_feasible orders */}
                         {order.status === ORDER_STATUS.NOT_FEASIBLE && (
                           <AlertDialog>
