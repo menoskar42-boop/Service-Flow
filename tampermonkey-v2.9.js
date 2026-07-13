@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.19
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.20
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -175,6 +175,19 @@
       };
       HTMLFormElement.prototype.submit = wrapSubmit(HTMLFormElement.prototype.submit);
       if (HTMLFormElement.prototype.requestSubmit) HTMLFormElement.prototype.requestSubmit = wrapSubmit(HTMLFormElement.prototype.requestSubmit);
+    } catch (e) {}
+    // capture-phase submit EVENT — يمسك الإرسال الطبيعى (native form submit) الناتج عن ضغطة زر
+    // (زى Export بتاع WFM الجديد) — لأن prototype.submit hook بيمسك الإرسال البرمجى فقط.
+    try {
+      document.addEventListener('submit', function (e) {
+        if (!armed) return;
+        const f = e.target;
+        if (f && f.tagName === 'FORM') {
+          let handled = false;
+          try { handled = captureFromForm(f); } catch (err) { log('submit-event hook err:', err.message); }
+          if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
+        }
+      }, true);
     } catch (e) {}
     try {
       const origOpen = window.open;
@@ -474,7 +487,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.19 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.20 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
