@@ -3959,10 +3959,13 @@ export async function registerRoutes(
     setPortsCors(res);
     if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
     const limit = Math.min(Number((req.query as any).limit) || 5000, 20000);
+    // نرجّع فقط أرقام التليفون الصحيحة بصيغة 88+رقم المشترك (6-8 خانات) — نستبعد القيم المشوّهة
+    // فى عمود phone_number (زى أكواد/أرقام 21 خانة) اللى FCC بيرفضها («A value is required»).
     const { rows } = await pool.query(
       `SELECT pp.phone_number FROM phone_ports pp
        LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
        WHERE si.phone_number IS NULL
+         AND regexp_replace(pp.phone_number, '[^0-9]', '', 'g') ~ '^0*88[0-9]{5,9}$'
        ORDER BY pp.phone_number
        LIMIT $1`,
       [limit],
