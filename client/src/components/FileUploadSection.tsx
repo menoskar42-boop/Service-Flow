@@ -420,8 +420,14 @@ export function FileUploadSection() {
     // كذا كابينة، فـ uploaded_at بيتغيّر مع كل كابينة — مش دليل إن كله خلص. فبنعتمد على إشارة
     // "اكتمال التشغيل" (السكربت بيبعتها لما يدخل آخر كابينة والكود يخلص). كده لو فشل/اتقطع
     // يفضل يحاول كل نص ساعة لحد ما يكمّل فعلاً؛ وأول ما يكمّل النهارده يبطّل يفتحه.
+    // "خلص النهارده" = وصلت إشارة اكتمال التشغيل النهارده، أو اترفع ملف البورتات فعلاً النهارده
+    // (لو السكربت اتقطع قبل ما يبعت إشارة الاكتمال لكن الملف اترفع، نعتبره خلص علشان ميفضلش يعيد فتحه).
+    const today = cairoDay(new Date());
     const portsIso = uploadTimesRef.current?.["ports_run_complete"];
-    const portsDoneToday = !!portsIso && cairoDay(portsIso) === cairoDay(new Date());
+    const portsUploadIso = uploadTimesRef.current?.["/api/phone-ports/import"];
+    const portsDoneToday =
+      (!!portsIso && cairoDay(portsIso) === today) ||
+      (!!portsUploadIso && cairoDay(portsUploadIso) === today);
     if (!portsDoneToday) {
       window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
     }
@@ -674,8 +680,12 @@ export function FileUploadSection() {
         <span className="text-xs self-center">
           منافذ MSAN اليوم:{" "}
           {(() => {
+            const today = cairoDay(new Date());
             const iso = uploadTimes["ports_run_complete"];
-            const done = !!iso && cairoDay(iso) === cairoDay(new Date());
+            const upIso = uploadTimes["/api/phone-ports/import"];
+            const done =
+              (!!iso && cairoDay(iso) === today) ||
+              (!!upIso && cairoDay(upIso) === today);
             return done
               ? <span className="text-green-600 font-medium">اتحدّثت ✓</span>
               : <span className="text-orange-600 font-medium">لسه</span>;
