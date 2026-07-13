@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.24
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.25
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.25: WFM — مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -304,6 +304,38 @@
         return url;
       };
     } catch (e) {}
+    // hook تحميل عبر iframe مخفى — Oracle ADF (af:exportCollectionActionListener) بيبثّ الملف
+    // كثيراً عن طريق حقن <iframe> جديد أو تغيير src بتاعه للـ URL بتاع التصدير. الـ hooks فوق
+    // (fetch/XHR/submit) مابتمسكش ده. هنا نراقب أى iframe يتضاف/يتغيّر src وهو armed، ونجيب الملف.
+    // كمان بنسجّل أى iframe/form بيتحقن أثناء الالتقاط عشان التشخيص لو فضل مش شغّال.
+    try {
+      const tryIframeSrc = (src) => {
+        if (!armed || !src || /^about:blank$/i.test(src)) return;
+        if (!/download|export|xls|report|attach|blob:|servlet|\.do(\?|$)/i.test(src)) { log('👀 iframe src (armed):', String(src).slice(0, 90)); return; }
+        const cap = armed;
+        const u2 = /^(https?:|blob:)/i.test(src) ? src : location.origin + src;
+        log('📸 iframe download candidate →', u2.slice(0, 90));
+        fetch(u2, { credentials: 'include' }).then(async r => {
+          const b = await r.arrayBuffer();
+          if (armed === cap) tryUploadBytes(b, r.headers.get('content-type') || '', r.headers.get('content-disposition') || '', 'iframe');
+        }).catch(e => log('iframe fetch err:', e.message));
+      };
+      const watchIframe = (fr) => {
+        try { if (fr.src) tryIframeSrc(fr.src); } catch (e) {}
+        try { new MutationObserver(() => { try { tryIframeSrc(fr.src); } catch (e) {} }).observe(fr, { attributes: true, attributeFilter: ['src'] }); } catch (e) {}
+      };
+      new MutationObserver((muts) => {
+        if (!armed) return;
+        for (const m of muts) {
+          for (const n of m.addedNodes) {
+            if (!n.tagName) continue;
+            if (n.tagName === 'IFRAME') { log('👁 iframe added (armed) src:', (n.getAttribute('src') || '—').slice(0, 90)); watchIframe(n); }
+            else if (n.tagName === 'FORM') { log('👁 form added (armed) action:', (n.getAttribute('action') || '—').slice(0, 60), '| target:', n.getAttribute('target') || '—'); }
+            else if (n.querySelectorAll) { n.querySelectorAll('iframe').forEach(watchIframe); }
+          }
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    } catch (e) {}
     } // نهاية hooks الخاصة بـ WFM فقط
   })();
 
@@ -592,7 +624,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.24 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.25 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
