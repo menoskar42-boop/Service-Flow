@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS + SubInfo (All-in-One)
 // @namespace    te.eg.autoexport
-// @version      3.0.4
-// @description  FCC + WFM + OSS export + جلب اسم/عنوان العميل — كله فى سكربت واحد. v3.0.4: إصلاح — التهدئة بقت *فقط* لو ظهرت رسالة رفض/قفل فعلية (Invalid username or password / LoginException). بطء تسجيل الدخول (لسه على صفحة الدخول من غير رسالة) مابيتحسبش فشل خالص — بنستنى بصبر لحد ما يخرج من صفحة الدخول (نجاح) أو تظهر رسالة (تهدئة). شِلنا عدّاد «محاولتين فاشلتين» اللى كان بيوقف الدخول بالغلط وقت التأخير. v3.0.3: قفل حساب FCC مؤقت (~20 دقيقة) — فترة تهدئة ~22 دقيقة (مشتركة عبر كل تابات FCC عبر localStorage) بعد رفض الدخول، وبعدها يحاول لوحده. v3.0.2: (1) علامة وضع المراجعة (sf_subinfo_one/auto) بتتثبّت فى sessionStorage عند document-start قبل ما FCC يمسح window.name — فزر «مراجعة» بقى يفتح Complains ويدخل رقم التليفون بدل ما يقع فى تدفّق التصدير. (2) الدخول يقف فوراً لو ظهرت «Invalid username or password». v3.0.1: المراجعة تفتح Complains بـ activate (زى بلاطة Ticket Queue) + حد 300 رقم لكل تشغيل (الباقى يكمّل الدورة الجاية). v3.0.0: دمجنا سكربت SubInfo هنا — تاب FCC اليومى بعد التصدير يراجع الأرقام (بورتات بدون بيانات فنية) فى نفس الدخول ثم يقفل؛ وزر المراجعة اليدوى (sf_subinfo_auto/one) بيشتغل لوحده. (احذف سكربت SubInfo المنفصل القديم). v2.40: فحص قفل الحساب (صارم — يقف فقط لو ظهرت رسالة LoginException بالظبط، مش بيمنع الدخول العادى). v2.39: رجعنا فحص القفل الفضفاض. v2.38: كشف قفل الحساب. v2.37: قفل دخول FCC مشترك يمنع الدخول المتزامن من تابين (تصدير + جلب اسم/عنوان) اللى بيسبّب LoginException. v2.36: سكربت التصدير يقف تماماً لو التاب اتفتح لجلب اسم/عنوان العميل (window.name=sf_subinfo_auto) — يمنع التعارض مع سكربت SubInfo الجديد. v2.35: OSS كمان يقفل بعد 15ث. v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      3.0.5
+// @description  FCC + WFM + OSS export + جلب اسم/عنوان العميل — كله فى سكربت واحد. v3.0.5: (1) علامة المراجعة كمان فى الـ hash احتياطى (#sf_si=one:الرقم / #sf_si=auto) لو المتصفح مسح window.name. (2) تشخيص فى اللوج «علامة الراوتر» يوضّح ليه راح للتصدير بدل المراجعة. (3) البحث عن خانات/زر البحث فى كل الـ iframes + تشخيص الحقول siDumpFields. v3.0.4: إصلاح — التهدئة بقت *فقط* لو ظهرت رسالة رفض/قفل فعلية (Invalid username or password / LoginException). بطء تسجيل الدخول (لسه على صفحة الدخول من غير رسالة) مابيتحسبش فشل خالص — بنستنى بصبر لحد ما يخرج من صفحة الدخول (نجاح) أو تظهر رسالة (تهدئة). شِلنا عدّاد «محاولتين فاشلتين» اللى كان بيوقف الدخول بالغلط وقت التأخير. v3.0.3: قفل حساب FCC مؤقت (~20 دقيقة) — فترة تهدئة ~22 دقيقة (مشتركة عبر كل تابات FCC عبر localStorage) بعد رفض الدخول، وبعدها يحاول لوحده. v3.0.2: (1) علامة وضع المراجعة (sf_subinfo_one/auto) بتتثبّت فى sessionStorage عند document-start قبل ما FCC يمسح window.name — فزر «مراجعة» بقى يفتح Complains ويدخل رقم التليفون بدل ما يقع فى تدفّق التصدير. (2) الدخول يقف فوراً لو ظهرت «Invalid username or password». v3.0.1: المراجعة تفتح Complains بـ activate (زى بلاطة Ticket Queue) + حد 300 رقم لكل تشغيل (الباقى يكمّل الدورة الجاية). v3.0.0: دمجنا سكربت SubInfo هنا — تاب FCC اليومى بعد التصدير يراجع الأرقام (بورتات بدون بيانات فنية) فى نفس الدخول ثم يقفل؛ وزر المراجعة اليدوى (sf_subinfo_auto/one) بيشتغل لوحده. (احذف سكربت SubInfo المنفصل القديم). v2.40: فحص قفل الحساب (صارم — يقف فقط لو ظهرت رسالة LoginException بالظبط، مش بيمنع الدخول العادى). v2.39: رجعنا فحص القفل الفضفاض. v2.38: كشف قفل الحساب. v2.37: قفل دخول FCC مشترك يمنع الدخول المتزامن من تابين (تصدير + جلب اسم/عنوان) اللى بيسبّب LoginException. v2.36: سكربت التصدير يقف تماماً لو التاب اتفتح لجلب اسم/عنوان العميل (window.name=sf_subinfo_auto) — يمنع التعارض مع سكربت SubInfo الجديد. v2.35: OSS كمان يقفل بعد 15ث. v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -32,6 +32,10 @@
     if (_wn0 === 'sf_subinfo_auto' || _wn0.indexOf('sf_subinfo_one:') === 0) {
       sessionStorage.setItem('sf_si_mode', _wn0);
     }
+    // احتياطى: علامة فى hash (لو المتصفح/FCC مسح window.name) — مثال Login.jsf#sf_si=one:2747150 أو #sf_si=auto
+    var _h = (location.hash || '').replace(/^#/, '');
+    var _m = _h.match(/sf_si=(auto|one:[^&]+)/i);
+    if (_m) { sessionStorage.setItem('sf_si_mode', _m[1].toLowerCase() === 'auto' ? 'sf_subinfo_auto' : 'sf_subinfo_' + _m[1]); }
   } catch (e) {}
 
   /* ================================================================
@@ -702,32 +706,71 @@
   const SI_BATCH  = 300;                        // عدد الأرقام اللى يراجعها كل تشغيل (الباقى يكمّل الدورة الجاية)
   function arabicOnly(s) { const m = (s || '').match(/[؀-ۿ][؀-ۿ0-9\s\/\-.,()]*/g); return m ? m.map(x => x.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ').replace(/\s*,\s*/g, '، ').trim() : ''; }
   const cleanLbl = (s) => norm(s).replace(/[*:：]/g, '').trim().toLowerCase();
+  // FCC (Oracle ADF) بيحطّ فورم الشكاوى غالباً جوّه iframe — لازم ندوّر فى كل الـ documents (top + كل الـ iframes نفس الأصل)
+  function siAllDocs() {
+    const out = [document];
+    const walk = (win) => {
+      let frames; try { frames = win.frames; } catch (e) { return; }
+      for (let i = 0; i < frames.length; i++) {
+        let d; try { d = frames[i].document; } catch (e) { continue; }   // cross-origin → تخطّى
+        if (d && out.indexOf(d) === -1) { out.push(d); walk(frames[i]); }
+      }
+    };
+    try { walk(window); } catch (e) {}
+    return out;
+  }
+  // تشخيص: يطبع أسماء كل الـ labels والخانات الموجودة (عشان نظبّط أسماء الحقول الحقيقية اللى FCC بيستخدمها)
+  function siDumpFields(tag) {
+    const docs = siAllDocs();
+    const labels = new Set(); let inputs = 0;
+    for (const d of docs) {
+      try { Array.from(d.querySelectorAll('label,th,legend')).forEach(l => { const t = norm(l.textContent); if (t && t.length <= 28) labels.add(t); }); } catch (e) {}
+      try { inputs += d.querySelectorAll('input[type=text],input:not([type]),input[type=number],input[type=tel]').length; } catch (e) {}
+    }
+    log('🔬 تشخيص[' + tag + '] docs=' + docs.length + ' | خانات=' + inputs);
+    log('   labels(' + labels.size + '):', Array.from(labels).slice(0, 45).join(' | ').slice(0, 500));
+  }
   function findInputByLabel(labelText) {
     const want = cleanLbl(labelText);
-    const labs = Array.from(document.querySelectorAll('label,span,td,div,th,dt')).filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want);
-    for (const lab of labs) {
-      const forId = lab.getAttribute && lab.getAttribute('for');
-      if (forId) { const el = document.getElementById(forId); if (el && el.tagName === 'INPUT') return el; }
-      let scope = lab.parentElement;
-      for (let i = 0; i < 5 && scope; i++) { const inp = scope.querySelector('input[type=text], input:not([type]):not([type=hidden])'); if (inp) return inp; scope = scope.parentElement; }
-      let n = lab.nextElementSibling, c = 0;
-      while (n && c < 5) { if (n.tagName === 'INPUT') return n; const inp = n.querySelector && n.querySelector('input[type=text],input:not([type])'); if (inp) return inp; n = n.nextElementSibling; c++; }
+    for (const doc of siAllDocs()) {
+      let labs; try { labs = Array.from(doc.querySelectorAll('label,span,td,div,th,dt')).filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want); } catch (e) { continue; }
+      for (const lab of labs) {
+        const forId = lab.getAttribute && lab.getAttribute('for');
+        if (forId) { const el = doc.getElementById(forId); if (el && el.tagName === 'INPUT') return el; }
+        let scope = lab.parentElement;
+        for (let i = 0; i < 5 && scope; i++) { const inp = scope.querySelector('input[type=text], input[type=tel], input[type=number], input:not([type]):not([type=hidden])'); if (inp) return inp; scope = scope.parentElement; }
+        let n = lab.nextElementSibling, c = 0;
+        while (n && c < 5) { if (n.tagName === 'INPUT') return n; const inp = n.querySelector && n.querySelector('input[type=text],input[type=tel],input[type=number],input:not([type])'); if (inp) return inp; n = n.nextElementSibling; c++; }
+      }
     }
     return null;
   }
   function labelValue(labelText) {
     const want = cleanLbl(labelText);
-    const labs = Array.from(document.querySelectorAll('label,span,td,div,th,dt,b,font,p')).filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want);
-    for (const lab of labs) {
-      const tries = [];
-      if (lab.nextElementSibling) tries.push(lab.nextElementSibling);
-      const cell = lab.parentElement;
-      if (cell && cell.nextElementSibling) tries.push(cell.nextElementSibling);
-      let n = lab.nextElementSibling, c = 0;
-      while (n && c < 3) { tries.push(n); n = n.nextElementSibling; c++; }
-      for (const t of tries) { const v = norm(t.textContent); if (v && cleanLbl(v) !== want) return v; }
+    for (const doc of siAllDocs()) {
+      let labs; try { labs = Array.from(doc.querySelectorAll('label,span,td,div,th,dt,b,font,p')).filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want); } catch (e) { continue; }
+      for (const lab of labs) {
+        const tries = [];
+        if (lab.nextElementSibling) tries.push(lab.nextElementSibling);
+        const cell = lab.parentElement;
+        if (cell && cell.nextElementSibling) tries.push(cell.nextElementSibling);
+        let n = lab.nextElementSibling, c = 0;
+        while (n && c < 3) { tries.push(n); n = n.nextElementSibling; c++; }
+        for (const t of tries) { const v = norm(t.textContent) || norm(t.value); if (v && cleanLbl(v) !== want) return v; }
+        // لو الحقل input (نتيجة البحث بتظهر أحياناً فى خانة read-only)
+        const forId = lab.getAttribute && lab.getAttribute('for');
+        if (forId) { const el = doc.getElementById(forId); if (el && (el.value || el.textContent)) { const v = norm(el.value || el.textContent); if (v) return v; } }
+      }
     }
     return '';
+  }
+  // زر البحث ممكن يكون جوّه iframe — ندوّر فى كل الـ docs
+  function siFindButton(text) {
+    for (const doc of siAllDocs()) {
+      const b = byText(doc, 'a,button,input[type=submit],input[type=button],span', text, { exact: true }) || byText(doc, 'a,button,input[type=submit],input[type=button]', text, { exact: false });
+      if (b) return b;
+    }
+    return null;
   }
   function siGm(opts) { return new Promise((resolve) => { GM_xmlhttpRequest(Object.assign({ timeout: 30000, onload: r => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText || '' }), onerror: () => resolve({ ok: false, status: 0, text: '' }), ontimeout: () => resolve({ ok: false, status: 0, text: '' }) }, opts)); }); }
   async function siGetPending() { const r = await siGm({ method: 'GET', url: SF_URL + '/api/line-subscriber-info/pending?limit=' + SI_BATCH, headers: { 'X-DZS-Token': DZS_TOKEN } }); if (!r.ok) { log('❌ SubInfo: فشل جلب القائمة', r.status); return []; } try { return JSON.parse(r.text).phones || []; } catch (e) { return []; } }
@@ -747,11 +790,12 @@
   async function siProcessOne(phone) {
     const short = String(phone).replace(/^0*88/, '').replace(/\D/g, '');
     const cityEl = findInputByLabel('CityCode'), telEl = findInputByLabel('TelNo');
-    if (!cityEl || !telEl) { log('⚠️ SubInfo: مالقيتش خانات البحث'); return false; }
-    setField(cityEl, '88'); setField(telEl, short); await sleep(250);
-    const searchBtn = byText(document, 'a,button,input[type=submit],input[type=button],span', 'Search', { exact: true }) || byText(document, 'a,button,input[type=submit]', 'Search', { exact: false });
+    if (!cityEl || !telEl) { log('⚠️ SubInfo: مالقيتش خانات البحث'); siDumpFields('search-form'); return false; }
+    setField(cityEl, '88'); setField(telEl, short); await sleep(300);
+    log('SubInfo كتب → City=' + (cityEl.value || '∅') + ' Tel=' + (telEl.value || '∅') + ' (المطلوب 88/' + short + ')');
+    const searchBtn = siFindButton('Search');
     if (!searchBtn) { log('⚠️ SubInfo: زر Search مش موجود'); return false; }
-    realClick(searchBtn); await sleep(2600);
+    realClick(searchBtn); await sleep(2800);
     const bodyTxt = norm(document.body.textContent).toLowerCase();
     const subName = labelValue('SubName');
     const subAdd = arabicOnly(labelValue('SubAdd'));
@@ -795,6 +839,8 @@
     // العلامة الحقيقية من sessionStorage (اتثبّتت عند document-start) لأن FCC بيمسح window.name بعد الدخول
     let SImode=''; try{SImode=sessionStorage.getItem('sf_si_mode')||'';}catch(e){}
     const marker = SImode || WN;
+    // تشخيص: يوضّح ليه اختار مراجعة ولا تصدير (لو العلامة فاضية → بيروح للتصدير runFCC)
+    if (location.host.startsWith('fcc.te.eg')) log('🔎 علامة الراوتر:', marker || '∅', '| ss:', SImode || '∅', '| wn:', (WN || '∅').slice(0, 32));
     const SI_AUTO = marker === 'sf_subinfo_auto';
     const SI_ONE  = marker.indexOf('sf_subinfo_one:')===0 ? marker.slice('sf_subinfo_one:'.length) : '';
     if (SI_AUTO || SI_ONE) {
@@ -826,7 +872,7 @@
     } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS + SubInfo v3.0.4 loaded on', location.host);
+  log('TE FCC + WFM + OSS + SubInfo v3.0.5 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();

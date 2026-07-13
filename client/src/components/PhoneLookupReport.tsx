@@ -378,7 +378,7 @@ export function PhoneLookupReport() {
           {line && (
             <Button
               variant="outline"
-              onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "sf_subinfo_one:" + (line.fullPhone || phone))}
+              onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf#sf_si=one:" + (line.fullPhone || phone), "sf_subinfo_one:" + (line.fullPhone || phone))}
               className="gap-2 text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50"
               title="جلب اسم وعنوان هذا الرقم من FCC (يفتح FCC ويجلبه تلقائياً)"
             >

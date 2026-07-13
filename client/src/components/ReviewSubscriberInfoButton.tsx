@@ -31,7 +31,7 @@ export function ReviewSubscriberInfoButton() {
         duration: 5000,
       });
       // يفتح FCC (بالاسم الثابت) فيشتغل سكربت الجلب تلقائياً على كل الأرقام المطلوبة
-      window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "sf_subinfo_auto");
+      window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf#sf_si=auto", "sf_subinfo_auto");
     } catch (e: any) {
       toast({ variant: "destructive", title: "خطأ", description: e.message || "تعذّر البدء", duration: 5000 });
     } finally {
