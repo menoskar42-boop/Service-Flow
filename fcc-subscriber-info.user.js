@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC — جلب اسم وعنوان العميل (Subscriber Info)
 // @namespace    te.eg.subinfo
-// @version      1.2.0
-// @description  v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
+// @version      1.3.0
+// @description  v1.3.0: قفل دخول FCC مشترك يمنع الدخول المتزامن مع سكربت التصدير (LoginException). v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -95,8 +95,18 @@
     return r.ok;
   }
 
-  /* ===== FCC login ===== */
+  /* ===== FCC login (قفل مشترك يمنع الدخول المتزامن من تابين — يمنع LoginException) ===== */
+  async function acquireFccLock() {
+    const KEY = 'sf_fcc_login_lock';
+    for (let i = 0; i < 30; i++) {
+      let held = 0; try { held = Number(localStorage.getItem(KEY) || 0); } catch (e) {}
+      if (!held || Date.now() - held > 20000) { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} return; }
+      log('⏳ انتظار قفل دخول FCC (تاب تانى بيسجّل دخول)...'); await sleep(1500);
+    }
+  }
+  function releaseFccLock() { setTimeout(() => { try { localStorage.removeItem('sf_fcc_login_lock'); } catch (e) {} }, 9000); }
   async function doLogin() {
+    await acquireFccLock(); releaseFccLock();
     const pw = await waitFor(() => document.querySelector('input[type=password]'), { timeout: 15000, label: 'password' }).catch(() => null);
     if (pw) {
       const scope = pw.closest('form') || document;
@@ -241,13 +251,13 @@
   async function main() {
     let isTop = true; try { isTop = (window.top === window.self); } catch (e) { isTop = false; }
     if (!isTop && !document.querySelector('input[type=password]')) return;
-    log('SubInfo v1.2.0 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
+    log('SubInfo v1.3.0 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
     if (!AUTO && !ONE) { log('ℹ️ افتح الصفحة من زر "مراجعة الاسم والعنوان" فى Service-Flow لبدء الجلب تلقائياً.'); return; }
     if (onLogin()) { log('تسجيل الدخول...'); await doLogin(); return; }   // بعد الدخول الصفحة هتعيد التحميل والسكربت يشتغل تانى
     if (ONE) await runOne(ONE); else await runAll();
   }
 
-  log('TE FCC SubInfo v1.2.0 loaded');
+  log('TE FCC SubInfo v1.3.0 loaded');
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
