@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.20
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.21
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -162,6 +162,20 @@
     return true; // التقطنا — لا تُشغّل الـ submit الأصلى
   }
 
+  // يرفع bytes لو شكلها ملف Excel (من fetch/XHR/blob) — يُستخدم للواجهات اللى بتحمّل بدون form submit (HiveWorx)
+  function tryUploadBytes(buf, ct, cd, via) {
+    if (!armed || !buf || buf.byteLength <= 100) return false;
+    const u8 = new Uint8Array(buf);
+    if (isFileHeaders(cd || '', ct || '') || looksExcel(u8)) {
+      const cap = armed; armed = null;
+      log('📸 captured ' + via + ':', buf.byteLength, 'bytes');
+      uploadToSF(new Blob([buf]), cap.filename, cap.endpoint);
+      saveToDisk(buf, cap.filename);
+      return true;
+    }
+    return false;
+  }
+
   /* ---------- hooks (document-start) ---------- */
   (function installHooks() {
     try {
@@ -203,6 +217,65 @@
         }
         return origOpen.apply(this, arguments);
       };
+    } catch (e) {}
+    // hook fetch — لو armed ولاقى استجابة ملف Excel، ارفعها (لواجهات بتحمّل عبر fetch/blob زى HiveWorx)
+    try {
+      const _fetch = window.fetch;
+      window.fetch = function (...args) {
+        const p = _fetch.apply(this, args);
+        if (armed) {
+          p.then(resp => {
+            try {
+              if (!armed || !resp || resp.status !== 200) return;
+              const cd = resp.headers.get('content-disposition') || '', ct = resp.headers.get('content-type') || '';
+              // نفحص البايتات فقط لو الاستجابة يُحتمل تكون ملف (نتجنّب قراءة JSON/HTML)
+              if (!(isFileHeaders(cd, ct) || /octet|excel|spreadsheet|download|xls/i.test(ct) || ct === '')) return;
+              resp.clone().arrayBuffer().then(buf => tryUploadBytes(buf, ct, cd, 'fetch')).catch(() => {});
+            } catch (e) {}
+          }).catch(() => {});
+        }
+        return p;
+      };
+    } catch (e) {}
+    // hook XHR — نفس الفكرة (لو الاستجابة arraybuffer شكلها ملف)
+    try {
+      const _open = XMLHttpRequest.prototype.open, _send = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__sfUrl = u; return _open.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () {
+        this.addEventListener('load', function () {
+          try {
+            if (!armed || this.status !== 200) return;
+            const cd = this.getResponseHeader('content-disposition') || '', ct = this.getResponseHeader('content-type') || '';
+            if (!(isFileHeaders(cd, ct) || /octet|excel|spreadsheet|download|xls/i.test(ct))) return;
+            if (this.response instanceof ArrayBuffer) { tryUploadBytes(this.response, ct, cd, 'xhr'); return; }
+            if (this.__sfUrl) {
+              const cap = armed;
+              const u2 = String(this.__sfUrl).startsWith('http') ? String(this.__sfUrl) : location.origin + String(this.__sfUrl);
+              fetch(u2, { credentials: 'include' }).then(async r => {
+                const b = await r.arrayBuffer();
+                if (armed === cap) tryUploadBytes(b, r.headers.get('content-type') || '', r.headers.get('content-disposition') || '', 'xhr-refetch');
+              }).catch(() => {});
+            }
+          } catch (e) {}
+        });
+        return _send.apply(this, arguments);
+      };
+    } catch (e) {}
+    // hook ضغطات روابط التحميل (<a download> أو href فيه blob:/download/export/.xls) — يشمل الضغط البرمجى
+    try {
+      document.addEventListener('click', function (e) {
+        if (!armed) return;
+        const a = e.target && e.target.closest && e.target.closest('a[href]');
+        if (!a) return;
+        const href = a.getAttribute('href') || '';
+        if (!(a.hasAttribute('download') || /^blob:|download|export|\.xlsx?(\?|$)/i.test(href))) return;
+        const cap = armed;
+        const u2 = /^(https?:|blob:)/i.test(href) ? href : location.origin + href;
+        fetch(u2, { credentials: 'include' }).then(async r => {
+          const b = await r.arrayBuffer();
+          if (armed === cap) tryUploadBytes(b, r.headers.get('content-type') || '', r.headers.get('content-disposition') || '', 'anchor');
+        }).catch(() => {});
+      }, true);
     } catch (e) {}
   })();
 
@@ -487,7 +560,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.20 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.21 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
