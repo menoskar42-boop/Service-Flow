@@ -461,18 +461,23 @@ export function FileUploadSection() {
   };
   useEffect(() => {
     if (!hourlyAuto) return;
+    const readLast = () => { try { const v = localStorage.getItem("sf_hourly_last"); return v ? Number(v) : 0; } catch { return 0; } };
     const tick = () => {
       runDailyUpdate();
       const now = Date.now();
       setLastAutoRun(now);
       try { localStorage.setItem("sf_hourly_last", String(now)); } catch {}
     };
-    // لو عدّى أكتر من ساعة من آخر تشغيل (أو لسه مفيش) شغّل فوراً عند فتح/تفعيل الجهاز
-    let last = 0;
-    try { const v = localStorage.getItem("sf_hourly_last"); last = v ? Number(v) : 0; } catch {}
-    if (Date.now() - last >= AUTO_INTERVAL_MS) tick();
-    const id = setInterval(tick, AUTO_INTERVAL_MS);
-    return () => clearInterval(id);
+    // بدل مؤقّت 30 دقيقة (اللى الـ sleep بيكسره) — نفحص كل 60 ثانية الوقت المنقضى من آخر تشغيل.
+    // كده حتى لو الجهاز نام وفوّت مواعيد، أول ما يصحى الفحص القريب بيلاقى الوقت عدّى فيشغّل فوراً.
+    const check = () => { if (Date.now() - readLast() >= AUTO_INTERVAL_MS) tick(); };
+    check(); // فوراً عند التفعيل/فتح الصفحة
+    const id = setInterval(check, 60 * 1000);
+    // catch-up عند رجوع الجهاز من الـ sleep أو رجوع التاب للواجهة
+    const onWake = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onWake); window.removeEventListener("focus", onWake); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hourlyAuto]);
 
