@@ -3949,6 +3949,79 @@ export async function registerRoutes(
     res.json({ ok: true, cabins, updated });
   });
 
+  // ===== إثراء أرقام البورتات باسم/عنوان العميل من FCC Complains (سكربت تامبر منكى، token + CORS) =====
+  // قائمة الأرقام المطلوب جلبها: أرقام البورتات اللى ملهاش صف فى line_subscriber_info (ملهاش اسم/عنوان بعد).
+  app.options("/api/line-subscriber-info/pending", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.get("/api/line-subscriber-info/pending", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const limit = Math.min(Number((req.query as any).limit) || 5000, 20000);
+    const { rows } = await pool.query(
+      `SELECT pp.phone_number FROM phone_ports pp
+       LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
+       WHERE si.phone_number IS NULL
+       ORDER BY pp.phone_number
+       LIMIT $1`,
+      [limit],
+    );
+    res.json({ phones: rows.map((r: any) => r.phone_number) });
+  });
+
+  // استقبال بيانات الاسم/العنوان المجلوبة (upsert). نسجّل الصف حتى لو الاسم/العنوان فاضى (عشان مانعيدش جلبه).
+  app.options("/api/line-subscriber-info/ingest", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.post("/api/line-subscriber-info/ingest", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const phone = String(req.body?.phoneNumber ?? "").trim();
+    if (!phone) return res.status(400).json({ message: "phoneNumber مطلوب" });
+    const clean = (v: any) => { const s = String(v ?? "").trim(); return s === "" ? null : s; };
+    await pool.query(
+      `INSERT INTO line_subscriber_info (phone_number, sub_name, sub_add, work_ord_date, work_ord_no, fetched_at)
+       VALUES ($1,$2,$3,$4,$5, now())
+       ON CONFLICT (phone_number) DO UPDATE SET
+         sub_name = EXCLUDED.sub_name, sub_add = EXCLUDED.sub_add,
+         work_ord_date = EXCLUDED.work_ord_date, work_ord_no = EXCLUDED.work_ord_no, fetched_at = now()`,
+      [phone, clean(req.body?.subName), clean(req.body?.subAdd), clean(req.body?.workOrdDate), clean(req.body?.workOrdNo)],
+    );
+    res.json({ ok: true });
+  });
+
+  // تقرير: بيانات الاسم/العنوان + بيانات البورتات لكل رقم (للعرض فى تاب الخطوط والبكسيات)
+  app.get("/api/line-subscriber-info", requireAuth, async (req, res) => {
+    const q = String((req.query as Record<string, string>).q || "").trim().toLowerCase();
+    const params: any[] = [];
+    let where = "";
+    if (q) { params.push(`%${q}%`); where = `WHERE LOWER(si.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')) LIKE $1`; }
+    const { rows } = await pool.query(
+      `SELECT si.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
+              si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
+              (si.fetched_at AT TIME ZONE 'Africa/Cairo') AS "fetchedAt",
+              pp.area_code AS "areaCode", pp.msan_code AS "msanCode", pp.frame AS "frame",
+              pp.port_number AS "portNumber", pp.port_type AS "portType",
+              pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus", pp.operator AS "operator"
+       FROM line_subscriber_info si
+       LEFT JOIN phone_ports pp ON pp.phone_number = si.phone_number
+       ${where}
+       ORDER BY si.fetched_at DESC
+       LIMIT 20000`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // "مراجعة الاسم والعنوان": إعادة جلب — نمسح الصفوف عشان الأرقام ترجع للقائمة المطلوبة.
+  //   scope=empty → الأرقام بدون اسم (يعاد جلبها فقط). scope=all → كل الأرقام (يعاد جلب الكل).
+  app.post("/api/line-subscriber-info/requeue", requireAuth, requireAdmin, async (req: any, res) => {
+    const scope = String(req.body?.scope || "empty");
+    let r;
+    if (scope === "all") {
+      r = await pool.query(`DELETE FROM line_subscriber_info`);
+    } else {
+      r = await pool.query(`DELETE FROM line_subscriber_info WHERE sub_name IS NULL OR TRIM(sub_name) = ''`);
+    }
+    res.json({ ok: true, requeued: r.rowCount ?? 0, scope });
+  });
+
   // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====
   // التوكن: env C360_INGEST_TOKEN (وله قيمة افتراضية) — لازم يطابق التوكن فى سكربت التامبر منكى.
   const C360_INGEST_TOKEN = process.env.C360_INGEST_TOKEN || "sf-c360-account-ingest-2026";

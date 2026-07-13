@@ -699,6 +699,19 @@ export async function ensureSchema() {
     )
   `);
 
+  // line_subscriber_info — اسم وعنوان العميل (+ تاريخ ورقم أمر الشغل) المجلوب من FCC Complains
+  // لأرقام البورتات. الأرقام اللى ليها صف هنا لا تُجلب تانى إلا بعد "مراجعة الاسم والعنوان".
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_subscriber_info (
+      phone_number text PRIMARY KEY,
+      sub_name text,
+      sub_add text,
+      work_ord_date text,
+      work_ord_no text,
+      fetched_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS case_138 (
