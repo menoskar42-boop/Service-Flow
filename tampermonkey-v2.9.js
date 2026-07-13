@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.18
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.17: يقفل التاب تلقائياً بعد رفع الملف لو التدفّق بدأ من زر "تحديث الملفات اليومية" فى Service-Flow (يُكتشف عبر window.name="fcc_daily" ويُمرَّر للتابات المتسلسلة عبر GM storage) — عشان مايتكدّسش تابات مع التشغيل كل نص ساعة.
+// @version      2.19
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -274,15 +274,32 @@
     if (!opsMenu()) { let wo; try { wo = await waitFor(() => bestText(document,'a,button,span,td,div,h1,h2,h3,h4,p','طلبات العمل') || bestText(document,'a,button,span,td,div,h1,h2,h3,h4,p','work order'), { label:'Work Orders tile', timeout:15000 }); } catch (e) { log('Work Orders not found:', e.message); } if (wo) { log('WO ->',wo.tagName,norm(wo.textContent).slice(0,24)); await activate(wo, opsMenu); } }
     const ops = await waitFor(opsMenu, { label:'Operations menu', timeout:20000 });
     realClick(ops); const opsLink = ops.closest('a')||ops.querySelector('a'); if (opsLink && opsLink!==ops) realClick(opsLink); await sleep(1300);
-    const excel = await waitFor(() => bestText(document,'[role="menuitem"],a,div,span,td,li','تحميل اكسل') || bestText(document,'[role="menuitem"],a,div,span,td,li','اكسل') || bestText(document,'[role="menuitem"],a,div,span,td,li','excel'), { label:'Download Excel item', timeout:15000 });
+    // الواجهة الجديدة: بند "Export Excel" فى قائمة operations (نفضّله بالنص الكامل عشان مانضغطش عنصر غلط زى "TD Export Excel")
+    const excel = await waitFor(() =>
+      byText(document,'[role="menuitem"],a,div,span,td,li','Export Excel',{exact:true}) ||
+      bestText(document,'[role="menuitem"],a,div,span,td,li','export excel') ||
+      bestText(document,'[role="menuitem"],a,div,span,td,li','تحميل اكسل') ||
+      bestText(document,'[role="menuitem"],a,div,span,td,li','اكسل') ||
+      bestText(document,'[role="menuitem"],a,div,span,td,li','excel'),
+      { label:'Export Excel item', timeout:15000 });
     log('excel item ->', excel.tagName, norm(excel.textContent).slice(0,24)); realClick(excel);
+    // بيظهر popup فيه جدول وزر "Export" أخضر (مش "Export Excel"). نستنّاه ونضغطه بعد تسليح الالتقاط.
     try {
-      const exportBtn = await waitFor(() => byText(document,'a,button,input[type=submit]','Export',{exact:false}) || byText(document,'a,button,input[type=submit]','تصدير',{exact:false}), { label:'Export popup button', timeout:12000 });
-      log('WFM export — href:', (exportBtn.href||'').slice(0,60), '| onclick:', (exportBtn.getAttribute('onclick')||'—').slice(0,90));
+      const exportBtn = await waitFor(() =>
+        byText(document,'a,button,input[type=submit],div,span,[role="button"]','Export',{exact:true}) ||
+        byText(document,'a,button,input[type=submit],div,span,[role="button"]','تصدير',{exact:true}) ||
+        byText(document,'a,button,input[type=submit],div,span,[role="button"]','Export',{exact:false}),
+        { label:'Export popup button', timeout:15000 });
+      log('WFM export popup — el:', exportBtn.tagName, '| onclick:', ((exportBtn.getAttribute && exportBtn.getAttribute('onclick'))||'—').slice(0,80));
       captureGetHref(exportBtn, 'wfm_orders.xls', '/api/maintenance-orders/import');
       armCapture('wfm_orders.xls', '/api/maintenance-orders/import', 'WFM');
       realClick(exportBtn); log('WFM Export clicked. DONE.');
-    } catch (e) { log('WFM: Export popup not found.'); }
+    } catch (e) {
+      // fallback: لو مفيش popup لأى سبب، سلّح الالتقاط وأعِد ضغط البند (لو بينزّل مباشرة)
+      log('WFM: مفيش popup — محاولة التقاط مباشر.');
+      armCapture('wfm_orders.xls', '/api/maintenance-orders/import', 'WFM');
+      realClick(excel);
+    }
     chainTo('oss_opened_at', 'https://oss.te.eg:15201/om');
   }
 
@@ -457,7 +474,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.18 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.19 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
