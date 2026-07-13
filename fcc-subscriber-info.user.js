@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC — جلب اسم وعنوان العميل (Subscriber Info)
 // @namespace    te.eg.subinfo
-// @version      1.3.0
-// @description  v1.3.0: قفل دخول FCC مشترك يمنع الدخول المتزامن مع سكربت التصدير (LoginException). v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
+// @version      1.3.1
+// @description  v1.3.1: طريقة دخول FCC مطابقة تماماً لسكربت التصدير المجرَّب (اكتشاف الزر + إعادة المحاولة). v1.3.0: قفل دخول FCC مشترك يمنع الدخول المتزامن مع سكربت التصدير (LoginException). v1.2.0: يجلب كمان البيانات الفنية (السنترال/الكابينة/البكس/DP/Port/IDU/ODU/البلوكات) من Fiber Link Data. v1.1.0: وضع "رقم واحد" (window.name=sf_subinfo_one:رقم) لزر المراجعة فى بحث برقم التليفون. يفتح FCC → Complains، يبحث بـ 88 + رقم التليفون لكل رقم من البورتات (اللى ملوش اسم/عنوان بعد)، يقرأ SubName / SubAdd (عربى فقط) / WorkOrdDate / WorkOrdNo ويرفعها لـ Service-Flow.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @run-at       document-start
 // @grant        GM_xmlhttpRequest
@@ -105,19 +105,26 @@
     }
   }
   function releaseFccLock() { setTimeout(() => { try { localStorage.removeItem('sf_fcc_login_lock'); } catch (e) {} }, 9000); }
+  // نفس منطق دخول FCC المجرَّب فى سكربت التصدير (اكتشاف الزر + إعادة المحاولة) — عشان يبقى متطابق تماماً
   async function doLogin() {
     await acquireFccLock(); releaseFccLock();
-    const pw = await waitFor(() => document.querySelector('input[type=password]'), { timeout: 15000, label: 'password' }).catch(() => null);
-    if (pw) {
-      const scope = pw.closest('form') || document;
-      const userEl = scope.querySelector('input[type=text]') || document.querySelector('input[type=text]');
-      setField(userEl, CREDS.user); setField(pw, CREDS.pass); log('filled credentials'); await sleep(400);
+    const c = CREDS;
+    if (c && c.pass) {
+      const pw = await waitFor(() => document.querySelector('input[type=password]'), { timeout: 15000, interval: 300, label: 'password' }).catch(() => null);
+      if (pw) {
+        const scope = pw.closest('form') || document;
+        const userEl = scope.querySelector('input[type=text]') || document.querySelector('input[type=text]');
+        setField(userEl, c.user); setField(pw, c.pass); log('filled credentials:', c.user); await sleep(400);
+      }
     }
-    const btn = Array.from(document.querySelectorAll('input[type=submit],button,input[type=image],a[onclick],a')).find(el => {
-      const l = norm(el.value || el.textContent || '').toLowerCase();
-      return l && l.length <= 22 && /login|log in|sign in|دخول/.test(l);
-    });
-    if (btn) { realClick(btn); }
+    const TERMS = ['login','log in','log on','logon','sign in','signin','تسجيل الدخول','تسجيل دخول','دخول','الدخول'];
+    const labelOf = el => norm(el.value)||norm(el.textContent)||norm(el.alt)||norm(el.getAttribute('aria-label'))||norm(el.title);
+    const isLoginBtn = el => { const l = labelOf(el).toLowerCase(); return l.length > 0 && l.length <= 24 && TERMS.some(t => l.includes(t)); };
+    const rank = el => { const tag = el.tagName.toLowerCase(), type = (el.type||'').toLowerCase(); if (tag==='input'&&(type==='submit'||type==='image')) return 0; if (tag==='button') return 1; if (tag==='a'&&el.getAttribute('onclick')) return 2; if (tag==='input'&&type==='button') return 3; return 4; };
+    let cands = [];
+    try { await waitFor(() => { cands = Array.from(document.querySelectorAll('input[type=submit],button,input[type=image],input[type=button],a[onclick],a[role=button],a')).filter(isLoginBtn).sort((a,b)=>rank(a)-rank(b)); return cands.length; }, { timeout: 20000, interval: 400, label: 'login candidates' }); } catch (e) {}
+    for (const btn of cands) { try { btn.click(); } catch (e) {} await sleep(1600); if (!onLogin()) { log('LOGIN OK'); return; } realClick(btn); await sleep(1800); if (!onLogin()) { log('LOGIN OK'); return; } }
+    log('STILL on login.');
   }
 
   /* ===== Complains: navigate + search + scrape ===== */
@@ -251,13 +258,13 @@
   async function main() {
     let isTop = true; try { isTop = (window.top === window.self); } catch (e) { isTop = false; }
     if (!isTop && !document.querySelector('input[type=password]')) return;
-    log('SubInfo v1.3.0 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
+    log('SubInfo v1.3.1 — page:', location.pathname, AUTO ? '[AUTO]' : ONE ? ('[ONE:' + ONE + ']') : '[manual]');
     if (!AUTO && !ONE) { log('ℹ️ افتح الصفحة من زر "مراجعة الاسم والعنوان" فى Service-Flow لبدء الجلب تلقائياً.'); return; }
     if (onLogin()) { log('تسجيل الدخول...'); await doLogin(); return; }   // بعد الدخول الصفحة هتعيد التحميل والسكربت يشتغل تانى
     if (ONE) await runOne(ONE); else await runAll();
   }
 
-  log('TE FCC SubInfo v1.3.0 loaded');
+  log('TE FCC SubInfo v1.3.1 loaded');
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
