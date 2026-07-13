@@ -27,6 +27,7 @@ import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
 import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRangeReport";
 import { RepeatedWithinMonthReport } from "@/components/RepeatedWithinMonthReport";
 import { InstallationsReport } from "@/components/InstallationsReport";
+import { SubscriberInfoReport } from "@/components/SubscriberInfoReport";
 import { RemovalStatsReport } from "@/components/RemovalStatsReport";
 import { RepetitionStatsReport } from "@/components/RepetitionStatsReport";
 import { CabinetAdslFaultsReport } from "@/components/CabinetAdslFaultsReport";
@@ -46,7 +47,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -116,6 +117,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "box-summary",  label: "ملخص البكسيات" },
+      { id: "subscriber-info", label: "اسم وعنوان العملاء (البورتات)" },
       { id: "maintenance-comprehensive", label: "تقرير الصيانة الشامل" },
     ],
   },
@@ -412,6 +414,7 @@ export default function Dashboard() {
               {reportTab === "box-rejections"    && <BoxRejectionReport orders={orders || []} />}
               {reportTab === "phone-lines"       && <PhoneLinesReport />}
               {reportTab === "box-summary"       && <BoxLinesSummaryReport />}
+              {reportTab === "subscriber-info"   && <SubscriberInfoReport />}
               {reportTab === "maintenance-comprehensive" && <MaintenanceComprehensiveReport />}
               {reportTab === "box-full"          && <BoxFullRejectionsReport orders={orders || []} />}
               {reportTab === "box-broken"        && <BoxBrokenRejectionsReport orders={orders || []} />}

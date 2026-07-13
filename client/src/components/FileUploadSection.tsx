@@ -9,6 +9,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
+import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -672,6 +673,7 @@ export function FileUploadSection() {
           <RefreshCw className="w-4 h-4" />
           حدث التقارير اليومية
         </Button>
+        <ReviewSubscriberInfoButton />
         <Button
           onClick={toggleHourly}
           variant={hourlyAuto ? "default" : "outline"}
