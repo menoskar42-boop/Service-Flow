@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         TE FCC + WFM + OSS Export
+// @name         TE FCC + WFM + OSS + SubInfo (All-in-One)
 // @namespace    te.eg.autoexport
-// @version      2.40
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.40: فحص قفل الحساب (صارم — يقف فقط لو ظهرت رسالة LoginException بالظبط، مش بيمنع الدخول العادى). v2.39: رجعنا فحص القفل الفضفاض. v2.38: كشف قفل الحساب. v2.37: قفل دخول FCC مشترك يمنع الدخول المتزامن من تابين (تصدير + جلب اسم/عنوان) اللى بيسبّب LoginException. v2.36: سكربت التصدير يقف تماماً لو التاب اتفتح لجلب اسم/عنوان العميل (window.name=sf_subinfo_auto) — يمنع التعارض مع سكربت SubInfo الجديد. v2.35: OSS كمان يقفل بعد 15ث. v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      3.0.0
+// @description  FCC + WFM + OSS export + جلب اسم/عنوان العميل — كله فى سكربت واحد. v3.0.0: دمجنا سكربت SubInfo هنا — تاب FCC اليومى بعد التصدير يراجع الأرقام (بورتات بدون بيانات فنية) فى نفس الدخول ثم يقفل؛ وزر المراجعة اليدوى (sf_subinfo_auto/one) بيشتغل لوحده. (احذف سكربت SubInfo المنفصل القديم). v2.40: فحص قفل الحساب (صارم — يقف فقط لو ظهرت رسالة LoginException بالظبط، مش بيمنع الدخول العادى). v2.39: رجعنا فحص القفل الفضفاض. v2.38: كشف قفل الحساب. v2.37: قفل دخول FCC مشترك يمنع الدخول المتزامن من تابين (تصدير + جلب اسم/عنوان) اللى بيسبّب LoginException. v2.36: سكربت التصدير يقف تماماً لو التاب اتفتح لجلب اسم/عنوان العميل (window.name=sf_subinfo_auto) — يمنع التعارض مع سكربت SubInfo الجديد. v2.35: OSS كمان يقفل بعد 15ث. v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -62,10 +62,13 @@
     catch (e) { return DAILY_AUTO; }
   }
   let closingScheduled = false;
+  let siAfterExport = false;   // على تاب FCC اليومى: بعد التصدير هنعمل مراجعة اسم/عنوان قبل الإغلاق
   // WFM و OSS تابات أتمتة بحتة → تتقفل دايماً بعد الرفع بـ 15ث. FCC → فقط ضمن التدفّق اليومى (بعد 4ث).
   const PURE_AUTO_HOST = /wfm\.te\.eg|oss\.te\.eg/i.test(location.host);
   function autoCloseIfDaily(reason) {
     if (closingScheduled) return;
+    // على FCC لو هنعمل مراجعة بعد التصدير — مانقفلش، المراجعة هى اللى هتقفل التاب فى الآخر
+    if (siAfterExport && /fcc\.te\.eg/i.test(location.host)) { log('⏭ FCC: مراجعة بعد التصدير — تأجيل الإغلاق'); return; }
     if (!PURE_AUTO_HOST && !isDailyFlow()) return;
     closingScheduled = true;
     // WFM و OSS: 15ث بعد ما الرفع يخلص. FCC: 4ث.
@@ -456,7 +459,16 @@
     armCapture('fcc_ticket_queue.xls', '/api/ticket-queue/import', 'FCC');
     realClick(exportLink);
     log('FCC export clicked. DONE.');
-    // مفيش chaining: زر "حدّث التقارير اليومية" فى Service-Flow بيفتح FCC+WFM+OSS بالتوازى مباشرةً.
+    // نفس التاب بعد التصدير: مراجعة الأرقام (بورتات بدون بيانات فنية) بنفس الدخول ثم يقفل — بشكل مبدئى.
+    // بنرجع لصفحة Home عشان نلاقى بلاطة Complains (مش موجودة جوه Ticket Queue)، وبعلامة sessionStorage
+    // عشان لما الصفحة تعيد التحميل مانعيدش التصدير — ندخل طور المراجعة على طول.
+    if (isDailyFlow()) {
+      siAfterExport = true;   // يمنع الإغلاق المبكر بعد رفع التصدير
+      await sleep(6000);      // نسيب ملف التصدير يترفع الأول (GM_xmlhttpRequest بيكمّل حتى بعد التنقّل)
+      try { sessionStorage.setItem('sf_fcc_phase', 'review'); } catch (e) {}
+      log('↪ FCC: توجيه للـ Home لبدء المراجعة');
+      location.href = 'https://fcc.te.eg/TroubleTicket/faces/Home';
+    }
   }
 
   /* =======================================================================
@@ -642,22 +654,132 @@
     realClick(downloadAnchor); log('OSS download triggered. DONE.');
   }
 
+  /* =======================================================================
+     SubInfo — جلب اسم/عنوان العميل + بيانات فنية من FCC Complains (مدموج)
+     يشتغل: (1) بعد التصدير على تاب fcc_daily، أو (2) لوحده على تاب sf_subinfo_auto/one
+     ===================================================================== */
+  const DZS_TOKEN = 'sf-dzs-138-ingest-2026';   // = DZS_INGEST_TOKEN فى السيرفر
+  function arabicOnly(s) { const m = (s || '').match(/[؀-ۿ][؀-ۿ0-9\s\/\-.,()]*/g); return m ? m.map(x => x.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ').replace(/\s*,\s*/g, '، ').trim() : ''; }
+  const cleanLbl = (s) => norm(s).replace(/[*:：]/g, '').trim().toLowerCase();
+  function findInputByLabel(labelText) {
+    const want = cleanLbl(labelText);
+    const labs = Array.from(document.querySelectorAll('label,span,td,div,th,dt')).filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want);
+    for (const lab of labs) {
+      const forId = lab.getAttribute && lab.getAttribute('for');
+      if (forId) { const el = document.getElementById(forId); if (el && el.tagName === 'INPUT') return el; }
+      let scope = lab.parentElement;
+      for (let i = 0; i < 5 && scope; i++) { const inp = scope.querySelector('input[type=text], input:not([type]):not([type=hidden])'); if (inp) return inp; scope = scope.parentElement; }
+      let n = lab.nextElementSibling, c = 0;
+      while (n && c < 5) { if (n.tagName === 'INPUT') return n; const inp = n.querySelector && n.querySelector('input[type=text],input:not([type])'); if (inp) return inp; n = n.nextElementSibling; c++; }
+    }
+    return null;
+  }
+  function labelValue(labelText) {
+    const want = cleanLbl(labelText);
+    const labs = Array.from(document.querySelectorAll('label,span,td,div,th,dt,b,font,p')).filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want);
+    for (const lab of labs) {
+      const tries = [];
+      if (lab.nextElementSibling) tries.push(lab.nextElementSibling);
+      const cell = lab.parentElement;
+      if (cell && cell.nextElementSibling) tries.push(cell.nextElementSibling);
+      let n = lab.nextElementSibling, c = 0;
+      while (n && c < 3) { tries.push(n); n = n.nextElementSibling; c++; }
+      for (const t of tries) { const v = norm(t.textContent); if (v && cleanLbl(v) !== want) return v; }
+    }
+    return '';
+  }
+  function siGm(opts) { return new Promise((resolve) => { GM_xmlhttpRequest(Object.assign({ timeout: 30000, onload: r => resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: r.responseText || '' }), onerror: () => resolve({ ok: false, status: 0, text: '' }), ontimeout: () => resolve({ ok: false, status: 0, text: '' }) }, opts)); }); }
+  async function siGetPending() { const r = await siGm({ method: 'GET', url: SF_URL + '/api/line-subscriber-info/pending?limit=20000', headers: { 'X-DZS-Token': DZS_TOKEN } }); if (!r.ok) { log('❌ SubInfo: فشل جلب القائمة', r.status); return []; } try { return JSON.parse(r.text).phones || []; } catch (e) { return []; } }
+  async function siIngest(phoneNumber, data) { const r = await siGm({ method: 'POST', url: SF_URL + '/api/line-subscriber-info/ingest', headers: { 'Content-Type': 'application/json', 'X-DZS-Token': DZS_TOKEN }, data: JSON.stringify(Object.assign({ phoneNumber }, data)) }); if (!r.ok) log('❌ SubInfo: فشل الرفع', phoneNumber, r.status); return r.ok; }
+  const siHasSearch = () => !!(findInputByLabel('CityCode') && findInputByLabel('TelNo'));
+  async function siNavigateToComplains() {
+    if (siHasSearch()) return true;
+    let tile;
+    try { tile = await waitFor(() => byText(document, 'a,button,span,td,div,h1,h2,h3,h4,p', 'Complains', { exact: true }) || byText(document, 'a,button,span,td,div,h1,h2,h3,h4,p', 'Complain', { exact: false }), { label: 'Complains tile', timeout: 20000 }); }
+    catch (e) { log('❌ SubInfo: بلاطة Complains مش لاقيها'); return false; }
+    log('SubInfo tile ->', tile.tagName); realClick(tile); const a = tile.closest('a'); if (a && a !== tile) realClick(a);
+    try { await waitFor(siHasSearch, { label: 'Complains search', timeout: 20000 }); return true; } catch (e) { log('❌ SubInfo: فورم البحث مظهرش'); return false; }
+  }
+  async function siProcessOne(phone) {
+    const short = String(phone).replace(/^0*88/, '').replace(/\D/g, '');
+    const cityEl = findInputByLabel('CityCode'), telEl = findInputByLabel('TelNo');
+    if (!cityEl || !telEl) { log('⚠️ SubInfo: مالقيتش خانات البحث'); return false; }
+    setField(cityEl, '88'); setField(telEl, short); await sleep(250);
+    const searchBtn = byText(document, 'a,button,input[type=submit],input[type=button],span', 'Search', { exact: true }) || byText(document, 'a,button,input[type=submit]', 'Search', { exact: false });
+    if (!searchBtn) { log('⚠️ SubInfo: زر Search مش موجود'); return false; }
+    realClick(searchBtn); await sleep(2600);
+    const bodyTxt = norm(document.body.textContent).toLowerCase();
+    const subName = labelValue('SubName');
+    const subAdd = arabicOnly(labelValue('SubAdd'));
+    const workOrdDate = labelValue('WorkOrdDate');
+    const workOrdNo = labelValue('WorkOrdNo');
+    const splitSlash = (s) => (s || '').split('/').map((x) => x.trim());
+    const cabinBT = splitSlash(labelValue('CabinetNo/B/T'));   // [الكابينة, Fiber Block, Cabinet In]
+    const dpNoT = splitSlash(labelValue('DPNo/T'));            // [البكس, DP Terminal]
+    const secBlockT = splitSlash(labelValue('SecBlockNo/T'));  // [Sec Block, Cabinet Out]
+    const tech = { central: arabicOnly(labelValue('ExchCode')) || null, cabinNumber: cabinBT[0] || null, fiberBlock: cabinBT[1] || null, cabinetIn: cabinBT[2] || null, boxNumber: dpNoT[0] || null, dpTerminal: dpNoT[1] || null, secBlock: secBlockT[0] || null, cabinetOut: secBlockT[1] || null, primaryBlock: labelValue('SBLOCK_NO') || null, portNo: labelValue('Port') || null, iduNo: labelValue('IduNo') || null, oduNo: labelValue('OduNo') || null, fiberOut: labelValue('FiberOut') || null, lineType: labelValue('LineTypeName') || null };
+    if (!subName && !subAdd && !tech.cabinNumber && /no rows found/.test(bodyTxt)) log('•', short, '→ لا يوجد بيانات');
+    else log('•', short, '→', subName ? ('اسم: ' + subName.slice(0, 16)) : 'بدون اسم', '| كابينة:', tech.cabinNumber || '-', 'بكس:', tech.boxNumber || '-', 'Port:', tech.portNo || '-');
+    await siIngest(phone, Object.assign({ subName, subAdd, workOrdDate, workOrdNo }, tech));
+    return true;
+  }
+  // مراجعة كل الأرقام المطلوبة (ليها بورتات وملهاش بيانات فنية) — closeAfter: يقفل التاب فى الآخر
+  async function runSubInfoAll(closeAfter) {
+    log('🔎 SubInfo: جلب الأرقام المطلوبة (بورتات بدون بيانات فنية)...');
+    const phones = await siGetPending();
+    log('SubInfo عدد الأرقام:', phones.length);
+    if (phones.length && await siNavigateToComplains()) {
+      let done = 0;
+      for (const phone of phones) { try { await siProcessOne(phone); } catch (e) { log('SubInfo خطأ', phone, e.message); } done++; if (done % 25 === 0) log('SubInfo تقدّم:', done + '/' + phones.length); await sleep(900); }
+      log('✅ SubInfo خلص:', done);
+    } else if (!phones.length) log('✅ SubInfo: مفيش أرقام مطلوبة.');
+    if (closeAfter) setTimeout(() => { try { window.close(); } catch (e) {} }, 8000);
+  }
+  async function runSubInfoOne(phone) {
+    log('🔎 SubInfo رقم واحد:', phone);
+    if (!(await siNavigateToComplains())) return;
+    try { await siProcessOne(phone); } catch (e) { log('SubInfo خطأ:', e.message); }
+    log('✅ SubInfo خلص الرقم — إغلاق.'); setTimeout(() => { try { window.close(); } catch (e) {} }, 5000);
+  }
+
   /* ---------- router ---------- */
   async function main() {
-    // تجنّب التعارض: لو التاب اتفتح لجلب اسم/عنوان العميل (سكربت SubInfo) — سكربت التصدير يقف تماماً.
-    try { if (window.name === 'sf_subinfo_auto') { log('SubInfo tab — export script standing down'); return; } } catch(e){}
     let isTop=true; try{isTop=(window.top===window.self);}catch(e){isTop=false;}
     if(!isTop&&!document.querySelector('input[type=password]'))return;
+    // وضع مراجعة الاسم/العنوان لوحده (زر المراجعة اليدوى) — على FCC عبر window.name
+    let WN=''; try{WN=window.name||'';}catch(e){}
+    const SI_AUTO = WN === 'sf_subinfo_auto';
+    const SI_ONE  = WN.indexOf('sf_subinfo_one:')===0 ? WN.slice('sf_subinfo_one:'.length) : '';
+    if (SI_AUTO || SI_ONE) {
+      log('SubInfo mode', SI_ONE ? ('[ONE:'+SI_ONE+']') : '[AUTO]');
+      if (/Login\.jsf/i.test(location.href) || document.querySelector('input[type=password]')) { await doLogin(); return; }
+      try { if (SI_ONE) await runSubInfoOne(SI_ONE); else await runSubInfoAll(true); } catch(e){ log('SubInfo ERROR:', e.message); }
+      return;
+    }
     log('page:',location.host,location.pathname,isTop?'[top]':'[frame]');
     // لو ضمن تدفّق "تحديث الملفات اليومية" (من زر Service-Flow) جدّد العلامة الزمنية — عشان التابات
     // المتسلسلة (WFM/OSS) تقفل نفسها بعد الرفع كمان. الفتح اليدوى العادى مش بيفعّل ده.
     if(isDailyFlow()) markDailyFlow();
     if(looksBroken()){const home=LOGIN_URL[location.host]||LOGIN_URL['fcc.te.eg'];let last=0;try{last=GM_getValue('recover_at',0);}catch(e){}if(Date.now()-last>8000){try{GM_setValue('recover_at',Date.now());}catch(e){}log('500 detected, restarting...');location.href=home;}else{log('500; just redirected.');}return;}
     const host=location.host;
-    try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
+    try {
+      if (host.startsWith('fcc.te.eg')) {
+        // بعد التصدير رجعنا لـ Home بعلامة "review" → ندخل طور المراجعة بدل ما نعيد التصدير
+        let phase=''; try{phase=sessionStorage.getItem('sf_fcc_phase')||'';}catch(e){}
+        if (phase === 'review') {
+          // لو رجعنا لصفحة دخول (نادراً) سجّل دخول وسيب العلامة — بعد الريلود نكمّل المراجعة
+          if (/Login\.jsf/i.test(location.href) || document.querySelector('input[type=password]')) { log('review phase: login'); await doLogin(); return; }
+          try{sessionStorage.removeItem('sf_fcc_phase');}catch(e){}
+          log('SubInfo phase (بعد التصدير)'); await runSubInfoAll(true);
+        }
+        else await runFCC();
+      }
+      else if (host.startsWith('wfm.te.eg')) await runWFM();
+      else if (host.startsWith('oss.te.eg')) await runOSS();
+    } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.40 loaded on', location.host);
+  log('TE FCC + WFM + OSS + SubInfo v3.0.0 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
