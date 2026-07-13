@@ -2303,6 +2303,8 @@ export async function registerRoutes(
               pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
               pp.operator AS "operator", pp.shelf AS "shelf", pp.slot AS "slot",
               mob.m AS "mobile", mob.manual AS "mobileManual",
+              si.sub_name AS "subName", si.sub_add AS "subAdd",
+              si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
               COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
@@ -2316,6 +2318,7 @@ export async function registerRoutes(
        LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
        LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
        LEFT JOIN phone_ports pp ON pp.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
+       LEFT JOIN line_subscriber_info si ON si.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
        LEFT JOIN LATERAL (
          SELECT ct.cabin_code, tn.tech_name AS ct_tech
          FROM cabinet_technicians ct

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
@@ -55,6 +55,10 @@ interface LineData {
   slot: string | null;
   mobile: string | null;
   mobileManual: boolean | null;
+  subName: string | null;
+  subAdd: string | null;
+  workOrdDate: string | null;
+  workOrdNo: string | null;
 }
 
 const dash = (v: unknown) =>
@@ -80,7 +84,7 @@ const scoreBadge = (v: number | null) => {
 
 // الحقول الفنية الباقية تُعرض كامل العرض (صف لكل حقل) بعد الصفوف المزدوجة (زى عمود الإكسيل اليمين)
 const FULL_WIDTH_FIELDS = new Set<string>([
-  "رقم التليفون", "إحداثيات البكس",
+  "رقم التليفون الكامل", "رقم التليفون", "إحداثيات البكس",
   "operator", "shelf", "slot", "Port", "IDU", "ODU",
   "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out",
 ]);
@@ -223,21 +227,22 @@ export function PhoneLookupReport() {
   // فالمصفوفة مرتّبة: (يمين1, شمال1, يمين2, شمال2 …) للصفوف 1–12، ثم الحقول الفنية الباقية كامل العرض (صف لكل حقل).
   const fields: [string, ReactNode][] = line
     ? [
-        // صف1: يمين | شمال (رقم التليفون الكامل يمين، رقم الموبايل شمال)
-        ["رقم التليفون الكامل", dash(line.fullPhone)], ["رقم الموبايل", mobileCell],
-        ["السنترال", dash(line.central)],               ["اسم الفنى", dash(line.techName)],
-        ["رقم الكابينة", dash(line.cabinNumber)],        ["رقم الأكونت", dash(line.accountNo)],
-        ["رقم البكس", dash(line.boxNumber)],             ["السرعة الحالية", dash(line.currentSpeed)],
-        ["DP Terminal", dash(line.dpTerminal)],          ["أقصى سرعة", dash(line.maxSpeed)],
-        ["كود الكابينة (MSAN)", dash(line.msanCode)],    ["الاسكور", scoreBadge(line.score)],
-        ["رقم الفريم", dash(line.frame)],                ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)],
-        ["Port Type", dash(line.portType)],              ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],
-        ["voice status", dash(line.voiceStatus)],        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],
-        ["data status", dash(line.dataStatus)],          ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)],
-        ["Row", dash(line.rowNo)],                       ["حالة صيانة البكس", boxMaintCell],
-        ["Column", dash(line.columnNo)],                 ["هل البكس له تكت أرضية", groundCell],
-        // الحقول الفنية الباقية — كامل العرض (صف لكل حقل، عمود يمين فقط زى الإكسيل)
-        ["رقم التليفون", dash(line.telNo)],
+        // صف1: اسم العميل يمين | رقم الموبايل شمال — وتحت الاسم مباشرةً (نفس العمود) عنوان العميل
+        ["اسم العميل", dash(line.subName)],             ["رقم الموبايل", mobileCell],
+        ["عنوان العميل", dash(line.subAdd)],            ["السنترال", dash(line.central)],
+        ["اسم الفنى", dash(line.techName)],             ["رقم الكابينة", dash(line.cabinNumber)],
+        ["رقم الأكونت", dash(line.accountNo)],          ["رقم البكس", dash(line.boxNumber)],
+        ["السرعة الحالية", dash(line.currentSpeed)],    ["DP Terminal", dash(line.dpTerminal)],
+        ["أقصى سرعة", dash(line.maxSpeed)],             ["كود الكابينة (MSAN)", dash(line.msanCode)],
+        ["الاسكور", scoreBadge(line.score)],            ["رقم الفريم", dash(line.frame)],
+        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)], ["Port Type", dash(line.portType)],
+        ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],  ["voice status", dash(line.voiceStatus)],
+        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],   ["data status", dash(line.dataStatus)],
+        ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)], ["Row", dash(line.rowNo)],
+        ["حالة صيانة البكس", boxMaintCell],             ["Column", dash(line.columnNo)],
+        ["هل البكس له تكت أرضية", groundCell],
+        // الحقول الفنية الباقية — كامل العرض (صف لكل حقل).
+        ["رقم التليفون الكامل", dash(line.fullPhone)],
         ["إحداثيات البكس", coordsCell],
         ["operator", dash(line.operator)],
         ["shelf", dash(line.shelf)],
@@ -251,17 +256,19 @@ export function PhoneLookupReport() {
         ["Cabinet Out", dash(line.cabinetOut)],
         ["Fiber Block", dash(line.fiberBlock)],
         ["Fiber Out", dash(line.fiberOut)],
+        ["رقم التليفون", dash(line.telNo)],   // القصير — آخر خانة
       ]
     : [];
 
   // ترتيب مخصّص للموبايل (عمود واحد) — مستقل عن ترتيب الديسكتوب (عمودين)
   const MOBILE_ORDER = [
-    "رقم التليفون الكامل", "رقم الموبايل", "اسم الفنى", "السنترال", "رقم الكابينة", "رقم البكس",
+    "اسم العميل", "عنوان العميل", "رقم الموبايل", "اسم الفنى", "السنترال", "رقم الكابينة", "رقم البكس",
     "DP Terminal", "كود الكابينة (MSAN)", "رقم الفريم", "رقم الأكونت", "السرعة الحالية", "أقصى سرعة",
     "الاسكور", "تاريخ آخر قياس", "آخر رفع سرعة", "آخر إيقاف PO", "تاريخ آخر شكوى", "إحداثيات البكس",
     "Port Type", "voice status", "data status", "Row", "Column", "operator",
     "حالة صيانة البكس", "هل البكس له تكت أرضية", "shelf", "slot", "Port", "IDU", "ODU",
-    "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out", "رقم التليفون",
+    "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out", "Fiber Block", "Fiber Out",
+    "رقم التليفون الكامل", "رقم التليفون",
   ];
   const byLabel = new Map(fields.map((f) => [f[0], f]));
   const mobileFields = MOBILE_ORDER.map((l) => byLabel.get(l)).filter(Boolean) as [string, ReactNode][];
@@ -271,6 +278,8 @@ export function PhoneLookupReport() {
     const row = {
       "رقم التليفون الكامل": line.fullPhone,
       "رقم التليفون": line.telNo,
+      "اسم العميل": line.subName ?? "",
+      "عنوان العميل": line.subAdd ?? "",
       "السنترال": line.central,
       "اسم الفنى": line.techName ?? "",
       "رقم الكابينة": line.cabinNumber ?? "",
@@ -366,6 +375,17 @@ export function PhoneLookupReport() {
             <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
             تحديث
           </Button>
+          {line && (
+            <Button
+              variant="outline"
+              onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "sf_subinfo_one:" + (line.fullPhone || phone))}
+              className="gap-2 text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50"
+              title="جلب اسم وعنوان هذا الرقم من FCC (يفتح FCC ويجلبه تلقائياً)"
+            >
+              <UserSearch className="w-4 h-4" />
+              مراجعة
+            </Button>
+          )}
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
               {line.accountNo ? (
