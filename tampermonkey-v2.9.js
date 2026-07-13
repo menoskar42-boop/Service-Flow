@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.23
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.24
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -397,17 +397,21 @@
       bestText(document,'[role="menuitem"],a,div,span,td,li','excel'),
       { label:'Export Excel item', timeout:15000 });
     log('excel item ->', excel.tagName, norm(excel.textContent).slice(0,24)); realClick(excel);
-    // بيظهر popup فيه جدول وزر "Export" أخضر (مش "Export Excel"). نستنّاه ونضغطه بعد تسليح الالتقاط.
+    // بيظهر popup (ADF af_Z_window) فيه جدول وزر "Export" أخضر (مش "Export Excel").
+    // ده Oracle ADF (زى FCC) — التصدير بيحصل بـ form submit. المشكلة كانت إننا بنضغط الـ div/td
+    // الداخلى بدل عنصر الأمر الفعلى (ADF command link)، فنستخدم activate اللى بيلاقيه ويضغطه بعدة طرق.
     try {
-      const exportBtn = await waitFor(() =>
-        byText(document,'a,button,input[type=submit],div,span,[role="button"]','Export',{exact:true}) ||
-        byText(document,'a,button,input[type=submit],div,span,[role="button"]','تصدير',{exact:true}) ||
-        byText(document,'a,button,input[type=submit],div,span,[role="button"]','Export',{exact:false}),
+      const exportEl = await waitFor(() =>
+        byText(document,'a,button,input[type=submit],div,span,td,[role="button"]','Export',{exact:true}) ||
+        byText(document,'a,button,input[type=submit],div,span,td,[role="button"]','تصدير',{exact:true}) ||
+        byText(document,'a,button,input[type=submit],div,span,td,[role="button"]','Export',{exact:false}),
         { label:'Export popup button', timeout:15000 });
-      log('WFM export popup — el:', exportBtn.tagName, '| onclick:', ((exportBtn.getAttribute && exportBtn.getAttribute('onclick'))||'—').slice(0,80));
-      captureGetHref(exportBtn, 'wfm_orders.xls', '/api/maintenance-orders/import');
+      log('WFM export el:', exportEl.tagName, '| onclick:', ((exportEl.getAttribute && exportEl.getAttribute('onclick'))||'—').slice(0,70));
+      captureGetHref(exportEl, 'wfm_orders.xls', '/api/maintenance-orders/import');
       armCapture('wfm_orders.xls', '/api/maintenance-orders/import', 'WFM');
-      realClick(exportBtn); log('WFM Export clicked. DONE.');
+      // activate: يلاقى عنصر الأمر الحقيقى (a/[onclick]) حوالين "Export" ويضغطه بأكثر من طريقة لحد ما الالتقاط يشتغل
+      await activate(exportEl, () => armed === null);
+      log('WFM Export clicked. DONE.');
     } catch (e) {
       // fallback: لو مفيش popup لأى سبب، سلّح الالتقاط وأعِد ضغط البند (لو بينزّل مباشرة)
       log('WFM: مفيش popup — محاولة التقاط مباشر.');
@@ -588,7 +592,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.23 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.24 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
