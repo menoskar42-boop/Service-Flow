@@ -130,10 +130,11 @@
   }
 
   // قيمة أمام label معيّن (SubName / WorkOrdDate ...) — نلاقى عنصر الليبل الصغير ونجيب أقرب قيمة نصية بعده
+  const cleanLbl = (s) => norm(s).replace(/[*:：]/g, '').trim().toLowerCase();
   function labelValue(labelText) {
-    const want = norm(labelText).toLowerCase();
+    const want = cleanLbl(labelText);
     const labs = Array.from(document.querySelectorAll('label,span,td,div,th,dt,b,font,p'))
-      .filter(e => e.children.length === 0 && norm(e.textContent).toLowerCase() === want);
+      .filter(e => e.children.length === 0 && cleanLbl(e.textContent) === want);
     for (const lab of labs) {
       const tries = [];
       if (lab.nextElementSibling) tries.push(lab.nextElementSibling);
@@ -142,7 +143,7 @@
       // كمان عناصر بعد الخلية على مستوى الصف
       let n = lab.nextElementSibling, c = 0;
       while (n && c < 3) { tries.push(n); n = n.nextElementSibling; c++; }
-      for (const t of tries) { const v = norm(t.textContent); if (v && v.toLowerCase() !== want) return v; }
+      for (const t of tries) { const v = norm(t.textContent); if (v && cleanLbl(v) !== want) return v; }
     }
     return '';
   }
@@ -170,18 +171,40 @@
 
     // نتيجة؟ لو "No rows found" نسجّل فاضى عشان مايتعادش جلبه.
     const bodyTxt = norm(document.body.textContent).toLowerCase();
-    let subName = labelValue('SubName');
-    let subAddRaw = labelValue('SubAdd');
-    let workOrdDate = labelValue('WorkOrdDate');
-    let workOrdNo = labelValue('WorkOrdNo');
-    const subAdd = arabicOnly(subAddRaw);
+    const subName = labelValue('SubName');
+    const subAdd = arabicOnly(labelValue('SubAdd'));
+    const workOrdDate = labelValue('WorkOrdDate');
+    const workOrdNo = labelValue('WorkOrdNo');
 
-    if (!subName && !subAdd && /no rows found/.test(bodyTxt)) {
+    // بيانات فنية (Fiber Link) — نقسّم الحقول المركّبة "a / b / c"
+    const splitSlash = (s) => (s || '').split('/').map((x) => x.trim());
+    const cabinBT   = splitSlash(labelValue('CabinetNo/B/T'));   // [الكابينة, Fiber Block, Cabinet In]
+    const dpNoT     = splitSlash(labelValue('DPNo/T'));          // [البكس, DP Terminal]
+    const secBlockT = splitSlash(labelValue('SecBlockNo/T'));    // [Sec Block, Cabinet Out]
+    const tech = {
+      central:      arabicOnly(labelValue('ExchCode')) || null,   // اسم السنترال العربى
+      cabinNumber:  cabinBT[0] || null,
+      fiberBlock:   cabinBT[1] || null,
+      cabinetIn:    cabinBT[2] || null,
+      boxNumber:    dpNoT[0] || null,
+      dpTerminal:   dpNoT[1] || null,
+      secBlock:     secBlockT[0] || null,
+      cabinetOut:   secBlockT[1] || null,
+      primaryBlock: labelValue('SBLOCK_NO') || null,
+      portNo:       labelValue('Port') || null,
+      iduNo:        labelValue('IduNo') || null,
+      oduNo:        labelValue('OduNo') || null,
+      fiberOut:     labelValue('FiberOut') || null,
+      lineType:     labelValue('LineTypeName') || null,
+    };
+
+    if (!subName && !subAdd && !tech.cabinNumber && /no rows found/.test(bodyTxt)) {
       log('•', short, '→ لا يوجد بيانات (No rows) — تسجيل فاضى');
     } else {
-      log('•', short, '→', subName ? ('اسم: ' + subName.slice(0, 20)) : 'بدون اسم', workOrdNo ? ('| WO: ' + workOrdNo) : '');
+      log('•', short, '→', subName ? ('اسم: ' + subName.slice(0, 16)) : 'بدون اسم',
+        '| كابينة:', tech.cabinNumber || '-', 'بكس:', tech.boxNumber || '-', 'DP:', tech.dpTerminal || '-', 'Port:', tech.portNo || '-');
     }
-    await ingest(phone, { subName, subAdd, workOrdDate, workOrdNo });
+    await ingest(phone, Object.assign({ subName, subAdd, workOrdDate, workOrdNo }, tech));
     return true;
   }
 

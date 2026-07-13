@@ -2289,16 +2289,16 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `WITH t AS (SELECT $1::text AS raw, $2::text AS short, $3::text AS full)
        SELECT COALESCE(pl.tel_no, t.short) AS "telNo",
-              COALESCE(pl.central, cpl.central_name) AS central,
-              COALESCE(pl.cabin_number, cpl.cabinet_no) AS "cabinNumber",
-              pl.box_number AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
+              COALESCE(pl.central, cpl.central_name, si.central) AS central,
+              COALESCE(pl.cabin_number, cpl.cabinet_no, si.cabin_number) AS "cabinNumber",
+              COALESCE(pl.box_number, si.box_number) AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
               ctc.cabin_code AS "msanCode",
               COALESCE(mto.tech_name, ctc.ct_tech, '') AS "techName",
-              pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
-              pl.primary_block_no AS "primaryBlockNo", pl.cabinet_in AS "cabinetIn",
-              pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
-              pl.dp_terminal AS "dpTerminal", COALESCE(pp.port_number, pl.port) AS "port", pl.len AS "len",
-              pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
+              COALESCE(pl.idu_no, si.idu_no) AS "iduNo", COALESCE(pl.odu_no, si.odu_no) AS "oduNo",
+              COALESCE(pl.primary_block_no, si.primary_block) AS "primaryBlockNo", COALESCE(pl.cabinet_in, si.cabinet_in) AS "cabinetIn",
+              COALESCE(pl.sec_block_no, si.sec_block) AS "secBlockNo", COALESCE(pl.cabinet_out, si.cabinet_out) AS "cabinetOut",
+              COALESCE(pl.dp_terminal, si.dp_terminal) AS "dpTerminal", COALESCE(pp.port_number, pl.port, si.port_no) AS "port", pl.len AS "len",
+              COALESCE(pl.fiber_block, si.fiber_block) AS "fiberBlock", COALESCE(pl.fiber_out, si.fiber_out) AS "fiberOut",
               pp.port_type AS "portType", pp.row_no AS "rowNo", pp.column_no AS "columnNo",
               pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
               pp.operator AS "operator", pp.shelf AS "shelf", pp.slot AS "slot",
@@ -2312,7 +2312,7 @@ export async function registerRoutes(
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt",
-              (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL) AS "hasData"
+              (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
        LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
@@ -3975,16 +3975,27 @@ export async function registerRoutes(
   app.post("/api/line-subscriber-info/ingest", async (req: any, res) => {
     setPortsCors(res);
     if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
-    const phone = String(req.body?.phoneNumber ?? "").trim();
+    const b = req.body || {};
+    const phone = String(b.phoneNumber ?? "").trim();
     if (!phone) return res.status(400).json({ message: "phoneNumber مطلوب" });
     const clean = (v: any) => { const s = String(v ?? "").trim(); return s === "" ? null : s; };
+    // اسم/عنوان + بيانات فنية (من FCC Complains) — الأعمدة والقيم بالترتيب
+    const map: [string, any][] = [
+      ["sub_name", b.subName], ["sub_add", b.subAdd], ["work_ord_date", b.workOrdDate], ["work_ord_no", b.workOrdNo],
+      ["central", b.central], ["cabin_number", b.cabinNumber], ["box_number", b.boxNumber], ["dp_terminal", b.dpTerminal],
+      ["port_no", b.portNo], ["idu_no", b.iduNo], ["odu_no", b.oduNo], ["primary_block", b.primaryBlock],
+      ["sec_block", b.secBlock], ["cabinet_in", b.cabinetIn], ["cabinet_out", b.cabinetOut], ["fiber_block", b.fiberBlock],
+      ["fiber_out", b.fiberOut], ["line_type", b.lineType],
+    ];
+    const cols = map.map((m) => m[0]);
+    const params = [phone, ...map.map((m) => clean(m[1]))];
+    const placeholders = params.map((_, i) => `$${i + 1}`).join(",");
+    const updateSet = cols.map((c) => `${c} = EXCLUDED.${c}`).join(", ");
     await pool.query(
-      `INSERT INTO line_subscriber_info (phone_number, sub_name, sub_add, work_ord_date, work_ord_no, fetched_at)
-       VALUES ($1,$2,$3,$4,$5, now())
-       ON CONFLICT (phone_number) DO UPDATE SET
-         sub_name = EXCLUDED.sub_name, sub_add = EXCLUDED.sub_add,
-         work_ord_date = EXCLUDED.work_ord_date, work_ord_no = EXCLUDED.work_ord_no, fetched_at = now()`,
-      [phone, clean(req.body?.subName), clean(req.body?.subAdd), clean(req.body?.workOrdDate), clean(req.body?.workOrdNo)],
+      `INSERT INTO line_subscriber_info (phone_number, ${cols.join(", ")}, fetched_at)
+       VALUES (${placeholders}, now())
+       ON CONFLICT (phone_number) DO UPDATE SET ${updateSet}, fetched_at = now()`,
+      params,
     );
     res.json({ ok: true });
   });

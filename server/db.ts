@@ -711,6 +711,15 @@ export async function ensureSchema() {
       fetched_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  // بيانات فنية مجلوبة من FCC (لو الرقم مالوش بيانات فى الملف) — أعمدة تُضاف للجداول الموجودة
+  for (const [col, typ] of [
+    ["central", "text"], ["cabin_number", "text"], ["box_number", "text"], ["dp_terminal", "text"],
+    ["port_no", "text"], ["idu_no", "text"], ["odu_no", "text"], ["primary_block", "text"],
+    ["sec_block", "text"], ["cabinet_in", "text"], ["cabinet_out", "text"], ["fiber_block", "text"],
+    ["fiber_out", "text"], ["line_type", "text"],
+  ] as const) {
+    await pool.query(`ALTER TABLE line_subscriber_info ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+  }
 
   // case_138 — حاله 138 (DSL fault cases, full replace each upload)
   await pool.query(`
