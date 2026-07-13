@@ -5,12 +5,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUsers } from "@/hooks/use-users";
+import { useAuth } from "@/hooks/use-auth";
 import { Loader2, UserPlus } from "lucide-react";
 import { ROLES } from "@shared/schema";
 
 export function CreateUserModal() {
   const [open, setOpen] = useState(false);
   const { createUser, isCreating } = useUsers();
+  const { user } = useAuth();
+  // الأدمن العادى يقدر ينشئ الأدوار الأساسية فقط؛ الأدمن الأعلى يقدر ينشئ كمان مديرين ومديرين أعلى
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
   const [formData, setFormData] = useState({
     username: "",
     password: "",
@@ -71,7 +75,8 @@ export function CreateUserModal() {
                 <SelectItem value={ROLES.TECH} className="text-right">فني</SelectItem>
                 <SelectItem value={ROLES.EXTERNAL} className="text-right">مراقب الشئون الخارجية</SelectItem>
                 <SelectItem value={ROLES.DATA_MANAGER} className="text-right">مسئول البيانات</SelectItem>
-                <SelectItem value={ROLES.ADMIN} className="text-right">مدير</SelectItem>
+                {isSuperAdmin && <SelectItem value={ROLES.ADMIN} className="text-right">مدير</SelectItem>}
+                {isSuperAdmin && <SelectItem value={ROLES.SUPER_ADMIN} className="text-right">مدير أعلى (Super Admin)</SelectItem>}
               </SelectContent>
             </Select>
           </div>

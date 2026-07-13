@@ -143,7 +143,11 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
 ];
 
 export default function Dashboard() {
-  const { user, logout, isLoading: authLoading } = useAuth();
+  const { user: authUser, logout, isLoading: authLoading } = useAuth();
+  // الأدمن الأعلى (super_admin) يرى واجهة الأدمن كاملة (وصول كامل) — نطبّعه لـ admin فى كل فحوص العرض،
+  // ونحتفظ بـ isSuperAdmin للصلاحيات الإضافية (إدارة الأدمنز).
+  const isSuperAdmin = authUser?.role === ROLES.SUPER_ADMIN;
+  const user = authUser && isSuperAdmin ? { ...authUser, role: ROLES.ADMIN } : authUser;
   const { orders, isLoading: ordersLoading } = useOrders();
   const [, setLocation] = useLocation();
   const [adminTab, setAdminTab] = useState<AdminTab>("orders");

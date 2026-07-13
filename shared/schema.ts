@@ -9,6 +9,7 @@ export const ROLES = {
   ADMIN: "admin",
   EXTERNAL: "external",
   DATA_MANAGER: "data_manager",
+  SUPER_ADMIN: "super_admin", // أدمن أعلى — وصول كامل + إدارة الأدمنز
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];

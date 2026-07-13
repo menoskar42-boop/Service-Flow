@@ -40,6 +40,8 @@ export function UsersList() {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
+      case ROLES.SUPER_ADMIN:
+        return <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">مدير أعلى</Badge>;
       case ROLES.ADMIN:
         return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">مدير</Badge>;
       case ROLES.TECH:

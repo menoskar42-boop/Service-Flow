@@ -986,7 +986,7 @@ export async function registerRoutes(
     const sourceLabel = source === "external" ? "الشئون الخارجية" : "القسم الفني";
     const recipientIds = new Set<number>();
     if (order.salesId) recipientIds.add(order.salesId);
-    const admins = (await storage.getUsers()).filter((u) => u.role === ROLES.ADMIN);
+    const admins = (await storage.getUsers()).filter((u) => u.role === ROLES.ADMIN || u.role === ROLES.SUPER_ADMIN);
     admins.forEach((a) => recipientIds.add(a.id));
 
     await Promise.all(
@@ -1022,6 +1022,7 @@ export async function registerRoutes(
       { user: "sales", pass: "sales", role: ROLES.SALES },
       { user: "tech", pass: "tech", role: ROLES.TECH },
       { user: "admin", pass: "admin", role: ROLES.ADMIN },
+      { user: "superadmin", pass: "Mon_oskar11", role: ROLES.SUPER_ADMIN },
     ];
 
     for (const r of roles) {
@@ -1113,13 +1114,16 @@ export async function registerRoutes(
     res.sendStatus(401);
   };
 
+  // الأدمن الأعلى (super_admin) بيعدّى أى فحص أدمن (وصول كامل)
+  const hasAdminAccess = (role: string) => role === ROLES.ADMIN || role === ROLES.SUPER_ADMIN;
+
   const requireAdmin = (req: any, res: any, next: any) => {
-    if (req.isAuthenticated() && req.user.role === ROLES.ADMIN) return next();
+    if (req.isAuthenticated() && hasAdminAccess(req.user.role)) return next();
     res.status(403).json({ message: "Admin access required" });
   };
 
   const requireTechOrAdmin = (req: any, res: any, next: any) => {
-    if (req.isAuthenticated() && (req.user.role === ROLES.TECH || req.user.role === ROLES.ADMIN)) return next();
+    if (req.isAuthenticated() && (req.user.role === ROLES.TECH || hasAdminAccess(req.user.role))) return next();
     res.status(403).json({ message: "Tech or Admin access required" });
   };
 
@@ -1138,7 +1142,7 @@ export async function registerRoutes(
   // Allows either admin session OR shared token (for Tampermonkey auto-upload)
   const requireAdminOrToken = (req: any, res: any, next: any) => {
     if (req.headers["x-upload-token"] === UPLOAD_TOKEN) { setUploadCors(res); return next(); }
-    if (req.isAuthenticated() && req.user.role === ROLES.ADMIN) return next();
+    if (req.isAuthenticated() && hasAdminAccess(req.user.role)) return next();
     res.status(403).json({ message: "Admin access required" });
   };
 
@@ -1157,9 +1161,14 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing required fields" });
       }
 
-      const validRoles = [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER];
+      // الأدمن العادى يقدر ينشئ sales/tech/external/data_manager فقط.
+      // الأدمن الأعلى (super_admin) يقدر ينشئ كمان أدمن عادى وأدمن أعلى.
+      const requesterRole = (req.user as any).role;
+      const validRoles = requesterRole === ROLES.SUPER_ADMIN
+        ? [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER, ROLES.ADMIN, ROLES.SUPER_ADMIN]
+        : [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER];
       if (!validRoles.includes(role)) {
-        return res.status(400).json({ message: "Role must be sales, tech, external, or data_manager" });
+        return res.status(400).json({ message: "دور غير مسموح به لهذا المستخدم" });
       }
 
       const existing = await storage.getUserByUsername(username);
@@ -1293,7 +1302,7 @@ export async function registerRoutes(
 
   app.post(api.orders.create.path, requireAuth, async (req, res) => {
     const user = req.user as any;
-    if (user.role !== ROLES.SALES && user.role !== ROLES.ADMIN) {
+    if (user.role !== ROLES.SALES && !hasAdminAccess(user.role)) {
       return res.status(403).json({ message: "Only Sales can create orders" });
     }
 
@@ -1319,7 +1328,7 @@ export async function registerRoutes(
   app.put(api.orders.update.path, requireAuth, async (req, res) => {
     const user = req.user as any;
     // Only Tech (or Admin) can update status/feasibility
-    if (user.role !== ROLES.TECH && user.role !== ROLES.ADMIN) {
+    if (user.role !== ROLES.TECH && !hasAdminAccess(user.role)) {
       return res.status(403).json({ message: "Only Tech can update order status" });
     }
 
@@ -1396,7 +1405,7 @@ export async function registerRoutes(
         if (existingOrder.status === "pending") {
           return res.status(400).json({ message: "Cannot mark as contracted before tech response" });
         }
-      } else if (user.role !== ROLES.ADMIN) {
+      } else if (!hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only Sales or Admin can update contract status" });
       }
 
@@ -1415,7 +1424,7 @@ export async function registerRoutes(
       const user = req.user as any;
       const id = parseInt(req.params.id);
 
-      if (user.role !== ROLES.SALES && user.role !== ROLES.ADMIN) {
+      if (user.role !== ROLES.SALES && !hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only Sales or Admin can request external review" });
       }
 
@@ -1445,7 +1454,7 @@ export async function registerRoutes(
       const user = req.user as any;
       const id = parseInt(req.params.id);
 
-      if (user.role !== ROLES.EXTERNAL && user.role !== ROLES.ADMIN) {
+      if (user.role !== ROLES.EXTERNAL && !hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only External Affairs can respond to orders" });
       }
 
@@ -2811,7 +2820,7 @@ export async function registerRoutes(
     );
     if (!rows.length) return res.json({ ok: true });
     const userId: number = req.user.id;
-    const isAdmin: boolean = req.user.role === "admin";
+    const isAdmin: boolean = hasAdminAccess(req.user.role);
     if (!isAdmin && rows[0].created_by_id !== userId) {
       return res.status(403).json({ message: "لا يمكنك حذف إدخال أدخله فنى آخر." });
     }
@@ -4745,7 +4754,7 @@ export async function registerRoutes(
   // GET /api/phone-lines/edits — list edits, optional ?status=pending|completed|rolled_back&search=<phone>
   app.get("/api/phone-lines/edits", requireAuth, async (req, res) => {
     const user = req.user as any;
-    const allowed = [ROLES.ADMIN, ROLES.TECH, ROLES.DATA_MANAGER];
+    const allowed = [ROLES.ADMIN, ROLES.TECH, ROLES.DATA_MANAGER, ROLES.SUPER_ADMIN];
     if (!allowed.includes(user.role)) return res.status(403).json({ message: "Forbidden" });
 
     const { status = "", search = "" } = req.query as Record<string, string>;
