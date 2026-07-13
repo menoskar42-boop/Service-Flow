@@ -646,7 +646,16 @@ export function FileUploadSection() {
   return (
     <div className="space-y-5" dir="rtl">
       {/* زر تشغيل التقارير اليومية + زر تحديث منافذ MSAN من Provisioning Portal */}
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end gap-2 flex-wrap">
+        <Button
+          onClick={() => { qc.invalidateQueries(); }}
+          variant="outline"
+          className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+          title="تحديث بيانات الصفحة (يعيد جلب كل البيانات المعروضة من غير إعادة تحميل كاملة)"
+        >
+          <RefreshCw className="w-4 h-4" />
+          تحديث الصفحة
+        </Button>
         <Button
           onClick={() => window.open("https://we-oas.te.eg/analytics/saw.dll?bipublisherEntry&action=open&bippath=%2FFCC%20Prod%2F131%20%D8%A7%D8%B1%D9%82%D8%A7%D9%85%20%D8%A7%D9%84%D8%AA%D9%84%D9%8A%D9%81%D9%88%D9%86%D8%A7%D8%AA%20%D8%B9%D9%84%D9%89%20%D9%83%D8%A7%D8%A8%D9%8A%D9%86%D8%A9.xdo&itemtype=.xdo", "_blank", "noopener,noreferrer")}
           className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
