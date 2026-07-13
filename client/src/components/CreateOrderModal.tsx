@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,11 @@ export function CreateOrderModal() {
   const { createOrder, isCreating } = useOrders();
   const { toast } = useToast();
   const [warnedSerial, setWarnedSerial] = useState<string | null>(null);
+  const [assignedTechId, setAssignedTechId] = useState(""); // "" = الكل (غير مُسنَد)
+  const { data: techs = [] } = useQuery<{ id: number; username: string }[]>({
+    queryKey: ["/api/techs"],
+    queryFn: () => fetch("/api/techs", { credentials: "include" }).then((r) => (r.ok ? r.json() : [])),
+  });
   const [formData, setFormData] = useState({
     customerName: "",
     customerPhone: "",
@@ -33,13 +39,17 @@ export function CreateOrderModal() {
       });
       return;
     }
-    createOrder(formData, {
-      onSuccess: () => {
-        setOpen(false);
-        setWarnedSerial(null);
-        setFormData({ customerName: "", customerPhone: "", customerAddress: "", nationalId: "", serialNumber: "" });
+    createOrder(
+      { ...formData, assignedTechId: assignedTechId ? Number(assignedTechId) : null } as any,
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setWarnedSerial(null);
+          setAssignedTechId("");
+          setFormData({ customerName: "", customerPhone: "", customerAddress: "", nationalId: "", serialNumber: "" });
+        },
       },
-    });
+    );
   };
 
   return (
@@ -115,6 +125,22 @@ export function CreateOrderModal() {
               placeholder="أرقام فقط"
               data-testid="input-serial-number"
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="assignedTech">الفني المسند (اختياري)</Label>
+            <select
+              id="assignedTech"
+              value={assignedTechId}
+              onChange={(e) => setAssignedTechId(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-white text-right"
+              dir="rtl"
+              data-testid="select-assign-tech"
+            >
+              <option value="">الكل — متاح لكل الفنيين</option>
+              {techs.map((t) => (
+                <option key={t.id} value={t.id}>{t.username}</option>
+              ))}
+            </select>
           </div>
           <div className="pt-4 flex justify-end gap-2">
             <Button variant="outline" type="button" onClick={() => setOpen(false)}>

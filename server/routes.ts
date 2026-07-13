@@ -1348,6 +1348,15 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/techs — قائمة الفنيين (id + اسم) — متاحة لأى مستخدم مسجّل (المبيعات تحتاجها لاختيار فنى وقت الإنشاء)
+  app.get("/api/techs", requireAuth, async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id, username FROM users WHERE role = $1 AND suspended IS NOT TRUE ORDER BY username`,
+      [ROLES.TECH],
+    );
+    res.json(rows);
+  });
+
   app.post(api.orders.create.path, requireAuth, async (req, res) => {
     const user = req.user as any;
     if (user.role !== ROLES.SALES && !hasAdminAccess(user.role)) {
@@ -1356,8 +1365,22 @@ export async function registerRoutes(
 
     try {
       const input = insertOrderSchema.parse(req.body);
+      // إسناد اختيارى وقت الإنشاء: نقبل assignedTechId فقط ونشتق الاسم من السيرفر (نمنع التلاعب من العميل)
+      let assignedTechId: number | null = null;
+      let assignedTechName: string | null = null;
+      const rawAssign = (req.body as any).assignedTechId;
+      if (rawAssign != null && rawAssign !== "") {
+        const tid = parseInt(String(rawAssign));
+        if (!isNaN(tid)) {
+          const { rows } = await pool.query(`SELECT id, username, role FROM users WHERE id = $1`, [tid]);
+          const tech = rows[0];
+          if (tech && tech.role === ROLES.TECH) { assignedTechId = tech.id; assignedTechName = tech.username; }
+        }
+      }
       const order = await storage.createOrder({
         ...input,
+        assignedTechId,
+        assignedTechName,
         salesId: user.id,
         salesName: user.username,
       });
