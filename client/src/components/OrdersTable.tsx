@@ -36,7 +36,7 @@ interface OrdersTableProps {
   orders: Order[];
 }
 
-type StatusFilter = "all" | "pending" | "feasible" | "not_feasible" | "needs_external" | "external_feasible" | "external_not_feasible";
+type StatusFilter = "all" | "pending" | "pending_unassigned" | "feasible" | "not_feasible" | "needs_external" | "external_feasible" | "external_not_feasible";
 type ContractFilter = "all" | "contracted" | "not_contracted";
 
 export function OrdersTable({ orders }: OrdersTableProps) {
@@ -105,7 +105,12 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       if ((order as any).cabinetTechName !== cabinetTechTarget) return false;
     }
 
-    if (statusFilter !== "all" && order.status !== statusFilter) return false;
+    if (statusFilter === "pending_unassigned") {
+      // قيد الانتظار وغير مُسنَد لأى فنى
+      if (order.status !== ORDER_STATUS.PENDING || (order as any).assignedTechId != null) return false;
+    } else if (statusFilter !== "all" && order.status !== statusFilter) {
+      return false;
+    }
 
     // Tech filter: show orders for selected tech + all pending (unassigned) orders
     if (techFilter) {
@@ -147,6 +152,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const statusCounts = {
     all: orders.length,
     pending: orders.filter(o => o.status === ORDER_STATUS.PENDING).length,
+    pending_unassigned: orders.filter(o => o.status === ORDER_STATUS.PENDING && (o as any).assignedTechId == null).length,
     feasible: orders.filter(o => o.status === ORDER_STATUS.FEASIBLE).length,
     not_feasible: orders.filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE).length,
     needs_external: orders.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL).length,
@@ -181,6 +187,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     tabs.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
     tabs.push({ key: "pending", label: "قيد الانتظار" });
     if (user?.role === ROLES.ADMIN) {
+      tabs.push({ key: "pending_unassigned", label: "قيد الانتظار (بدون تعيين)" });
       tabs.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
       tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
       tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
