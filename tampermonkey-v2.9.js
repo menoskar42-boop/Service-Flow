@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         TE FCC + WFM + OSS Export
 // @namespace    te.eg.autoexport
-// @version      2.34
-// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.34: WFM يقفل بعد 15ث بدل 60ث (OSS لسه 60ث لأن تدفّقه أطول). v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
+// @version      2.35
+// @description  FCC + WFM + OSS export with auto-upload to Service-Flow. v2.35: OSS كمان يقفل بعد 15ث (زى WFM). v2.34: WFM يقفل بعد 15ث. v2.33: شِلنا حيلة open('','_self') من منطق الإغلاق — كانت بتبيّض صفحة WFM/OSS لو الإغلاق مانفعش (وتضطرك تعمل refresh). دلوقتى إغلاق عادى window.close() بس (بيشتغل لأن التابات مفتوحة بـ window.open ولها opener). v2.32: شِلنا الـ chaining — زر "حدّث التقارير اليومية" فى Service-Flow بقى يفتح FCC+WFM+OSS الثلاثة بالتوازى مباشرةً (أسرع وأضمن؛ السلسلة كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg). كل تاب باسم ثابت (fcc_daily/wfm_daily/oss_daily) يُعاد استخدامه بدل التكديس. v2.31: تابات WFM/OSS تُفتح باسم ثابت عبر window.open زى FCC. v2.30: إغلاق أقوى لتاب WFM/OSS — نجرّب حيلة open('','_self') قبل window.close(). v2.29: WFM و OSS يقفلوا التاب تلقائياً بعد الرفع بدقيقة (60ث) دايماً (تابات أتمتة بحتة) — مش بس ضمن التدفّق اليومى. v2.28: رجّعنا دالة runWFM لنسخة يوم 10-7 (بند "تحميل اكسل" ثم زر Export بضغطة realClick بسيطة بدل activate) + حساب WFM = mina109756 — عشان تناسب الواجهة القديمة البسيطة. activate كان بيتسلّق لعناصر ADF ويشغّل _skipToContent اللى بيكراش ويوقف التصدير. v2.27: رجّعنا حساب دخول WFM لـ mina109756. v2.26: WFM — مراقبة تغيّر src على أى iframe (بما فيها afr::PushIframe الموجود أصلاً) لالتقاط تحميل ADF عبر PPR/iframe مخفى. v2.25: مراقبة الـ iframes المحقونة (MutationObserver) لالتقاط تحميل ADF عبر iframe مخفى (اللى مابيمرّش على fetch/XHR/submit)، + تسجيل تشخيصى لأى iframe/form بيتحقن أثناء الالتقاط. v2.24: WFM هى Oracle ADF (زى FCC) — نستخدم activate لضغط عنصر أمر التصدير الحقيقى (مش الـ div الداخلى) فيتم form submit ويتلقط. v2.23: اعتراض URL.createObjectURL لمسك ملف Excel المولَّد فى المتصفح (client-side blob) — HiveWorx. v2.22: قصر اعتراض fetch/XHR/الروابط على wfm.te.eg فقط (عشان ماتكسرش سلسلة FCC→WFM). v2.21: اعتراض fetch/XHR وضغطات روابط التحميل (blob/download) لواجهة HiveWorx اللى بتحمّل بدون form submit. v2.20: مستمع submit عام يمسك الإرسال الطبيعى (native form submit) لزر Export بتاع WFM. v2.19: إصلاح تصدير WFM بعد تغيير واجهة WE — يضغط بند "Export Excel" الصحيح ثم زر "Export" فى الـ popup (selector أوسع). v2.18: فتح التابات المتسلسلة بدون setParent. v2.17: قفل التاب تلقائياً بعد الرفع فى التدفّق اليومى.
 // @match        https://fcc.te.eg/TroubleTicket/faces/*
 // @match        https://wfm.te.eg/WorkOrder/faces/*
 // @match        https://oss.te.eg:15201/om*
@@ -62,16 +62,14 @@
     catch (e) { return DAILY_AUTO; }
   }
   let closingScheduled = false;
-  // WFM و OSS تابات أتمتة بحتة → تتقفل دايماً بعد الرفع بدقيقة (60ث). FCC → فقط ضمن التدفّق اليومى (بعد 4ث).
+  // WFM و OSS تابات أتمتة بحتة → تتقفل دايماً بعد الرفع بـ 15ث. FCC → فقط ضمن التدفّق اليومى (بعد 4ث).
   const PURE_AUTO_HOST = /wfm\.te\.eg|oss\.te\.eg/i.test(location.host);
   function autoCloseIfDaily(reason) {
     if (closingScheduled) return;
     if (!PURE_AUTO_HOST && !isDailyFlow()) return;
     closingScheduled = true;
-    // FCC: 4ث. WFM: 15ث. OSS: 60ث (تدفّقه أطول). كلها بعد ما الرفع يخلص.
-    const delay = /wfm\.te\.eg/i.test(location.host) ? 15000
-                : /oss\.te\.eg/i.test(location.host) ? 60000
-                : 4000;
+    // WFM و OSS: 15ث بعد ما الرفع يخلص. FCC: 4ث.
+    const delay = PURE_AUTO_HOST ? 15000 : 4000;
     log('✅ ' + (reason || 'انتهى') + ' — إغلاق التبويب بعد ' + (delay / 1000) + 'ث (تحديث تلقائى)');
     // window.close() بيشتغل على التابات المفتوحة بـ window.open (لها opener) — زى ما Service-Flow
     // بيفتح FCC/WFM/OSS. مابنستخدمش حيلة open('','_self') لأنها بتبيّض الصفحة لو الإغلاق مانفعش.
@@ -634,7 +632,7 @@
     try { if (host.startsWith('fcc.te.eg')) await runFCC(); else if (host.startsWith('wfm.te.eg')) await runWFM(); else if (host.startsWith('oss.te.eg')) await runOSS(); } catch(e){log('ERROR:',e.message||String(e));console.error('[TE] error:',e);}
   }
 
-  log('TE FCC + WFM + OSS Export v2.34 loaded on', location.host);
+  log('TE FCC + WFM + OSS Export v2.35 loaded on', location.host);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(main, 1500));
   else setTimeout(main, 1500);
 })();
