@@ -799,6 +799,19 @@ export async function ensureSchema() {
     )
   `);
 
+  // sf_session — جدول جلسات دائم (connect-pg-simple) عشان الجلسات تبقى بعد إعادة
+  // تشغيل/سكون الخدمة على Replit (MemoryStore كان بيتمسح فيعمل تسجيل خروج).
+  // يُنشأ هنا مسبقاً (قبل تهيئة الجلسة) فنستخدمه بـ createTableIfMissing:false.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "sf_session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "sf_session_pkey" PRIMARY KEY ("sid")
+    );
+    CREATE INDEX IF NOT EXISTS "IDX_sf_session_expire" ON "sf_session" ("expire");
+  `);
+
   // exec_jobs — طابور تنفيذ رفع السرعة/القياس/الإيقاف على «جهاز التنفيذ» المركزى.
   // أى مستخدم يضيف مهمة (type + accounts)، وجهاز التنفيذ (سوبر أدمن مفعّل الزر) يستلمها وينفّذها.
   await pool.query(`

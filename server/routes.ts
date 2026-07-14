@@ -14,12 +14,24 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import MemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole } from "@shared/roles-access";
 import { registerCfmRoutes } from "./cfm/routes";
 
 const scryptAsync = promisify(scrypt);
-const SessionStore = MemoryStore(session);
+const MemStore = MemoryStore(session);
+// جلسات دائمة فى Postgres (جدول sf_session المُنشأ فى ensureSchema). لو فشلت التهيئة
+// لأى سبب نرجع لـ MemoryStore عشان الدخول مايتعطّلش أبداً.
+function buildSessionStore() {
+  try {
+    const PgSession = connectPgSimple(session);
+    return new PgSession({ pool, tableName: "sf_session", createTableIfMissing: false });
+  } catch (e) {
+    console.error("[session] PgSession init failed → MemoryStore fallback:", (e as Error).message);
+    return new MemStore({ checkPeriod: 86400000 });
+  }
+}
 
 // Work-order reports are restricted to these centrals (الغنايم وفروعها).
 // Matching is tolerant of differences in dashes, spaces, hamza, ة/ه, ى/ي.
@@ -1041,12 +1053,12 @@ export async function registerRoutes(
 
   app.use(
     session({
-      store: new SessionStore({ checkPeriod: 86400000 }),
+      store: buildSessionStore(),
       secret: "super-secret-session-key",
       resave: false,
       saveUninitialized: false,
       rolling: true, // كل طلب (ومنه التحديث التلقائى كل نص ساعة) يمدّد عمر الجلسة
-      cookie: { maxAge: 86400000 },
+      cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }, // أسبوع
     })
   );
 
