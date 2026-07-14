@@ -4155,7 +4155,8 @@ export async function registerRoutes(
     if (q) { params.push(`%${q}%`); where = `WHERE LOWER(si.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')) LIKE $1`; }
     const { rows } = await pool.query(
       `SELECT si.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
-              si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
+              substring(si.work_ord_date from '[0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4}') AS "workOrdDate",
+              si.work_ord_no AS "workOrdNo",
               COALESCE(si.central, pl.central) AS "central",
               (si.fetched_at AT TIME ZONE 'Africa/Cairo') AS "fetchedAt",
               pp.area_code AS "areaCode", pp.msan_code AS "msanCode", pp.frame AS "frame",
@@ -4183,7 +4184,8 @@ export async function registerRoutes(
     if (q) { params.push(`%${q}%`); conds.push(`LOWER(pp.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')) LIKE $${params.length}`); }
     const { rows } = await pool.query(
       `SELECT pp.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
-              si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
+              substring(si.work_ord_date from '[0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4}') AS "workOrdDate",
+              si.work_ord_no AS "workOrdNo",
               COALESCE(si.central, pl.central) AS "central",
               pp.area_code AS "areaCode", pp.msan_code AS "msanCode", pp.frame AS "frame",
               pp.port_number AS "portNumber", pp.port_type AS "portType",
