@@ -4022,6 +4022,51 @@ export async function registerRoutes(
         return res.status(502).json({ message: "تعذّر جلب التقرير من نظام صيانة البوكسات", status: r.status, detail });
       }
       const data = await r.json();
+
+      // إثراء كل صف بعدد الأعطال فى الألف ونسبة التكرار للبكس خلال الفترة (من بيانات Service-Flow)
+      // الفترة: from/to (الافتراضى من أول السنة لليوم — يُضبط من الواجهة).
+      const nowY = new Date().getFullYear();
+      const from = String((req.query as any).from || "").trim() || `${nowY}-01-01`;
+      const to = String((req.query as any).to || "").trim() || new Date().toISOString().slice(0, 10);
+      try {
+        const { rows: mrows } = await pool.query(
+          `WITH fu AS (
+             SELECT phone_number, complain_no FROM complaint_details
+               WHERE (complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                 AND (complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+             UNION
+             SELECT phone_number, complain_no FROM remaining_complaints
+               WHERE (complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                 AND (complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+           ),
+           perline AS (
+             SELECT pl.central, pl.cabin_number, pl.box_number, pl.tel_no,
+                    COUNT(DISTINCT fu.complain_no) AS cnt
+             FROM phone_lines pl
+             LEFT JOIN fu ON fu.phone_number = pl.tel_no
+             WHERE COALESCE(pl.box_number, '') <> ''
+             GROUP BY pl.central, pl.cabin_number, pl.box_number, pl.tel_no
+           )
+           SELECT central, cabin_number AS "cabin", box_number AS "box",
+                  COUNT(*)::int AS "lines",
+                  SUM(cnt)::int AS "faults",
+                  COUNT(*) FILTER (WHERE cnt >= 1)::int AS "faultLines",
+                  COUNT(*) FILTER (WHERE cnt >= 2)::int AS "repeatLines"
+           FROM perline
+           GROUP BY central, cabin_number, box_number`,
+          [from, to],
+        );
+        const key = (c: any, cab: any, b: any) => normCentral(c) + "|" + String(cab ?? "").trim() + "|" + String(b ?? "").trim();
+        const metrics = new Map<string, any>();
+        for (const m of mrows) metrics.set(key(m.central, m.cabin, m.box), m);
+        for (const row of (data.rows || [])) {
+          const m = metrics.get(key(row.central, row.cabin, row.box));
+          const lines = m?.lines || 0, faults = m?.faults || 0, faultLines = m?.faultLines || 0, repeatLines = m?.repeatLines || 0;
+          row.faultsPerThousand = lines > 0 ? Math.round((faults / lines) * 1000 * 10) / 10 : null;
+          row.repetitionRate = faultLines > 0 ? Math.round((repeatLines / faultLines) * 100 * 10) / 10 : null;
+        }
+      } catch (mErr) { /* لو فشل الإثراء نرجّع الصفوف بدون المقاييس */ }
+
       res.json(data);
     } catch (e: any) {
       res.status(502).json({ message: "تعذّر الاتصال بنظام صيانة البوكسات", error: e?.message || String(e) });

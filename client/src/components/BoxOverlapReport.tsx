@@ -22,7 +22,13 @@ interface OverlapRow {
   distance: number | null;
   observer: string | null;
   date: string | null;
+  faultsPerThousand: number | null;
+  repetitionRate: number | null;
 }
+
+// افتراضى: من أول يوم فى السنة الحالية إلى اليوم
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const yearStartStr = () => `${new Date().getFullYear()}-01-01`;
 interface OverlapSummary {
   totalDistance: number;
   handledBoxes10: number;
@@ -58,8 +64,8 @@ const itemBadge = (s: string | null) => {
 };
 
 export function BoxOverlapReport() {
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(yearStartStr());
+  const [to, setTo] = useState(todayStr());
   const [q, setQ] = useState("");
 
   const { data, isFetching, error } = useQuery<OverlapResp>({
@@ -110,6 +116,8 @@ export function BoxOverlapReport() {
       "البند": r.item,
       "نوع الكابل / البكس": r.cableType,
       "المسافة (م)": r.distance,
+      "أعطال/ألف": r.faultsPerThousand ?? "",
+      "نسبة التكرار %": r.repetitionRate ?? "",
       "المراقب": r.observer,
       "التاريخ": r.date,
     }));
@@ -129,7 +137,7 @@ export function BoxOverlapReport() {
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>الكابينة</th><th>البوكس</th><th>الحالة</th><th>البند</th>
-      <th>نوع الكابل / البكس</th><th>المسافة (م)</th><th>المراقب</th><th>التاريخ</th>
+      <th>نوع الكابل / البكس</th><th>المسافة (م)</th><th>أعطال/ألف</th><th>نسبة التكرار %</th><th>المراقب</th><th>التاريخ</th>
     </tr>`;
     const cards = CARDS.map((c) => `
       <div class="card"><div class="cv">${esc(num(c.value))}${c.suffix ? " " + esc(c.suffix) : ""}</div><div class="cl">${esc(c.label)}</div></div>`).join("");
@@ -146,6 +154,8 @@ export function BoxOverlapReport() {
           <td>${esc(r.item)}</td>
           <td>${esc(r.cableType)}</td>
           <td>${esc(r.distance)}</td>
+          <td>${r.faultsPerThousand == null ? "-" : esc(r.faultsPerThousand)}</td>
+          <td>${r.repetitionRate == null ? "-" : esc(r.repetitionRate) + "%"}</td>
           <td>${esc(r.observer)}</td>
           <td>${esc(r.date)}</td>
         </tr>`).join("");
@@ -258,6 +268,8 @@ export function BoxOverlapReport() {
                 <TableHead className="text-right font-bold text-white">البند</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الكابل / البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">المسافة (م)</TableHead>
+                <TableHead className="text-right font-bold text-white whitespace-nowrap">أعطال/ألف</TableHead>
+                <TableHead className="text-right font-bold text-white whitespace-nowrap">نسبة التكرار %</TableHead>
                 <TableHead className="text-right font-bold text-white">المراقب</TableHead>
                 <TableHead className="text-right font-bold text-white">التاريخ</TableHead>
               </TableRow>
@@ -265,7 +277,7 @@ export function BoxOverlapReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={12} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد سجلات"}
                   </TableCell>
                 </TableRow>
@@ -279,6 +291,8 @@ export function BoxOverlapReport() {
                   <TableCell>{itemBadge(r.item)}</TableCell>
                   <TableCell className="whitespace-nowrap">{r.cableType || "-"}</TableCell>
                   <TableCell className="font-medium text-blue-700">{num(r.distance)}</TableCell>
+                  <TableCell className="font-medium text-orange-700">{r.faultsPerThousand == null ? "-" : r.faultsPerThousand}</TableCell>
+                  <TableCell className="font-medium text-red-700">{r.repetitionRate == null ? "-" : r.repetitionRate + "%"}</TableCell>
                   <TableCell className="whitespace-nowrap">{r.observer || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{r.date || "-"}</TableCell>
                 </TableRow>
