@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { enqueueIfExecutorActive } from "@/lib/exec-queue";
 import { Gauge } from "lucide-react";
 import { maintStatusBadge, boxCoords, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
@@ -217,9 +218,14 @@ export function PhoneLookupReport() {
         : (maintLoading ? <span className="text-gray-400">…</span> : <span className="text-gray-400">-</span>));
 
   // فتح بوابة DZS وقياس رقم الأكونت الخاص بالخط
-  const measureDZS = () => {
+  // لو فيه جهاز تنفيذ مفعّل على متصفح تانى → نبعت المهمة للطابور بدل التنفيذ محلياً
+  const measureDZS = async () => {
     const acc = (line?.accountNo ?? "").toString().trim();
     if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط — لا يمكن القياس"); return; }
+    if (await enqueueIfExecutorActive("measure", [acc])) {
+      alert("تم إضافة الرقم لطابور القياس — هيتنفّذ على جهاز التنفيذ");
+      return;
+    }
     window.open(buildDZSUrl([acc]), "_blank");
   };
 
@@ -401,8 +407,12 @@ export function PhoneLookupReport() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => {
+                    onClick={async () => {
                       const afterStop = window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة ثم إيقاف الـ Nightly الناتج\nإلغاء = رفع السرعة فقط");
+                      if (await enqueueIfExecutorActive("raise", [line.accountNo])) {
+                        alert("تم إضافة الرقم لطابور رفع السرعة — هيتنفّذ على جهاز التنفيذ");
+                        return;
+                      }
                       openProfileOptimization([line.accountNo], { afterStop });
                     }}
                     className="bg-white gap-2 text-emerald-700 border-emerald-200"
@@ -413,7 +423,13 @@ export function PhoneLookupReport() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => openProfileOptimization([line.accountNo], { stopOnly: true })}
+                    onClick={async () => {
+                      if (await enqueueIfExecutorActive("stop", [line.accountNo])) {
+                        alert("تم إضافة الرقم لطابور إيقاف PO — هيتنفّذ على جهاز التنفيذ");
+                        return;
+                      }
+                      openProfileOptimization([line.accountNo], { stopOnly: true });
+                    }}
                     className="bg-white gap-2 text-orange-700 border-orange-200"
                     title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"
                   >

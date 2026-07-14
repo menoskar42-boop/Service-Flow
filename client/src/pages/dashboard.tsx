@@ -45,6 +45,7 @@ import { CabinetCapacityReport } from "@/components/CabinetCapacityReport";
 import { ExecutorButton } from "@/components/ExecutorButton";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
 import { NotificationBell } from "@/components/NotificationBell";
+import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable } from "lucide-react";
@@ -202,6 +203,8 @@ export default function Dashboard() {
     REPORT_GROUPS.flatMap((g) => g.items).find((it) => it.id === reportTab)?.label ?? "اختر التقرير";
 
   useWebSocket();
+  // منع الكمبيوتر من النوم طالما الموقع مفتوح (مهم للتحديث التلقائى وجهاز التنفيذ)
+  useWakeLock(true);
 
   useEffect(() => {
     if (!authLoading && !user) {
