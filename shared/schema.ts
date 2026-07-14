@@ -565,6 +565,23 @@ export const cabinetTechnicians = pgTable("cabinet_technicians", {
 
 export type CabinetTechnician = typeof cabinetTechnicians.$inferSelect;
 
+// سعة الكباين النحاسية من FCC Network Inventory — full replace each upload.
+// secondary_capacity = "السعة" فى شيت خطة الصيانة.
+export const cabinetCapacity = pgTable("cabinet_capacity", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name"),
+  exchCode: text("exch_code"),
+  exchName: text("exch_name"),
+  cabinNumber: text("cabin_number"),
+  cabinetType: text("cabinet_type"),
+  primaryCapacity: integer("primary_capacity"),
+  secondaryCapacity: integer("secondary_capacity"),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+});
+
+export type CabinetCapacity = typeof cabinetCapacity.$inferSelect;
+
 // أسماء الفنيين (كود العامل + الاسم) — full replace each upload
 export const technicianNames = pgTable("technician_names", {
   id: serial("id").primaryKey(),

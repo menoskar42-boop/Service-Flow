@@ -825,6 +825,14 @@ export function FileUploadSection() {
           color="border-violet-200 bg-violet-50/50"
           lastUpload={ut("/api/technician-names/import")}
         />
+        <UploadCard
+          label="سعة الكباين (FCC Copper→Cabinet) — يستبدل القديم"
+          icon={Network}
+          endpoint="/api/cabinet-capacity/import"
+          queryKey="/api/cabinet-capacity"
+          color="border-cyan-200 bg-cyan-50/50"
+          lastUpload={ut("/api/cabinet-capacity/import")}
+        />
       </Card>
 
       {/* Date filter + Tabs */}

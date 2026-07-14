@@ -4355,6 +4355,93 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/cabinet-capacity/import — رفع سعة الكباين من FCC Network Inventory (Copper → Cabinet).
+  // أعمدة الملف: ExchCode, ExchName, Cabinet No, Cabinet Type, Primary Capacity, Secondary Capacity.
+  // ExchCode يُحوَّل لاسم السنترال عشان يربط بـ cabinet_technicians. full replace كل رفعة.
+  const EXCH_TO_CENTRAL: Record<string, string> = {
+    GHNAT: "الغنايم",
+    DRGAT: "الغنايم-دير الجنادله",
+    AMZAT: "الغنايم-العزايزة",
+    NGOAT: "الغنايم-نجع العمدة",
+  };
+  app.post("/api/cabinet-capacity/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = sheetRows(ws);
+      const { find, dataRows } = smartSheet(rows, ["Cabinet No", "Secondary Capacity", "ExchCode"]);
+      const iExchCode = find("ExchCode", "Exch Code", "كود السنترال");
+      const iExchName = find("ExchName", "Exch Name", "اسم السنترال");
+      const iCabin    = find("Cabinet No", "Cabinet Number", "رقم الكابينة", "رقم الكابينه");
+      const iType     = find("Cabinet Type", "نوع الكابينة", "نوع الكابينه");
+      const iPrimary  = find("Primary Capacity", "السعة الرئيسية");
+      const iSecond   = find("Secondary Capacity", "السعة الثانوية", "سعة الثانوى");
+      const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
+      const num = (v: any) => { const n = parseInt(String(v).replace(/[^\d-]/g, ""), 10); return isNaN(n) ? null : n; };
+
+      const inserts: any[][] = [];
+      for (const r of dataRows) {
+        const exch = String(g(r, iExchCode)).trim().toUpperCase();
+        const cabin = String(g(r, iCabin)).trim();
+        if (!exch && !cabin) continue;
+        const centralName = EXCH_TO_CENTRAL[exch] || String(g(r, iExchName)).trim() || null;
+        inserts.push([
+          centralName,
+          exch || null,
+          String(g(r, iExchName)).trim() || null,
+          cabin || null,
+          String(g(r, iType)).trim() || null,
+          num(g(r, iPrimary)),
+          num(g(r, iSecond)),
+        ]);
+      }
+
+      await pool.query("DELETE FROM cabinet_capacity");
+      let inserted = 0;
+      const BATCH = 200;
+      for (let s = 0; s < inserts.length; s += BATCH) {
+        const chunk = inserts.slice(s, s + BATCH);
+        const ph = chunk.map((_, ci) => {
+          const o = ci * 7;
+          return "(" + Array.from({ length: 7 }, (_, k) => `$${o+k+1}`).join(",") + ")";
+        }).join(",");
+        const r = await pool.query(
+          `INSERT INTO cabinet_capacity
+             (central_name, exch_code, exch_name, cabin_number, cabinet_type, primary_capacity, secondary_capacity)
+           VALUES ${ph}`,
+          chunk.flat(),
+        );
+        inserted += r.rowCount ?? 0;
+      }
+      res.json({ inserted, total: inserts.length });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
+    }
+  });
+
+  // GET /api/cabinet-capacity — list with search
+  app.get("/api/cabinet-capacity", requireAuth, async (req, res) => {
+    const { q } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q?.trim()) {
+      params.push(`%${q.trim()}%`);
+      const p = `$${params.length}`;
+      where = `WHERE (central_name ILIKE ${p} OR exch_code ILIKE ${p} OR cabin_number ILIKE ${p} OR cabinet_type ILIKE ${p})`;
+    }
+    const { rows } = await pool.query(
+      `SELECT id, central_name AS "centralName", exch_code AS "exchCode", exch_name AS "exchName",
+              cabin_number AS "cabinNumber", cabinet_type AS "cabinetType",
+              primary_capacity AS "primaryCapacity", secondary_capacity AS "secondaryCapacity"
+       FROM cabinet_capacity ${where}
+       ORDER BY central_name, cabin_number
+       LIMIT 5000`,
+      params,
+    );
+    res.json(rows);
+  });
+
   // GET /api/cabinet-technicians — list with search
   // GET /api/upload-times — آخر وقت رفع لكل جدول (للعرض بجانب كل بطاقة رفع)
   app.get("/api/upload-times", requireAuth, async (_req, res) => {
@@ -4369,6 +4456,7 @@ export async function registerRoutes(
       { key: "/api/case-138/import",            table: "case_138" },
       { key: "/api/phone-ports/import",         table: "phone_ports" },
       { key: "/api/cabinet-technicians/import", table: "cabinet_technicians" },
+      { key: "/api/cabinet-capacity/import",    table: "cabinet_capacity" },
       { key: "/api/technician-names/import",    table: "technician_names" },
     ];
     const result: Record<string, string | null> = {};
@@ -5910,6 +5998,11 @@ export async function registerRoutes(
                        JOIN cabinet_technicians ct2
                          ON ct2.central_name = pl.central AND ct2.cabin_number = pl.cabin_number
                        WHERE ct2.cabin_code = ct.cabin_code), 0)::int     AS "workingLines",
+           -- السعة = مجموع السعة الثانوية للكباين النحاسية المربوطة على الـ MSAN (من FCC)
+           COALESCE((SELECT SUM(cc.secondary_capacity) FROM cabinet_capacity cc
+                       JOIN cabinet_technicians ct2
+                         ON ct2.central_name = cc.central_name AND ct2.cabin_number = cc.cabin_number
+                       WHERE ct2.cabin_code = ct.cabin_code), 0)::int      AS "capacity",
            (SELECT COUNT(*) FROM (
               SELECT cd.complain_no FROM complaint_details cd
                 WHERE cd.msan_id = ct.cabin_code

@@ -779,6 +779,24 @@ export async function ensureSchema() {
     )
   `);
 
+  // cabinet_capacity — سعة الكباين النحاسية من FCC Network Inventory (full replace each upload).
+  // المفتاح المنطقى (central_name, cabin_number) للربط بـ cabinet_technicians. secondary_capacity
+  // هى "السعة" المطلوبة فى شيت خطة الصيانة.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS cabinet_capacity (
+      id serial PRIMARY KEY,
+      central_name text,
+      exch_code text,
+      exch_name text,
+      cabin_number text,
+      cabinet_type text,
+      primary_capacity integer,
+      secondary_capacity integer,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id)
+    )
+  `);
+
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
   // (يُنفَّذ بعد إنشاء cabinet_technicians + technician_names، ولا يستبدل أى إسناد يدوى لاحق.)
   await pool.query(`

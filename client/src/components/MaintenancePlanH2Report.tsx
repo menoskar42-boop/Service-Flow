@@ -18,6 +18,7 @@ interface PlanRow {
   workingAdsl: number;
   boxCount: number;
   workingLines: number;
+  capacity: number;
   faultCount: number;
   perThousand: number;
   sector: string;
@@ -60,7 +61,7 @@ export function MaintenancePlanH2Report() {
     "كود السنترال": r.centralCode,
     "كود كابينة MSAN": r.msanCode,
     "تاريخ الصيانه": r.maintenanceMonth,
-    "السعة": "",
+    "السعة": r.capacity,
     "الشغال": r.workingLines,
     "اجمالى عدد الكبائن النحاسية المربوطة على MSAN": r.copperCabinets,
     "اجمالى عدد البكسيات المربوطة على MSAN": r.boxCount,
@@ -158,6 +159,7 @@ export function MaintenancePlanH2Report() {
                 <TableHead className="text-right font-bold">كود السنترال</TableHead>
                 <TableHead className="text-right font-bold">كود كابينة MSAN</TableHead>
                 <TableHead className="text-right font-bold">تاريخ الصيانه</TableHead>
+                <TableHead className="text-right font-bold">السعة</TableHead>
                 <TableHead className="text-right font-bold">الشغال</TableHead>
                 <TableHead className="text-right font-bold">الكباين النحاسية</TableHead>
                 <TableHead className="text-right font-bold">البكسيات</TableHead>
@@ -169,7 +171,7 @@ export function MaintenancePlanH2Report() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center py-14 text-muted-foreground">
+                  <TableCell colSpan={14} className="text-center py-14 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد كباين مطابقة للشروط (أعطال > 70 و أعطال/الألف > 30)"}
                   </TableCell>
                 </TableRow>
@@ -183,6 +185,7 @@ export function MaintenancePlanH2Report() {
                     <TableCell className="font-mono text-xs">{r.centralCode}</TableCell>
                     <TableCell className="font-mono text-xs">{r.msanCode}</TableCell>
                     <TableCell className="font-bold text-purple-700">{r.maintenanceMonth}</TableCell>
+                    <TableCell className="text-center font-semibold">{r.capacity}</TableCell>
                     <TableCell className="text-center">{r.workingLines}</TableCell>
                     <TableCell className="text-center">{r.copperCabinets}</TableCell>
                     <TableCell className="text-center">{r.boxCount}</TableCell>
