@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, latestMeasureAt, sleep } from "@/lib/exec-queue";
 import { Gauge } from "lucide-react";
 import { maintStatusBadge, boxCoords, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
@@ -112,6 +112,25 @@ export function PhoneLookupReport() {
 
   const line = data?.found ? (data.line as LineData) : null;
   const search = () => { setPhone(input.trim()); setSearchSeq((s) => s + 1); };
+
+  // بعد إرسال قياس لجهاز التنفيذ: نستنّى لحد ما وقت آخر قياس للرقم يتحدّث على السيرفر
+  // ثم نعيد البحث تلقائياً عشان تظهر النتيجة الجديدة من غير ما المستخدم يعمل حاجة.
+  const [awaitingMeasure, setAwaitingMeasure] = useState(false);
+  const waitForMeasureThenRefresh = async (account: string) => {
+    const before = await latestMeasureAt(account);
+    setAwaitingMeasure(true);
+    const deadline = Date.now() + 8 * 60 * 1000; // نستنّى لحد 8 دقائق (ممكن يكون قدامه مهام فى الطابور)
+    try {
+      while (Date.now() < deadline) {
+        await sleep(5000);
+        const now = await latestMeasureAt(account);
+        if (now > before) break; // اتحدّث القياس
+      }
+    } finally {
+      setAwaitingMeasure(false);
+      setSearchSeq((s) => s + 1); // إعادة البحث لعرض القياس المحدّث
+    }
+  };
 
   // ── رقم الموبايل: عرض + إضافة/تعديل يدوى (يُحفظ فى جدول line_mobiles) ──
   const [editingMobile, setEditingMobile] = useState(false);
@@ -223,7 +242,8 @@ export function PhoneLookupReport() {
     const acc = (line?.accountNo ?? "").toString().trim();
     if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط — لا يمكن القياس"); return; }
     if (await enqueueIfExecutorActive("measure", [acc])) {
-      alert("تم إضافة الرقم لطابور القياس — هيتنفّذ على جهاز التنفيذ");
+      alert("تم إضافة الرقم لطابور القياس — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد ظهور النتيجة");
+      void waitForMeasureThenRefresh(acc);
       return;
     }
     window.open(buildDZSUrl([acc]), "_blank");
@@ -399,11 +419,14 @@ export function PhoneLookupReport() {
                   <Button
                     variant="outline"
                     onClick={measureDZS}
+                    disabled={awaitingMeasure}
                     className="bg-white gap-2 text-blue-700 border-blue-200"
                     title="فتح DZS وقياس هذا الرقم"
                   >
-                    <Radar className="w-4 h-4" />
-                    قياس DZS
+                    {awaitingMeasure
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Radar className="w-4 h-4" />}
+                    {awaitingMeasure ? "فى انتظار نتيجة القياس…" : "قياس DZS"}
                   </Button>
                   <Button
                     variant="outline"
