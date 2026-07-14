@@ -2539,6 +2539,12 @@ export async function registerRoutes(
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt",
+              -- هل الخط تابع لمنطقة الفنى الحالى؟ الاعتماد على كود كابينة المسان: لازم يكون فيه
+              -- صف فى cabinet_technicians بنفس الـ cabin_code وبرقم العامل بتاع المستخدم الحالى.
+              (ctc.cabin_code IS NOT NULL AND btrim(ctc.cabin_code) <> '' AND $4::text IS NOT NULL AND EXISTS (
+                 SELECT 1 FROM cabinet_technicians ctx
+                 WHERE btrim(ctx.cabin_code) = btrim(ctc.cabin_code) AND btrim(ctx.worker_code) = btrim($4::text)
+              )) AS "ownedByMe",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
@@ -2584,7 +2590,7 @@ export async function registerRoutes(
          ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
        ) mob ON true
        LIMIT 1`,
-      [phone, short, full],
+      [phone, short, full, req.user?.workerCode ?? null],
     );
     const line = rows[0];
     if (!line || !line.hasData) return res.json({ found: false });

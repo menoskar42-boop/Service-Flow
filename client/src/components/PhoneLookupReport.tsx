@@ -62,6 +62,7 @@ interface LineData {
   subAdd: string | null;
   workOrdDate: string | null;
   workOrdNo: string | null;
+  ownedByMe: boolean | null;
 }
 
 const dash = (v: unknown) =>
@@ -119,6 +120,11 @@ export function PhoneLookupReport() {
 
   const line = data?.found ? (data.line as LineData) : null;
   const search = () => { setPhone(input.trim()); setSearchSeq((s) => s + 1); };
+
+  // أزرار القياس/رفع السرعة/الإيقاف: كل فنى بس فى منطقته (حسب كود كابينة المسان).
+  // السوبر أدمن يعمل كل حاجة. غير كده لازم الخط يكون تابع للفنى الحالى (ownedByMe).
+  // لو الخط مش متعرف تابع لأنهى فنى → مايتسمحش بالقياس.
+  const canUseTools = isSuper || !!line?.ownedByMe;
 
   // بعد إرسال قياس لجهاز التنفيذ: نستنّى لحد ما وقت آخر قياس للرقم يتحدّث على السيرفر
   // ثم نعيد البحث تلقائياً عشان تظهر النتيجة الجديدة من غير ما المستخدم يعمل حاجة.
@@ -434,6 +440,7 @@ export function PhoneLookupReport() {
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
               {line.accountNo ? (
+                canUseTools ? (
                 <>
                   <Button
                     variant="outline"
@@ -484,6 +491,12 @@ export function PhoneLookupReport() {
                     {awaitingOp === "stop" ? "فى انتظار إيقاف PO… (اضغط للإلغاء)" : "إيقاف PO"}
                   </Button>
                 </>
+                ) : (
+                  <span className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                    القياس ورفع السرعة والإيقاف متاحة فقط لفنى المنطقة
+                    {line.techName ? ` — الخط تابع للفنى: ${line.techName}` : " — الخط غير مُسنَد لفنى معروف"}
+                  </span>
+                )
               ) : (
                 <Button
                   variant="outline"
