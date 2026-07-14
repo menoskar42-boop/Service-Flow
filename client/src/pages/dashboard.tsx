@@ -276,6 +276,11 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* برنامج الكوابل المدمج (Cable-Fault-Manager) — قسم /cfm */}
+            <a href="/cfm" className="inline-flex items-center gap-1 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50 text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3 font-medium">
+              <span className="hidden sm:inline">برنامج الكوابل</span>
+              <span className="sm:hidden">الكوابل</span>
+            </a>
             {(user.role === ROLES.SALES || user.role === ROLES.ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN) && (
               <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">
