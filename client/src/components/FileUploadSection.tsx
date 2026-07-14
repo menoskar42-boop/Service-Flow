@@ -439,6 +439,9 @@ export function FileUploadSection() {
     // افتح البورتال فقط لو البيانات محمّلة وأكيد إن البورتات مش متحدثة النهارده. لو لسه بتتحمّل
     // نتخطّى الفتح (نتجنّب فتح زائد بسبب سباق التحميل — كان بيفتح البورتال رغم إنها اتحدّثت).
     if (queryLoaded && !portsDoneToday) {
+      // «نسلّح» علامة على السيرفر عشان سكربت البورتال يشتغل تلقائياً — إشارة window.name/URL بتضيع
+      // وسط فتح 4 تابات مرة واحدة (البورتال SPA بيمسحها)، فبنعتمد على العلامة دى بدلها.
+      fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
       window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
     }
   };

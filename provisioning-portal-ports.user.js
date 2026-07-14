@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.7
+// @version      1.2.8
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -419,8 +419,8 @@
   if (document.body) ui(); else window.addEventListener("DOMContentLoaded", ui);
 
   // تشغيل تلقائى فور فتح الصفحة من زر Service-Flow (بدون انتظار ضغط "ابدأ").
-  // النيّة محفوظة فى sessionStorage فتصمد أمام مسح الـ param و الـ redirect للّوجين.
-  if (AUTO && !window.__sfPortsAutoFired) {
+  function fireAuto() {
+    if (window.__sfPortsAutoFired) return;
     window.__sfPortsAutoFired = true;
     const startNow = () => {
       banner("⚙️ فتح تلقائى — بدء التحديث الآن…", "#5b2a86");
@@ -435,6 +435,22 @@
     };
     // لو الـ body لسه مش جاهز (document-start)، استنّاه
     if (document.body) startNow(); else window.addEventListener("DOMContentLoaded", startNow);
+  }
+  // (1) إشارة window.name/URL محفوظة فى sessionStorage (بتشتغل لما نفتح البورتال لوحده — زر تحديث منافذ MSAN)
+  if (AUTO) {
+    fireAuto();
+  } else {
+    // (2) لو الإشارة ضاعت (التدفّق اليومى بيفتح 4 تابات مرة واحدة فالبورتال SPA بيمسح ?sf_ports=1) —
+    //     نفحص علامة السيرفر اللى زر «حدّث الملفات اليومية» بيسلّحها. بنكرّر الفحص شوية لحد ما توصل.
+    (async () => {
+      for (let i = 0; i < 8 && !window.__sfPortsAutoFired; i++) {
+        try {
+          const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/ports-auto/check", { headers: { "X-DZS-Token": SF_TOKEN } });
+          if (r.ok) { const j = await r.json(); if (j && j.pending) { try { sessionStorage.setItem(AUTO_KEY, "1"); } catch (e) {} fireAuto(); break; } }
+        } catch (e) {}
+        await sleep(1500);
+      }
+    })();
   }
 
   // أدوات كونسول

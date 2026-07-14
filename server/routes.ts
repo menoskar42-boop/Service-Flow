@@ -3952,6 +3952,29 @@ export async function registerRoutes(
     res.json({ ok: true, cabins, updated });
   });
 
+  // ===== تشغيل تلقائى لتحديث البورتات عبر علامة على السيرفر =====
+  // زر «حدّث الملفات اليومية» بيفتح 4 تابات مرة واحدة، فإشارة التشغيل التلقائى (window.name/?sf_ports=1)
+  // بتضيع للبورتال (Angular SPA بيمسح الـ param وسط الزحمة). الحل: الزر «يسلّح» علامة هنا، وسكربت
+  // البورتال يفحصها أول ما يفتح ويشتغل تلقائياً — مستقلة تماماً عن الـ URL/window.name.
+  app.post("/api/ports-auto/arm", requireAuth, async (_req: any, res) => {
+    await pool.query(
+      `INSERT INTO app_state (key, value, updated_at) VALUES ('ports_auto_armed_at', 'armed', now())
+       ON CONFLICT (key) DO UPDATE SET value = 'armed', updated_at = now()`,
+    );
+    res.json({ ok: true });
+  });
+  app.options("/api/ports-auto/check", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.get("/api/ports-auto/check", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const { rows } = await pool.query(`SELECT value, updated_at FROM app_state WHERE key = 'ports_auto_armed_at'`);
+    const armedAt = rows[0]?.updated_at ? new Date(rows[0].updated_at).getTime() : 0;
+    const pending = rows[0]?.value === "armed" && armedAt > 0 && (Date.now() - armedAt) < 10 * 60 * 1000;
+    // نستهلك العلامة عشان تشتغل مرة واحدة بس (مايفضلش يعيد التشغيل كل ما البورتال يتفتح)
+    if (pending) await pool.query(`UPDATE app_state SET value = '' WHERE key = 'ports_auto_armed_at'`);
+    res.json({ pending });
+  });
+
   // ===== إثراء أرقام البورتات باسم/عنوان العميل من FCC Complains (سكربت تامبر منكى، token + CORS) =====
   // قائمة الأرقام المطلوب جلبها: أرقام البورتات اللى ملهاش صف فى line_subscriber_info (ملهاش اسم/عنوان بعد).
   app.options("/api/line-subscriber-info/pending", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
