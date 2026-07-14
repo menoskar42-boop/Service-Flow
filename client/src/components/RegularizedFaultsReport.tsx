@@ -43,6 +43,13 @@ interface RegularizedFault extends Measurement138 {
   effectiveFaultHours: number | null;
 }
 
+// تصنيف العطل صوت/داتا حسب نوع الشكوى: أى شكوى بيانات/DSL = داتا، وغيرها = صوت.
+// (voice + data = الإجمالى دائماً)
+const isDataFault = (f: { complainTypeName: string | null }) => {
+  const t = (f.complainTypeName || "").toLowerCase();
+  return t.includes("بيانات") || t.includes("dsl") || t.includes("data") || t.includes("adsl");
+};
+
 // مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
 const fmtDur = (h: number | null | undefined) => {
   if (h == null) return "-";
@@ -129,6 +136,10 @@ export function RegularizedFaultsReport() {
       return res.json();
     },
   });
+
+  // تقسيم الإجمالى: عدد أعطال الداتا وعدد أعطال الصوت
+  const dataCount  = faults.filter(isDataFault).length;
+  const voiceCount = faults.length - dataCount;
 
   // يجمع أرقام الأكونت (يحذف المكرر ويتجاهل اللى مالهاش أكونت) ويفتح تاب DZS
   // واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -251,7 +262,7 @@ export function RegularizedFaultsReport() {
       pages += `
         <section class="page">
           <h2>${esc(title)}</h2>
-          <div class="pageno">صفحة ${p + 1} من ${totalPages} — إجمالي: ${faults.length} عطل</div>
+          <div class="pageno">صفحة ${p + 1} من ${totalPages} — إجمالي: ${faults.length} عطل (صوت: ${voiceCount} — داتا: ${dataCount})</div>
           <table><thead>${headRow}</thead><tbody>${body}</tbody></table>
         </section>`;
     }
@@ -323,7 +334,11 @@ export function RegularizedFaultsReport() {
         />
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-        <span className="text-sm text-muted-foreground">إجمالي: <strong>{faults.length}</strong> عطل</span>
+        <span className="text-sm text-muted-foreground">
+          إجمالي: <strong>{faults.length}</strong> عطل
+          <span className="mx-1 text-blue-700">(صوت: <strong>{voiceCount}</strong></span>
+          <span className="text-emerald-700"> — داتا: <strong>{dataCount}</strong>)</span>
+        </span>
         <Button
           variant="outline" size="sm"
           onClick={handleMeasureDZS}
