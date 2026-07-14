@@ -15,7 +15,7 @@ import Login from "@/cfm/pages/login";
 import Users from "@/cfm/pages/users";
 import NotFound from "@/cfm/pages/not-found";
 import { useStore } from "@/cfm/lib/store";
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { setSessionExpiredHandler } from "@/cfm/lib/api";
 
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
@@ -24,6 +24,20 @@ function Router() {
   const { user, setUser, setSessionExpiredMessage } = useStore();
   const [location, setLocation] = useLocation();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // الدخول الموحّد (SSO): عند فتح الكوابل، لو مفيش user فى الـ store نسترجع الجلسة
+  // من السيرفر (اللى جهّزها الدخول على موقع الطلبات) فيتفتح التطبيق بدون صفحة دخول.
+  const [checkingSession, setCheckingSession] = useState(true);
+  useEffect(() => {
+    if (user) { setCheckingSession(false); return; }
+    let cancelled = false;
+    fetch("/api/cfm/auth/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => { if (!cancelled && u && u.id) setUser(u); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setCheckingSession(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSessionExpired = useCallback(() => {
     const currentUser = useStore.getState().user;
@@ -63,12 +77,16 @@ function Router() {
   }, [user, resetInactivityTimer]);
 
   useEffect(() => {
-    if (!user && location !== "/login") {
+    if (!user && !checkingSession && location !== "/login") {
       setLocation("/login");
     }
-  }, [user, location, setLocation]);
+  }, [user, checkingSession, location, setLocation]);
 
   if (!user) {
+    // أثناء التحقق من جلسة السيرفر (SSO) — ماتوريش صفحة الدخول عشان مايحصلش وميض
+    if (checkingSession) {
+      return <Layout><div className="p-10 text-center text-muted-foreground">جارٍ التحقق من الدخول…</div></Layout>;
+    }
     return (
       <Layout>
         <Switch>

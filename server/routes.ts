@@ -1116,7 +1116,14 @@ export async function registerRoutes(
         const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE role = $1 ORDER BY created_at LIMIT 1`, [cfmRole]);
         cfmUser = rows[0] || null;
       }
-      if (cfmUser) (req.session as any).cfmUser = cfmUser;
+      if (cfmUser) {
+        // نفس شكل مستخدم CFM (camelCase) عشان الواجهة تشتغل زى الدخول العادى
+        (req.session as any).cfmUser = {
+          id: cfmUser.id, username: cfmUser.username, password: cfmUser.password,
+          name: cfmUser.name, role: cfmUser.role, avatar: cfmUser.avatar ?? null,
+          isInitialPassword: cfmUser.is_initial_password ?? false, createdAt: cfmUser.created_at,
+        };
+      }
     } catch {}
   }
 
