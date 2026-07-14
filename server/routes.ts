@@ -1713,7 +1713,8 @@ export async function registerRoutes(
       conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-    const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone`;
+    // نضيف line_subscriber_info لعرض اسم/عنوان العميل فى بيان التليفونات (phone_number مفتاح أساسى فمفيش تكرار صفوف)
+    const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_subscriber_info si2 ON si2.phone_number = pl.full_phone`;
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
@@ -1736,6 +1737,7 @@ export async function registerRoutes(
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
               pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone",
+              si2.sub_name AS "subName", si2.sub_add AS "subAdd",
               c138p.account_no AS "accountNo",
               c138p.current_speed AS "lineCurrentSpeed",
               c138p.max_speed AS "lineMaxSpeed",
@@ -4109,14 +4111,43 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `SELECT si.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
               si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
+              COALESCE(si.central, pl.central) AS "central",
               (si.fetched_at AT TIME ZONE 'Africa/Cairo') AS "fetchedAt",
               pp.area_code AS "areaCode", pp.msan_code AS "msanCode", pp.frame AS "frame",
               pp.port_number AS "portNumber", pp.port_type AS "portType",
               pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus", pp.operator AS "operator"
        FROM line_subscriber_info si
        LEFT JOIN phone_ports pp ON pp.phone_number = si.phone_number
+       LEFT JOIN phone_lines pl ON pl.full_phone = si.phone_number
        ${where}
        ORDER BY si.fetched_at DESC
+       LIMIT 20000`,
+      params,
+    );
+    res.json(rows);
+  });
+
+  // تقرير: الأرقام اللى ليها بورتات وحالتها الصوت=ALL_SUSPEND والداتا=FREE (بغضّ النظر عن وجود الاسم/العنوان)
+  // مع فلتر باسم السنترال. السنترال بييجى من line_subscriber_info (لو اتراجع) أو من phone_lines.
+  app.get("/api/reports/ports-suspend-free", requireAuth, async (req, res) => {
+    const central = String((req.query as Record<string, string>).central || "").trim();
+    const q = String((req.query as Record<string, string>).q || "").trim().toLowerCase();
+    const params: any[] = [];
+    const conds: string[] = [`pp.voice_status = 'ALL_SUSPEND'`, `pp.data_status = 'FREE'`];
+    if (central) { params.push(`%${central}%`); conds.push(`COALESCE(si.central, pl.central) ILIKE $${params.length}`); }
+    if (q) { params.push(`%${q}%`); conds.push(`LOWER(pp.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')) LIKE $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT pp.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
+              si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
+              COALESCE(si.central, pl.central) AS "central",
+              pp.area_code AS "areaCode", pp.msan_code AS "msanCode", pp.frame AS "frame",
+              pp.port_number AS "portNumber", pp.port_type AS "portType",
+              pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus", pp.operator AS "operator"
+       FROM phone_ports pp
+       LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
+       LEFT JOIN phone_lines pl ON pl.full_phone = pp.phone_number
+       WHERE ${conds.join(" AND ")}
+       ORDER BY COALESCE(si.central, pl.central) NULLS LAST, pp.phone_number
        LIMIT 20000`,
       params,
     );

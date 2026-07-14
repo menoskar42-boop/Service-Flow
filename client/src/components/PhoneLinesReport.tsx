@@ -46,6 +46,8 @@ interface PhoneLine extends Measurement138 {
   fiberOut: string;
   telNumTxt: string;
   fullPhone: string;
+  subName: string | null;
+  subAdd: string | null;
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
 }
@@ -189,6 +191,8 @@ export function PhoneLinesReport() {
       "السرعة الحالية": r.lineCurrentSpeed,
       "أقصى سرعة": r.lineMaxSpeed,
       "السنترال": r.central,
+      "اسم العميل": r.subName ?? "",
+      "العنوان": r.subAdd ?? "",
       "رقم الكابينه": r.cabinNumber,
       "رقم البكس": r.boxNumber,
       "رقم التليفون": r.telNo,
@@ -222,10 +226,10 @@ export function PhoneLinesReport() {
     const all = json.data as PhoneLine[];
     printTablePDF({
       title: "تقرير بيان أرقام التليفونات",
-      columns: ["#", "التليفون الكامل", "الأكونت", "سرعة حالية", "أقصى سرعة", "السنترال", "الكابينه", "البكس", "التليفون",
+      columns: ["#", "التليفون الكامل", "الأكونت", "سرعة حالية", "أقصى سرعة", "السنترال", "اسم العميل", "العنوان", "الكابينه", "البكس", "التليفون",
         "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
-        r.central, r.cabinNumber, r.boxNumber,
+        r.central, r.subName ?? "", r.subAdd ?? "", r.cabinNumber, r.boxNumber,
         r.telNo, r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len]),
     });
   };
@@ -306,6 +310,8 @@ export function PhoneLinesReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">قياس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">اسم العميل</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">العنوان</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
@@ -345,6 +351,8 @@ export function PhoneLinesReport() {
                       </TableCell>
                       <TableCell><Measurement138Button m={r} /></TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
+                      <TableCell className="whitespace-normal break-words min-w-[130px]">{r.subName || "-"}</TableCell>
+                      <TableCell className="whitespace-normal break-words min-w-[180px] max-w-[300px] text-xs">{r.subAdd || "-"}</TableCell>
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>

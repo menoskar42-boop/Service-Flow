@@ -10,6 +10,7 @@ import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoBut
 
 interface Row {
   phoneNumber: string;
+  central: string | null;
   subName: string | null;
   subAdd: string | null;
   workOrdDate: string | null;
@@ -43,6 +44,7 @@ export function SubscriberInfoReport() {
     const ws = XLSX.utils.json_to_sheet(
       rows.map((r) => ({
         "رقم التليفون": r.phoneNumber,
+        "السنترال": r.central ?? "",
         "اسم العميل": r.subName ?? "",
         "العنوان": r.subAdd ?? "",
         "تاريخ أمر الشغل": r.workOrdDate ?? "",
@@ -87,6 +89,7 @@ export function SubscriberInfoReport() {
               <TableRow>
                 <TableHead className="text-right font-bold w-8">#</TableHead>
                 <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                <TableHead className="text-right font-bold">السنترال</TableHead>
                 <TableHead className="text-right font-bold">اسم العميل</TableHead>
                 <TableHead className="text-right font-bold">العنوان</TableHead>
                 <TableHead className="text-right font-bold">تاريخ الأمر</TableHead>
@@ -100,13 +103,14 @@ export function SubscriberInfoReport() {
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={11} className="text-center py-16 text-muted-foreground">
+                <TableRow><TableCell colSpan={12} className="text-center py-16 text-muted-foreground">
                   {isFetching ? "جاري التحميل..." : "لا توجد بيانات — اضغط «مراجعة الاسم والعنوان» لجلبها من FCC"}
                 </TableCell></TableRow>
               ) : rows.map((r, i) => (
                 <TableRow key={r.phoneNumber} className="hover:bg-muted/30">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono text-xs">{r.phoneNumber}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs">{r.central || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="whitespace-normal break-words min-w-[140px]">{r.subName || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="whitespace-normal break-words min-w-[200px] max-w-[320px]">{r.subAdd || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.workOrdDate || "—"}</TableCell>
