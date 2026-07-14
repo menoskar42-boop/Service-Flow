@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -52,28 +52,60 @@ export function MaintenancePlanH2Report() {
     },
   });
 
-  // أعمدة النموذج "plan 2026- H2"
-  const toSheetRow = (r: PlanRow) => ({
-    "رئاسة القطاعات": "",
-    "القطاع": r.sector,
-    "المنطقة": r.region,
-    "السنترال": r.centralName,
-    "كود السنترال": r.centralCode,
-    "كود كابينة MSAN": r.msanCode,
-    "تاريخ الصيانه": r.maintenanceMonth,
-    "السعة": r.capacity,
-    "الشغال": r.workingLines,
-    "اجمالى عدد الكبائن النحاسية المربوطة على MSAN": r.copperCabinets,
-    "اجمالى عدد البكسيات المربوطة على MSAN": r.boxCount,
-    "الشغال DATA": r.workingAdsl,
-    "الإدارة": r.centralName,
-  });
+  // أعمدة النموذج "plan 2026- H2" + عرض كل عمود
+  const HEADERS: [string, number][] = [
+    ["رئاسة القطاعات", 16], ["القطاع", 16], ["المنطقة", 20], ["السنترال", 20],
+    ["كود السنترال", 12], ["كود كابينة MSAN", 16], ["تاريخ الصيانه", 12], ["السعة", 10],
+    ["الشغال", 10], ["اجمالى عدد الكبائن النحاسية المربوطة على MSAN", 20],
+    ["اجمالى عدد البكسيات المربوطة على MSAN", 20], ["الشغال DATA", 12], ["الإدارة", 12],
+  ];
+  // الإدارة ثابتة = الغنايم (اسم الإدارة)
+  const rowValues = (r: PlanRow) => [
+    "", r.sector, r.region, r.centralName, r.centralCode, r.msanCode,
+    r.maintenanceMonth, r.capacity, r.workingLines, r.copperCabinets,
+    r.boxCount, r.workingAdsl, "الغنايم",
+  ];
 
-  const handleExportExcel = () => {
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows.map(toSheetRow));
-    XLSX.utils.book_append_sheet(wb, ws, "plan 2026- H2");
-    XLSX.writeFile(wb, `خطة-الصيانة-النصف-الثانى-${dateTo}.xlsx`);
+  const handleExportExcel = async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("plan 2026- H2", {
+      views: [{ rightToLeft: true }],
+      pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9,
+        margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 } },
+    });
+    const border = {
+      top: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+      bottom: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+      left: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+      right: { style: "thin" as const, color: { argb: "FFBFBFBF" } },
+    };
+    // ترويسة ملوّنة
+    const header = ws.addRow(HEADERS.map(([h]) => h));
+    header.height = 44;
+    header.eachCell((c) => {
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E50A0" } };
+      c.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+      c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      c.border = border;
+    });
+    // الصفوف
+    rows.forEach((r, i) => {
+      const row = ws.addRow(rowValues(r));
+      row.eachCell((c) => {
+        c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        c.border = border;
+        if (i % 2 === 1) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEF2FB" } };
+      });
+    });
+    ws.columns.forEach((col, idx) => { col.width = HEADERS[idx]?.[1] ?? 14; });
+    ws.views = [{ rightToLeft: true, state: "frozen", ySplit: 1 }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `خطة-الصيانة-النصف-الثانى-${dateTo}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleExportPDF = () => {

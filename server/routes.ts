@@ -6001,10 +6001,13 @@ export async function registerRoutes(
                        JOIN cabinet_technicians ct2
                          ON ct2.central_name = pl.central AND ct2.cabin_number = pl.cabin_number
                        WHERE ct2.cabin_code = ct.cabin_code), 0)::int     AS "workingLines",
-           -- السعة = مجموع السعة الثانوية للكباين النحاسية المربوطة على الـ MSAN (من FCC)
+           -- السعة = مجموع السعة الثانوية للكباين النحاسية المربوطة على الـ MSAN (من FCC).
+           -- الربط بأرقام الكباين النحاسية داخل الـ MSAN؛ نتسامح مع فروق المسافات فى اسم
+           -- السنترال وأى مسافات حول رقم الكابينة.
            COALESCE((SELECT SUM(cc.secondary_capacity) FROM cabinet_capacity cc
                        JOIN cabinet_technicians ct2
-                         ON ct2.central_name = cc.central_name AND ct2.cabin_number = cc.cabin_number
+                         ON REPLACE(ct2.central_name, ' ', '') = REPLACE(cc.central_name, ' ', '')
+                        AND TRIM(ct2.cabin_number) = TRIM(cc.cabin_number)
                        WHERE ct2.cabin_code = ct.cabin_code), 0)::int      AS "capacity",
            (SELECT COUNT(*) FROM (
               SELECT cd.complain_no FROM complaint_details cd
