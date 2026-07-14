@@ -14,6 +14,7 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import MemoryStore from "memorystore";
+import { registerCfmRoutes } from "./cfm/routes";
 
 const scryptAsync = promisify(scrypt);
 const SessionStore = MemoryStore(session);
@@ -1048,6 +1049,9 @@ export async function registerRoutes(
 
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // === Cable-Fault-Manager (CFM) المدموج — راوتس تحت /api/cfm/* (تعيد استخدام نفس الجلسة) ===
+  registerCfmRoutes(app);
 
   passport.use(
     new LocalStrategy(async (username, password, done) => {
