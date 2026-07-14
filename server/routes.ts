@@ -1104,9 +1104,12 @@ export async function registerRoutes(
   async function setupCfmSessionForSf(req: any) {
     try {
       const sfUser = req.user;
+      // امسح أى جلسة كوابل قديمة دايماً (عشان مستخدم جديد على نفس الجلسة مايرثش
+      // صلاحية اللى قبله — الفنى كان بياخد أدمن من جلسة سوبر أدمن سابقة)
+      delete (req.session as any).cfmUser;
       if (!sfUser) return;
       const cfmRole = cfmRoleOf(sfUser.role);
-      if (!cfmRole) { delete (req.session as any).cfmUser; return; }
+      if (!cfmRole) return;
       let cfmUser: any = null;
       if (sfUser.cfmUserId) {
         const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE id = $1 LIMIT 1`, [sfUser.cfmUserId]);
