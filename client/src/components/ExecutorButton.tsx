@@ -21,6 +21,9 @@ export function ExecutorButton() {
     setActive((v) => {
       const nv = !v;
       try { localStorage.setItem("sf_exec_active", nv ? "1" : "0"); } catch {}
+      // لما نقفل: امسح النبضة فوراً على السيرفر عشان /status يرجّع غير-مفعّل حالاً
+      // (بدون ده تفضل النبضة الأخيرة «طازجة» لـ 45ث فتتضاف مهام لطابور مفيش حد بينفّذه).
+      if (!nv) fetch("/api/exec-queue/offline", { method: "POST", credentials: "include" }).catch(() => {});
       return nv;
     });
   };
@@ -77,7 +80,11 @@ export function ExecutorButton() {
     heartbeat(); refreshPending();
     const hb = setInterval(heartbeat, 20 * 1000);
     const poll = setInterval(() => { claimAndRun(); refreshPending(); }, 4 * 1000);
-    return () => { stopped = true; clearInterval(hb); clearInterval(poll); };
+    return () => {
+      stopped = true; clearInterval(hb); clearInterval(poll);
+      // امسح النبضة عند إيقاف التفعيل/مغادرة الصفحة عشان مايفضلش «مفعّل» بالغلط
+      fetch("/api/exec-queue/offline", { method: "POST", credentials: "include" }).catch(() => {});
+    };
   }, [active]);
 
   if (user?.role !== ROLES.SUPER_ADMIN) return null;

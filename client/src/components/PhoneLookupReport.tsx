@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive, latestMeasureAt, sleep } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep } from "@/lib/exec-queue";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { Gauge } from "lucide-react";
@@ -124,25 +124,29 @@ export function PhoneLookupReport() {
   // ثم نعيد البحث تلقائياً عشان تظهر النتيجة الجديدة من غير ما المستخدم يعمل حاجة.
   // الانتظار **قابل للإلغاء**: لو القياس وقف لأى سبب، المستخدم يدوس على الزر يلغى الانتظار
   //  ومايفضلش عالق أبداً (وكمان بيلغى تلقائياً بعد المهلة القصوى).
-  const [awaitingMeasure, setAwaitingMeasure] = useState(false);
-  const measureCancel = useRef(false);
-  const cancelMeasureWait = () => { measureCancel.current = true; setAwaitingMeasure(false); };
-  const waitForMeasureThenRefresh = async (account: string) => {
-    const before = await latestMeasureAt(account);
-    measureCancel.current = false;
-    setAwaitingMeasure(true);
+  // awaitingOp: نوع العملية اللى بنستنّاها (قياس/رفع/إيقاف) أو null لو مفيش انتظار.
+  const [awaitingOp, setAwaitingOp] = useState<null | "measure" | "raise" | "stop">(null);
+  const opCancel = useRef(false);
+  const cancelOpWait = () => { opCancel.current = true; setAwaitingOp(null); };
+  // بنقرا القيمة قبل الإرسال، ونفضل نسأل السيرفر لحد ما تتحدّث (اتنفّذت) ثم نعيد البحث.
+  const readAt = (op: "measure" | "raise" | "stop", account: string) =>
+    op === "measure" ? latestMeasureAt(account) : latestPoEventAt(account, op);
+  const waitForOpThenRefresh = async (op: "measure" | "raise" | "stop", account: string) => {
+    const before = await readAt(op, account);
+    opCancel.current = false;
+    setAwaitingOp(op);
     const deadline = Date.now() + 8 * 60 * 1000; // نستنّى لحد 8 دقائق (ممكن يكون قدامه مهام فى الطابور)
     try {
       while (Date.now() < deadline) {
         await sleep(5000);
-        if (measureCancel.current) return; // المستخدم ألغى الانتظار
-        const now = await latestMeasureAt(account);
-        if (now > before) break; // اتحدّث القياس
+        if (opCancel.current) return; // المستخدم ألغى الانتظار
+        const now = await readAt(op, account);
+        if (now > before) break; // اتنفّذت العملية فعلاً
       }
     } finally {
-      const wasCancelled = measureCancel.current;
-      setAwaitingMeasure(false);
-      if (!wasCancelled) setSearchSeq((s) => s + 1); // إعادة البحث لعرض القياس المحدّث (مش لو اتلغى)
+      const wasCancelled = opCancel.current;
+      setAwaitingOp(null);
+      if (!wasCancelled) setSearchSeq((s) => s + 1); // إعادة البحث لعرض النتيجة المحدّثة (مش لو اتلغى)
     }
   };
 
@@ -257,7 +261,7 @@ export function PhoneLookupReport() {
     if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط — لا يمكن القياس"); return; }
     if (await enqueueIfExecutorActive("measure", [acc])) {
       alert("تم إضافة الرقم لطابور القياس — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد ظهور النتيجة");
-      void waitForMeasureThenRefresh(acc);
+      void waitForOpThenRefresh("measure", acc);
       return;
     }
     if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
@@ -433,47 +437,51 @@ export function PhoneLookupReport() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={awaitingMeasure ? cancelMeasureWait : measureDZS}
+                    onClick={awaitingOp === "measure" ? cancelOpWait : measureDZS}
                     className="bg-white gap-2 text-blue-700 border-blue-200"
-                    title={awaitingMeasure ? "اضغط لإلغاء انتظار نتيجة القياس" : "فتح DZS وقياس هذا الرقم"}
+                    title={awaitingOp === "measure" ? "اضغط لإلغاء انتظار نتيجة القياس" : "فتح DZS وقياس هذا الرقم"}
                   >
-                    {awaitingMeasure
+                    {awaitingOp === "measure"
                       ? <Loader2 className="w-4 h-4 animate-spin" />
                       : <Radar className="w-4 h-4" />}
-                    {awaitingMeasure ? "فى انتظار القياس… (اضغط للإلغاء)" : "قياس DZS"}
+                    {awaitingOp === "measure" ? "فى انتظار القياس… (اضغط للإلغاء)" : "قياس DZS"}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={async () => {
+                      if (awaitingOp === "raise") { cancelOpWait(); return; }
                       const afterStop = window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة ثم إيقاف الـ Nightly الناتج\nإلغاء = رفع السرعة فقط");
                       if (await enqueueIfExecutorActive("raise", [line.accountNo])) {
-                        alert("تم إضافة الرقم لطابور رفع السرعة — هيتنفّذ على جهاز التنفيذ");
+                        alert("تم إضافة الرقم لطابور رفع السرعة — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد التنفيذ");
+                        void waitForOpThenRefresh("raise", String(line.accountNo));
                         return;
                       }
                       if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
                       openProfileOptimization([line.accountNo], { afterStop });
                     }}
                     className="bg-white gap-2 text-emerald-700 border-emerald-200"
-                    title="تشغيل Profile Optimization (رفع السرعة) لهذا الرقم"
+                    title={awaitingOp === "raise" ? "اضغط لإلغاء انتظار رفع السرعة" : "تشغيل Profile Optimization (رفع السرعة) لهذا الرقم"}
                   >
-                    <Gauge className="w-4 h-4" />
-                    رفع سرعة
+                    {awaitingOp === "raise" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gauge className="w-4 h-4" />}
+                    {awaitingOp === "raise" ? "فى انتظار رفع السرعة… (اضغط للإلغاء)" : "رفع سرعة"}
                   </Button>
                   <Button
                     variant="outline"
                     onClick={async () => {
+                      if (awaitingOp === "stop") { cancelOpWait(); return; }
                       if (await enqueueIfExecutorActive("stop", [line.accountNo])) {
-                        alert("تم إضافة الرقم لطابور إيقاف PO — هيتنفّذ على جهاز التنفيذ");
+                        alert("تم إضافة الرقم لطابور إيقاف PO — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد التنفيذ");
+                        void waitForOpThenRefresh("stop", String(line.accountNo));
                         return;
                       }
                       if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
                       openProfileOptimization([line.accountNo], { stopOnly: true });
                     }}
                     className="bg-white gap-2 text-orange-700 border-orange-200"
-                    title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"
+                    title={awaitingOp === "stop" ? "اضغط لإلغاء انتظار إيقاف PO" : "إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"}
                   >
-                    <Gauge className="w-4 h-4" />
-                    إيقاف PO
+                    {awaitingOp === "stop" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gauge className="w-4 h-4" />}
+                    {awaitingOp === "stop" ? "فى انتظار إيقاف PO… (اضغط للإلغاء)" : "إيقاف PO"}
                   </Button>
                 </>
               ) : (

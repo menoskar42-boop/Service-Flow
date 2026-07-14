@@ -32,6 +32,15 @@ export async function latestMeasureAt(account: string | number): Promise<number>
   } catch { return 0; }
 }
 
+// آخر وقت رفع سرعة/إيقاف PO لرقم أكونت (للتأكد إن العملية اتنفّذت) — millis أو 0
+export async function latestPoEventAt(account: string | number, event: "raise" | "stop"): Promise<number> {
+  try {
+    const r = await fetch(`/api/exec-queue/po-check?account=${encodeURIComponent(String(account).trim())}&event=${event}`, { credentials: "include" });
+    const d = await r.json();
+    return d?.at ? new Date(d.at).getTime() : 0;
+  } catch { return 0; }
+}
+
 // هل فيه جهاز تنفيذ مفعّل حالياً؟
 export async function isExecutorActive(): Promise<boolean> {
   try {

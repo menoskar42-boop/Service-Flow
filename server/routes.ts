@@ -1338,6 +1338,28 @@ export async function registerRoutes(
     } catch { res.json({ at: null }); }
   });
 
+  // تأكيد رفع السرعة/إيقاف PO: آخر وقت رفع/إيقاف (line_po_events) لرقم أكونت — صفحة البحث
+  // بتقارنه بالوقت قبل الإرسال عشان تعرف إن العملية اتنفّذت فعلاً وتحدّث الصفحة تلقائياً.
+  app.get("/api/exec-queue/po-check", requireAuth, async (req, res) => {
+    try {
+      const acc = String(req.query.account || "").trim();
+      const event = String(req.query.event || "").trim().toLowerCase();
+      if (!acc || (event !== "raise" && event !== "stop")) return res.json({ at: null });
+      const col = event === "raise" ? "last_raise_at" : "last_stop_at";
+      const { rows } = await pool.query(`SELECT ${col} AS at FROM line_po_events WHERE account_no = $1`, [acc]);
+      res.json({ at: rows[0]?.at || null });
+    } catch { res.json({ at: null }); }
+  });
+
+  // إيقاف جهاز التنفيذ فوراً: يمسح النبضة عشان /status يرجّع غير-مفعّل حالاً (بدل انتظار 45ث).
+  // يُستدعى لما السوبر أدمن يقفل زر جهاز التنفيذ — يمنع إضافة مهام لطابور مفيش حد بينفّذه.
+  app.post("/api/exec-queue/offline", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      await pool.query(`DELETE FROM app_state WHERE key = 'exec_heartbeat'`);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // عدد المهام المنتظرة (للعرض)
   app.get("/api/exec-queue/pending", requireAuth, async (_req, res) => {
     try {
