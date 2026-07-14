@@ -1,0 +1,53 @@
+ده برومبت جاهز للـ **Replit Agent** (المساعد في Repl بتاع Service-Flow) — انسخه والصقه هناك:
+
+---
+
+## 📋 البرومبت — الصقه في Replit Agent بتاع Service-Flow
+
+> اتعمل دمج لبرنامج Cable-Fault-Manager في المشروع ده (كود جديد اتضاف في `server/cfm/` و`shared/cfm-schema.ts` وحزمة `bcryptjs` في `package.json`). عايزك تعمل الآتي **بالظبط، من غير ما تعدّل أي كود أو schema**:
+>
+> **1) اتأكد إن الكود متزامن مع GitHub (مصدر الحقيقة):**
+> ```bash
+> git fetch origin && git log origin/main -1 --oneline
+> ```
+> لو الـ workspace ورا origin/main، اعمل `git pull` (متعملش `reset --hard` لو فيه شغل محلي مهم).
+>
+> **2) ثبّت الحزم الجديدة (فيها bcryptjs):**
+> ```bash
+> npm install
+> ```
+>
+> **3) اعمل فحص أنواع TypeScript وقوللي أي أخطاء بالظبط:**
+> ```bash
+> npm run check 2>&1 | tail -40
+> ```
+> لو ظهرت أخطاء في ملفات `server/cfm/*` أو `shared/cfm-schema.ts` — **اكتبهالي حرفياً** (متصلّحهاش بنفسك، أنا هصلّحها في مصدر GitHub).
+>
+> **4) شغّل التطبيق واختبر باك إند الكوابل** (المسارات تحت `/api/cfm/*`) — سجّل دخول ثم اجلب التذاكر:
+> ```bash
+> # سجّل دخول admin (بدّل الباسورد لو مختلف) واحفظ الكوكيز
+> curl -s -c /tmp/cfmcookie.txt -X POST localhost:5000/api/cfm/auth/login \
+>   -H "Content-Type: application/json" -d '{"username":"admin","password":"Mon_oskar11"}'
+> echo
+> # اجلب التذاكر بنفس الكوكيز
+> curl -s -b /tmp/cfmcookie.txt localhost:5000/api/cfm/tickets | head -c 400
+> echo
+> ```
+> المتوقع: أول أمر يرجّع بيانات المستخدم (role: admin)، والتاني يرجّع **5 تذاكر** (TKT-2026-001..005).
+>
+> **5) قوللي النتيجة:**
+> - `npm run check` عدّى بدون أخطاء ولا فيه أخطاء؟ (الصقها لو موجودة)
+> - الـ login رجّع المستخدم؟ والـ tickets رجّعت 5؟
+>
+> **مهم:** متعدّلش `shared/schema.ts` ولا `server/db.ts` ولا أي ملف — لو فيه مشكلة، بس اكتبهالي وأنا هصلّحها في GitHub. ومتعملش migration ولا `drizzle-kit push`.
+
+---
+
+## بعد ما الـ Agent يرد
+ابعتلي:
+1. نتيجة `npm run check` (نجح / الأخطاء).
+2. نتيجة اختبار `/api/cfm/auth/login` و`/api/cfm/tickets`.
+
+لو كله تمام → أكمّل **المرحلة 4 (الفرونت)** فوراً. لو فيه أخطاء بناء → أصلّحها في GitHub وتعيد الـ pull.
+
+> ملاحظة: الباسورد `Mon_oskar11` ده اللي كان مستخدم قبل كده لـ admin الكوابل — لو مختلف، بدّله في الأمر.
