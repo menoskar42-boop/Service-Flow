@@ -24,15 +24,23 @@ function Router() {
   const { user, setUser, setSessionExpiredMessage } = useStore();
   const [location, setLocation] = useLocation();
   const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // الدخول الموحّد (SSO): عند فتح الكوابل، لو مفيش user فى الـ store نسترجع الجلسة
-  // من السيرفر (اللى جهّزها الدخول على موقع الطلبات) فيتفتح التطبيق بدون صفحة دخول.
+  // الدخول الموحّد (SSO): عند فتح الكوابل نتحقّق **دايماً** من جلسة السيرفر ونزامن
+  // الـ store معها — عشان مايظهرش مستخدم قديم محفوظ فى localStorage (زى ما كان الفنى
+  // بيتفتحله أدمن بسبب جلسة سوبر أدمن سابقة على نفس المتصفح).
   const [checkingSession, setCheckingSession] = useState(true);
   useEffect(() => {
-    if (user) { setCheckingSession(false); return; }
     let cancelled = false;
     fetch("/api/cfm/auth/me", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((u) => { if (!cancelled && u && u.id) setUser(u); })
+      .then((u) => {
+        if (cancelled) return;
+        const cur = useStore.getState().user;
+        if (u && u.id) {
+          if (!cur || cur.id !== u.id) setUser(u); // زامن مع جلسة السيرفر
+        } else if (cur) {
+          setUser(null); // مفيش جلسة سيرفر → امسح أى مستخدم قديم محفوظ
+        }
+      })
       .catch(() => {})
       .finally(() => { if (!cancelled) setCheckingSession(false); });
     return () => { cancelled = true; };
