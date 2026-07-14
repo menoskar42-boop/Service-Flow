@@ -63,6 +63,9 @@ app.use((req, res, next) => {
 
 (async () => {
   await ensureSchema();
+  // إدخال سعة الكباين تلقائياً لو الجدول فاضى (يشتغل مع النشر بدون كونسول)
+  const { seedCabinetCapacityIfEmpty } = await import("./seed-cabinet-capacity");
+  await seedCabinetCapacityIfEmpty();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

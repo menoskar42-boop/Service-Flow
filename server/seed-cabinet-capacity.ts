@@ -82,6 +82,20 @@ const DATA: [string, string, string, number, number][] = [
   ["GHNAT", "TB07", "MSAN", 200, 200],
 ];
 
+// يشغّل الـ seed تلقائياً عند الإقلاع لو الجدول فاضى فقط — عشان يشتغل مع النشر
+// بدون كونسول، ومن غير ما يمسح أى داتا تترفع لاحقاً من بطاقة الرفع.
+export async function seedCabinetCapacityIfEmpty(): Promise<void> {
+  try {
+    const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM cabinet_capacity");
+    if ((rows[0]?.n ?? 0) === 0) {
+      const inserted = await seedCabinetCapacity();
+      console.log(`[seedCabinetCapacity] auto-seeded ${inserted} cabinets (table was empty)`);
+    }
+  } catch (e) {
+    console.error("[seedCabinetCapacity] auto-seed skipped:", (e as Error).message);
+  }
+}
+
 export async function seedCabinetCapacity(): Promise<number> {
   await pool.query("DELETE FROM cabinet_capacity");
   const BATCH = 200;
