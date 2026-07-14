@@ -8,6 +8,7 @@ import type { Express } from "express";
 import express from "express";
 import bcrypt from "bcryptjs";  // نسخة JS خالصة — تتحقق من هاش bcrypt ($2b$) بتاع مستخدمى CFM بدون native build
 import { storage } from "./storage";
+import { importCfmFromLive } from "./import-from-live";
 import {
   insertCfmUserSchema as insertUserSchema,
   insertCentralSchema,
@@ -51,6 +52,21 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 export function registerCfmRoutes(app: Express) {
+  // استيراد لمرة واحدة: يسحب كل بيانات الكوابل من التطبيق المنشور ويحمّلها فى قاعدة Service-Flow.
+  // محمى بتوكن. يُنفَّذ على السيرفر المنشور فيكتب فى قاعدة الإنتاج. idempotent.
+  const CFM_IMPORT_TOKEN = process.env.CFM_IMPORT_TOKEN || "cfm-import-2026";
+  app.post("/api/cfm/_import-from-live", async (req, res) => {
+    if ((req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
+      return res.status(401).json({ error: "invalid token" });
+    }
+    try {
+      const imported = await importCfmFromLive();
+      res.json({ ok: true, imported });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  });
+
 
   // ===== AUTHENTICATION ROUTES ===== //
   
