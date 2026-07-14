@@ -9,6 +9,7 @@ import express from "express";
 import bcrypt from "bcryptjs";  // نسخة JS خالصة — تتحقق من هاش bcrypt ($2b$) بتاع مستخدمى CFM بدون native build
 import { storage } from "./storage";
 import { importCfmFromLive } from "./import-from-live";
+import { importCfmFromProdDb } from "./import-from-prod-db";
 import {
   insertCfmUserSchema as insertUserSchema,
   insertCentralSchema,
@@ -61,6 +62,20 @@ export function registerCfmRoutes(app: Express) {
     }
     try {
       const imported = await importCfmFromLive();
+      res.json({ ok: true, imported });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  });
+
+  // استيراد لمرة واحدة من قاعدة الإنتاج مباشرةً (Neon) — يحافظ على كلمات السر الحقيقية.
+  // يقرأ CFM_PROD_DATABASE_URL من Secrets. محمى بنفس التوكن. idempotent.
+  app.post("/api/cfm/_import-from-prod-db", async (req, res) => {
+    if ((req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
+      return res.status(401).json({ error: "invalid token" });
+    }
+    try {
+      const imported = await importCfmFromProdDb();
       res.json({ ok: true, imported });
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e?.message || String(e) });
