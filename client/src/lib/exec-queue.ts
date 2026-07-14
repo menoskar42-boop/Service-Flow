@@ -12,15 +12,15 @@ const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// تنفيذ **خط واحد** (رقم أكونت واحد) — عشان جهاز التنفيذ يباعد بينهم بمهلة ويمنع التداخل
-export function executeSingle(type: ExecJobType, account: string | number): void {
+// تنفيذ **خط واحد** (رقم أكونت واحد) — عشان جهاز التنفيذ يباعد بينهم بمهلة ويمنع التداخل.
+// بيرجّع نافذة القياس (لو measure) عشان جهاز التنفيذ يقدر يقفل تاب القياس السابق أول ما يفتح
+// الجديد — كده يفضل تاب واحد بس مفتوح (الأخير)، ولو جه قياس جديد يفتح ويقفل القديم.
+export function executeSingle(type: ExecJobType, account: string | number): Window | null {
   const acc = String(account ?? "").trim();
-  if (!acc) return;
-  if (type === "raise") openProfileOptimization([acc]);
-  else if (type === "stop") openProfileOptimization([acc], { stopOnly: true });
-  // sf_autoclose=1 → سكربت DZS يقفل التاب بعد ما يخلّص القياس (النتيجة بترفع لـ 138 تلقائياً)
-  // بدل ما يفضل مفتوح للـ CSV — عشان جهاز التنفيذ يفتح الخط اللى بعده.
-  else if (type === "measure") window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}&sf_autoclose=1`, "_blank");
+  if (!acc) return null;
+  if (type === "raise") { openProfileOptimization([acc]); return null; }
+  if (type === "stop") { openProfileOptimization([acc], { stopOnly: true }); return null; }
+  return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}`, "_blank");
 }
 
 // آخر وقت قياس لرقم أكونت (للتأكد إن القياس اتحدّث) — millis أو 0

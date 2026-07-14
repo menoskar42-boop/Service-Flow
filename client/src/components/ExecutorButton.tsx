@@ -16,6 +16,8 @@ export function ExecutorButton() {
   const [pending, setPending] = useState(0);
   const [current, setCurrent] = useState<string>("");
   const busy = useRef(false);
+  // تاب القياس الأخير — نقفله أول ما نفتح قياس جديد (يفضل تاب واحد بس مفتوح: الأخير)
+  const lastMeasureWin = useRef<Window | null>(null);
 
   const toggle = () => {
     setActive((v) => {
@@ -41,7 +43,10 @@ export function ExecutorButton() {
     const runAccount = async (type: ExecJob["type"], acc: string) => {
       if (type === "measure") {
         const before = await latestMeasureAt(acc);   // الوقت قبل الفتح
-        executeSingle("measure", acc);
+        // اقفل تاب القياس السابق (لو لسه مفتوح) قبل ما نفتح الجديد — النتيجة السابقة
+        // اترفعت لـ 138 خلاص، فيفضل تاب واحد بس مفتوح: بتاع القياس الحالى/الأخير.
+        try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
+        lastMeasureWin.current = executeSingle("measure", acc);
         // استنى لحد ما القياس يتحدّث فعلاً (تأكيد) أو أقصى ٢ دقيقة
         const deadline = Date.now() + MEASURE_MAX_MS;
         while (!stopped && Date.now() < deadline) {
