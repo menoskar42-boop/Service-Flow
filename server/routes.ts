@@ -13,11 +13,13 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import MemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import { registerCfmRoutes } from "./cfm/routes";
 
 const scryptAsync = promisify(scrypt);
-const SessionStore = MemoryStore(session);
+// جلسات مخزّنة فى Postgres (جدول user_sessions الموجود) — تبقى بعد إعادة تشغيل السيرفر
+// على Replit (الـ idle/sleep كان بيمسح جلسات الذاكرة فيعمل تسجيل خروج ويوقف التحديث التلقائى).
+const PgSessionStore = connectPgSimple(session);
 
 // Work-order reports are restricted to these centrals (الغنايم وفروعها).
 // Matching is tolerant of differences in dashes, spaces, hamza, ة/ه, ى/ي.
@@ -1039,10 +1041,11 @@ export async function registerRoutes(
 
   app.use(
     session({
-      store: new SessionStore({ checkPeriod: 86400000 }),
+      store: new PgSessionStore({ pool, tableName: "user_sessions", createTableIfMissing: true }),
       secret: "super-secret-session-key",
       resave: false,
       saveUninitialized: false,
+      rolling: true, // كل طلب (ومنه التحديث التلقائى كل نص ساعة) يمدّد عمر الجلسة
       cookie: { maxAge: 86400000 },
     })
   );
