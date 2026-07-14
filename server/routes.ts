@@ -1111,13 +1111,30 @@ export async function registerRoutes(
       const cfmRole = cfmRoleOf(sfUser.role);
       if (!cfmRole) return;
       let cfmUser: any = null;
+      // 1) الحساب المربوط يدوياً
       if (sfUser.cfmUserId) {
         const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE id = $1 LIMIT 1`, [sfUser.cfmUserId]);
         cfmUser = rows[0] || null;
       }
+      // 2) حساب كوابل بنفس اسم المستخدم (يربطه) — عشان يظهر باسمه هو مش باسم حساب تانى
       if (!cfmUser) {
-        const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE role = $1 ORDER BY created_at LIMIT 1`, [cfmRole]);
+        const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE username = $1 LIMIT 1`, [sfUser.username]);
         cfmUser = rows[0] || null;
+        if (cfmUser) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [cfmUser.id, sfUser.id]).catch(() => {});
+      }
+      // 3) مالوش حساب كوابل → أنشئ واحد بهويته والدور المقابل (يظهر باسمه ويقدر ينشئ تذاكر باسمه)
+      if (!cfmUser) {
+        const ph = bcryptjs.hashSync(randomBytes(24).toString("hex"), 10);
+        const ins = await pool.query(
+          `INSERT INTO cfm_users (id, username, password, name, role, is_initial_password, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $1, $3, false, now())
+           ON CONFLICT (username) DO NOTHING RETURNING *`,
+          [sfUser.username, ph, cfmRole],
+        );
+        cfmUser = ins.rows[0]
+          || (await pool.query(`SELECT * FROM cfm_users WHERE username = $1 LIMIT 1`, [sfUser.username])).rows[0]
+          || null;
+        if (cfmUser) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [cfmUser.id, sfUser.id]).catch(() => {});
       }
       if (cfmUser) {
         // نفس شكل مستخدم CFM (camelCase) عشان الواجهة تشتغل زى الدخول العادى
