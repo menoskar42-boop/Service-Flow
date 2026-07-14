@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -69,6 +70,7 @@ interface FilterOptions {
 const PAGE_SIZE = 50;
 
 export function PhoneLinesReport() {
+  const showSpeedTools = useSpeedToolsVisible();
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -278,6 +280,7 @@ export function PhoneLinesReport() {
               className="w-full sm:w-36 text-sm"
             />
 
+            {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
@@ -287,6 +290,7 @@ export function PhoneLinesReport() {
             <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
+            </>)}
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>

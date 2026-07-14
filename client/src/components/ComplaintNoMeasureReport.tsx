@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,6 +87,7 @@ const scoreBadge = (v: number | null | undefined) => {
 };
 
 export function ComplaintNoMeasureReport() {
+  const showSpeedTools = useSpeedToolsVisible();
   const [dateFrom, setDateFrom] = useState(monthStart());
   const [dateTo, setDateTo] = useState(todayStr());
   const [central, setCentral] = useState("");
@@ -262,6 +264,7 @@ export function ComplaintNoMeasureReport() {
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
+            {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
@@ -271,6 +274,7 @@ export function ComplaintNoMeasureReport() {
             <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
+            </>)}
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel

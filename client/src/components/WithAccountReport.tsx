@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,6 +89,7 @@ interface WithAccountReportProps {
 }
 
 export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title }: WithAccountReportProps = {}) {
+  const showSpeedTools = useSpeedToolsVisible();
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -519,6 +521,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
             >
               {hasComplaintOn ? "لها شكوى ✓" : "لها شكوى"}
             </Button>
+            {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
             </Button>
@@ -528,6 +531,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
             <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed("stop")} disabled={dzsLoading} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
+            </>)}
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel

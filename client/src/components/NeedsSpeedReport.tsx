@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,7 @@ interface NeedsSpeedReportProps {
 }
 
 export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/phone-lines/needs-speed", title }: NeedsSpeedReportProps) {
+  const showSpeedTools = useSpeedToolsVisible();
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -282,6 +284,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 )}
               </div>
             )}
+            {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
             </Button>
@@ -291,6 +294,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
             <Button variant="outline" size="sm" onClick={() => handleRaiseSpeed("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
+            </>)}
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel

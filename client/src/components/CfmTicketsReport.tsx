@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -92,6 +93,7 @@ function buildDZSUrl(items: DZSItem[]) {
 }
 
 export function CfmTicketsReport() {
+  const showSpeedTools = useSpeedToolsVisible();
   // --- ticket data ---
   const [data, setData] = useState<CfmTicket[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -584,21 +586,21 @@ export function CfmTicketsReport() {
                       <TableCell className="text-xs">
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span className="font-medium">{t.box || "-"}</span>
-                          {t.box && (
+                          {showSpeedTools && t.box && (
                             <button onClick={() => handleMeasureBox(t)} disabled={measuringId === t.id}
                               title="قياس DZS لكل الخطوط التى لها أكونت على هذا البكس"
                               className="text-[10px] text-blue-700 border border-blue-200 rounded px-1 py-0.5 hover:bg-blue-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
                               {measuringId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Radar className="w-3 h-3" />} قياس
                             </button>
                           )}
-                          {t.box && (
+                          {showSpeedTools && t.box && (
                             <button onClick={() => handleRaiseBox(t, "raise")} disabled={poBusyId === t.id}
                               title="رفع سرعة (Profile Optimization) لكل الخطوط التى لها أكونت على هذا البكس"
                               className="text-[10px] text-emerald-700 border border-emerald-200 rounded px-1 py-0.5 hover:bg-emerald-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">
                               {poBusyId === t.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Gauge className="w-3 h-3" />} رفع سرعة
                             </button>
                           )}
-                          {t.box && (
+                          {showSpeedTools && t.box && (
                             <button onClick={() => handleRaiseBox(t, "stop")} disabled={poBusyId === t.id}
                               title="إيقاف الـ Nightly PO لكل الخطوط التى لها أكونت على هذا البكس"
                               className="text-[10px] text-orange-700 border border-orange-200 rounded px-1 py-0.5 hover:bg-orange-50 inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-50">

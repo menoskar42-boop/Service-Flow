@@ -11,6 +11,7 @@ import {
 import { Loader2, FileSpreadsheet, Printer, Radar, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { enqueueIfExecutorActive } from "@/lib/exec-queue";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { format } from "date-fns";
 
@@ -121,6 +122,7 @@ const regBadge = (s: string | null) => {
 };
 
 export function RegularizedFaultsReport() {
+  const showSpeedTools = useSpeedToolsVisible();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -350,6 +352,7 @@ export function RegularizedFaultsReport() {
           <span className="mx-1 text-blue-700">(صوت: <strong>{voiceCount}</strong></span>
           <span className="text-emerald-700"> — داتا: <strong>{dataCount}</strong>)</span>
         </span>
+        {showSpeedTools && (<>
         <Button
           variant="outline" size="sm"
           onClick={handleMeasureDZS}
@@ -365,6 +368,7 @@ export function RegularizedFaultsReport() {
         <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام الأعطال المعروضة">
           <Gauge className="w-4 h-4" /> إيقاف PO
         </Button>
+        </>)}
         <RefreshButton />
         <Button
           variant="outline" size="sm"

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -241,6 +242,7 @@ function CabinTab({ central, cabin, msan, minScore }: { central: string; cabin: 
 
 // ── تاب البكسيات ──────────────────────────────────────────────────────────────
 function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; minScore: string }) {
+  const showSpeedTools = useSpeedToolsVisible();
   const [sortKey, setSortKey] = useState<keyof BoxAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [box, setBox] = useState("");
@@ -394,9 +396,11 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
             disabled={!cabin}
             className="w-36 text-sm"
           />
+          {showSpeedTools && (
           <Button variant="outline" size="sm" onClick={measureAll} className="text-blue-700 border-blue-200 gap-1">
             <Radar className="w-4 h-4" /> قياس الكل
           </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleExportExcel} className="text-green-700 border-green-200">تصدير Excel</Button>
           <Button variant="outline" size="sm" onClick={handleExportPDF} className="text-red-700 border-red-200">تصدير PDF</Button>
         </div>
@@ -467,6 +471,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.oldestMeasTime)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.newestMeasTime)}</TableCell>
                   <TableCell>
+                    {showSpeedTools && (
                     <button
                       type="button"
                       onClick={() => measureBox(r)}
@@ -476,6 +481,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                     >
                       {dzsBox === `${r.cabinNumber}/${r.boxNumber}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />}
                     </button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

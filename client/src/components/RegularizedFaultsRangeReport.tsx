@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -87,6 +88,7 @@ const buildDZSUrl = (items: DZSItem[]) => {
 };
 
 export function RegularizedFaultsRangeReport() {
+  const showSpeedTools = useSpeedToolsVisible();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState(() => {
@@ -341,6 +343,7 @@ export function RegularizedFaultsRangeReport() {
           <Repeat className="w-4 h-4" /> {repeatedOnly ? "عرض الكل" : "المكرر فقط"}
         </Button>
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
+        {showSpeedTools && (<>
         <Button
           variant="outline" size="sm"
           onClick={handleMeasureDZS}
@@ -356,6 +359,7 @@ export function RegularizedFaultsRangeReport() {
         <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام الأعطال المعروضة">
           <Gauge className="w-4 h-4" /> إيقاف PO
         </Button>
+        </>)}
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}

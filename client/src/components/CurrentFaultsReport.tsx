@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -124,6 +125,7 @@ const faultBadge = (cls: string | null) => {
 };
 
 export function CurrentFaultsReport() {
+  const showSpeedTools = useSpeedToolsVisible();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [repeatedOnly, setRepeatedOnly] = useState(false);
@@ -383,6 +385,7 @@ export function CurrentFaultsReport() {
         <span className="text-xs px-2 py-0.5 rounded font-medium bg-red-100 text-red-800">
           المتبقيات: <strong>{displayed.filter((f) => f.faultClass === "المتبقيات").length}</strong>
         </span>
+        {showSpeedTools && (<>
         <Button
           variant="outline" size="sm"
           onClick={handleMeasureDZS}
@@ -398,6 +401,7 @@ export function CurrentFaultsReport() {
         <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام الأعطال المعروضة">
           <Gauge className="w-4 h-4" /> إيقاف PO
         </Button>
+        </>)}
         <RefreshButton />
         <Button
           variant="outline" size="sm"
