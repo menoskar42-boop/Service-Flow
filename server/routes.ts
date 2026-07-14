@@ -4423,6 +4423,22 @@ export async function registerRoutes(
     }
   });
 
+  // إدخال سعة الكباين من صور FCC مباشرةً (بدل الرفع) — لمرة واحدة، محمى بتوكن. GET/POST.
+  const capSeedHandler = async (req: any, res: any) => {
+    if ((req.query.token || req.headers["x-import-token"]) !== "cap-seed-2026") {
+      return res.status(401).json({ error: "invalid token" });
+    }
+    try {
+      const { seedCabinetCapacity } = await import("./seed-cabinet-capacity");
+      const inserted = await seedCabinetCapacity();
+      res.json({ ok: true, inserted });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message || String(e) });
+    }
+  };
+  app.get("/api/cabinet-capacity/_seed", capSeedHandler);
+  app.post("/api/cabinet-capacity/_seed", capSeedHandler);
+
   // GET /api/cabinet-capacity — list with search
   app.get("/api/cabinet-capacity", requireAuth, async (req, res) => {
     const { q } = req.query as Record<string, string>;
