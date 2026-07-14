@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb, date, real } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, bigint, unique, jsonb, date, real, varchar, json, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -598,6 +598,16 @@ export const execJobs = pgTable("exec_jobs", {
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;
+
+// جلسات دائمة (connect-pg-simple) — لازم تطابق DDL فى ensureSchema بالظبط عشان
+// مايتولّدش DROP فى النشر. sid=varchar, sess=json, expire=timestamp(6).
+export const sfSession = pgTable("sf_session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+}, (t) => ({
+  expireIdx: index("IDX_sf_session_expire").on(t.expire),
+}));
 
 // أسماء الفنيين (كود العامل + الاسم) — full replace each upload
 export const technicianNames = pgTable("technician_names", {
