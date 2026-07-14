@@ -584,6 +584,21 @@ export const cabinetCapacity = pgTable("cabinet_capacity", {
 
 export type CabinetCapacity = typeof cabinetCapacity.$inferSelect;
 
+// طابور تنفيذ رفع السرعة/القياس/الإيقاف على جهاز التنفيذ المركزى
+export const execJobs = pgTable("exec_jobs", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(),
+  accounts: jsonb("accounts").notNull(),
+  status: text("status").notNull().default("pending"),
+  requestedBy: text("requested_by"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  claimedAt: timestamp("claimed_at"),
+  doneAt: timestamp("done_at"),
+});
+
+export type ExecJob = typeof execJobs.$inferSelect;
+
 // أسماء الفنيين (كود العامل + الاسم) — full replace each upload
 export const technicianNames = pgTable("technician_names", {
   id: serial("id").primaryKey(),

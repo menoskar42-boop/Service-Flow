@@ -1257,6 +1257,72 @@ export async function registerRoutes(
     res.status(403).json({ message: "Admin access required" });
   };
 
+  // === طابور التنفيذ المركزى (رفع سرعة / قياس / إيقاف) ===
+  // جهاز التنفيذ = براوزر سوبر أدمن مفعّل الزر، بيبعت نبضة (heartbeat) ويسحب المهام وينفّذها.
+  // أى مستخدم تانى بيضيف مهمة للطابور بدل ما ينفّذ على جهازه.
+  const requireSuperAdmin = (req: any, res: any, next: any) => {
+    if (req.isAuthenticated() && req.user.role === ROLES.SUPER_ADMIN) return next();
+    res.status(403).json({ message: "Super admin only" });
+  };
+  // نبضة جهاز التنفيذ (كل ~20ث) — تُخزَّن فى app_state
+  app.post("/api/exec-queue/heartbeat", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      await pool.query(
+        `INSERT INTO app_state (key, value, updated_at) VALUES ('exec_heartbeat', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
+        [String(req.user.username || "")],
+      );
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  // حالة جهاز التنفيذ: مفعّل لو فيه نبضة خلال آخر 45 ثانية
+  app.get("/api/exec-queue/status", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT value, updated_at, (now() - updated_at < interval '45 seconds') AS active
+         FROM app_state WHERE key = 'exec_heartbeat'`);
+      const r = rows[0];
+      res.json({ active: !!r?.active, executor: r?.active ? r.value : null });
+    } catch { res.json({ active: false, executor: null }); }
+  });
+  // إضافة مهمة للطابور
+  app.post("/api/exec-queue/enqueue", requireAuth, async (req: any, res) => {
+    try {
+      const { type, accounts, note } = req.body || {};
+      if (!["raise", "stop", "measure"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
+      const accs = Array.isArray(accounts) ? accounts.map((a: any) => String(a).trim()).filter(Boolean) : [];
+      if (!accs.length) return res.status(400).json({ message: "لا توجد أرقام" });
+      const { rows } = await pool.query(
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [type, JSON.stringify(accs), String(req.user.username || ""), note || null]);
+      res.json({ ok: true, id: rows[0].id, count: accs.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  // جهاز التنفيذ يسحب أقدم مهمة (atomic) — SKIP LOCKED
+  app.post("/api/exec-queue/claim", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
+         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+         RETURNING id, type, accounts, requested_by AS "requestedBy"`);
+      res.json(rows[0] || null);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  // تعليم مهمة كمنفّذة
+  app.post("/api/exec-queue/:id/done", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      await pool.query(`UPDATE exec_jobs SET status = 'done', done_at = now() WHERE id = $1`, [parseInt(req.params.id)]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  // عدد المهام المنتظرة (للعرض)
+  app.get("/api/exec-queue/pending", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM exec_jobs WHERE status IN ('pending','claimed')`);
+      res.json({ pending: rows[0]?.n ?? 0 });
+    } catch { res.json({ pending: 0 }); }
+  });
+
   // === User Management Routes ===
   app.get(api.users.list.path, requireAuth, requireUserManager, async (req, res) => {
     const userList = await storage.getUsers();

@@ -42,6 +42,7 @@ import { MaintenanceComprehensiveReport } from "@/components/MaintenanceComprehe
 import { BoxOverlapReport } from "@/components/BoxOverlapReport";
 import { MaintenancePlanH2Report } from "@/components/MaintenancePlanH2Report";
 import { CabinetCapacityReport } from "@/components/CabinetCapacityReport";
+import { ExecutorButton } from "@/components/ExecutorButton";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
@@ -285,6 +286,7 @@ export default function Dashboard() {
               <span className="hidden sm:inline">برنامج الكوابل</span>
               <span className="sm:hidden">الكوابل</span>
             </a>
+            <ExecutorButton />
             {(user.role === ROLES.SALES || user.role === ROLES.ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN) && (
               <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">

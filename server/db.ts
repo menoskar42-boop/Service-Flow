@@ -799,6 +799,23 @@ export async function ensureSchema() {
     )
   `);
 
+  // exec_jobs — طابور تنفيذ رفع السرعة/القياس/الإيقاف على «جهاز التنفيذ» المركزى.
+  // أى مستخدم يضيف مهمة (type + accounts)، وجهاز التنفيذ (سوبر أدمن مفعّل الزر) يستلمها وينفّذها.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS exec_jobs (
+      id serial PRIMARY KEY,
+      type text NOT NULL,
+      accounts jsonb NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      requested_by text,
+      note text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      claimed_at timestamptz,
+      done_at timestamptz
+    );
+    CREATE INDEX IF NOT EXISTS exec_jobs_status_idx ON exec_jobs (status, created_at);
+  `);
+
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
   // (يُنفَّذ بعد إنشاء cabinet_technicians + technician_names، ولا يستبدل أى إسناد يدوى لاحق.)
   await pool.query(`
