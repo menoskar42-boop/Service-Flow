@@ -59,9 +59,9 @@ export function MaintenancePlanH2Report() {
     ["الشغال", 10], ["اجمالى عدد الكبائن النحاسية المربوطة على MSAN", 20],
     ["اجمالى عدد البكسيات المربوطة على MSAN", 20], ["الشغال DATA", 12], ["الإدارة", 12],
   ];
-  // الإدارة ثابتة = الغنايم (اسم الإدارة)
+  // رئاسة القطاعات = القطاعات الجنوبية، الإدارة = الغنايم (قيم ثابتة) — بنفس ترتيب النموذج الأصلى
   const rowValues = (r: PlanRow) => [
-    "", r.sector, r.region, r.centralName, r.centralCode, r.msanCode,
+    "القطاعات الجنوبية", r.sector, r.region, r.centralName, r.centralCode, r.msanCode,
     r.maintenanceMonth, r.capacity, r.workingLines, r.copperCabinets,
     r.boxCount, r.workingAdsl, "الغنايم",
   ];
