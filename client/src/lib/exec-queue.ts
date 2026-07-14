@@ -18,7 +18,9 @@ export function executeSingle(type: ExecJobType, account: string | number): void
   if (!acc) return;
   if (type === "raise") openProfileOptimization([acc]);
   else if (type === "stop") openProfileOptimization([acc], { stopOnly: true });
-  else if (type === "measure") window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}`, "_blank");
+  // sf_autoclose=1 → سكربت DZS يقفل التاب بعد ما يخلّص القياس (النتيجة بترفع لـ 138 تلقائياً)
+  // بدل ما يفضل مفتوح للـ CSV — عشان جهاز التنفيذ يفتح الخط اللى بعده.
+  else if (type === "measure") window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}&sf_autoclose=1`, "_blank");
 }
 
 // آخر وقت قياس لرقم أكونت (للتأكد إن القياس اتحدّث) — millis أو 0

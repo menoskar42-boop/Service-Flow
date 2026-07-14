@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -122,20 +122,27 @@ export function PhoneLookupReport() {
 
   // بعد إرسال قياس لجهاز التنفيذ: نستنّى لحد ما وقت آخر قياس للرقم يتحدّث على السيرفر
   // ثم نعيد البحث تلقائياً عشان تظهر النتيجة الجديدة من غير ما المستخدم يعمل حاجة.
+  // الانتظار **قابل للإلغاء**: لو القياس وقف لأى سبب، المستخدم يدوس على الزر يلغى الانتظار
+  //  ومايفضلش عالق أبداً (وكمان بيلغى تلقائياً بعد المهلة القصوى).
   const [awaitingMeasure, setAwaitingMeasure] = useState(false);
+  const measureCancel = useRef(false);
+  const cancelMeasureWait = () => { measureCancel.current = true; setAwaitingMeasure(false); };
   const waitForMeasureThenRefresh = async (account: string) => {
     const before = await latestMeasureAt(account);
+    measureCancel.current = false;
     setAwaitingMeasure(true);
     const deadline = Date.now() + 8 * 60 * 1000; // نستنّى لحد 8 دقائق (ممكن يكون قدامه مهام فى الطابور)
     try {
       while (Date.now() < deadline) {
         await sleep(5000);
+        if (measureCancel.current) return; // المستخدم ألغى الانتظار
         const now = await latestMeasureAt(account);
         if (now > before) break; // اتحدّث القياس
       }
     } finally {
+      const wasCancelled = measureCancel.current;
       setAwaitingMeasure(false);
-      setSearchSeq((s) => s + 1); // إعادة البحث لعرض القياس المحدّث
+      if (!wasCancelled) setSearchSeq((s) => s + 1); // إعادة البحث لعرض القياس المحدّث (مش لو اتلغى)
     }
   };
 
@@ -426,15 +433,14 @@ export function PhoneLookupReport() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={measureDZS}
-                    disabled={awaitingMeasure}
+                    onClick={awaitingMeasure ? cancelMeasureWait : measureDZS}
                     className="bg-white gap-2 text-blue-700 border-blue-200"
-                    title="فتح DZS وقياس هذا الرقم"
+                    title={awaitingMeasure ? "اضغط لإلغاء انتظار نتيجة القياس" : "فتح DZS وقياس هذا الرقم"}
                   >
                     {awaitingMeasure
                       ? <Loader2 className="w-4 h-4 animate-spin" />
                       : <Radar className="w-4 h-4" />}
-                    {awaitingMeasure ? "فى انتظار نتيجة القياس…" : "قياس DZS"}
+                    {awaitingMeasure ? "فى انتظار القياس… (اضغط للإلغاء)" : "قياس DZS"}
                   </Button>
                   <Button
                     variant="outline"

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.17.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.18: وضع sf_autoclose=1 (جهاز التنفيذ) — التاب يقفل نفسه بعد القياس بدل ما يفضل مفتوح للـ CSV، عشان الخط اللى بعده فى الطابور يتفتح. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.18.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -213,6 +213,15 @@
   if (_fromHash) localStorage.setItem(FORCE_RT_KEY, /[#&]sf_force=1\b/.test(location.hash) ? "1" : "0");
   const FORCE_REALTIME = localStorage.getItem(FORCE_RT_KEY) === "1";
   if (FORCE_REALTIME) console.log("🎯 FORCE real-time mode ON — الحالات المخزّنة (POP_O/out-of-service) هتتقاس فعلياً.");
+
+  // 🆕 وضع «جهاز التنفيذ» (sf_autoclose=1 فى الهاش): بعد ما القياس يخلّص، اقفل التاب فوراً
+  // بدل ما يفضل مفتوح للـ CSV — عشان جهاز التنفيذ يقدر يفتح الخط اللى بعده. النتيجة بترفع
+  // لشيت 138 تلقائياً من غير CSV. تتثبّت للرن كله فى localStorage (زى FORCE_RT) لأن الهاش
+  // بيضيع بعد التنقّل welcome→clearview.
+  const AUTOCLOSE_KEY = "DZS_AUTOCLOSE";
+  if (_fromHash) localStorage.setItem(AUTOCLOSE_KEY, /[#&]sf_autoclose=1\b/.test(location.hash) ? "1" : "0");
+  const AUTO_CLOSE = localStorage.getItem(AUTOCLOSE_KEY) === "1";
+  if (AUTO_CLOSE) console.log("🚪 AUTO-CLOSE mode ON — التاب هيتقفل بعد القياس (جهاز التنفيذ).");
 
   let lineIndex = parseInt(localStorage.getItem(INDEX_KEY), 10);
   if (isNaN(lineIndex) || lineIndex < 0) lineIndex = 0;
@@ -496,6 +505,9 @@
   function maybeDownloadFinal() {
     const results = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
     if (results.length < UNIQUE_LINE_COUNT) return;
+    // وضع جهاز التنفيذ: مانعملش downloader ومانفتحش CSV — النتيجة اترفعت لـ 138 خلاص،
+    // فنسيب مسار الإغلاق العادى يقفل التاب (openNextLine→closeThisTab).
+    if (AUTO_CLOSE) return;
     if (localStorage.getItem(DOWNLOAD_DONE_KEY) === "1") return;
     localStorage.setItem(DOWNLOAD_DONE_KEY, "1");
     iAmTheDownloader = true;
