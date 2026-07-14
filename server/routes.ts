@@ -5859,6 +5859,81 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/maintenance-plan-h2 — خطة صيانة النصف الثانى من العام.
+  // لكل كابينة MSAN: الشغال DATA + عدد الأعطال خلال الفترة + أعطال/الألف + عدد الكباين
+  // النحاسية + عدد البكسيات + إجمالى الخطوط الشغالة. تُختار الكباين التى عدد أعطالها > 70
+  // وأعطالها/الألف > 30، تُرتّب تنازلياً حسب أعطال/الألف، وتُوزّع على أشهر أغسطس/أكتوبر/ديسمبر
+  // (ديسمبر كابينتان، الباقى كابينة لكل شهر). القطاع والمنطقة قيم ثابتة.
+  //   ?dateFrom=YYYY-MM-DD & dateTo=YYYY-MM-DD & central= (اختيارية)
+  app.get("/api/reports/maintenance-plan-h2", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom = "", dateTo = "", central = "" } = req.query as Record<string, string>;
+      const from = dateFrom || "2026-01-01";
+      const to   = dateTo   || new Date().toISOString().slice(0, 10);
+      const params: any[] = [from, to];
+      const conds: string[] = [
+        `(ct.central_name = 'الغنايم' OR ct.central_name = 'الغنايم-العزايزة' OR ct.central_name = 'الغنايم-دير الجنادله' OR ct.central_name = 'الغنايم-نجع العمدة')`,
+        `COALESCE(ct.cabin_code, '') <> ''`,
+      ];
+      if (central) { params.push(central); conds.push(`ct.central_name = $${params.length}`); }
+      const where = "WHERE " + conds.join(" AND ");
+      const { rows } = await pool.query(
+        `SELECT
+           MIN(ct.central_name)                                          AS "centralName",
+           string_agg(DISTINCT ct.cabin_number, ' , ' ORDER BY ct.cabin_number) AS "cabinNumber",
+           ct.cabin_code                                                 AS "msanCode",
+           COUNT(DISTINCT ct.cabin_number)::int                          AS "copperCabinets",
+           COALESCE((SELECT SUM(f.fbb_subs) FROM ftth_subscribers f
+                       WHERE f.msan_gpon_code = ct.cabin_code), 0)::int   AS "workingAdsl",
+           COALESCE((SELECT COUNT(DISTINCT pl.box_number) FROM phone_lines pl
+                       JOIN cabinet_technicians ct2
+                         ON ct2.central_name = pl.central AND ct2.cabin_number = pl.cabin_number
+                       WHERE ct2.cabin_code = ct.cabin_code
+                         AND COALESCE(pl.box_number, '') <> ''), 0)::int  AS "boxCount",
+           COALESCE((SELECT COUNT(DISTINCT pl.tel_no) FROM phone_lines pl
+                       JOIN cabinet_technicians ct2
+                         ON ct2.central_name = pl.central AND ct2.cabin_number = pl.cabin_number
+                       WHERE ct2.cabin_code = ct.cabin_code), 0)::int     AS "workingLines",
+           (SELECT COUNT(*) FROM (
+              SELECT cd.complain_no FROM complaint_details cd
+                WHERE cd.msan_id = ct.cabin_code
+                  AND (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                  AND (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+              UNION
+              SELECT rc.complain_no FROM remaining_complaints rc
+                WHERE rc.msan_id = ct.cabin_code
+                  AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                  AND (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+           ) u)::int                                                     AS "faultCount"
+         FROM cabinet_technicians ct
+         ${where}
+         GROUP BY ct.cabin_code`,
+        params,
+      );
+      // حساب أعطال/الألف + الفلترة (> 70 عطل و > 30 عطل/الألف) + الترتيب التنازلى
+      const enriched = rows
+        .map((r: any) => ({
+          ...r,
+          perThousand: r.workingAdsl > 0
+            ? Math.round((r.faultCount / r.workingAdsl) * 1000 * 10) / 10
+            : 0,
+        }))
+        .filter((r: any) => r.faultCount > 70 && r.perThousand > 30)
+        .sort((a: any, b: any) => b.perThousand - a.perThousand);
+      // توزيع الأشهر: أغسطس (1) — أكتوبر (1) — ديسمبر (2)
+      const months = ["أغسطس", "أكتوبر", "ديسمبر", "ديسمبر"];
+      const plan = enriched.slice(0, months.length).map((r: any, i: number) => ({
+        ...r,
+        sector: "قطاع وسط الصعيد",
+        region: "منطقة تليفونات اسيوط",
+        maintenanceMonth: months[i],
+      }));
+      res.json(plan);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — يستخدم queryWfmReport.
   const wfmReportHandler = (typesLc: string[], regularized: boolean) =>
     async (req: any, res: any) => {
