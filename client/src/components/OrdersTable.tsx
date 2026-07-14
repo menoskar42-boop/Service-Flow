@@ -41,6 +41,8 @@ type ContractFilter = "all" | "contracted" | "not_contracted";
 
 export function OrdersTable({ orders }: OrdersTableProps) {
   const { user } = useAuth();
+  // الأدمن الأعلى (super_admin) يقدر يعمل أى فعل لأى دور — يعدّى كل شروط الأدوار
+  const roleIs = (r: string) => user?.role === r || user?.role === ROLES.SUPER_ADMIN;
   const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract, requestExternalReview, isRequestingExternal, assignOrder, isAssigning } = useOrders();
   const { users } = useUsers();
   const [searchQuery, setSearchQuery] = useState("");
@@ -119,7 +121,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       if (!isPending && !isTechMatch) return false;
     }
 
-    if (user?.role === ROLES.ADMIN && contractFilter !== "all") {
+    if (roleIs(ROLES.ADMIN) && contractFilter !== "all") {
       if (contractFilter === "contracted" && order.contractStatus !== CONTRACT_STATUS.CONTRACTED) return false;
       if (contractFilter === "not_contracted" && order.contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) return false;
     }
@@ -179,20 +181,20 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     const tabs: { key: StatusFilter; label: string }[] = [
       { key: "all", label: "الكل" },
     ];
-    if (user?.role === ROLES.EXTERNAL) {
+    if (roleIs(ROLES.EXTERNAL)) {
       // External only sees needs_external orders - no filter tabs needed except all
       return tabs;
     }
     tabs.push({ key: "feasible", label: "يمكن التنفيذ" });
     tabs.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
     tabs.push({ key: "pending", label: "قيد الانتظار" });
-    if (user?.role === ROLES.ADMIN) {
+    if (roleIs(ROLES.ADMIN)) {
       tabs.push({ key: "pending_unassigned", label: "قيد الانتظار (بدون تعيين)" });
       tabs.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
       tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
       tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
     }
-    if (user?.role === ROLES.SALES) {
+    if (roleIs(ROLES.SALES)) {
       tabs.push({ key: "needs_external", label: "قيد المراجعة الخارجية" });
       tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
       tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
@@ -251,7 +253,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       )}
 
       {/* Contract Status Filter Tabs (Admin only) */}
-      {user?.role === ROLES.ADMIN && (
+      {roleIs(ROLES.ADMIN) && (
         <div className="border-b overflow-x-auto bg-muted/20">
           <div className="flex min-w-max items-center gap-2 px-4 py-2" dir="rtl">
             <span className="text-sm text-muted-foreground">حالة التعاقد:</span>
@@ -287,7 +289,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               data-testid="input-search"
             />
           </div>
-          {user?.role === ROLES.ADMIN && techUsers.length > 0 && (
+          {roleIs(ROLES.ADMIN) && techUsers.length > 0 && (
             <select
               value={techFilter}
               onChange={(e) => setTechFilter(e.target.value)}
@@ -300,7 +302,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               ))}
             </select>
           )}
-          {user?.role === ROLES.ADMIN && cabinetTechs.length > 0 && (
+          {roleIs(ROLES.ADMIN) && cabinetTechs.length > 0 && (
             <select
               value={cabinetTechFilter}
               onChange={(e) => setCabinetTechFilter(e.target.value)}
@@ -314,7 +316,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               ))}
             </select>
           )}
-          {user?.role === ROLES.TECH && (
+          {roleIs(ROLES.TECH) && (
             <button
               onClick={() => setMyRejectionsOnly(v => !v)}
               className={`rounded-md px-3 py-2 text-sm font-medium border transition-colors ${
@@ -344,22 +346,22 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               <TableHead className="text-right font-bold">العميل</TableHead>
               <TableHead className="text-right font-bold">العنوان</TableHead>
               <TableHead className="text-right font-bold">رقم الهاتف</TableHead>
-              {(user?.role === ROLES.ADMIN || user?.role === ROLES.SALES) && (
+              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
                 <TableHead className="text-right font-bold">الرقم القومي</TableHead>
               )}
-              {(user?.role === ROLES.ADMIN || user?.role === ROLES.SALES) && (
+              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
                 <TableHead className="text-right font-bold">رقم المسلسل</TableHead>
               )}
-              {(user?.role === ROLES.ADMIN || user?.role === ROLES.TECH || user?.role === ROLES.EXTERNAL) && (
+              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.TECH) || roleIs(ROLES.EXTERNAL)) && (
                 <TableHead className="text-right font-bold">المندوب</TableHead>
               )}
               <TableHead className="text-right font-bold">الحالة</TableHead>
-              {user?.role === ROLES.ADMIN && (
+              {roleIs(ROLES.ADMIN) && (
                 <TableHead className="text-right font-bold">حالة التعاقد</TableHead>
               )}
               <TableHead className="text-right font-bold">الفني</TableHead>
               <TableHead className="text-right font-bold">رد الفني</TableHead>
-              {(user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL) && (
+              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.EXTERNAL)) && (
                 <TableHead className="text-right font-bold">رد الشئون الخارجية</TableHead>
               )}
               <TableHead className="text-right font-bold">إجراء</TableHead>
@@ -378,25 +380,25 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 </TableCell>
                 <TableCell className="font-mono text-xs whitespace-normal break-words min-w-[100px]">{order.customerPhone}</TableCell>
 
-                {(user?.role === ROLES.ADMIN || user?.role === ROLES.SALES) && (
+                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
                   <TableCell className="font-mono text-xs">
                     {order.nationalId || <span className="text-muted-foreground">-</span>}
                   </TableCell>
                 )}
 
-                {(user?.role === ROLES.ADMIN || user?.role === ROLES.SALES) && (
+                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
                   <TableCell className="font-mono text-xs whitespace-normal break-words min-w-[100px] max-w-[180px]">
                     {order.serialNumber || <span className="text-muted-foreground">-</span>}
                   </TableCell>
                 )}
 
-                {(user?.role === ROLES.ADMIN || user?.role === ROLES.TECH || user?.role === ROLES.EXTERNAL) && (
+                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.TECH) || roleIs(ROLES.EXTERNAL)) && (
                   <TableCell>{order.salesName}</TableCell>
                 )}
 
                 <TableCell>{getStatusBadge(order.status)}</TableCell>
 
-                {user?.role === ROLES.ADMIN && (
+                {roleIs(ROLES.ADMIN) && (
                   <TableCell>{getContractBadge(order.contractStatus)}</TableCell>
                 )}
 
@@ -434,7 +436,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 </TableCell>
 
                 {/* External Response Cell (Admin & External role) */}
-                {(user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL) && (
+                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.EXTERNAL)) && (
                   <TableCell className="max-w-[200px] text-sm">
                     {!order.externalName ? (
                       <span className="text-muted-foreground">-</span>
@@ -463,7 +465,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                   <div className="flex gap-2 flex-wrap">
 
                     {/* Tech actions - only for pending orders */}
-                    {user?.role === ROLES.TECH && order.status === ORDER_STATUS.PENDING && (
+                    {roleIs(ROLES.TECH) && order.status === ORDER_STATUS.PENDING && (
                       <>
                         <TechActionModal order={order} action="feasible" />
                         <TechActionModal order={order} action="not_feasible" />
@@ -471,7 +473,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     )}
 
                     {/* External affairs actions - only for needs_external orders */}
-                    {user?.role === ROLES.EXTERNAL && order.status === ORDER_STATUS.NEEDS_EXTERNAL && (
+                    {roleIs(ROLES.EXTERNAL) && order.status === ORDER_STATUS.NEEDS_EXTERNAL && (
                       <>
                         <ExternalActionModal order={order} action="feasible" />
                         <ExternalActionModal order={order} action="not_feasible" />
@@ -479,7 +481,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     )}
 
                     {/* Sales actions */}
-                    {user?.role === ROLES.SALES && (
+                    {roleIs(ROLES.SALES) && (
                       <>
                         {/* Re-inspection button - only for not_feasible orders */}
                         {order.status === ORDER_STATUS.NOT_FEASIBLE && (
@@ -562,7 +564,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     )}
 
                     {/* Admin actions */}
-                    {user?.role === ROLES.ADMIN && (
+                    {roleIs(ROLES.ADMIN) && (
                       <>
                         {/* Assign pending order to a specific tech (null = متاح للكل) */}
                         {order.status === ORDER_STATUS.PENDING && (
