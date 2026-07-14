@@ -3975,6 +3975,27 @@ export async function registerRoutes(
     res.json({ pending });
   });
 
+  // ===== أولوية تصدير شيت FCC عبر علامة على السيرفر =====
+  // زر/مؤقت «حدّث الملفات اليومية» بيسلّح العلامة دى. لو تاب FCC اليومى كان وسط مراجعة بيانات فنية
+  // (sf_si_batch مضبوط)، بيشوف العلامة فيصدّر الشيت الأول (أولوية) ثم يكمّل المراجعة بعده.
+  app.post("/api/fcc-export/arm", requireAuth, async (_req: any, res) => {
+    await pool.query(
+      `INSERT INTO app_state (key, value, updated_at) VALUES ('fcc_export_force', 'armed', now())
+       ON CONFLICT (key) DO UPDATE SET value = 'armed', updated_at = now()`,
+    );
+    res.json({ ok: true });
+  });
+  app.options("/api/fcc-export/check", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.get("/api/fcc-export/check", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const { rows } = await pool.query(`SELECT value, updated_at FROM app_state WHERE key = 'fcc_export_force'`);
+    const armedAt = rows[0]?.updated_at ? new Date(rows[0].updated_at).getTime() : 0;
+    const force = rows[0]?.value === "armed" && armedAt > 0 && (Date.now() - armedAt) < 8 * 60 * 1000;
+    if (force) await pool.query(`UPDATE app_state SET value = '' WHERE key = 'fcc_export_force'`);
+    res.json({ force });
+  });
+
   // ===== تكامل: تقرير «مسافات التخاطي والتعارض — لم يتم الإصلاح بعد» من نظام صيانة البوكسات =====
   // وسيط server-to-server: بيجيب الـ JSON من المشروع التاني (maintenance-we) ويضيف توكن التكامل
   // (مخبّى فى env؛ القيمة الافتراضية هى المتفق عليها). كده التوكن مايظهرش للمتصفح ومفيش مشكلة CORS.
@@ -3994,7 +4015,10 @@ export async function registerRoutes(
       try {
         r = await fetch(url, { headers: { "X-Integration-Token": BOX_OVERLAP_TOKEN }, signal: ctrl.signal });
       } finally { clearTimeout(timer); }
-      if (!r.ok) return res.status(502).json({ message: "تعذّر جلب التقرير من نظام صيانة البوكسات", status: r.status });
+      if (!r.ok) {
+        let detail = ""; try { detail = (await r.text()).slice(0, 200); } catch {}
+        return res.status(502).json({ message: "تعذّر جلب التقرير من نظام صيانة البوكسات", status: r.status, detail });
+      }
       const data = await r.json();
       res.json(data);
     } catch (e: any) {

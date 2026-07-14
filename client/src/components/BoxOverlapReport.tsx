@@ -69,7 +69,14 @@ export function BoxOverlapReport() {
       if (from) p.set("from", from);
       if (to) p.set("to", to);
       const res = await fetch(`/api/reports/box-overlap?${p}`, { credentials: "include" });
-      if (!res.ok) throw new Error("تعذّر جلب التقرير من نظام صيانة البوكسات");
+      if (!res.ok) {
+        let info: any = {}; try { info = await res.json(); } catch {}
+        const st = info.status ? ` (كود ${info.status})` : "";
+        const hint = info.status === 404 ? " — الخدمة غير منشورة (اعمل Republish لمشروع صيانة البوكسات)"
+          : info.status === 401 ? " — التوكن غير متطابق"
+          : info.error ? ` — ${info.error}` : "";
+        throw new Error(`تعذّر جلب التقرير من نظام صيانة البوكسات${st}${hint}`);
+      }
       return res.json();
     },
   });
@@ -233,7 +240,7 @@ export function BoxOverlapReport() {
 
       {error && (
         <Card className="p-4 border-0 bg-red-50 text-red-700 text-sm">
-          تعذّر جلب التقرير من نظام صيانة البوكسات — تأكد أن الخدمة تعمل وأن التوكن صحيح.
+          {(error as Error).message || "تعذّر جلب التقرير من نظام صيانة البوكسات — تأكد أن الخدمة تعمل وأن التوكن صحيح."}
         </Card>
       )}
 

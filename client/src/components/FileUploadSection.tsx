@@ -418,6 +418,8 @@ export function FileUploadSection() {
     // نفتح الصفحات الثلاث (FCC + WFM + OSS) مباشرةً من هنا بالتوازى — أسرع وأضمن من التسلسل
     // (السلسلة FCC→WFM كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg؛ زر الموقع عنده إذن النوافذ المنبثقة).
     // كل تاب باسم ثابت يُعاد استخدامه كل نص ساعة (مفيش تكديس)، والسكربت يسجّل دخول ويصدّر ويرفع ويقفل.
+    // «نسلّح» أولوية تصدير شيت FCC — لو تاب FCC كان وسط مراجعة بيانات فنية، يصدّر الشيت الأول ثم يكمّل المراجعة
+    fetch("/api/fcc-export/arm", { method: "POST", credentials: "include" }).catch(() => {});
     window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
     window.open("https://wfm.te.eg/WorkOrder/faces/security/pages/Login.jsf", "wfm_daily");
     window.open("https://oss.te.eg:15201/om", "oss_daily");

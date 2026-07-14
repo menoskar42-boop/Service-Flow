@@ -119,7 +119,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "box-summary",  label: "ملخص البكسيات" },
       { id: "subscriber-info", label: "اسم وعنوان العملاء (البورتات)" },
-      { id: "maintenance-comprehensive", label: "تقرير الصيانة الشامل" },
     ],
   },
   {
@@ -135,6 +134,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     label: "صيانة البوكسات",
     icon: Box,
     items: [
+      { id: "maintenance-comprehensive", label: "تقرير الصيانة الشامل" },
       { id: "box-overlap", label: "مسافات التخاطي والتعارض" },
     ],
   },
