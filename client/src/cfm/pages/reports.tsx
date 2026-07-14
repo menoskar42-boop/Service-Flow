@@ -205,12 +205,16 @@ export default function Reports() {
         items.forEach(item => {
           if (item.excavationWorkerId) {
             const uniqueKey = `${ticket.id}-${item.excavationWorkerId}-${work.recordedAt}`;
-            
+
             if (!resultsMap.has(uniqueKey)) {
               const worker = excavationWorkers.find(w => w.id === item.excavationWorkerId);
               const cable = cables.find(c => c.id === ticket.cableId);
-              const usedTasks = ticket.usedTasks || [];
-              const tasksUsed = usedTasks.flatMap(ut => 
+              // المهمات المستخدمه لنفس يوم عمل الحفر فقط (لا كل مهمات التذكرة) —
+              // عشان مايظهرش مهمات (زى الكابل) فى يوم حفر لم تُستخدم فيه.
+              const dayOf = (d: string | null | undefined) => (d ? String(d).slice(0, 10) : '');
+              const workDay = dayOf(work.recordedAt);
+              const usedTasks = (ticket.usedTasks || []).filter(ut => dayOf(ut.recordedAt) === workDay);
+              const tasksUsed = usedTasks.flatMap(ut =>
                 (ut.items || []).map(ti => {
                   const taskType = taskTypes.find(t => t.id === ti.taskTypeId);
                   return taskType ? `${taskType.name} (${ti.quantity})` : '';
