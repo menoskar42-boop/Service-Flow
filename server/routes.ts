@@ -1098,8 +1098,31 @@ export async function registerRoutes(
     return { ...user, techName };
   }
 
+  // يجهّز جلسة الكوابل تلقائياً بعد الدخول على الطلبات لو دور المستخدم يفتح الكوابل
+  // (super_admin/admin → admin كوابل، external/tech → شئون خارجية...). يستخدم الحساب
+  // المربوط (cfm_user_id) وإلا أول حساب كوابل بنفس الدور. إضافى — لو فشل يتجاهل بهدوء.
+  async function setupCfmSessionForSf(req: any) {
+    try {
+      const sfUser = req.user;
+      if (!sfUser) return;
+      const cfmRole = cfmRoleOf(sfUser.role);
+      if (!cfmRole) { delete (req.session as any).cfmUser; return; }
+      let cfmUser: any = null;
+      if (sfUser.cfmUserId) {
+        const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE id = $1 LIMIT 1`, [sfUser.cfmUserId]);
+        cfmUser = rows[0] || null;
+      }
+      if (!cfmUser) {
+        const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE role = $1 ORDER BY created_at LIMIT 1`, [cfmRole]);
+        cfmUser = rows[0] || null;
+      }
+      if (cfmUser) (req.session as any).cfmUser = cfmUser;
+    } catch {}
+  }
+
   // === Auth Routes ===
   app.post(api.auth.login.path, passport.authenticate("local"), async (req, res) => {
+    await setupCfmSessionForSf(req);
     res.json(await userResponse(req.user));
   });
 
@@ -1147,6 +1170,7 @@ export async function registerRoutes(
   });
 
   app.post(api.auth.logout.path, (req, res, next) => {
+    delete (req.session as any).cfmUser; // امسح جلسة الكوابل كمان
     req.logout((err) => {
       if (err) return next(err);
       res.json({ message: "Logged out" });
