@@ -16,7 +16,7 @@
 
 export type UnifiedRole =
   | "super_admin" | "admin" | "external" | "splice_tech" | "cable_engineer"
-  | "sales" | "tech" | "data_manager";
+  | "sales" | "sales_admin" | "tech" | "data_manager";
 
 export interface RoleAccess {
   labelAr: string;      // الاسم بالعربى
@@ -31,6 +31,7 @@ export const UNIFIED_ROLE_ACCESS: Record<UnifiedRole, RoleAccess> = {
   splice_tech:    { labelAr: "فنى لحام",          sf: null,           cfm: "splice_tech" },
   cable_engineer: { labelAr: "مهندس كوابل",       sf: null,           cfm: "cable_engineer" },
   sales:          { labelAr: "مبيعات",            sf: "sales",        cfm: null },
+  sales_admin:    { labelAr: "أدمن مبيعات",        sf: "sales_admin",  cfm: null },
   tech:           { labelAr: "فنى",               sf: "tech",         cfm: "external_affairs" },
   data_manager:   { labelAr: "بيانات",            sf: "data_manager", cfm: null },
 };

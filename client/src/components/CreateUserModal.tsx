@@ -15,10 +15,11 @@ export function CreateUserModal() {
   const { user } = useAuth();
   // الأدمن العادى يقدر ينشئ الأدوار الأساسية فقط؛ الأدمن الأعلى يقدر ينشئ كمان مديرين ومديرين أعلى
   const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
+  const isSalesAdmin = user?.role === ROLES.SALES_ADMIN; // أدمن المبيعات: يضيف مستخدمى مبيعات فقط
   const [formData, setFormData] = useState({
     username: "",
     password: "",
-    role: "",
+    role: isSalesAdmin ? ROLES.SALES : "",
     workerCode: "",
   });
 
@@ -72,11 +73,16 @@ export function CreateUserModal() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ROLES.SALES} className="text-right">موظف مبيعات</SelectItem>
-                <SelectItem value={ROLES.TECH} className="text-right">فني</SelectItem>
-                <SelectItem value={ROLES.EXTERNAL} className="text-right">مراقب الشئون الخارجية</SelectItem>
-                <SelectItem value={ROLES.DATA_MANAGER} className="text-right">مسئول البيانات</SelectItem>
-                {isSuperAdmin && <SelectItem value={ROLES.ADMIN} className="text-right">مدير</SelectItem>}
-                {isSuperAdmin && <SelectItem value={ROLES.SUPER_ADMIN} className="text-right">مدير أعلى (Super Admin)</SelectItem>}
+                {!isSalesAdmin && (
+                  <>
+                    <SelectItem value={ROLES.TECH} className="text-right">فني</SelectItem>
+                    <SelectItem value={ROLES.EXTERNAL} className="text-right">مراقب الشئون الخارجية</SelectItem>
+                    <SelectItem value={ROLES.DATA_MANAGER} className="text-right">مسئول البيانات</SelectItem>
+                    <SelectItem value={ROLES.SALES_ADMIN} className="text-right">أدمن مبيعات</SelectItem>
+                    {isSuperAdmin && <SelectItem value={ROLES.ADMIN} className="text-right">مدير</SelectItem>}
+                    {isSuperAdmin && <SelectItem value={ROLES.SUPER_ADMIN} className="text-right">مدير أعلى (Super Admin)</SelectItem>}
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>

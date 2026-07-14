@@ -5,6 +5,7 @@ import { z } from "zod";
 // Roles
 export const ROLES = {
   SALES: "sales",
+  SALES_ADMIN: "sales_admin", // أدمن مبيعات — يضيف مستخدمين مبيعات ويرى قسم الطلبات فقط
   TECH: "tech",
   ADMIN: "admin",
   EXTERNAL: "external",
