@@ -1315,6 +1315,17 @@ export async function registerRoutes(
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+  // تأكيد تحديث القياس: آخر وقت قياس (case_138.uploaded_at) لرقم أكونت — جهاز التنفيذ
+  // بيقارنه بالوقت قبل الفتح عشان يتأكد إن القياس اتحدّث قبل ما يعدّى للخط اللى بعده.
+  app.get("/api/exec-queue/measure-check", requireAuth, async (req, res) => {
+    try {
+      const acc = String(req.query.account || "").trim();
+      if (!acc) return res.json({ at: null });
+      const { rows } = await pool.query(`SELECT MAX(uploaded_at) AS at FROM case_138 WHERE account_no = $1`, [acc]);
+      res.json({ at: rows[0]?.at || null });
+    } catch { res.json({ at: null }); }
+  });
+
   // عدد المهام المنتظرة (للعرض)
   app.get("/api/exec-queue/pending", requireAuth, async (_req, res) => {
     try {

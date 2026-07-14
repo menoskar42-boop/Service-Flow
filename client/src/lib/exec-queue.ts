@@ -10,15 +10,24 @@ export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; re
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
-// تنفيذ مهمة واحدة على جهاز التنفيذ (نفس فتح التاب اللى بيعمله الزر عادى)
-export function executeJob(job: ExecJob): void {
-  const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
-  if (!accs.length) return;
-  if (job.type === "raise") openProfileOptimization(accs);
-  else if (job.type === "stop") openProfileOptimization(accs, { stopOnly: true });
-  else if (job.type === "measure") {
-    window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accs.join(","))}`, "_blank");
-  }
+export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// تنفيذ **خط واحد** (رقم أكونت واحد) — عشان جهاز التنفيذ يباعد بينهم بمهلة ويمنع التداخل
+export function executeSingle(type: ExecJobType, account: string | number): void {
+  const acc = String(account ?? "").trim();
+  if (!acc) return;
+  if (type === "raise") openProfileOptimization([acc]);
+  else if (type === "stop") openProfileOptimization([acc], { stopOnly: true });
+  else if (type === "measure") window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}`, "_blank");
+}
+
+// آخر وقت قياس لرقم أكونت (للتأكد إن القياس اتحدّث) — millis أو 0
+export async function latestMeasureAt(account: string | number): Promise<number> {
+  try {
+    const r = await fetch(`/api/exec-queue/measure-check?account=${encodeURIComponent(String(account).trim())}`, { credentials: "include" });
+    const d = await r.json();
+    return d?.at ? new Date(d.at).getTime() : 0;
+  } catch { return 0; }
 }
 
 // هل فيه جهاز تنفيذ مفعّل حالياً؟
