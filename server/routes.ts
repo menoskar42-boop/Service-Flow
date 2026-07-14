@@ -3975,6 +3975,33 @@ export async function registerRoutes(
     res.json({ pending });
   });
 
+  // ===== تكامل: تقرير «مسافات التخاطي والتعارض — لم يتم الإصلاح بعد» من نظام صيانة البوكسات =====
+  // وسيط server-to-server: بيجيب الـ JSON من المشروع التاني (maintenance-we) ويضيف توكن التكامل
+  // (مخبّى فى env؛ القيمة الافتراضية هى المتفق عليها). كده التوكن مايظهرش للمتصفح ومفيش مشكلة CORS.
+  const BOX_OVERLAP_URL = process.env.BOX_MAINT_URL || "https://maintenance-we.replit.app/api/integration/overlap-distance-pending";
+  const BOX_OVERLAP_TOKEN = process.env.BOX_MAINT_TOKEN || "sf-integration-2026-GHNAT-overlap-Qz7m";
+  app.get("/api/reports/box-overlap", requireAuth, async (req: any, res) => {
+    try {
+      const qs = new URLSearchParams();
+      for (const k of ["from", "to", "box", "cabin", "central"]) {
+        const v = (req.query as any)[k];
+        if (v != null && String(v).trim() !== "") qs.append(k, String(v).trim());
+      }
+      const url = BOX_OVERLAP_URL + (qs.toString() ? "?" + qs.toString() : "");
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
+      let r: any;
+      try {
+        r = await fetch(url, { headers: { "X-Integration-Token": BOX_OVERLAP_TOKEN }, signal: ctrl.signal });
+      } finally { clearTimeout(timer); }
+      if (!r.ok) return res.status(502).json({ message: "تعذّر جلب التقرير من نظام صيانة البوكسات", status: r.status });
+      const data = await r.json();
+      res.json(data);
+    } catch (e: any) {
+      res.status(502).json({ message: "تعذّر الاتصال بنظام صيانة البوكسات", error: e?.message || String(e) });
+    }
+  });
+
   // ===== إثراء أرقام البورتات باسم/عنوان العميل من FCC Complains (سكربت تامبر منكى، token + CORS) =====
   // قائمة الأرقام المطلوب جلبها: أرقام البورتات اللى ملهاش صف فى line_subscriber_info (ملهاش اسم/عنوان بعد).
   app.options("/api/line-subscriber-info/pending", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
