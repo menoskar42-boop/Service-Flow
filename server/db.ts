@@ -33,6 +33,8 @@ export async function ensureSchema() {
   `);
   // 🆕 رقم العامل لحساب الفني (يربطه ببياناته فى التقارير)
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS worker_code text`);
+  // 🆕 البوابة الموحّدة: ربط حساب الطلبات بحساب الكوابل المقابل (للى عنده حساب فى الموقعين)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS cfm_user_id varchar`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       id serial PRIMARY KEY,

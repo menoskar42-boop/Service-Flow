@@ -14,6 +14,8 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import connectPgSimple from "connect-pg-simple";
+import bcryptjs from "bcryptjs";
+import { sfRoleOf, cfmRoleOf, sitesForRole } from "@shared/roles-access";
 import { registerCfmRoutes } from "./cfm/routes";
 
 const scryptAsync = promisify(scrypt);
@@ -1101,6 +1103,49 @@ export async function registerRoutes(
   // === Auth Routes ===
   app.post(api.auth.login.path, passport.authenticate("local"), async (req, res) => {
     res.json(await userResponse(req.user));
+  });
+
+  // === البوابة الموحّدة: دخول واحد يشتغل على الموقعين (إضافى — مايلمسش الدخول القديم) ===
+  // يجرّب حساب الطلبات (scrypt) الأول؛ ولو الدور بيفتح الكوابل + مربوط بحساب كوابل يجهّز
+  // جلسة الكوابل كمان. ولو مش لاقيه فى الطلبات يجرّب حسابات الكوابل (bcrypt) — دخول كوابل فقط.
+  app.post("/api/portal/login", async (req, res) => {
+    try {
+      const { username, password } = req.body || {};
+      if (!username || !password) return res.status(400).json({ message: "اسم المستخدم وكلمة السر مطلوبين" });
+
+      // 1) حساب الطلبات (Service-Flow)
+      const sfUser = await storage.getUserByUsername(String(username));
+      if (sfUser && !sfUser.suspended && await comparePassword(String(password), sfUser.password)) {
+        await new Promise<void>((resolve, reject) =>
+          (req as any).login(sfUser, (e: any) => (e ? reject(e) : resolve())));
+        // لو الدور بيفتح الكوابل + مربوط بحساب كوابل → جهّز جلسة الكوابل بهويته الأصلية
+        const cfmRole = cfmRoleOf(sfUser.role);
+        if (cfmRole && (sfUser as any).cfmUserId) {
+          try {
+            const { rows } = await pool.query(`SELECT * FROM cfm_users WHERE id = $1 LIMIT 1`, [(sfUser as any).cfmUserId]);
+            if (rows[0]) (req.session as any).cfmUser = rows[0];
+          } catch {}
+        }
+        return res.json({
+          sites: sitesForRole(sfUser.role),
+          sfRole: sfRoleOf(sfUser.role),
+          cfmRole,
+          user: await userResponse(req.user),
+        });
+      }
+
+      // 2) حساب الكوابل فقط (CFM) — bcrypt
+      const { rows: cfmRows } = await pool.query(`SELECT * FROM cfm_users WHERE username = $1 LIMIT 1`, [String(username)]);
+      const cfmUser = cfmRows[0];
+      if (cfmUser && await bcryptjs.compare(String(password), cfmUser.password)) {
+        (req.session as any).cfmUser = cfmUser;
+        return res.json({ sites: ["cfm"], sfRole: null, cfmRole: cfmUser.role, user: null });
+      }
+
+      return res.status(401).json({ message: "اسم المستخدم أو كلمة السر غير صحيحة" });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message || "خطأ فى الدخول" });
+    }
   });
 
   app.post(api.auth.logout.path, (req, res, next) => {

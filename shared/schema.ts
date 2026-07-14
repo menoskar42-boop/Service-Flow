@@ -61,6 +61,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   role: text("role").notNull(),
   workerCode: text("worker_code"), // 🆕 رقم العامل — يربط حساب الفني ببياناته فى التقارير (tech_name/الكباين)
+  cfmUserId: text("cfm_user_id"), // 🆕 البوابة الموحّدة: ربط بحساب الكوابل المقابل
   suspended: boolean("suspended").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
