@@ -9,6 +9,8 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { enqueueIfExecutorActive, latestMeasureAt, sleep } from "@/lib/exec-queue";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 import { Gauge } from "lucide-react";
 import { maintStatusBadge, boxCoords, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
@@ -91,6 +93,11 @@ const FULL_WIDTH_FIELDS = new Set<string>([
 ]);
 
 export function PhoneLookupReport() {
+  const { user } = useAuth();
+  // السوبر أدمن هو مشغّل النظام — يقدر ينفّذ محلياً حتى لو مفيش جهاز تنفيذ مفعّل.
+  // باقى المستخدمين لازم يكون فيه جهاز تنفيذ مفعّل، وإلا تظهر رسالة عدم الإتاحة.
+  const isSuper = user?.role === ROLES.SUPER_ADMIN;
+  const NO_EXECUTOR_MSG = "غير متاح حالياً — لا توجد أجهزة مفعّلة للتنفيذ. فعّل «جهاز التنفيذ» على متصفح السوبر أدمن أولاً.";
   const [input, setInput] = useState("");
   const [phone, setPhone] = useState("");
   // عدّاد يتزايد مع كل ضغطة «بحث» — يدخل فى queryKey لإجبار إعادة التحميل حتى لو الرقم
@@ -246,6 +253,7 @@ export function PhoneLookupReport() {
       void waitForMeasureThenRefresh(acc);
       return;
     }
+    if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
     window.open(buildDZSUrl([acc]), "_blank");
   };
 
@@ -436,6 +444,7 @@ export function PhoneLookupReport() {
                         alert("تم إضافة الرقم لطابور رفع السرعة — هيتنفّذ على جهاز التنفيذ");
                         return;
                       }
+                      if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
                       openProfileOptimization([line.accountNo], { afterStop });
                     }}
                     className="bg-white gap-2 text-emerald-700 border-emerald-200"
@@ -451,6 +460,7 @@ export function PhoneLookupReport() {
                         alert("تم إضافة الرقم لطابور إيقاف PO — هيتنفّذ على جهاز التنفيذ");
                         return;
                       }
+                      if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
                       openProfileOptimization([line.accountNo], { stopOnly: true });
                     }}
                     className="bg-white gap-2 text-orange-700 border-orange-200"
