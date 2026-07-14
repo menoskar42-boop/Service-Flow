@@ -15,15 +15,12 @@ import Login from "@/cfm/pages/login";
 import Users from "@/cfm/pages/users";
 import NotFound from "@/cfm/pages/not-found";
 import { useStore } from "@/cfm/lib/store";
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { setSessionExpiredHandler } from "@/cfm/lib/api";
-
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 function Router() {
   const { user, setUser, setSessionExpiredMessage } = useStore();
   const [location, setLocation] = useLocation();
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // الدخول الموحّد (SSO): عند فتح الكوابل نتحقّق **دايماً** من جلسة السيرفر ونزامن
   // الـ store معها — عشان مايظهرش مستخدم قديم محفوظ فى localStorage (زى ما كان الفنى
   // بيتفتحله أدمن بسبب جلسة سوبر أدمن سابقة على نفس المتصفح).
@@ -59,30 +56,8 @@ function Router() {
     setSessionExpiredHandler(handleSessionExpired);
   }, [handleSessionExpired]);
 
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimer.current) {
-      clearTimeout(inactivityTimer.current);
-    }
-    if (useStore.getState().user) {
-      inactivityTimer.current = setTimeout(() => {
-        handleSessionExpired();
-      }, INACTIVITY_TIMEOUT_MS);
-    }
-  }, [handleSessionExpired]);
-
-  useEffect(() => {
-    if (!user) {
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-      return;
-    }
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'mousemove'];
-    events.forEach(e => window.addEventListener(e, resetInactivityTimer));
-    resetInactivityTimer();
-    return () => {
-      events.forEach(e => window.removeEventListener(e, resetInactivityTimer));
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current);
-    };
-  }, [user, resetInactivityTimer]);
+  // (اتشال مؤقّت الخمول اللى كان بيسجّل خروج بعد ٣٠ دقيقة بدون حركة — كان بيتعارض
+  //  مع البوابة الموحّدة؛ الجلسة دلوقتى محكومة بجلسة السيرفر المشتركة)
 
   useEffect(() => {
     if (!user && !checkingSession && location !== "/login") {
