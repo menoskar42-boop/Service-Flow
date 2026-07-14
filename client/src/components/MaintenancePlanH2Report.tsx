@@ -22,6 +22,7 @@ interface PlanRow {
   perThousand: number;
   sector: string;
   region: string;
+  centralCode: string;
   maintenanceMonth: string;
 }
 
@@ -56,7 +57,7 @@ export function MaintenancePlanH2Report() {
     "القطاع": r.sector,
     "المنطقة": r.region,
     "السنترال": r.centralName,
-    "كود السنترال": "",
+    "كود السنترال": r.centralCode,
     "كود كابينة MSAN": r.msanCode,
     "تاريخ الصيانه": r.maintenanceMonth,
     "السعة": "",
@@ -65,8 +66,6 @@ export function MaintenancePlanH2Report() {
     "اجمالى عدد البكسيات المربوطة على MSAN": r.boxCount,
     "الشغال DATA": r.workingAdsl,
     "الإدارة": r.centralName,
-    "عدد الأعطال": r.faultCount,
-    "أعطال / الألف": r.perThousand,
   });
 
   const handleExportExcel = () => {
@@ -156,6 +155,7 @@ export function MaintenancePlanH2Report() {
                 <TableHead className="text-right font-bold">القطاع</TableHead>
                 <TableHead className="text-right font-bold">المنطقة</TableHead>
                 <TableHead className="text-right font-bold">السنترال</TableHead>
+                <TableHead className="text-right font-bold">كود السنترال</TableHead>
                 <TableHead className="text-right font-bold">كود كابينة MSAN</TableHead>
                 <TableHead className="text-right font-bold">تاريخ الصيانه</TableHead>
                 <TableHead className="text-right font-bold">الشغال</TableHead>
@@ -169,7 +169,7 @@ export function MaintenancePlanH2Report() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center py-14 text-muted-foreground">
+                  <TableCell colSpan={13} className="text-center py-14 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد كباين مطابقة للشروط (أعطال > 70 و أعطال/الألف > 30)"}
                   </TableCell>
                 </TableRow>
@@ -180,6 +180,7 @@ export function MaintenancePlanH2Report() {
                     <TableCell className="whitespace-nowrap">{r.sector}</TableCell>
                     <TableCell className="whitespace-nowrap">{r.region}</TableCell>
                     <TableCell className="whitespace-nowrap">{r.centralName}</TableCell>
+                    <TableCell className="font-mono text-xs">{r.centralCode}</TableCell>
                     <TableCell className="font-mono text-xs">{r.msanCode}</TableCell>
                     <TableCell className="font-bold text-purple-700">{r.maintenanceMonth}</TableCell>
                     <TableCell className="text-center">{r.workingLines}</TableCell>

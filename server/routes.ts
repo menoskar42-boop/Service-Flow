@@ -5936,12 +5936,20 @@ export async function registerRoutes(
         }))
         .filter((r: any) => r.faultCount > 70 && r.perThousand > 30)
         .sort((a: any, b: any) => b.perThousand - a.perThousand);
+      // أكواد السنترالات (كود السنترال فى النموذج) حسب الاسم
+      const CENTRAL_CODES: Record<string, string> = {
+        "الغنايم": "GHNAT",
+        "الغنايم-دير الجنادله": "DRGAT",
+        "الغنايم-العزايزة": "AMZAT",
+        "الغنايم-نجع العمدة": "NGOAT",
+      };
       // توزيع الأشهر: أغسطس (1) — أكتوبر (1) — ديسمبر (2)
       const months = ["أغسطس", "أكتوبر", "ديسمبر", "ديسمبر"];
       const plan = enriched.slice(0, months.length).map((r: any, i: number) => ({
         ...r,
         sector: "قطاع وسط الصعيد",
         region: "منطقة تليفونات اسيوط",
+        centralCode: CENTRAL_CODES[r.centralName] || "",
         maintenanceMonth: months[i],
       }));
       res.json(plan);
