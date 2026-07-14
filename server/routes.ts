@@ -13,15 +13,13 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
-import connectPgSimple from "connect-pg-simple";
+import MemoryStore from "memorystore";
 import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole } from "@shared/roles-access";
 import { registerCfmRoutes } from "./cfm/routes";
 
 const scryptAsync = promisify(scrypt);
-// جلسات مخزّنة فى Postgres (جدول user_sessions الموجود) — تبقى بعد إعادة تشغيل السيرفر
-// على Replit (الـ idle/sleep كان بيمسح جلسات الذاكرة فيعمل تسجيل خروج ويوقف التحديث التلقائى).
-const PgSessionStore = connectPgSimple(session);
+const SessionStore = MemoryStore(session);
 
 // Work-order reports are restricted to these centrals (الغنايم وفروعها).
 // Matching is tolerant of differences in dashes, spaces, hamza, ة/ه, ى/ي.
@@ -1043,7 +1041,7 @@ export async function registerRoutes(
 
   app.use(
     session({
-      store: new PgSessionStore({ pool, tableName: "user_sessions", createTableIfMissing: true }),
+      store: new SessionStore({ checkPeriod: 86400000 }),
       secret: "super-secret-session-key",
       resave: false,
       saveUninitialized: false,
@@ -1178,6 +1176,12 @@ export async function registerRoutes(
     res.status(403).json({ message: "Admin access required" });
   };
 
+  // إدارة المستخدمين: الأدمن/الأدمن الأعلى + أدمن المبيعات (الأخير لمستخدمى المبيعات فقط)
+  const requireUserManager = (req: any, res: any, next: any) => {
+    if (req.isAuthenticated() && (hasAdminAccess(req.user.role) || req.user.role === ROLES.SALES_ADMIN)) return next();
+    res.status(403).json({ message: "Admin access required" });
+  };
+
   const requireTechOrAdmin = (req: any, res: any, next: any) => {
     if (req.isAuthenticated() && (req.user.role === ROLES.TECH || hasAdminAccess(req.user.role))) return next();
     res.status(403).json({ message: "Tech or Admin access required" });
@@ -1203,13 +1207,17 @@ export async function registerRoutes(
   };
 
   // === User Management Routes ===
-  app.get(api.users.list.path, requireAuth, requireAdmin, async (req, res) => {
+  app.get(api.users.list.path, requireAuth, requireUserManager, async (req, res) => {
     const userList = await storage.getUsers();
-    const sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, workerCode: u.workerCode, suspended: u.suspended, createdAt: u.createdAt }));
+    let sanitized = userList.map(u => ({ id: u.id, username: u.username, role: u.role, workerCode: u.workerCode, suspended: u.suspended, createdAt: u.createdAt }));
+    // أدمن المبيعات يرى مستخدمى المبيعات فقط
+    if ((req.user as any).role === ROLES.SALES_ADMIN) {
+      sanitized = sanitized.filter(u => u.role === ROLES.SALES);
+    }
     res.json(sanitized);
   });
 
-  app.post(api.users.create.path, requireAuth, requireAdmin, async (req, res) => {
+  app.post(api.users.create.path, requireAuth, requireUserManager, async (req, res) => {
     try {
       const { username, password, role, workerCode } = req.body;
 
@@ -1217,12 +1225,15 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Missing required fields" });
       }
 
-      // الأدمن العادى يقدر ينشئ sales/tech/external/data_manager فقط.
-      // الأدمن الأعلى (super_admin) يقدر ينشئ كمان أدمن عادى وأدمن أعلى.
+      // أدمن المبيعات: مستخدمى مبيعات فقط.
+      // الأدمن العادى: sales/sales_admin/tech/external/data_manager.
+      // الأدمن الأعلى (super_admin): كمان أدمن عادى وأدمن أعلى.
       const requesterRole = (req.user as any).role;
       const validRoles = requesterRole === ROLES.SUPER_ADMIN
-        ? [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER, ROLES.ADMIN, ROLES.SUPER_ADMIN]
-        : [ROLES.SALES, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER];
+        ? [ROLES.SALES, ROLES.SALES_ADMIN, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER, ROLES.ADMIN, ROLES.SUPER_ADMIN]
+        : requesterRole === ROLES.SALES_ADMIN
+          ? [ROLES.SALES]
+          : [ROLES.SALES, ROLES.SALES_ADMIN, ROLES.TECH, ROLES.EXTERNAL, ROLES.DATA_MANAGER];
       if (!validRoles.includes(role)) {
         return res.status(400).json({ message: "دور غير مسموح به لهذا المستخدم" });
       }
