@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { executeSingle, latestMeasureAt, latestPoEventAt, sleep, type ExecJob } from "@/lib/exec-queue";
+import { executeBatch, latestMeasureAt, latestPoEventAt, sleep, type ExecJob } from "@/lib/exec-queue";
 
 // زر «جهاز التنفيذ» — للسوبر أدمن فقط. لما يتفعّل، البراوزر ده يبقى هو المنفّذ:
 // يبعت نبضة كل 20ث، ويسحب المهام من الطابور كل 4ث وينفّذها (رفع سرعة/قياس/إيقاف).
@@ -39,37 +39,32 @@ export function ExecutorButton() {
     // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
     const MEASURE_MAX_MS = 1.8 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
 
-    // ينفّذ خط واحد وينتظر لحد ما يخلص/يتأكد قبل الخط اللى بعده (يمنع التداخل)
-    const runAccount = async (type: ExecJob["type"], acc: string) => {
+    const MAX_TOTAL_MS = 4 * 60 * 60 * 1000; // سقف إجمالى معقول للباتش الواحد (٤ ساعات)
+
+    // ينفّذ **الجوب كله دفعة واحدة**: نبعت كل الأرقام للسكربت اللى بيلفّ عليها بنفسه (6/185…)
+    // بدل ما نفتح صفحة لكل رقم. ننتظر لحد ما آخر رقم (السكربت بيمشى بالترتيب) يتأكد، أو سقف زمنى.
+    const runBatch = async (type: ExecJob["type"], accs: string[]) => {
+      const last = accs[accs.length - 1];
       if (type === "measure") {
-        const before = await latestMeasureAt(acc);   // الوقت قبل الفتح
-        // اقفل تاب القياس السابق (لو لسه مفتوح) قبل ما نفتح الجديد — النتيجة السابقة
-        // اترفعت لـ 138 خلاص، فيفضل تاب واحد بس مفتوح: بتاع القياس الحالى/الأخير.
+        const before = await latestMeasureAt(last);
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
-        lastMeasureWin.current = executeSingle("measure", acc);
-        // استنى لحد ما القياس يتحدّث فعلاً (تأكيد) أو أقصى ١.٨ دقيقة
-        const deadline = Date.now() + MEASURE_MAX_MS;
+        lastMeasureWin.current = executeBatch("measure", accs); // DZS يلفّ على كلهم فى run واحد
+        const deadline = Date.now() + Math.min(accs.length * MEASURE_MAX_MS, MAX_TOTAL_MS);
         while (!stopped && Date.now() < deadline) {
           await sleep(15 * 1000);
-          if ((await latestMeasureAt(acc)) > before) return; // اتأكد القياس اتحدّث → للخط اللى بعده
+          if ((await latestMeasureAt(last)) > before) return; // آخر رقم اتقاس → الباتش خلص
         }
-        return; // انتهت المهلة القصوى
+        return;
       }
-      if (type === "raise") {
-        // مش مربوط بمهلة ثابتة — نعدّى للخط اللى بعده أول ما نتأكد إن رفع السرعة اتسجّل فعلاً
-        // (حدث raise فى line_po_events)، أو بحد أقصى ٨ دقايق للخط الواحد.
-        const before = await latestPoEventAt(acc, "raise");
-        executeSingle("raise", acc);
-        const deadline = Date.now() + RAISE_MAX_MS;
-        while (!stopped && Date.now() < deadline) {
-          await sleep(15 * 1000);
-          if ((await latestPoEventAt(acc, "raise")) > before) return; // اتأكد رفع السرعة اتسجّل → التالى
-        }
-        return; // انتهت المهلة القصوى
+      const ev = type === "stop" ? "stop" : "raise";
+      const perMax = type === "stop" ? STOP_MS : RAISE_MAX_MS;
+      const before = await latestPoEventAt(last, ev);
+      executeBatch(type, accs); // PO يلفّ على كل الأرقام فى run واحد
+      const deadline = Date.now() + Math.min(accs.length * perMax, MAX_TOTAL_MS);
+      while (!stopped && Date.now() < deadline) {
+        await sleep(15 * 1000);
+        if ((await latestPoEventAt(last, ev)) > before) return; // آخر رقم اتسجّل → الباتش خلص
       }
-      // إيقاف PO — مهلة ثابتة قصيرة
-      executeSingle("stop", acc);
-      await sleep(STOP_MS);
     };
 
     const claimAndRun = async () => {
@@ -80,9 +75,10 @@ export function ExecutorButton() {
         const job: ExecJob | null = r.ok ? await r.json() : null;
         if (job && job.id) {
           const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
-          for (let i = 0; i < accs.length && !stopped; i++) {
-            setCurrent(`${job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف" : "رفع سرعة"} ${i + 1}/${accs.length}`);
-            await runAccount(job.type, accs[i]); // متتابع مع انتظار
+          if (accs.length && !stopped) {
+            const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف" : "رفع سرعة";
+            setCurrent(`${label} (${accs.length} رقم)`);
+            await runBatch(job.type, accs); // الجوب كله دفعة واحدة
           }
           await fetch(`/api/exec-queue/${job.id}/done`, { method: "POST", credentials: "include" }).catch(() => {});
           setCurrent("");

@@ -23,6 +23,16 @@ export function executeSingle(type: ExecJobType, account: string | number): Wind
   return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}`, "_blank");
 }
 
+// تنفيذ **مجموعة أرقام دفعة واحدة** — نبعتها كلها للسكربت (DZS/PO) اللى بيلفّ عليها بنفسه
+// (زى ما لو ضغطنا عليها والزر مطفى: 6/185…). كده مايفتحش صفحة منفصلة لكل رقم.
+export function executeBatch(type: ExecJobType, accounts: (string | number)[]): Window | null {
+  const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
+  if (!accs.length) return null;
+  if (type === "raise") { openProfileOptimization(accs); return null; }
+  if (type === "stop") { openProfileOptimization(accs, { stopOnly: true }); return null; }
+  return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accs.join(","))}`, "_blank");
+}
+
 // آخر وقت قياس لرقم أكونت (للتأكد إن القياس اتحدّث) — millis أو 0
 export async function latestMeasureAt(account: string | number): Promise<number> {
   try {
