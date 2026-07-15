@@ -435,12 +435,24 @@ export function FileUploadSection() {
     const queryLoaded = Object.keys(pt).length > 0;
     const portsIso = pt["ports_run_complete"];
     const portsUploadIso = pt["/api/phone-ports/import"];
+    // ملف البورتات بيتحدّث فى المصدر مرة واحدة يومياً حوالى الساعة 7:45 صباحاً (8 إلا ربع).
+    // فأول تحديث فى اليوم لازم يكون بعد 7:45 (قبل كده المصدر لسه قديم)، وبعد ما يتحدّث بعد
+    // 7:45 مايتكررش باقى اليوم. يطبّق على الزر اليدوى والمؤقّت كل نص ساعة (الاتنين بينادوا الدالة دى).
+    const PORTS_THRESHOLD_MIN = 7 * 60 + 45; // 7:45 صباحاً بتوقيت القاهرة
+    const cairoMinOfDay = (d: string | number | Date) => {
+      const s = new Date(d).toLocaleString("en-GB", { timeZone: "Africa/Cairo", hour12: false, hour: "2-digit", minute: "2-digit" });
+      const [h, m] = s.split(":").map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    // تحديث «صالح» = اترفع النهارده وبعد الساعة 7:45
+    const updatedAfterThresholdToday = (iso?: string) =>
+      !!iso && cairoDay(iso) === today && cairoMinOfDay(iso) >= PORTS_THRESHOLD_MIN;
     const portsDoneToday =
-      (!!portsIso && cairoDay(portsIso) === today) ||
-      (!!portsUploadIso && cairoDay(portsUploadIso) === today);
-    // افتح البورتال فقط لو البيانات محمّلة وأكيد إن البورتات مش متحدثة النهارده. لو لسه بتتحمّل
-    // نتخطّى الفتح (نتجنّب فتح زائد بسبب سباق التحميل — كان بيفتح البورتال رغم إنها اتحدّثت).
-    if (queryLoaded && !portsDoneToday) {
+      updatedAfterThresholdToday(portsIso) || updatedAfterThresholdToday(portsUploadIso);
+    // كمان مانفتحش البورتال قبل 7:45 أصلاً (المصدر لسه ماتحدّثش)
+    const nowAfterThreshold = cairoMinOfDay(new Date()) >= PORTS_THRESHOLD_MIN;
+    // افتح البورتال فقط لو البيانات محمّلة، وعدّى 7:45، والبورتات لسه ماتحدّثتش بعد 7:45 النهارده.
+    if (queryLoaded && nowAfterThreshold && !portsDoneToday) {
       // «نسلّح» علامة على السيرفر عشان سكربت البورتال يشتغل تلقائياً — إشارة window.name/URL بتضيع
       // وسط فتح 4 تابات مرة واحدة (البورتال SPA بيمسحها)، فبنعتمد على العلامة دى بدلها.
       fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
@@ -713,9 +725,15 @@ export function FileUploadSection() {
             const today = cairoDay(new Date());
             const iso = uploadTimes["ports_run_complete"];
             const upIso = uploadTimes["/api/phone-ports/import"];
-            const done =
-              (!!iso && cairoDay(iso) === today) ||
-              (!!upIso && cairoDay(upIso) === today);
+            // «اتحدّثت» = اترفع النهارده بعد 7:45 (8 إلا ربع) — نفس شرط فتح البورتال
+            const PORTS_THRESHOLD_MIN = 7 * 60 + 45;
+            const cairoMinOfDay = (d: string | number | Date) => {
+              const s = new Date(d).toLocaleString("en-GB", { timeZone: "Africa/Cairo", hour12: false, hour: "2-digit", minute: "2-digit" });
+              const [h, m] = s.split(":").map(Number);
+              return (h || 0) * 60 + (m || 0);
+            };
+            const okToday = (x?: string) => !!x && cairoDay(x) === today && cairoMinOfDay(x) >= PORTS_THRESHOLD_MIN;
+            const done = okToday(iso) || okToday(upIso);
             return done
               ? <span className="text-green-600 font-medium">اتحدّثت ✓</span>
               : <span className="text-orange-600 font-medium">لسه</span>;
