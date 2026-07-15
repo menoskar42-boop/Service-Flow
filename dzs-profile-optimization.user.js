@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
-// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE. v0.9.5: فى وضع رفع السرعة، إيقاف الـ nightly التمهيدى مايتسجّلش كـ «إيقاف PO» (كان بيحدّث تاريخ الإيقاف مع الرفع بالغلط) — الإيقاف يتسجّل بس فى الوضع الصريح.
-// @version      0.9.5
+// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE.
+// @version      0.9.4
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -306,9 +306,7 @@
     // ---- confirm-stop: تأكيد إيقاف الـ Nightly PO (Yes بدون شيك مارك) ----
     if (phase === "confirm-stop") {
       const dlg = /confirm\s*action|stop\s*nightly\s*po|are\s*you\s*sure/i.test(txt());
-      // نسجّل «إيقاف PO» بس فى وضع الإيقاف الصريح (MODE=stop). فى وضع رفع السرعة، إيقاف الـ nightly
-      // ده مجرّد خطوة تمهيدية قبل Start Realtime PO — مش عملية إيقاف حقيقية، فمنسجّلهاش.
-      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { if (MODE === "stop") postPoEvent(CURRENT, "stop"); phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
+      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { postPoEvent(CURRENT, "stop"); phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
       else if (!dialogShown) selectAction(RE_STOP);
       return;
     }
