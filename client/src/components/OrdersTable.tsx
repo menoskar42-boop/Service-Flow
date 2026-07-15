@@ -129,11 +129,14 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       return false;
     }
 
-    // Tech filter: show orders for selected tech + all pending (unassigned) orders
+    // فلتر الفنى: أظهر طلبات الفنى المختار — واللى ردّ عليها (techName)، أو المُسنَدة له
+    // (assignedTechName)، أو قيد الانتظار وغير مُسنَدة لحد (متاحة له). لكن مانعرضش
+    // طلبات قيد الانتظار مُسنَدة لفنى تانى (دى كانت بتظهر بالغلط لكل فنى).
     if (techFilter) {
-      const isPending = order.status === ORDER_STATUS.PENDING;
-      const isTechMatch = order.techName === techFilter;
-      if (!isPending && !isTechMatch) return false;
+      const assignedName = (order as any).assignedTechName as string | null;
+      const isTechMatch = order.techName === techFilter || assignedName === techFilter;
+      const isUnassignedPending = order.status === ORDER_STATUS.PENDING && !assignedName;
+      if (!isTechMatch && !isUnassignedPending) return false;
     }
 
     if (roleIs(ROLES.ADMIN) && contractFilter !== "all") {
