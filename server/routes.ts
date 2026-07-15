@@ -1756,7 +1756,7 @@ export async function registerRoutes(
 
   app.post(api.orders.create.path, requireAuth, async (req, res) => {
     const user = req.user as any;
-    if (user.role !== ROLES.SALES && !hasAdminAccess(user.role)) {
+    if (user.role !== ROLES.SALES && user.role !== ROLES.SALES_ADMIN && !hasAdminAccess(user.role)) {
       return res.status(403).json({ message: "Only Sales can create orders" });
     }
 
@@ -1855,10 +1855,15 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.orders.resetTechResponse.path, requireAuth, requireAdmin, async (req, res) => {
+  app.post(api.orders.resetTechResponse.path, requireAuth, async (req, res) => {
     try {
+      const user = req.user as any;
+      // الأدمن/الأدمن الأعلى + أدمن المبيعات يقدروا يرجّعوا المعاينة للفنى
+      if (!hasAdminAccess(user.role) && user.role !== ROLES.SALES_ADMIN) {
+        return res.status(403).json({ message: "Admin access required" });
+      }
       const id = parseInt(req.params.id);
-      
+
       const existingOrder = await storage.getOrder(id);
       if (!existingOrder) {
         return res.status(404).json({ message: "Order not found" });
@@ -1916,7 +1921,7 @@ export async function registerRoutes(
       const user = req.user as any;
       const id = parseInt(req.params.id);
 
-      if (user.role !== ROLES.SALES && !hasAdminAccess(user.role)) {
+      if (user.role !== ROLES.SALES && user.role !== ROLES.SALES_ADMIN && !hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only Sales or Admin can request external review" });
       }
 

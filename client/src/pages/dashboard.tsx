@@ -579,7 +579,7 @@ export default function Dashboard() {
             {/* Actions Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
               <div className="flex items-center gap-2">
-                {user.role === ROLES.SALES && <CreateOrderModal />}
+                {(user.role === ROLES.SALES || user.role === ROLES.SALES_ADMIN) && <CreateOrderModal />}
                 {isSuperAdmin ? (
                   // السوبر أدمن: بوابة موحّدة تدير مستخدمى الطلبات والكوابل معاً
                   <UnifiedUsersManager />

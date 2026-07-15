@@ -540,8 +540,21 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     )}
 
                     {/* Sales actions */}
-                    {roleIs(ROLES.SALES) && (
+                    {(roleIs(ROLES.SALES) || roleIs(ROLES.SALES_ADMIN)) && (
                       <>
+                        {/* أدمن المبيعات: يقدر يرجّع المعاينة للفنى (إلغاء رد الفنى) */}
+                        {user?.role === ROLES.SALES_ADMIN && order.status !== ORDER_STATUS.PENDING && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => resetTechResponse(order.id)}
+                            disabled={isResetting}
+                            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                          >
+                            {isResetting ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4 mr-1" />}
+                            إرجاع للفنى
+                          </Button>
+                        )}
                         {/* Re-inspection button - only for not_feasible orders */}
                         {order.status === ORDER_STATUS.NOT_FEASIBLE && (
                           <AlertDialog>
