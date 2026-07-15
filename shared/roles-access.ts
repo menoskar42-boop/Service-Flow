@@ -8,7 +8,7 @@
 //  super_admin       | super_admin    | admin             | الموقعين
 //  external          | external       | external_affairs  | الموقعين
 //  splice_tech       | —              | splice_tech       | الكوابل فقط (فنى لحام)
-//  cable_engineer    | —              | cable_engineer    | الكوابل فقط (مهندس كوابل)
+//  cable_engineer    | external       | cable_engineer    | الموقعين (طلبات كشئون خارجية + كوابل كمهندس)
 //  sales             | sales          | —                 | الطلبات فقط (مبيعات)
 //  tech              | tech           | external_affairs  | الموقعين (فنى ↔ شئون خارجية)
 //  data_manager      | data_manager   | —                 | الطلبات فقط (بيانات)
@@ -29,7 +29,7 @@ export const UNIFIED_ROLE_ACCESS: Record<UnifiedRole, RoleAccess> = {
   admin:          { labelAr: "أدمن",              sf: "admin",        cfm: "admin" },
   external:       { labelAr: "الشئون الخارجية",  sf: "external",     cfm: "external_affairs" },
   splice_tech:    { labelAr: "فنى لحام",          sf: null,           cfm: "splice_tech" },
-  cable_engineer: { labelAr: "مهندس كوابل",       sf: null,           cfm: "cable_engineer" },
+  cable_engineer: { labelAr: "مهندس كوابل",       sf: "external",     cfm: "cable_engineer" },
   sales:          { labelAr: "مبيعات",            sf: "sales",        cfm: null },
   sales_admin:    { labelAr: "أدمن مبيعات",        sf: "sales_admin",  cfm: null },
   tech:           { labelAr: "فنى",               sf: "tech",         cfm: "external_affairs" },

@@ -1376,7 +1376,10 @@ export async function registerRoutes(
   // حساب واحد للموقعين: الدور الموحّد يحدّد دور الطلبات (users/scrypt) ودور الكوابل (cfm_users/bcrypt).
   // إنشاء/تعديل الدور/مسح/تصفير الباسورد يتعامل مع الجدولين معاً ويربطهم بـ cfm_user_id.
   const unifiedRoleOf = (sfRole: string | null, cfmRole: string | null): string => {
-    if (sfRole && (UNIFIED_ROLE_ACCESS as any)[sfRole]) return sfRole; // كل دور له طلبات اسمه الموحّد = دوره فى الطلبات
+    // طابق الزوج (طلبات + كوابل) بالضبط الأول — يميّز مهندس الكوابل (external+cable_engineer) عن الشئون الخارجية (external+external_affairs)
+    const exact = Object.entries(UNIFIED_ROLE_ACCESS).find(([, v]) => v.sf === (sfRole || null) && v.cfm === (cfmRole || null));
+    if (exact) return exact[0];
+    if (sfRole && (UNIFIED_ROLE_ACCESS as any)[sfRole]) return sfRole;
     const hit = Object.entries(UNIFIED_ROLE_ACCESS).find(([, v]) => v.sf === null && v.cfm === cfmRole);
     return hit ? hit[0] : (cfmRole || sfRole || "");
   };
@@ -1430,9 +1433,11 @@ export async function registerRoutes(
       let sfId: number | null = null;
       if (acc.sf) {
         const hp = await hashPassword(String(password));
+        // نخزّن الدور الفعّال فى الطلبات (acc.sf) — لكل الأدوار = اسم الدور الموحّد نفسه، ما عدا
+        // مهندس الكوابل: طلباته «external» فيتعامل معاه موقع الطلبات كشئون خارجية بدون أى تغيير.
         const ins = await pool.query(
           `INSERT INTO users (username, password, role, worker_code, cfm_user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-          [uname, hp, role, workerCode?.trim() || null, cfmId]);
+          [uname, hp, acc.sf, workerCode?.trim() || null, cfmId]);
         sfId = ins.rows[0].id;
       }
       res.status(201).json({ ok: true, username: uname, role, sfId, cfmId });
@@ -1450,8 +1455,8 @@ export async function registerRoutes(
       const cfm = (await pool.query(`SELECT * FROM cfm_users WHERE username = $1`, [uname])).rows[0];
       // الدور الجديد يحتاج حساب طلبات لكن مفيش → نطلب إعادة الإنشاء بالباسورد
       if (acc.sf && !sf) return res.status(400).json({ message: "الدور الجديد يحتاج حساب طلبات — احذف المستخدم وأنشئه من جديد بكلمة السر." });
-      // جهة الطلبات
-      if (acc.sf && sf) await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, sf.id]);
+      // جهة الطلبات (نخزّن الدور الفعّال acc.sf — مهندس الكوابل = external فى الطلبات)
+      if (acc.sf && sf) await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [acc.sf, sf.id]);
       else if (!acc.sf && sf) await pool.query(`DELETE FROM users WHERE id = $1`, [sf.id]); // الدور الجديد كوابل فقط
       // جهة الكوابل
       if (acc.cfm) {
