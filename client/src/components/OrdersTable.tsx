@@ -46,7 +46,14 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract, requestExternalReview, isRequestingExternal, assignOrder, isAssigning } = useOrders();
   const { users } = useUsers();
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // الشئون الخارجية (ومهندس الكوابل): وضعين فى نفس الصفحة — «المحوّلة إليك» (افتراضى) و«كل الطلبات».
+  const isExternalUser = user?.role === ROLES.EXTERNAL;
+  const [externalView, setExternalView] = useState<"transferred" | "all">("transferred");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(isExternalUser ? "needs_external" : "all");
+  const switchExternalView = (v: "transferred" | "all") => {
+    setExternalView(v);
+    setStatusFilter(v === "transferred" ? "needs_external" : "all");
+  };
   const [contractFilter, setContractFilter] = useState<ContractFilter>("all");
   const [techFilter, setTechFilter] = useState("");
   const [myRejectionsOnly, setMyRejectionsOnly] = useState(false);
@@ -99,7 +106,15 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     }
   };
 
+  // الطلبات المحوّلة للشئون الخارجية (محتاجة رد أو ردّت عليها): needs_external + external_feasible/not_feasible
+  const isExternalRouted = (o: Order) =>
+    o.status === ORDER_STATUS.NEEDS_EXTERNAL ||
+    o.status === ORDER_STATUS.EXTERNAL_FEASIBLE ||
+    o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
+
   const filteredOrders = orders.filter((order) => {
+    // وضع «المحوّلة إليك»: نعرض فقط الطلبات المحوّلة للشئون الخارجية
+    if (isExternalUser && externalView === "transferred" && !isExternalRouted(order)) return false;
     // متعذرات منطقة الفنى: المتعذرة على كابينه تابعة للفنى المستهدف (بصرف النظر عمّن ردّ)
     if (cabinetTechTarget) {
       const isRejected = order.status === ORDER_STATUS.NOT_FEASIBLE || order.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
@@ -181,8 +196,23 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     const tabs: { key: StatusFilter; label: string }[] = [
       { key: "all", label: "الكل" },
     ];
-    if (roleIs(ROLES.EXTERNAL)) {
-      // External only sees needs_external orders - no filter tabs needed except all
+    if (isExternalUser) {
+      if (externalView === "transferred") {
+        // وضع «المحوّلة إليك»: تبويبات الرد الخارجى فقط
+        return [
+          { key: "needs_external", label: "يحتاج ردك" },
+          { key: "external_feasible", label: "ردّيت: يمكن" },
+          { key: "external_not_feasible", label: "ردّيت: لا يمكن" },
+          { key: "all", label: "كل المحوّلة" },
+        ];
+      }
+      // وضع «كل الطلبات»: نفس تبويبات صفحة الطلبات الكاملة
+      tabs.push({ key: "feasible", label: "يمكن التنفيذ" });
+      tabs.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
+      tabs.push({ key: "pending", label: "قيد الانتظار" });
+      tabs.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
+      tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
+      tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
       return tabs;
     }
     tabs.push({ key: "feasible", label: "يمكن التنفيذ" });
@@ -225,6 +255,35 @@ export function OrdersTable({ orders }: OrdersTableProps) {
 
   return (
     <Card className="overflow-hidden shadow-sm border-0 bg-white">
+      {/* الشئون الخارجية: مبدّل بين «المحوّلة إليك» و«كل الطلبات» — segmented control */}
+      {isExternalUser && (
+        <div className="border-b p-3 bg-muted/20" dir="rtl">
+          <div className="inline-flex rounded-lg border bg-white p-1 shadow-sm">
+            <button
+              onClick={() => switchExternalView("transferred")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                externalView === "transferred" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              الطلبات المحوّلة إليك
+              <span className={`mr-2 px-2 py-0.5 rounded-full text-xs ${externalView === "transferred" ? "bg-white/20" : "bg-muted"}`}>
+                {orders.filter(isExternalRouted).length}
+              </span>
+            </button>
+            <button
+              onClick={() => switchExternalView("all")}
+              className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                externalView === "all" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              كل الطلبات
+              <span className={`mr-2 px-2 py-0.5 rounded-full text-xs ${externalView === "all" ? "bg-white/20" : "bg-muted"}`}>
+                {orders.length}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
       {/* Status Filter Tabs */}
       {statusTabs.length > 1 && (
         <div className="border-b overflow-x-auto">

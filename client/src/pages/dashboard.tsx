@@ -601,7 +601,9 @@ export default function Dashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-white p-6 rounded-xl border shadow-sm">
                   <div className="text-sm text-muted-foreground mb-1">الطلبات المحولة إليك</div>
-                  <div className="text-2xl font-bold font-display text-yellow-600">{orders?.length || 0}</div>
+                  <div className="text-2xl font-bold font-display text-yellow-600">
+                    {orders?.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL || o.status === ORDER_STATUS.EXTERNAL_FEASIBLE || o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE).length || 0}
+                  </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl border shadow-sm">
                   <div className="text-sm text-muted-foreground mb-1">بانتظار ردك</div>

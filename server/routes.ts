@@ -1692,9 +1692,10 @@ export async function registerRoutes(
     }
 
     if (user.role === ROLES.EXTERNAL) {
-      // External sees only orders in needs_external state
-      const externalOrders = await storage.getOrdersForExternal();
-      return res.json(externalOrders);
+      // الشئون الخارجية (ومنها مهندس الكوابل) تقدر تشوف كل الطلبات؛
+      // الفلترة لـ«الطلبات المطلوب الرد عليها» (needs_external) بتتم فى الواجهة (تبديل بزر).
+      const orders = await storage.getOrders();
+      return res.json(await attachCabinetTech(orders));
     }
 
     if (user.role === ROLES.TECH) {
