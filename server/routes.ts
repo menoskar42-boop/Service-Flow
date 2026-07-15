@@ -1231,8 +1231,11 @@ export async function registerRoutes(
   const hasAdminAccess = (role: string) => role === ROLES.ADMIN || role === ROLES.SUPER_ADMIN;
   // مين يقدر يتحكّم في مين: الأدمن الأعلى يتحكّم في الكل. الأدمن العادى في باقى المستخدمين فقط
   // (مش الأدمنز ولا الأدمنز الأعلى).
-  const canManageTarget = (requesterRole: string, targetRole: string) =>
-    requesterRole === ROLES.SUPER_ADMIN || (targetRole !== ROLES.ADMIN && targetRole !== ROLES.SUPER_ADMIN);
+  const canManageTarget = (requesterRole: string, targetRole: string) => {
+    if (requesterRole === ROLES.SUPER_ADMIN) return true;                 // الأدمن الأعلى: الكل
+    if (requesterRole === ROLES.SALES_ADMIN) return targetRole === ROLES.SALES; // أدمن المبيعات: مستخدمى المبيعات فقط
+    return targetRole !== ROLES.ADMIN && targetRole !== ROLES.SUPER_ADMIN; // الأدمن العادى: كله ما عدا الأدمنز
+  };
 
   const requireAdmin = (req: any, res: any, next: any) => {
     if (req.isAuthenticated() && hasAdminAccess(req.user.role)) return next();
@@ -1565,7 +1568,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete(api.users.delete.path, requireAuth, requireAdmin, async (req, res) => {
+  app.delete(api.users.delete.path, requireAuth, requireUserManager, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
       const currentUser = req.user as any;
@@ -1589,7 +1592,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put(api.users.suspend.path, requireAuth, requireAdmin, async (req, res) => {
+  app.put(api.users.suspend.path, requireAuth, requireUserManager, async (req, res) => {
     try {
       const userId = parseInt(req.params.id);
       const currentUser = req.user as any;

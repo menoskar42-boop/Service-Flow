@@ -36,9 +36,13 @@ export function UsersList() {
   const [open, setOpen] = useState(false);
   const { users, isLoading, deleteUser, isDeleting, suspendUser, isSuspending, setWorkerCode, isSettingWorkerCode } = useUsers();
   const { user: currentUser } = useAuth();
-  // الأدمن الأعلى يتحكّم في الكل؛ الأدمن العادى في باقى المستخدمين فقط (مش الأدمنز)
+  // الأدمن الأعلى يتحكّم في الكل؛ أدمن المبيعات في مستخدمى المبيعات فقط؛ الأدمن العادى في باقى المستخدمين (مش الأدمنز)
   const canManage = (u: { role: string }) =>
-    currentUser?.role === ROLES.SUPER_ADMIN || (u.role !== ROLES.ADMIN && u.role !== ROLES.SUPER_ADMIN);
+    currentUser?.role === ROLES.SUPER_ADMIN
+      ? true
+      : currentUser?.role === ROLES.SALES_ADMIN
+        ? u.role === ROLES.SALES
+        : (u.role !== ROLES.ADMIN && u.role !== ROLES.SUPER_ADMIN);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   const getRoleBadge = (role: string) => {
