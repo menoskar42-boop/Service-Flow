@@ -55,11 +55,24 @@ export function UnifiedUsersManager() {
 
   // تغيير الدور
   const changeRole = useMutation({
-    mutationFn: ({ username, role }: { username: string; role: string }) =>
-      api(`/api/portal/users/${encodeURIComponent(username)}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+    mutationFn: ({ username, role, password }: { username: string; role: string; password?: string }) =>
+      api(`/api/portal/users/${encodeURIComponent(username)}/role`, { method: "PATCH", body: JSON.stringify({ role, password }) }),
     onSuccess: invalidate,
     onError: (e: any) => alert(e.message),
   });
+
+  // معالج تغيير الدور: لو الدور الجديد محتاج حساب طلبات والمستخدم مالوش (كان كوابل فقط) نطلب كلمة سر لإنشائه
+  const handleRoleChange = (u: PortalUser, v: string) => {
+    if (v === u.unifiedRole) return;
+    const targetNeedsSf = !!roles.find((r) => r.key === v)?.sf;
+    if (targetNeedsSf && !u.sfId) {
+      const pw = prompt(`«${roleLabel(v)}» محتاج حساب فى موقع الطلبات للمستخدم ${u.username} (هو حالياً كوابل فقط).\nاكتب كلمة سر لحساب الطلبات:`);
+      if (!pw || !pw.trim()) return;
+      changeRole.mutate({ username: u.username, role: v, password: pw.trim() });
+      return;
+    }
+    if (confirm(`تغيير دور ${u.username} إلى «${roleLabel(v)}»؟`)) changeRole.mutate({ username: u.username, role: v });
+  };
 
   // تغيير الاسم الظاهر فى برنامج الكوابل
   const updateName = useMutation({
@@ -179,7 +192,7 @@ export function UnifiedUsersManager() {
                       <td className="p-2">{roleLabel(u.unifiedRole)}</td>
                       <td className="p-2 text-muted-foreground">{sites(u)}</td>
                       <td className="p-2">
-                        <Select value={u.unifiedRole} onValueChange={(v) => { if (v !== u.unifiedRole && confirm(`تغيير دور ${u.username} إلى «${roleLabel(v)}»؟`)) changeRole.mutate({ username: u.username, role: v }); }}>
+                        <Select value={u.unifiedRole} onValueChange={(v) => handleRoleChange(u, v)}>
                           <SelectTrigger className="text-right h-8 w-[150px]" dir="rtl"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {roles.map((r) => <SelectItem key={r.key} value={r.key} className="text-right">{r.labelAr}</SelectItem>)}

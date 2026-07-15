@@ -1448,16 +1448,29 @@ export async function registerRoutes(
   app.patch("/api/portal/users/:username/role", requireAuth, requireSuperAdmin, async (req: any, res) => {
     try {
       const uname = String(req.params.username || "").trim();
-      const { role } = req.body || {};
+      const { role, password } = req.body || {};
       const acc = (UNIFIED_ROLE_ACCESS as any)[role];
       if (!acc) return res.status(400).json({ message: "دور غير معروف" });
       const sf = (await pool.query(`SELECT * FROM users WHERE username = $1`, [uname])).rows[0];
       const cfm = (await pool.query(`SELECT * FROM cfm_users WHERE username = $1`, [uname])).rows[0];
-      // الدور الجديد يحتاج حساب طلبات لكن مفيش → نطلب إعادة الإنشاء بالباسورد
-      if (acc.sf && !sf) return res.status(400).json({ message: "الدور الجديد يحتاج حساب طلبات — احذف المستخدم وأنشئه من جديد بكلمة السر." });
+      let sfId: number | null = sf?.id ?? null;
       // جهة الطلبات (نخزّن الدور الفعّال acc.sf — مهندس الكوابل = external فى الطلبات)
-      if (acc.sf && sf) await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [acc.sf, sf.id]);
-      else if (!acc.sf && sf) await pool.query(`DELETE FROM users WHERE id = $1`, [sf.id]); // الدور الجديد كوابل فقط
+      if (acc.sf && sf) {
+        await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [acc.sf, sf.id]);
+      } else if (acc.sf && !sf) {
+        // الدور الجديد يحتاج حساب طلبات ومفيش (المستخدم كان كوابل فقط) → ننشئه بكلمة السر المُرسلة
+        // ونربطه بحساب الكوابل الموجود. الكوابل بيفضل بباسورده القديم، والطلبات بالباسورد الجديد
+        // (الدخول موحّد بعد كده: يدخل الطلبات فيتفتح الكوابل تلقائياً).
+        if (!password || String(password).length < 3) return res.status(400).json({ message: "الدور الجديد يحتاج حساب طلبات — ابعت كلمة سر لإنشائه", needPassword: true });
+        const hp = await hashPassword(String(password));
+        const ins = await pool.query(
+          `INSERT INTO users (username, password, role, cfm_user_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+          [uname, hp, acc.sf, cfm?.id ?? null]);
+        sfId = ins.rows[0].id;
+      } else if (!acc.sf && sf) {
+        await pool.query(`DELETE FROM users WHERE id = $1`, [sf.id]); // الدور الجديد كوابل فقط
+        sfId = null;
+      }
       // جهة الكوابل
       if (acc.cfm) {
         if (cfm) await pool.query(`UPDATE cfm_users SET role = $1 WHERE id = $2`, [acc.cfm, cfm.id]);
@@ -1469,7 +1482,7 @@ export async function registerRoutes(
              VALUES (gen_random_uuid()::text, $1, $2, $1, $3, false, now())
              ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role RETURNING id`,
             [uname, ph, acc.cfm]);
-          if (sf && ins.rows[0]) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [ins.rows[0].id, sf.id]);
+          if (sfId && ins.rows[0]) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [ins.rows[0].id, sfId]);
         }
       } else if (cfm) {
         await pool.query(`DELETE FROM cfm_users WHERE id = $1`, [cfm.id]);
