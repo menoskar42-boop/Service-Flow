@@ -7,6 +7,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
@@ -388,6 +390,9 @@ function UploadCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function FileUploadSection() {
+  const { user } = useAuth();
+  // شريط أزرار التحكّم (تحديث/431/430D/منافذ MSAN/التقارير اليومية/كل نص ساعة/مراجعة الاسم) — سوبر أدمن فقط
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
   const [tab, setTab] = useState<"maintenance" | "tickets" | "ticketsFtth" | "details" | "remaining" | "ftth" | "case138" | "ports" | "orders" | "cabinTech" | "techNames">("maintenance");
   const [orderBucket, setOrderBucket] = useState<"historical" | "current" | "archive">("historical");
   const [dateFrom, setDateFrom] = useState("");
@@ -662,7 +667,8 @@ export function FileUploadSection() {
 
   return (
     <div className="space-y-5" dir="rtl">
-      {/* زر تشغيل التقارير اليومية + زر تحديث منافذ MSAN من Provisioning Portal */}
+      {/* شريط أزرار التحكّم (تحديث/التقارير اليومية/منافذ MSAN/كل نص ساعة/مراجعة الاسم) — سوبر أدمن فقط */}
+      {isSuperAdmin && (
       <div className="flex justify-end gap-2 flex-wrap">
         <Button
           onClick={() => { qc.invalidateQueries(); }}
@@ -740,6 +746,7 @@ export function FileUploadSection() {
           })()}
         </span>
       </div>
+      )}
 
       {/* Upload Cards */}
       <Card className="p-4 bg-white border-0 shadow-sm space-y-3">
