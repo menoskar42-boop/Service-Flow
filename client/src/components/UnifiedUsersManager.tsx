@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, UsersRound, UserPlus, KeyRound, Trash2 } from "lucide-react";
+import { Loader2, UsersRound, UserPlus, KeyRound, Trash2, Pencil } from "lucide-react";
 
 // بوابة إدارة المستخدمين الموحّدة (سوبر أدمن فقط):
 // حساب واحد للموقعين — الدور الموحّد يحدّد دور الطلبات ودور الكوابل، والدخول موحّد (SSO).
 interface UnifiedRoleOpt { key: string; labelAr: string; sf: string | null; cfm: string | null; }
 interface PortalUser {
   sfId: number | null; username: string; sfRole: string | null; workerCode: string | null;
-  suspended: boolean; cfmId: string | null; cfmRole: string | null; unifiedRole: string;
+  suspended: boolean; cfmId: string | null; cfmRole: string | null; cfmName: string | null; unifiedRole: string;
 }
 
 const api = async (url: string, opts?: RequestInit) => {
@@ -61,6 +61,14 @@ export function UnifiedUsersManager() {
     onError: (e: any) => alert(e.message),
   });
 
+  // تغيير الاسم الظاهر فى برنامج الكوابل
+  const updateName = useMutation({
+    mutationFn: ({ username, name }: { username: string; name: string }) =>
+      api(`/api/portal/users/${encodeURIComponent(username)}/name`, { method: "PATCH", body: JSON.stringify({ name }) }),
+    onSuccess: invalidate,
+    onError: (e: any) => alert(e.message),
+  });
+
   const resetPassword = useMutation({
     mutationFn: ({ username, newPassword }: { username: string; newPassword: string }) =>
       api(`/api/portal/users/${encodeURIComponent(username)}/reset-password`, { method: "POST", body: JSON.stringify({ newPassword }) }),
@@ -104,6 +112,10 @@ export function UnifiedUsersManager() {
             <Input required type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="text-right" />
           </div>
           <div className="space-y-1">
+            <Label>الاسم فى برنامج الكوابل</Label>
+            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="text-right" placeholder="الاسم اللى بيظهر لما يضيف حاجة (لو فاضى = اسم المستخدم)" />
+          </div>
+          <div className="space-y-1">
             <Label>الدور الموحّد</Label>
             <Select required value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
               <SelectTrigger className="text-right" dir="rtl"><SelectValue placeholder="اختر الدور" /></SelectTrigger>
@@ -140,6 +152,7 @@ export function UnifiedUsersManager() {
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="p-2">المستخدم</th>
+                    <th className="p-2">الاسم (كوابل)</th>
                     <th className="p-2">الدور</th>
                     <th className="p-2">المواقع</th>
                     <th className="p-2">تغيير الدور</th>
@@ -150,6 +163,19 @@ export function UnifiedUsersManager() {
                   {users.map((u) => (
                     <tr key={u.username} className="border-b hover:bg-muted/20">
                       <td className="p-2 font-medium">{u.username}{u.workerCode ? <span className="text-xs text-muted-foreground"> ({u.workerCode})</span> : null}</td>
+                      <td className="p-2">
+                        {u.cfmRole ? (
+                          <button
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
+                            title="تعديل الاسم الظاهر فى برنامج الكوابل"
+                            onClick={() => { const n = prompt(`الاسم فى برنامج الكوابل لـ ${u.username}:`, u.cfmName || ""); if (n && n.trim()) updateName.mutate({ username: u.username, name: n.trim() }); }}
+                          >
+                            {u.cfmName || "—"} <Pencil className="w-3 h-3" />
+                          </button>
+                        ) : (
+                          <span className="text-gray-300 text-xs">— (مافيش كوابل)</span>
+                        )}
+                      </td>
                       <td className="p-2">{roleLabel(u.unifiedRole)}</td>
                       <td className="p-2 text-muted-foreground">{sites(u)}</td>
                       <td className="p-2">
@@ -174,7 +200,7 @@ export function UnifiedUsersManager() {
                       </td>
                     </tr>
                   ))}
-                  {users.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">لا يوجد مستخدمون</td></tr>}
+                  {users.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">لا يوجد مستخدمون</td></tr>}
                 </tbody>
               </table>
             </div>

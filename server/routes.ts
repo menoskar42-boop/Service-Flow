@@ -1394,7 +1394,7 @@ export async function registerRoutes(
     try {
       const { rows } = await pool.query(`
         SELECT u.id AS "sfId", u.username, u.role AS "sfRole", u.worker_code AS "workerCode",
-               COALESCE(u.suspended, false) AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole"
+               COALESCE(u.suspended, false) AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole", cu.name AS "cfmName"
         FROM users u
         LEFT JOIN LATERAL (
           SELECT c.* FROM cfm_users c WHERE c.id = u.cfm_user_id OR c.username = u.username
@@ -1402,7 +1402,7 @@ export async function registerRoutes(
         ) cu ON true
         UNION ALL
         SELECT NULL AS "sfId", cu.username, NULL AS "sfRole", NULL AS "workerCode",
-               false AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole"
+               false AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole", cu.name AS "cfmName"
         FROM cfm_users cu
         WHERE NOT EXISTS (SELECT 1 FROM users u2 WHERE u2.cfm_user_id = cu.id OR u2.username = cu.username)
         ORDER BY username`);
@@ -1476,6 +1476,18 @@ export async function registerRoutes(
         if (sf) await pool.query(`UPDATE users SET cfm_user_id = NULL WHERE id = $1`, [sf.id]);
       }
       res.json({ ok: true, username: uname, role });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // تغيير الاسم الظاهر فى برنامج الكوابل (cfm_users.name) — اللى بيظهر لما المستخدم يضيف حاجة
+  app.patch("/api/portal/users/:username/name", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const uname = String(req.params.username || "").trim();
+      const name = String(req.body?.name || "").trim();
+      if (!name) return res.status(400).json({ message: "الاسم مطلوب" });
+      const r = await pool.query(`UPDATE cfm_users SET name = $1 WHERE username = $2`, [name, uname]);
+      if (!r.rowCount) return res.status(404).json({ message: "المستخدم مالوش حساب فى برنامج الكوابل" });
+      res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
