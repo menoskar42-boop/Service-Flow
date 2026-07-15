@@ -6,6 +6,7 @@
 //  دور موحّد        | الطلبات (SF)   | الكوابل (CFM)      | يفتح
 //  ----------------- | -------------- | ----------------- | ---------
 //  super_admin       | super_admin    | admin             | الموقعين
+//  central_manager   | admin          | external_affairs  | الموقعين (مدير السنترال: أدمن طلبات + شئون خارجية كوابل)
 //  external          | external       | external_affairs  | الموقعين
 //  splice_tech       | —              | splice_tech       | الكوابل فقط (فنى لحام)
 //  cable_engineer    | external       | cable_engineer    | الموقعين (طلبات كشئون خارجية + كوابل كمهندس)
@@ -17,7 +18,7 @@
 // ============================================================================
 
 export type UnifiedRole =
-  | "super_admin" | "admin" | "external" | "splice_tech" | "cable_engineer"
+  | "super_admin" | "admin" | "central_manager" | "external" | "splice_tech" | "cable_engineer"
   | "sales" | "sales_admin" | "tech" | "data_manager" | "supervisor" | "ext_tech";
 
 export interface RoleAccess {
@@ -29,6 +30,7 @@ export interface RoleAccess {
 export const UNIFIED_ROLE_ACCESS: Record<UnifiedRole, RoleAccess> = {
   super_admin:    { labelAr: "أدمن أعلى",        sf: "super_admin",  cfm: "admin" },
   admin:          { labelAr: "أدمن",              sf: "admin",        cfm: "admin" },
+  central_manager:{ labelAr: "مدير السنترال",     sf: "admin",        cfm: "external_affairs" },
   external:       { labelAr: "الشئون الخارجية",  sf: "external",     cfm: "external_affairs" },
   splice_tech:    { labelAr: "فنى لحام",          sf: null,           cfm: "splice_tech" },
   cable_engineer: { labelAr: "مهندس كوابل",       sf: "external",     cfm: "cable_engineer" },
