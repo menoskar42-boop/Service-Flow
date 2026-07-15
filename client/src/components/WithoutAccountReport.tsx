@@ -349,7 +349,7 @@ export function WithoutAccountReport() {
             >
               <CalendarClock className="w-4 h-4" /> شكوى هذا الشهر
             </Button>
-            {canEdit && (
+            {user?.role === ROLES.SUPER_ADMIN && (
               <Button
                 variant="outline"
                 size="sm"

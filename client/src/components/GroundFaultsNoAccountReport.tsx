@@ -220,7 +220,7 @@ export function GroundFaultsNoAccountReport() {
               disabled={!filterCentral}
               className="w-full sm:w-40 text-sm"
             />
-            {canEdit && (
+            {user?.role === ROLES.SUPER_ADMIN && (
               <Button
                 variant="outline"
                 size="sm"

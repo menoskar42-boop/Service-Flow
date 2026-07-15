@@ -262,7 +262,7 @@ export function RegularizedNoAccountReport() {
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
-            {canEdit && (
+            {user?.role === ROLES.SUPER_ADMIN && (
               <Button
                 variant="outline"
                 size="sm"

@@ -10,6 +10,8 @@ import {
 import { Loader2, FileSpreadsheet, Printer, RotateCcw, IdCard } from "lucide-react";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 
 // تقرير الأرقام المعلَّمة "بدون رقم أكونت" — اتشالت من تقرير الخطوط بدون أكونت بالحذف اليدوى،
 // أو Customer360 رجّع "this subscriber does not exist". المصدر = جدول lines_no_account.
@@ -40,6 +42,7 @@ const sourceLabel = (name: string | null) =>
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 
 export function MarkedNoAccountReport() {
+  const { user } = useAuth();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const qc = useQueryClient();
@@ -117,16 +120,18 @@ export function MarkedNoAccountReport() {
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{rows.length}</strong> رقم</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => openCustomer360(rows.map((r) => r.fullPhone))}
-          disabled={rows.length === 0}
-          className="text-purple-700 border-purple-200 gap-1"
-          title="فتح Customer360 لجلب أرقام الأكونت لخطوط هذا التقرير تلقائياً"
-        >
-          <IdCard className="w-4 h-4" /> Customer360
-        </Button>
+        {user?.role === ROLES.SUPER_ADMIN && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => openCustomer360(rows.map((r) => r.fullPhone))}
+            disabled={rows.length === 0}
+            className="text-purple-700 border-purple-200 gap-1"
+            title="فتح Customer360 لجلب أرقام الأكونت لخطوط هذا التقرير تلقائياً"
+          >
+            <IdCard className="w-4 h-4" /> Customer360
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={rows.length === 0} className="text-green-700 border-green-200 gap-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
         </Button>
