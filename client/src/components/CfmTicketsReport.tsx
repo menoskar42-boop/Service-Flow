@@ -140,21 +140,29 @@ export function CfmTicketsReport() {
     const w = window.open("about:blank", "dzs_measure");
     setMeasuringId(t.id);
     try {
-      const seen = new Set<string>();
-      const items: DZSItem[] = [];
-      for (const bx of boxes) {
-        const params = new URLSearchParams({ limit: "20000", box: bx });
-        if (central) params.set("central", central);
-        if (cabin) params.set("cabin", cabin);
-        const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
-        const json = await res.json();
-        for (const r of ((json.data as any[]) ?? [])) {
-          const account = (r.accountNo ?? "").toString().trim();
-          if (!account || seen.has(account)) continue;
-          seen.add(account);
-          items.push({ account, complaint: "", short: r.telNo ?? "", full: r.fullPhone ?? "" });
+      // نجيب الخطوط التى لها أكونت على البكس. اسم السنترال فى التذكرة (من نظام الكوابل) قد يكون
+      // مكتوباً بصيغة مختلفة عن phone_lines (مسافة/إملاء) فالمطابقة الصارمة بترجّع صفر — لذلك نجرّب
+      // أولاً بالسنترال+الكابينة+البكس، ولو رجعت صفر نعيد المحاولة بالكابينة+البكس فقط (الكابينة مفتاح كافٍ).
+      const fetchItems = async (useCentral: boolean) => {
+        const seen = new Set<string>();
+        const out: DZSItem[] = [];
+        for (const bx of boxes) {
+          const params = new URLSearchParams({ limit: "20000", box: bx });
+          if (useCentral && central) params.set("central", central);
+          if (cabin) params.set("cabin", cabin);
+          const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
+          const json = await res.json();
+          for (const r of ((json.data as any[]) ?? [])) {
+            const account = (r.accountNo ?? "").toString().trim();
+            if (!account || seen.has(account)) continue;
+            seen.add(account);
+            out.push({ account, complaint: "", short: r.telNo ?? "", full: r.fullPhone ?? "" });
+          }
         }
-      }
+        return out;
+      };
+      let items = await fetchItems(true);
+      if (items.length === 0 && central && cabin) items = await fetchItems(false);
       if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد خطوط لها أكونت على هذا البكس"); return; }
       if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) { try { w?.close(); } catch {} return; }
       if (w) w.location.href = buildDZSUrl(items);
@@ -175,21 +183,28 @@ export function CfmTicketsReport() {
     const cabin = t.cable?.number ?? "";
     setPoBusyId(t.id);
     try {
-      const seen = new Set<string>();
-      const accounts: string[] = [];
-      for (const bx of boxes) {
-        const params = new URLSearchParams({ limit: "20000", box: bx });
-        if (central) params.set("central", central);
-        if (cabin) params.set("cabin", cabin);
-        const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
-        const json = await res.json();
-        for (const r of ((json.data as any[]) ?? [])) {
-          const account = (r.accountNo ?? "").toString().trim();
-          if (!account || seen.has(account)) continue;
-          seen.add(account);
-          accounts.push(account);
+      // نفس منطق القياس: مطابقة صارمة (سنترال+كابينة+بكس) أولاً، وارجاع بالكابينة+البكس لو رجعت صفر
+      // (اسم السنترال فى التذكرة قد يختلف عن phone_lines فى المسافة/الإملاء).
+      const fetchAccounts = async (useCentral: boolean) => {
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const bx of boxes) {
+          const params = new URLSearchParams({ limit: "20000", box: bx });
+          if (useCentral && central) params.set("central", central);
+          if (cabin) params.set("cabin", cabin);
+          const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
+          const json = await res.json();
+          for (const r of ((json.data as any[]) ?? [])) {
+            const account = (r.accountNo ?? "").toString().trim();
+            if (!account || seen.has(account)) continue;
+            seen.add(account);
+            out.push(account);
+          }
         }
-      }
+        return out;
+      };
+      let accounts = await fetchAccounts(true);
+      if (accounts.length === 0 && central && cabin) accounts = await fetchAccounts(false);
       if (accounts.length === 0) { alert("لا توجد خطوط لها أكونت على هذا البكس"); return; }
       if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : {});
