@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet } from "lucide-react";
+import { Loader2, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 
 interface Row {
@@ -29,7 +29,7 @@ interface Row {
 export function SubscriberInfoReport() {
   const [q, setQ] = useState("");
 
-  const { data: rows = [], isFetching } = useQuery<Row[]>({
+  const { data: rows = [], isFetching, refetch } = useQuery<Row[]>({
     queryKey: ["/api/line-subscriber-info", q],
     queryFn: async () => {
       const p = new URLSearchParams();
@@ -76,6 +76,9 @@ export function SubscriberInfoReport() {
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{rows.length}</strong></span>
         <div className="flex-1" />
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="text-blue-700 border-blue-200 gap-1" title="تحديث بيانات الصفحة">
+          <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} /> تحديث
+        </Button>
         <ReviewSubscriberInfoButton />
         <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={rows.length === 0} className="text-green-700 border-green-200 gap-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
