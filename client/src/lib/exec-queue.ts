@@ -71,6 +71,19 @@ export async function enqueueIfExecutorActive(type: ExecJobType, accounts: (stri
   return !!res.ok;
 }
 
+// سجّل «نيّة» العملية (مين طلبها) — يُختم بعدها فى النتيجة (measured_by / last_raise_by / last_stop_by).
+export async function recordOpIntent(type: ExecJobType, accounts: (string | number)[]): Promise<void> {
+  const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
+  if (!accs.length) return;
+  try {
+    await fetch("/api/op-intent", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, accounts: accs }),
+    });
+  } catch { /* تسجيل النيّة إضافى — لو فشل نكمّل عادى */ }
+}
+
 export const NO_EXECUTOR_MSG = "غير متاح حالياً — لا توجد أجهزة مفعّلة للتنفيذ. فعّل «جهاز التنفيذ» على متصفح السوبر أدمن أولاً.";
 const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", raise: "رفع السرعة", stop: "إيقاف PO" };
 
@@ -81,6 +94,7 @@ const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", rais
 export async function dispatchSpeedTool(type: ExecJobType, accounts: (string | number)[], isSuper: boolean): Promise<boolean> {
   const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
   if (!accs.length) { alert("لا توجد أرقام أكونت"); return true; }
+  void recordOpIntent(type, accs); // سجّل مين طلب العملية (للعرض بعدها: اتعمل بواسطة …)
   if (await isExecutorActive()) {
     const res = await enqueueJob(type, accs);
     alert(res.ok ? `تم إضافة ${accs.length} رقم لطابور ${QUEUE_LABEL[type]} — هيتنفّذ على جهاز التنفيذ` : (res.message || "تعذّر الإضافة للطابور"));

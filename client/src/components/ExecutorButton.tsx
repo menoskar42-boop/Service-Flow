@@ -36,8 +36,8 @@ export function ExecutorButton() {
 
     const heartbeat = () => { fetch("/api/exec-queue/heartbeat", { method: "POST", credentials: "include" }).catch(() => {}); };
 
-    // مهلة كل خط (بالمللى): قياس ٢د، رفع سرعة ٢د، إيقاف ١د
-    const RAISE_MS = 2 * 60 * 1000, MEASURE_MAX_MS = 2 * 60 * 1000, STOP_MS = 60 * 1000;
+    // مهلة كل خط (بالمللى): قياس ٢د، رفع سرعة ٢د، إيقاف نص دقيقة (٣٠ث)
+    const RAISE_MS = 2 * 60 * 1000, MEASURE_MAX_MS = 2 * 60 * 1000, STOP_MS = 30 * 1000;
 
     // ينفّذ خط واحد وينتظر لحد ما يخلص/يتأكد قبل الخط اللى بعده (يمنع التداخل)
     const runAccount = async (type: ExecJob["type"], acc: string) => {

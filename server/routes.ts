@@ -2713,8 +2713,9 @@ export async function registerRoutes(
               la.account_no AS "accountNo",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
               c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
-              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
-              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
+              c.measured_by AS "measuredBy",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt", pe.last_raise_by AS "raisedBy",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt", pe.last_stop_by AS "stoppedBy",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt",
               -- هل الخط تابع لمنطقة الفنى الحالى؟ الاعتماد على كود كابينة المسان: لازم يكون فيه
               -- صف فى cabinet_technicians بنفس الـ cabin_code وبرقم العامل بتاع المستخدم الحالى.
@@ -2739,7 +2740,7 @@ export async function registerRoutes(
        ) ctc ON true
        LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = ctc.cabin_code
        LEFT JOIN LATERAL (
-         SELECT c2.full_phone, c2.current_speed, c2.max_speed, c2.score, c2.uploaded_at
+         SELECT c2.full_phone, c2.current_speed, c2.max_speed, c2.score, c2.uploaded_at, c2.measured_by
          FROM case_138 c2 WHERE c2.full_phone = COALESCE(pl.full_phone, t.full) ORDER BY c2.id DESC LIMIT 1
        ) c ON true
        LEFT JOIN LATERAL (
@@ -4215,12 +4216,18 @@ export async function registerRoutes(
       }
       // لا بد من مفتاح ربط واحد على الأقل
       if (!phoneShort && !complainNo && !accountNo) continue;
+      // مين طلب القياس ده؟ من op_intents (اتسجّلت وقت الضغط على زر القياس)
+      let measuredBy: string | null = null;
+      if (accountNo) {
+        const { rows: oi } = await pool.query(`SELECT username FROM op_intents WHERE account = $1 AND op_type = 'measure'`, [accountNo]);
+        measuredBy = oi[0]?.username || null;
+      }
       await pool.query(
         `INSERT INTO case_138
-           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, complain_time)
-         VALUES ($1,$2,$3,$4,$5,$6,$7, now())`,
+           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, measured_by, complain_time)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())`,
         [phoneShort, complainNo, toInt(it.score), (it.currentSpeed ?? "").toString().trim() || null,
-         (it.maxSpeed ?? "").toString().trim() || null, fullPhone, accountNo],
+         (it.maxSpeed ?? "").toString().trim() || null, fullPhone, accountNo, measuredBy],
       );
       inserted++;
     }
@@ -4242,15 +4249,40 @@ export async function registerRoutes(
       const ev = (it?.event ?? "").toString().trim().toLowerCase();
       if (!acc || (ev !== "raise" && ev !== "stop")) continue;
       const col = ev === "raise" ? "last_raise_at" : "last_stop_at";
+      const byCol = ev === "raise" ? "last_raise_by" : "last_stop_by";
+      // مين طلب الرفع/الإيقاف ده؟ من op_intents
+      const { rows: oi } = await pool.query(`SELECT username FROM op_intents WHERE account = $1 AND op_type = $2`, [acc, ev]);
+      const by = oi[0]?.username || null;
       await pool.query(
-        `INSERT INTO line_po_events (account_no, ${col}, updated_at)
-         VALUES ($1, now(), now())
-         ON CONFLICT (account_no) DO UPDATE SET ${col} = now(), updated_at = now()`,
-        [acc],
+        `INSERT INTO line_po_events (account_no, ${col}, ${byCol}, updated_at)
+         VALUES ($1, now(), $2, now())
+         ON CONFLICT (account_no) DO UPDATE SET ${col} = now(), ${byCol} = $2, updated_at = now()`,
+        [acc, by],
       );
       saved++;
     }
     res.json({ saved });
+  });
+
+  // تسجيل «نيّة» العملية: مين المستخدم اللى ضغط قياس/رفع سرعة/إيقاف لأى أرقام — يُختم بعدها فى
+  // case_138.measured_by / line_po_events.last_raise_by / last_stop_by لما النتيجة ترجع.
+  app.post("/api/op-intent", requireAuth, async (req: any, res) => {
+    try {
+      const type = String(req.body?.type || "").trim().toLowerCase();
+      if (!["measure", "raise", "stop"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
+      const list = Array.isArray(req.body?.accounts) ? req.body.accounts : (req.body?.account ? [req.body.account] : []);
+      const accs = [...new Set(list.map((a: any) => String(a ?? "").trim()).filter(Boolean))];
+      if (!accs.length) return res.json({ ok: true, count: 0 });
+      const username = String(req.user?.username || "");
+      for (const acc of accs) {
+        await pool.query(
+          `INSERT INTO op_intents (account, op_type, username, created_at) VALUES ($1, $2, $3, now())
+           ON CONFLICT (account, op_type) DO UPDATE SET username = EXCLUDED.username, created_at = now()`,
+          [acc, type, username],
+        );
+      }
+      res.json({ ok: true, count: accs.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // === Provisioning Portal Tampermonkey → تحديث ملف البورتات (phone_ports) تلقائياً ===

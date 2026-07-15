@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent } from "@/lib/exec-queue";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { Gauge } from "lucide-react";
@@ -45,8 +45,11 @@ interface LineData {
   maxSpeed: string | null;
   score: number | null;
   lastMeasTime: string | null;
+  measuredBy: string | null;
   lastPoRaiseAt: string | null;
+  raisedBy: string | null;
   lastPoStopAt: string | null;
+  stoppedBy: string | null;
   lastComplaintAt: string | null;
   portType: string | null;
   rowNo: string | null;
@@ -75,6 +78,12 @@ const fmtDate = (d: string | null) => {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
+
+// يعرض التاريخ + مين عمل العملية (لو معروف): «… — بواسطة فلان»
+const withBy = (dateStr: string, by: string | null): ReactNode =>
+  by && dateStr !== "-"
+    ? <span>{dateStr} <span className="text-xs text-muted-foreground">— بواسطة {by}</span></span>
+    : dateStr;
 
 const scoreBadge = (v: number | null) => {
   if (v == null) return <span className="text-gray-400">-</span>;
@@ -271,6 +280,7 @@ export function PhoneLookupReport() {
   const measureDZS = async () => {
     const acc = (line?.accountNo ?? "").toString().trim();
     if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط — لا يمكن القياس"); return; }
+    void recordOpIntent("measure", [acc]);
     if (await enqueueIfExecutorActive("measure", [acc])) {
       alert("تم إضافة الرقم لطابور القياس — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد ظهور النتيجة");
       void waitForOpThenRefresh("measure", acc);
@@ -292,9 +302,9 @@ export function PhoneLookupReport() {
         ["السرعة الحالية", dash(line.currentSpeed)],    ["DP Terminal", dash(line.dpTerminal)],
         ["أقصى سرعة", dash(line.maxSpeed)],             ["كود الكابينة (MSAN)", dash(line.msanCode)],
         ["الاسكور", scoreBadge(line.score)],            ["رقم الفريم", dash(line.frame)],
-        ["تاريخ آخر قياس", fmtDate(line.lastMeasTime)], ["Port Type", dash(line.portType)],
-        ["آخر رفع سرعة", fmtDate(line.lastPoRaiseAt)],  ["voice status", dash(line.voiceStatus)],
-        ["آخر إيقاف PO", fmtDate(line.lastPoStopAt)],   ["data status", dash(line.dataStatus)],
+        ["تاريخ آخر قياس", withBy(fmtDate(line.lastMeasTime), line.measuredBy)], ["Port Type", dash(line.portType)],
+        ["آخر رفع سرعة", withBy(fmtDate(line.lastPoRaiseAt), line.raisedBy)],  ["voice status", dash(line.voiceStatus)],
+        ["آخر إيقاف PO", withBy(fmtDate(line.lastPoStopAt), line.stoppedBy)],   ["data status", dash(line.dataStatus)],
         ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)], ["Row", dash(line.rowNo)],
         ["حالة صيانة البكس", boxMaintCell],             ["Column", dash(line.columnNo)],
         ["هل البكس له تكت أرضية", groundCell],
@@ -464,6 +474,7 @@ export function PhoneLookupReport() {
                     onClick={async () => {
                       if (awaitingOp === "raise") { cancelOpWait(); return; }
                       const afterStop = window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة ثم إيقاف الـ Nightly الناتج\nإلغاء = رفع السرعة فقط");
+                      void recordOpIntent("raise", [line.accountNo]);
                       if (await enqueueIfExecutorActive("raise", [line.accountNo])) {
                         alert("تم إضافة الرقم لطابور رفع السرعة — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد التنفيذ");
                         void waitForOpThenRefresh("raise", String(line.accountNo));
@@ -482,6 +493,7 @@ export function PhoneLookupReport() {
                     variant="outline"
                     onClick={async () => {
                       if (awaitingOp === "stop") { cancelOpWait(); return; }
+                      void recordOpIntent("stop", [line.accountNo]);
                       if (await enqueueIfExecutorActive("stop", [line.accountNo])) {
                         alert("تم إضافة الرقم لطابور إيقاف PO — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد التنفيذ");
                         void waitForOpThenRefresh("stop", String(line.accountNo));

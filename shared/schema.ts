@@ -544,6 +544,7 @@ export const case138 = pgTable("case_138", {
   faultType: text("fault_type"),
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
+  measuredBy: text("measured_by"), // مين طلب آخر قياس لهذا الرقم (من op_intents)
 });
 
 export type Case138 = typeof case138.$inferSelect;

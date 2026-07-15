@@ -951,6 +951,21 @@ export async function ensureSchema() {
     )
   `);
 
+  // مين عمل آخر قياس/رفع سرعة/إيقاف: نسجّل «نيّة» المستخدم وقت الضغط (op_intents)، ولما النتيجة
+  // ترجع (القياس على case_138، والأحداث على line_po_events) نختم اسم صاحب الطلب فى الأعمدة دى.
+  await pool.query(`ALTER TABLE case_138 ADD COLUMN IF NOT EXISTS measured_by text`);
+  await pool.query(`ALTER TABLE line_po_events ADD COLUMN IF NOT EXISTS last_raise_by text`);
+  await pool.query(`ALTER TABLE line_po_events ADD COLUMN IF NOT EXISTS last_stop_by text`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS op_intents (
+      account text NOT NULL,
+      op_type text NOT NULL,
+      username text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (account, op_type)
+    )
+  `);
+
   // ===== Cable-Fault-Manager (CFM) — جداول برنامج الكوابل المدمج =====
   // كل جداول CFM بأسماءها الأصلية عدا users → cfm_users (لتجنّب التعارض مع users بتاعنا).
   // كتلة واحدة داخل try عشان أى فشل مايوقفش باقى ensureSchema. الأنواع مطابقة لـ shared/schema.ts بتاع CFM.
