@@ -71,8 +71,10 @@ export default function PhoneLinesEditPage() {
   const [editDp, setEditDp] = useState("");
   const [editCabinetIn, setEditCabinetIn] = useState("");
 
-  const canEdit = user?.role === ROLES.TECH || user?.role === ROLES.ADMIN;
-  const canRollback = user?.role === ROLES.TECH || user?.role === ROLES.ADMIN;
+  // الشئون الخارجية تشوف وتعمل زى الفنى بالظبط فى صفحة البيانات الفنية
+  const isTechLike = user?.role === ROLES.TECH || user?.role === ROLES.EXTERNAL;
+  const canEdit = isTechLike || user?.role === ROLES.ADMIN;
+  const canRollback = isTechLike || user?.role === ROLES.ADMIN;
   const canConfirm = user?.role === ROLES.DATA_MANAGER;
 
   // --- Phone lines search ---

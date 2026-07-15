@@ -1249,7 +1249,8 @@ export async function registerRoutes(
   };
 
   const requireTechOrAdmin = (req: any, res: any, next: any) => {
-    if (req.isAuthenticated() && (req.user.role === ROLES.TECH || hasAdminAccess(req.user.role))) return next();
+    // الشئون الخارجية (external) تعمل زى الفنى فى البيانات الفنية (تعديل الخطوط/المهمات)
+    if (req.isAuthenticated() && (req.user.role === ROLES.TECH || req.user.role === ROLES.EXTERNAL || hasAdminAccess(req.user.role))) return next();
     res.status(403).json({ message: "Tech or Admin access required" });
   };
 
@@ -5539,8 +5540,8 @@ export async function registerRoutes(
       return res.status(400).json({ message: "لا يمكن التراجع — السجل ليس تحت التنفيذ" });
     }
 
-    // Tech can only rollback their own edits
-    if (user.role === ROLES.TECH && edit.edited_by_id !== user.id) {
+    // Tech/External can only rollback their own edits
+    if ((user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && edit.edited_by_id !== user.id) {
       return res.status(403).json({ message: "يمكنك فقط التراجع عن تعديلاتك الشخصية" });
     }
 
