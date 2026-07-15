@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Security Notes
+- **2026-07-15**: The old Neon DB password that was once exposed has been **rotated by the user**, and `DATABASE_URL` in Replit Secrets was updated with the new connection string. The old leaked password is now worthless.
+- **Never** write the actual `DATABASE_URL` / DB password (or any secret) into commits, code, comments, or PR bodies — always read it from the environment (`process.env.DATABASE_URL`).
+
 ## MANDATORY CODING CONSTRAINTS — Must be followed in every task
 
 1. **Never rewrite entire existing files** — always edit in place.
