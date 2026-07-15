@@ -177,10 +177,10 @@ export function UnifiedUsersManager() {
                     <tr key={u.username} className="border-b hover:bg-muted/20">
                       <td className="p-2 font-medium">{u.username}{u.workerCode ? <span className="text-xs text-muted-foreground"> ({u.workerCode})</span> : null}</td>
                       <td className="p-2">
-                        {u.cfmRole ? (
+                        {(u.cfmRole || roles.find((r) => r.key === u.unifiedRole)?.cfm) ? (
                           <button
                             className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
-                            title="تعديل الاسم الظاهر فى برنامج الكوابل"
+                            title="تعديل الاسم الظاهر فى برنامج الكوابل (هيتنشئ حساب الكوابل لو مش موجود)"
                             onClick={() => { const n = prompt(`الاسم فى برنامج الكوابل لـ ${u.username}:`, u.cfmName || ""); if (n && n.trim()) updateName.mutate({ username: u.username, name: n.trim() }); }}
                           >
                             {u.cfmName || "—"} <Pencil className="w-3 h-3" />

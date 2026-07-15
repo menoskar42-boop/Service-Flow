@@ -1499,8 +1499,19 @@ export async function registerRoutes(
       const name = String(req.body?.name || "").trim();
       if (!name) return res.status(400).json({ message: "الاسم مطلوب" });
       const r = await pool.query(`UPDATE cfm_users SET name = $1 WHERE username = $2`, [name, uname]);
-      if (!r.rowCount) return res.status(404).json({ message: "المستخدم مالوش حساب فى برنامج الكوابل" });
-      res.json({ ok: true });
+      if (r.rowCount) return res.json({ ok: true });
+      // مفيش حساب كوابل — لو دور المستخدم بيفتح الكوابل ننشئه دلوقتى بالاسم ده ونربطه (الحسابات القديمة)
+      const sf = (await pool.query(`SELECT * FROM users WHERE username = $1`, [uname])).rows[0];
+      const cfmRole = sf?.role ? cfmRoleOf(sf.role) : null;
+      if (!cfmRole) return res.status(400).json({ message: "المستخدم مالوش حساب كوابل ودوره مايفتحش برنامج الكوابل" });
+      const ph = bcryptjs.hashSync(randomBytes(24).toString("hex"), 10);
+      const ins = await pool.query(
+        `INSERT INTO cfm_users (id, username, password, name, role, is_initial_password, created_at)
+         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, false, now())
+         ON CONFLICT (username) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+        [uname, ph, name, cfmRole]);
+      if (sf && ins.rows[0]) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [ins.rows[0].id, sf.id]);
+      res.json({ ok: true, created: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
