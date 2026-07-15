@@ -260,6 +260,8 @@ export const usersApi = {
 export const masterDataApi = {
   // Centrals
   getCentrals: () => apiFetch<Central[]>('/master-data/centrals'),
+  // أسماء السنترالات المرجعية الصحيحة من FCC (phone_lines) — لشاشة توحيد الأسماء
+  getFccCentrals: () => apiFetch<string[]>('/master-data/fcc-centrals'),
   createCentral: (data: { name: string; code: string }) =>
     apiFetch<Central>('/master-data/centrals', {
       method: 'POST',

@@ -254,6 +254,112 @@ const DataSection = ({ title, type, items, columns, renderManualForm, manualEntr
   );
 };
 
+// نطبّع اسم السنترال بنفس منطق السيرفر (normalizeCentral): نتجاهل التشكيل/التطويل/المسافات/الشرطات
+// وفروق الهمزة و(ة↔ه) و(ى↔ي) — عشان نطابق فروق التنسيق تلقائياً. فروق الإملاء (العزيزة/العزايزة)
+// بتفضل مختلفة فيختارها المستخدم يدوياً من قائمة FCC.
+const normCentral = (s: any): string =>
+  String(s ?? "")
+    .replace(/[ً-ْٰ]/g, "")
+    .replace(/ـ/g, "")
+    .replace(/[إأآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[ؤئء]/g, "")
+    .replace(/[\s_]/g, "")
+    .replace(/[-‐-―−]/g, "")
+    .trim();
+
+// لوحة توحيد أسماء السنترالات: تعرض كل سنترال فى الكوابل + الاسم الصحيح المطابق من FCC.
+// التوحيد بيغيّر الاسم (name) فقط بنفس الـ id — فكل التكتات والكوابل القديمة تفضل مربوطة (تأثيرها محفوظ).
+const CentralUnifyPanel = ({ centrals, fccCentrals, onRename }: any) => {
+  const [targets, setTargets] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const autoMatch = (name: string): string =>
+    fccCentrals.find((f: string) => normCentral(f) === normCentral(name)) || "";
+  const targetOf = (c: any): string => (c.id in targets ? targets[c.id] : autoMatch(c.name));
+
+  const doRename = async (id: string, tgt: string) => {
+    setBusyId(id);
+    try { await onRename(id, tgt); } finally { setBusyId(null); }
+  };
+
+  // السنترالات اللى ليها مطابقة FCC تلقائية لكن الاسم مختلف حرفياً (فروق تنسيق) → توحيد بضغطة واحدة
+  const needAuto = centrals.filter((c: any) => { const m = autoMatch(c.name); return m && m !== c.name; });
+  const unifyAllAuto = async () => {
+    for (const c of needAuto) { const m = autoMatch(c.name); if (m && m !== c.name) await doRename(c.id, m); }
+  };
+
+  return (
+    <Card className="mb-4 border-amber-300 dark:border-amber-700">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-base">توحيد أسماء السنترالات مع FCC</CardTitle>
+          <CardDescription>
+            صحّح اسم السنترال ليطابق FCC (المرجع الأساسى). بيتغيّر الاسم فقط — كل التكتات والكوابل تفضل مربوطة.
+            {needAuto.length > 0 ? ` — ${needAuto.length} فرق تنسيق يتوحّد تلقائياً.` : " — لا فروق تنسيق تلقائية."}
+          </CardDescription>
+        </div>
+        {needAuto.length > 0 && (
+          <Button size="sm" onClick={unifyAllAuto} className="gap-2 whitespace-nowrap">
+            <Check size={14} /> توحيد التنسيق تلقائياً ({needAuto.length})
+          </Button>
+        )}
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border max-h-80 overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>اسم الكوابل الحالى</TableHead>
+                <TableHead>الاسم الصحيح (FCC)</TableHead>
+                <TableHead>الحالة</TableHead>
+                <TableHead className="w-[90px] text-right">توحيد</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {centrals.map((c: any) => {
+                const tgt = targetOf(c);
+                const isSame = tgt === c.name;
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell>
+                      <Select value={tgt || ""} onValueChange={(v) => setTargets({ ...targets, [c.id]: v })}>
+                        <SelectTrigger className="h-8 min-w-[200px]"><SelectValue placeholder="اختر اسم FCC" /></SelectTrigger>
+                        <SelectContent>
+                          {fccCentrals.map((f: string) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      {isSame ? (
+                        <span className="text-green-600 text-xs whitespace-nowrap">✓ مطابق</span>
+                      ) : tgt ? (
+                        <span className="text-amber-600 text-xs whitespace-nowrap">مختلف — محتاج توحيد</span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs whitespace-nowrap">اختر يدوياً</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" className="h-8 gap-1"
+                        disabled={!tgt || isSame || busyId === c.id}
+                        onClick={() => doRename(c.id, tgt)}>
+                        {busyId === c.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                        توحيد
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 export default function MasterData() {
   const { language, user, setUser } = useStore();
   const t = translations[language];
@@ -266,6 +372,7 @@ export default function MasterData() {
   const [loading, setLoading] = useState(true);
 
   const [centrals, setCentrals] = useState<Central[]>([]);
+  const [fccCentrals, setFccCentrals] = useState<string[]>([]);
   const [cables, setCables] = useState<Cable[]>([]);
   const [faultTypes, setFaultTypes] = useState<FaultType[]>([]);
   const [workTypes, setWorkTypes] = useState<WorkType[]>([]);
@@ -292,6 +399,8 @@ export default function MasterData() {
         masterDataApi.getExcavationWorkers(),
       ]);
       setCentrals(centralsData);
+      // أسماء FCC المرجعية لشاشة التوحيد — منفصلة بـ catch عشان فشلها ما يوقّفش تحميل باقى البيانات
+      masterDataApi.getFccCentrals().then(setFccCentrals).catch(() => setFccCentrals([]));
       setCables(cablesData);
       setFaultTypes(faultTypesData);
       setWorkTypes([...workTypesData].sort((a, b) => a.name.localeCompare(b.name, 'ar', { numeric: true })));
@@ -724,6 +833,12 @@ export default function MasterData() {
     }
   };
 
+  // توحيد اسم سنترال ليطابق FCC — يغيّر الاسم فقط بنفس الـ id (يحافظ على ربط التكتات/الكوابل).
+  const handleUnifyCentral = async (id: string, name: string) => {
+    const c = centrals.find((x) => x.id === id);
+    await handleUpdate("centrals", id, { name, code: c?.code });
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -745,8 +860,15 @@ export default function MasterData() {
         </TabsList>
         
         <TabsContent value="centrals">
-           <DataSection 
-             title="Centrals" 
+           {fccCentrals.length > 0 && (
+             <CentralUnifyPanel
+               centrals={centrals}
+               fccCentrals={fccCentrals}
+               onRename={handleUnifyCentral}
+             />
+           )}
+           <DataSection
+             title="Centrals"
              type="centrals" 
              items={centrals} 
              columns={['Name', 'Code']}

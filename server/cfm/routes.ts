@@ -8,6 +8,7 @@ import type { Express } from "express";
 import express from "express";
 import bcrypt from "bcryptjs";  // نسخة JS خالصة — تتحقق من هاش bcrypt ($2b$) بتاع مستخدمى CFM بدون native build
 import { storage } from "./storage";
+import { pool } from "../db";
 import { importCfmFromLive } from "./import-from-live";
 import { importCfmFromProdDb } from "./import-from-prod-db";
 import {
@@ -337,6 +338,20 @@ export function registerCfmRoutes(app: Express) {
       res.json({ success: true });
     } catch (error) {
       console.error("Delete central error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // GET /api/cfm/master-data/fcc-centrals — أسماء السنترالات الصحيحة من FCC (phone_lines).
+  // تُستخدم فى شاشة «توحيد أسماء السنترالات» لمطابقة أسماء الكوابل بأسماء FCC المرجعية.
+  app.get("/api/cfm/master-data/fcc-centrals", requireAuth, async (_req, res) => {
+    try {
+      const r = await pool.query(
+        `SELECT DISTINCT central FROM phone_lines WHERE central IS NOT NULL AND btrim(central) <> '' ORDER BY central`,
+      );
+      res.json((r.rows as any[]).map((x) => x.central));
+    } catch (error) {
+      console.error("Get FCC centrals error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
