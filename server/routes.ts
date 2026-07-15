@@ -5241,7 +5241,9 @@ export async function registerRoutes(
               fo.order_status AS "orderStatus", fo.order_create_time AS "orderCreateTime",
               fo.exchange_name AS "exchangeName", fo.service_type AS "serviceType", fo.msan_code AS "msanCode",
               fo.area_code AS "areaCode",
-              COALESCE(wfm.mobile, fo.customer_mobile) AS "customerMobile",
+              -- الأولوية: المحمول المُدخَل يدوياً، ثم من المعاينة، ثم المشفّر من OM
+              COALESCE(omm.mobile, wfm.mobile, fo.customer_mobile) AS "customerMobile",
+              omm.mobile AS "manualMobile",
               COALESCE(fo.install_address, wfm.address) AS "address",
               fo.current_activity AS "currentActivity", fo.error_name AS "errorName",
               fo.governorate, fo.line_type AS "lineType", fo.fcc_exchange AS "fccExchange",
@@ -5269,12 +5271,37 @@ export async function registerRoutes(
            AND work_order_type ILIKE 'fvmanualsurvey'
          LIMIT 1
        ) wfm ON TRUE
+       LEFT JOIN om_manual_mobiles omm ON omm.serial_number = fo.serial_number
        ${where}
        ORDER BY fo.order_create_time DESC NULLS LAST
        LIMIT 5000`,
       params,
     );
     res.json(rows);
+  });
+
+  // إدخال/تعديل رقم محمول يدوى لمتعذر OM (للأرقام المشفّرة بنجوم). صلاحية:
+  // سوبر أدمن + أدمن (ومنه مدير السنترال) + الشئون الخارجية (ومنها مهندس الكوابل) + أدمن المبيعات.
+  app.post("/api/om-rejections/mobile", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    const allowed = hasAdminAccess(role) || role === ROLES.EXTERNAL || role === ROLES.SALES_ADMIN;
+    if (!allowed) return res.status(403).json({ message: "غير مسموح" });
+    const serialNumber = String(req.body?.serialNumber ?? "").trim();
+    const mobile = String(req.body?.mobile ?? "").trim();
+    if (!serialNumber) return res.status(400).json({ message: "المسلسل مطلوب" });
+    try {
+      if (!mobile) {
+        await pool.query(`DELETE FROM om_manual_mobiles WHERE serial_number = $1`, [serialNumber]);
+        return res.json({ ok: true, mobile: "" });
+      }
+      await pool.query(
+        `INSERT INTO om_manual_mobiles (serial_number, mobile, updated_by, updated_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (serial_number) DO UPDATE SET mobile = EXCLUDED.mobile, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+        [serialNumber, mobile, String(req.user?.username || "")],
+      );
+      res.json({ ok: true, mobile });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // GET /api/ftth-orders/msan-codes — قائمة أكواد الكباين المميزة للـ bucket (لفلتر الدروب ليست)

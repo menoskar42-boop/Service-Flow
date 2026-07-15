@@ -966,6 +966,17 @@ export async function ensureSchema() {
     )
   `);
 
+  // رقم محمول يدوى لمتعذرات OM — للأرقام اللى بتظهر بنجوم (مشفّرة) نقدر ندخّلها يدوياً.
+  // المفتاح = المسلسل (serial_number) المميّز لكل متعذر.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS om_manual_mobiles (
+      serial_number text PRIMARY KEY,
+      mobile text,
+      updated_by text,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // ===== Cable-Fault-Manager (CFM) — جداول برنامج الكوابل المدمج =====
   // كل جداول CFM بأسماءها الأصلية عدا users → cfm_users (لتجنّب التعارض مع users بتاعنا).
   // كتلة واحدة داخل try عشان أى فشل مايوقفش باقى ensureSchema. الأنواع مطابقة لـ shared/schema.ts بتاع CFM.

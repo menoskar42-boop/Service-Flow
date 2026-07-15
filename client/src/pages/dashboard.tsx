@@ -174,7 +174,7 @@ export default function Dashboard() {
   const { orders, isLoading: ordersLoading } = useOrders();
   const [, setLocation] = useLocation();
   const [adminTab, setAdminTab] = useState<AdminTab>("orders");
-  const [reportTab, setReportTab] = useState<ReportTab>("current-faults");
+  const [reportTab, setReportTab] = useState<ReportTab>(authUser?.role === ROLES.SALES_ADMIN ? "om-current" : "current-faults");
   // مجموعات التقارير القابلة للطى — المجموعة التى تحوى التقرير النشط مفتوحة افتراضياً
   const [openGroups, setOpenGroups] = useState<string[]>(() => {
     const g = REPORT_GROUPS.find((grp) => grp.items.some((it) => it.id === "current-faults"));
@@ -190,14 +190,19 @@ export default function Dashboard() {
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
   const TECH_ALLOWED: ReportTab[] = ["current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account"];
   const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM"];
+  // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
+  const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];
+  const SALES_ADMIN_ALLOWED_GROUPS = ["متعذرات OM"];
   const visibleGroups = REPORT_GROUPS
     .filter((g) =>
       (user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label)) &&
-      (user?.role !== ROLES.TECH || TECH_ALLOWED_GROUPS.includes(g.label)),
+      (user?.role !== ROLES.TECH || TECH_ALLOWED_GROUPS.includes(g.label)) &&
+      (user?.role !== ROLES.SALES_ADMIN || SALES_ADMIN_ALLOWED_GROUPS.includes(g.label)),
     )
     .map((g) => {
       if (user?.role === ROLES.DATA_MANAGER) return { ...g, items: g.items.filter((it) => DM_ALLOWED.includes(it.id)) };
       if (user?.role === ROLES.TECH) return { ...g, items: g.items.filter((it) => TECH_ALLOWED.includes(it.id)) };
+      if (user?.role === ROLES.SALES_ADMIN) return { ...g, items: g.items.filter((it) => SALES_ADMIN_ALLOWED.includes(it.id)) };
       return g;
     });
   // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
@@ -312,8 +317,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Tab Navigation — Admin, Tech, Data Manager & External */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.EXTERNAL) && (
+        {/* Tab Navigation — Admin, Tech, Data Manager, External & Sales Admin */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.EXTERNAL || user.role === ROLES.SALES_ADMIN) && (
           <div className="border-t bg-white">
             <div className="container mx-auto px-4">
               <div className="flex" dir="rtl">
@@ -329,7 +334,7 @@ export default function Dashboard() {
                   <ClipboardList className="w-4 h-4" />
                   الطلبات
                 </button>
-                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL || user.role === ROLES.SALES_ADMIN) && (
                   <button
                     onClick={() => setAdminTab("reports")}
                     data-testid="tab-admin-reports"
@@ -394,8 +399,8 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
 
-        {/* ── REPORTS TAB (Admin, Data Manager, Tech & External) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && adminTab === "reports" && (
+        {/* ── REPORTS TAB (Admin, Data Manager, Tech, External & Sales Admin) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL || user.role === ROLES.SALES_ADMIN) && adminTab === "reports" && (
           <div className="flex flex-col lg:flex-row gap-3 lg:gap-5" dir="rtl">
             {/* ── زر فتح/قفل القائمة على الموبايل ── */}
             <button
@@ -574,7 +579,7 @@ export default function Dashboard() {
         )}
 
         {/* ── ORDERS TAB (all roles) ── */}
-        {((user.role !== ROLES.ADMIN && user.role !== ROLES.TECH && user.role !== ROLES.EXTERNAL) || adminTab === "orders") && (
+        {((user.role !== ROLES.ADMIN && user.role !== ROLES.TECH && user.role !== ROLES.EXTERNAL && user.role !== ROLES.SALES_ADMIN) || adminTab === "orders") && (
           <>
             {/* Actions Bar */}
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">

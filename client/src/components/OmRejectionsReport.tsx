@@ -27,6 +27,7 @@ interface Row {
   errorName: string | null;
   currentActivity: string | null;
   customerMobile: string | null;
+  manualMobile: string | null;
   fccExchange: string | null;
   techName: string | null;
   techManual: boolean | null;
@@ -56,6 +57,49 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const { toast } = useToast();
   const qc = useQueryClient();
   const isAdmin = user?.role === ROLES.ADMIN;
+  // إدخال رقم محمول يدوى للمتعذرات الحالية (للأرقام المشفّرة بنجوم): سوبر أدمن + أدمن (ومدير
+  // السنترال) + الشئون الخارجية (ومهندس الكوابل) + أدمن المبيعات.
+  const canEditMobile = bucket === "current" &&
+    ([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EXTERNAL, ROLES.SALES_ADMIN] as string[]).includes(user?.role ?? "");
+  const [editSerial, setEditSerial] = useState<string | null>(null);
+  const [mobileInput, setMobileInput] = useState("");
+  const [savingMobile, setSavingMobile] = useState(false);
+  const saveMobile = async (serial: string) => {
+    setSavingMobile(true);
+    try {
+      await apiRequest("POST", "/api/om-rejections/mobile", { serialNumber: serial, mobile: mobileInput.trim() });
+      setEditSerial(null);
+      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+      toast({ title: "تم حفظ رقم المحمول" });
+    } catch { toast({ title: "تعذّر حفظ رقم المحمول", variant: "destructive" }); }
+    finally { setSavingMobile(false); }
+  };
+  const renderMobileCell = (r: Row) => {
+    if (!canEditMobile || !r.serialNumber) return r.customerMobile || "-";
+    const masked = !r.customerMobile || /[*]/.test(String(r.customerMobile));
+    if (editSerial === r.serialNumber) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <input value={mobileInput} onChange={(e) => setMobileInput(e.target.value)} placeholder="01xxxxxxxxx"
+            className="border rounded px-2 py-0.5 text-sm w-32" dir="ltr" autoFocus />
+          <button onClick={() => saveMobile(r.serialNumber!)} disabled={savingMobile}
+            className="text-[11px] text-white bg-emerald-600 hover:bg-emerald-700 rounded px-2 py-0.5 disabled:opacity-50">
+            {savingMobile ? "..." : "حفظ"}
+          </button>
+          <button onClick={() => setEditSerial(null)} className="text-[11px] text-gray-500 px-1">إلغاء</button>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-2">
+        <span className={masked && !r.manualMobile ? "text-orange-600" : ""} dir="ltr">{r.customerMobile || "-"}</span>
+        <button onClick={() => { setMobileInput(r.manualMobile || ""); setEditSerial(r.serialNumber!); }}
+          className="text-[11px] text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50">
+          {r.manualMobile ? "تعديل" : "＋ إضافة"}
+        </button>
+      </span>
+    );
+  };
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
     queryKey: ["/api/ftth-orders", bucket, q, yearFilter, msanFilter, fccFilter, techFilter, dateFrom, dateTo],
@@ -348,7 +392,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                     {cols.map(([h, f]) => (
                       <TableCell key={h} className="whitespace-nowrap">
-                        {h === "اسم الفنى" ? renderTechCell(r) : (f(r) ?? "-")}
+                        {h === "اسم الفنى" ? renderTechCell(r) : h === "الموبايل" ? renderMobileCell(r) : (f(r) ?? "-")}
                       </TableCell>
                     ))}
                   </TableRow>
