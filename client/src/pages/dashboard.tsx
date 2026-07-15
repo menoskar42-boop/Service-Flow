@@ -48,6 +48,7 @@ import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
+import { canAccessCFM } from "@shared/roles-access";
 import { useLocation } from "wouter";
 import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable } from "lucide-react";
 import * as XLSX from 'xlsx';
@@ -285,11 +286,14 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {/* برنامج الكوابل المدمج (Cable-Fault-Manager) — قسم /cfm */}
-            <a href="/cfm" className="inline-flex items-center gap-1 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50 text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3 font-medium">
-              <span className="hidden sm:inline">برنامج الكوابل</span>
-              <span className="sm:hidden">الكوابل</span>
-            </a>
+            {/* برنامج الكوابل المدمج (Cable-Fault-Manager) — قسم /cfm.
+                يظهر فقط للأدوار اللى ليها وصول للكوابل (أدمن المبيعات/المبيعات/البيانات مالهمش) */}
+            {canAccessCFM(authUser?.role ?? "") && (
+              <a href="/cfm" className="inline-flex items-center gap-1 rounded-md border border-amber-300 text-amber-700 hover:bg-amber-50 text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3 font-medium">
+                <span className="hidden sm:inline">برنامج الكوابل</span>
+                <span className="sm:hidden">الكوابل</span>
+              </a>
+            )}
             <ExecutorButton />
             {(user.role === ROLES.SALES || user.role === ROLES.ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN) && (
