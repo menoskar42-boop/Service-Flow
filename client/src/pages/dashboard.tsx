@@ -44,6 +44,7 @@ import { BoxOverlapReport } from "@/components/BoxOverlapReport";
 import { MaintenancePlanH2Report } from "@/components/MaintenancePlanH2Report";
 import { CabinetCapacityReport } from "@/components/CabinetCapacityReport";
 import { ExecutorButton } from "@/components/ExecutorButton";
+import { DailyAutoRefresh } from "@/components/DailyAutoRefresh";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useWakeLock } from "@/lib/use-wake-lock";
@@ -295,6 +296,8 @@ export default function Dashboard() {
               </a>
             )}
             <ExecutorButton />
+            {/* مؤقّت التحديث كل نص ساعة فى الخلفية (غير مرئى) — يشتغل على أى تاب */}
+            <DailyAutoRefresh />
             {(user.role === ROLES.SALES || user.role === ROLES.ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN || user.role === ROLES.EXTERNAL) && (
               <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">

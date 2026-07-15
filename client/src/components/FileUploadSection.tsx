@@ -12,6 +12,7 @@ import { ROLES } from "@shared/schema";
 import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
+import { runDailyUpdate as runDailyUpdateLib } from "@/lib/daily-update";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -417,57 +418,12 @@ export function FileUploadSection() {
   const cairoDay = (d: string | number | Date) =>
     new Date(d).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
-  // ─── التحديث اليومى + التشغيل التلقائى كل نص ساعة ────────────────────────────────
-  // نفس أفعال زر "حدّث التقارير اليومية" — قابلة لإعادة الاستخدام (زر يدوى + مؤقّت).
-  const runDailyUpdate = () => {
-    // نفتح الصفحات الثلاث (FCC + WFM + OSS) مباشرةً من هنا بالتوازى — أسرع وأضمن من التسلسل
-    // (السلسلة FCC→WFM كانت بتتبلوك لأنها تفتح من داخل fcc.te.eg؛ زر الموقع عنده إذن النوافذ المنبثقة).
-    // كل تاب باسم ثابت يُعاد استخدامه كل نص ساعة (مفيش تكديس)، والسكربت يسجّل دخول ويصدّر ويرفع ويقفل.
-    // «نسلّح» أولوية تصدير شيت FCC — لو تاب FCC كان وسط مراجعة بيانات فنية، يصدّر الشيت الأول ثم يكمّل المراجعة
-    fetch("/api/fcc-export/arm", { method: "POST", credentials: "include" }).catch(() => {});
-    window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf", "fcc_daily");
-    window.open("https://wfm.te.eg/WorkOrder/faces/security/pages/Login.jsf", "wfm_daily");
-    window.open("https://oss.te.eg:15201/om", "oss_daily");
-    // منافذ MSAN (البورتال): نفتحه فقط لو التشغيل الكامل مخلّصش النهارده. البورتات بتتحدّث من
-    // كذا كابينة، فـ uploaded_at بيتغيّر مع كل كابينة — مش دليل إن كله خلص. فبنعتمد على إشارة
-    // "اكتمال التشغيل" (السكربت بيبعتها لما يدخل آخر كابينة والكود يخلص). كده لو فشل/اتقطع
-    // يفضل يحاول كل نص ساعة لحد ما يكمّل فعلاً؛ وأول ما يكمّل النهارده يبطّل يفتحه.
-    // "خلص النهارده" = وصلت إشارة اكتمال التشغيل النهارده، أو اترفع ملف البورتات فعلاً النهارده
-    // (لو السكربت اتقطع قبل ما يبعت إشارة الاكتمال لكن الملف اترفع، نعتبره خلص علشان ميفضلش يعيد فتحه).
-    const today = cairoDay(new Date());
-    const pt = uploadTimesRef.current || {};
-    // البيانات اتحمّلت فعلاً من السيرفر؟ (قبل ما الـ query يرجع بتكون {} فاضية — سباق تحميل)
-    const queryLoaded = Object.keys(pt).length > 0;
-    const portsIso = pt["ports_run_complete"];
-    const portsUploadIso = pt["/api/phone-ports/import"];
-    // ملف البورتات بيتحدّث فى المصدر مرة واحدة يومياً حوالى الساعة 7:45 صباحاً (8 إلا ربع).
-    // فأول تحديث فى اليوم لازم يكون بعد 7:45 (قبل كده المصدر لسه قديم)، وبعد ما يتحدّث بعد
-    // 7:45 مايتكررش باقى اليوم. يطبّق على الزر اليدوى والمؤقّت كل نص ساعة (الاتنين بينادوا الدالة دى).
-    const PORTS_THRESHOLD_MIN = 7 * 60 + 45; // 7:45 صباحاً بتوقيت القاهرة
-    const cairoMinOfDay = (d: string | number | Date) => {
-      const s = new Date(d).toLocaleString("en-GB", { timeZone: "Africa/Cairo", hour12: false, hour: "2-digit", minute: "2-digit" });
-      const [h, m] = s.split(":").map(Number);
-      return (h || 0) * 60 + (m || 0);
-    };
-    // تحديث «صالح» = اترفع النهارده وبعد الساعة 7:45
-    const updatedAfterThresholdToday = (iso?: string) =>
-      !!iso && cairoDay(iso) === today && cairoMinOfDay(iso) >= PORTS_THRESHOLD_MIN;
-    const portsDoneToday =
-      updatedAfterThresholdToday(portsIso) || updatedAfterThresholdToday(portsUploadIso);
-    // كمان مانفتحش البورتال قبل 7:45 أصلاً (المصدر لسه ماتحدّثش)
-    const nowAfterThreshold = cairoMinOfDay(new Date()) >= PORTS_THRESHOLD_MIN;
-    // افتح البورتال فقط لو البيانات محمّلة، وعدّى 7:45، والبورتات لسه ماتحدّثتش بعد 7:45 النهارده.
-    if (queryLoaded && nowAfterThreshold && !portsDoneToday) {
-      // «نسلّح» علامة على السيرفر عشان سكربت البورتال يشتغل تلقائياً — إشارة window.name/URL بتضيع
-      // وسط فتح 4 تابات مرة واحدة (البورتال SPA بيمسحها)، فبنعتمد على العلامة دى بدلها.
-      fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
-      window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto");
-    }
-  };
+  // ─── «حدّث التقارير اليومية» (زر يدوى) ─────────────────────────────────────────
+  // المنطق اتنقل لـ lib/daily-update. المؤقّت التلقائى كل نص ساعة اتنقل لمكوّن خلفى
+  // (DailyAutoRefresh) بيشتغل على أى تاب — مش بس وإنت فى قسم رفع الملفات.
+  const runDailyUpdate = () => runDailyUpdateLib(uploadTimesRef.current);
 
-  // التشغيل التلقائى كل نصف ساعة — مُفعَّل على "هذا الجهاز فقط" عبر علامة فى localStorage.
-  // ⚠️ يتطلب السماح بالنوافذ المنبثقة (pop-ups) للموقع + إبقاء التاب مفتوحاً والجهاز غير نائم.
-  const AUTO_INTERVAL_MS = 30 * 60 * 1000;
+  // زر «التحديث كل نص ساعة»: بيقلب العلامة فى localStorage ويبلّغ المكوّن الخلفى (نفس التاب)
   const [hourlyAuto, setHourlyAuto] = useState(() => {
     try { return localStorage.getItem("sf_hourly_auto") === "1"; } catch { return false; }
   });
@@ -478,30 +434,16 @@ export function FileUploadSection() {
     setHourlyAuto((v) => {
       const nv = !v;
       try { localStorage.setItem("sf_hourly_auto", nv ? "1" : "0"); } catch {}
+      try { window.dispatchEvent(new Event("sf-hourly-toggle")); } catch {}
       return nv;
     });
   };
+  // حدّث «آخر تشغيل تلقائى» لما المكوّن الخلفى يشغّل
   useEffect(() => {
-    if (!hourlyAuto) return;
-    const readLast = () => { try { const v = localStorage.getItem("sf_hourly_last"); return v ? Number(v) : 0; } catch { return 0; } };
-    const tick = () => {
-      runDailyUpdate();
-      const now = Date.now();
-      setLastAutoRun(now);
-      try { localStorage.setItem("sf_hourly_last", String(now)); } catch {}
-    };
-    // بدل مؤقّت 30 دقيقة (اللى الـ sleep بيكسره) — نفحص كل 60 ثانية الوقت المنقضى من آخر تشغيل.
-    // كده حتى لو الجهاز نام وفوّت مواعيد، أول ما يصحى الفحص القريب بيلاقى الوقت عدّى فيشغّل فوراً.
-    const check = () => { if (Date.now() - readLast() >= AUTO_INTERVAL_MS) tick(); };
-    check(); // فوراً عند التفعيل/فتح الصفحة
-    const id = setInterval(check, 60 * 1000);
-    // catch-up عند رجوع الجهاز من الـ sleep أو رجوع التاب للواجهة
-    const onWake = () => { if (document.visibilityState === "visible") check(); };
-    document.addEventListener("visibilitychange", onWake);
-    window.addEventListener("focus", onWake);
-    return () => { clearInterval(id); document.removeEventListener("visibilitychange", onWake); window.removeEventListener("focus", onWake); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hourlyAuto]);
+    const onRan = () => { try { const v = localStorage.getItem("sf_hourly_last"); setLastAutoRun(v ? Number(v) : null); } catch {} };
+    window.addEventListener("sf-hourly-ran", onRan);
+    return () => window.removeEventListener("sf-hourly-ran", onRan);
+  }, []);
 
   const { data: maintenance = [], isFetching: fetchM } = useQuery<MaintenanceOrder[]>({
     queryKey: ["/api/maintenance-orders", dateFrom, dateTo, bucket],
