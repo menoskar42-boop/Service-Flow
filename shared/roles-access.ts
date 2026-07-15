@@ -12,11 +12,13 @@
 //  sales             | sales          | —                 | الطلبات فقط (مبيعات)
 //  tech              | tech           | external_affairs  | الموقعين (فنى ↔ شئون خارجية)
 //  data_manager      | data_manager   | —                 | الطلبات فقط (بيانات)
+//  supervisor        | —              | supervisor        | الكوابل فقط (مشرف)
+//  ext_tech          | —              | ext_tech          | الكوابل فقط (فنى خارجى)
 // ============================================================================
 
 export type UnifiedRole =
   | "super_admin" | "admin" | "external" | "splice_tech" | "cable_engineer"
-  | "sales" | "sales_admin" | "tech" | "data_manager";
+  | "sales" | "sales_admin" | "tech" | "data_manager" | "supervisor" | "ext_tech";
 
 export interface RoleAccess {
   labelAr: string;      // الاسم بالعربى
@@ -34,6 +36,8 @@ export const UNIFIED_ROLE_ACCESS: Record<UnifiedRole, RoleAccess> = {
   sales_admin:    { labelAr: "أدمن مبيعات",        sf: "sales_admin",  cfm: null },
   tech:           { labelAr: "فنى",               sf: "tech",         cfm: "external_affairs" },
   data_manager:   { labelAr: "بيانات",            sf: "data_manager", cfm: null },
+  supervisor:     { labelAr: "مشرف",              sf: null,           cfm: "supervisor" },
+  ext_tech:       { labelAr: "فنى خارجى",          sf: null,           cfm: "ext_tech" },
 };
 
 const access = (role: string): RoleAccess | undefined =>
