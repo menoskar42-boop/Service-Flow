@@ -5262,8 +5262,10 @@ export async function registerRoutes(
          LIMIT 1
        ) mto ON TRUE
        LEFT JOIN LATERAL (
+         -- ربط المتعذر بالمعاينة المنتظمة: Service Order ID للمتعذر = رقم المرجع للمعاينة
+         -- (كان بيطابق serial=phone بالغلط فيطلّع صفر تقريباً). كده الموبايل بيتجاب صح.
          SELECT mobile, address FROM maintenance_orders
-         WHERE phone_number = fo.serial_number
+         WHERE reference_no = fo.service_order_id
            AND work_order_type ILIKE 'fvmanualsurvey'
          LIMIT 1
        ) wfm ON TRUE
