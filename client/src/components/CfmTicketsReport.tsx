@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, RefreshCw, AlertCircle, Search, FileSpreadsheet, FileText, Radar, Gauge } from "lucide-react";
 import * as XLSX from "xlsx";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 
 const REFRESH_INTERVAL = 30;
 
@@ -94,6 +95,7 @@ function buildDZSUrl(items: DZSItem[]) {
 
 export function CfmTicketsReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   // --- ticket data ---
   const [data, setData] = useState<CfmTicket[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -154,6 +156,7 @@ export function CfmTicketsReport() {
         }
       }
       if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد خطوط لها أكونت على هذا البكس"); return; }
+      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) { try { w?.close(); } catch {} return; }
       if (w) w.location.href = buildDZSUrl(items);
     } catch {
       try { w?.close(); } catch {}
@@ -188,6 +191,7 @@ export function CfmTicketsReport() {
         }
       }
       if (accounts.length === 0) { alert("لا توجد خطوط لها أكونت على هذا البكس"); return; }
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : {});
     } catch {
       alert("تعذّر تحميل خطوط البكس");

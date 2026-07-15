@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, RefreshCw, AlertCircle, Radar, FileSpreadsheet, FileText, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 
@@ -55,6 +56,7 @@ const scoreBadge = (v: string | number | null | undefined) => {
 
 export function OpenTicketLinesReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [lines, setLines] = useState<OpenTicketLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export function OpenTicketLinesReport() {
     [lines, filterCentral, filterCabinet, onlyWithAccount],
   );
 
-  const handleMeasureDZS = () => {
+  const handleMeasureDZS = async () => {
     const accounts = [...new Set(
       filtered.map((l) => (l.accountNo ?? "").toString().trim()).filter(Boolean),
     )];
@@ -111,13 +113,15 @@ export function OpenTicketLinesReport() {
       alert("لا توجد أرقام أكونت فى الخطوط المعروضة لقياسها");
       return;
     }
+    if (await dispatchSpeedTool("measure", accounts, isSuper)) return;
     window.open(buildDZSUrl(accounts), "dzs_measure");
     setDzsCount(accounts.length);
   };
 
-  const handleRaisePO = (kind: "raise" | "stop") => {
+  const handleRaisePO = async (kind: "raise" | "stop") => {
     const accounts = [...new Set(filtered.map((l) => (l.accountNo ?? "").toString().trim()).filter(Boolean))];
     if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى الخطوط المعروضة"); return; }
+    if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
     const afterStop = kind === "raise"
       ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
       : false;
@@ -278,7 +282,10 @@ export function OpenTicketLinesReport() {
                       {l.accountNo && (
                         <button
                           type="button"
-                          onClick={() => window.open(buildDZSUrl([l.accountNo!.toString().trim()]), "_blank")}
+                          onClick={async () => {
+                            if (await dispatchSpeedTool("measure", [l.accountNo!.toString().trim()], isSuper)) return;
+                            window.open(buildDZSUrl([l.accountNo!.toString().trim()]), "_blank");
+                          }}
                           title="فتح DZS وقياس هذا الرقم"
                           className="text-blue-600 hover:text-blue-800 mr-1 align-middle"
                         >

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { closeReason } from "@/lib/close-codes";
 interface RegularizedFault extends Measurement138 {
@@ -89,6 +90,7 @@ const buildDZSUrl = (items: DZSItem[]) => {
 
 export function RegularizedFaultsRangeReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState(() => {
@@ -134,7 +136,7 @@ export function RegularizedFaultsRangeReport() {
     full: f.phoneShort ? "88" + f.phoneShort : "",
   });
 
-  const handleMeasureDZS = () => {
+  const handleMeasureDZS = async () => {
     const seen = new Set<string>();
     const items = displayed
       .map(toItem)
@@ -143,16 +145,18 @@ export function RegularizedFaultsRangeReport() {
       alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
       return;
     }
+    if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) return;
     window.open(buildDZSUrl(items), "_blank");
   };
 
   // رفع السرعة / إيقاف PO لأرقام الأعطال المعروضة.
-  const handleRaisePO = (kind: "raise" | "stop") => {
+  const handleRaisePO = async (kind: "raise" | "stop") => {
     const seen = new Set<string>();
     const accounts = displayed
       .map((f) => (f.accountNo ?? "").toString().trim())
       .filter((a) => a && !seen.has(a) && seen.add(a));
     if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى الأعطال المعروضة"); return; }
+    if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
     const afterStop = kind === "raise"
       ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
       : false;
@@ -160,7 +164,8 @@ export function RegularizedFaultsRangeReport() {
   };
 
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
-  const openDZSSingle = (f: RegularizedFault) => {
+  const openDZSSingle = async (f: RegularizedFault) => {
+    if (await dispatchSpeedTool("measure", [toItem(f).account], isSuper)) return;
     window.open(buildDZSUrl([toItem(f)]), "_blank");
   };
 

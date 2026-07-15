@@ -70,3 +70,22 @@ export async function enqueueIfExecutorActive(type: ExecJobType, accounts: (stri
   const res = await enqueueJob(type, accounts, note);
   return !!res.ok;
 }
+
+export const NO_EXECUTOR_MSG = "غير متاح حالياً — لا توجد أجهزة مفعّلة للتنفيذ. فعّل «جهاز التنفيذ» على متصفح السوبر أدمن أولاً.";
+const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", raise: "رفع السرعة", stop: "إيقاف PO" };
+
+// منطق موحّد لأزرار القياس/رفع السرعة/الإيقاف فى كل التقارير (نفس بحث برقم التليفون):
+//  - جهاز التنفيذ مفعّل → أضف للطابور ورجّع true (اتعامل معاها).
+//  - مش مفعّل + مش سوبر أدمن → رسالة عدم الإتاحة ورجّع true (اتعامل معاها).
+//  - مش مفعّل + سوبر أدمن → رجّع false عشان المُنادِى ينفّذ محلياً عادى.
+export async function dispatchSpeedTool(type: ExecJobType, accounts: (string | number)[], isSuper: boolean): Promise<boolean> {
+  const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
+  if (!accs.length) { alert("لا توجد أرقام أكونت"); return true; }
+  if (await isExecutorActive()) {
+    const res = await enqueueJob(type, accs);
+    alert(res.ok ? `تم إضافة ${accs.length} رقم لطابور ${QUEUE_LABEL[type]} — هيتنفّذ على جهاز التنفيذ` : (res.message || "تعذّر الإضافة للطابور"));
+    return true;
+  }
+  if (!isSuper) { alert(NO_EXECUTOR_MSG); return true; }
+  return false; // سوبر أدمن ومفيش جهاز تنفيذ → نفّذ محلياً
+}

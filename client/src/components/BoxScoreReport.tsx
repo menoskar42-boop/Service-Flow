@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
 import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, Wrench } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { MaintBoxDetail, maintStatusBadge, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
@@ -18,7 +19,7 @@ const buildDZSUrl = (accounts: string[]) =>
   `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
 
 // يجيب أرقام الأكونت لخطوط نطاق معيّن ويفتح بوابة DZS لقياسها
-async function measureAccountsFor(params: URLSearchParams): Promise<number> {
+async function measureAccountsFor(params: URLSearchParams, isSuper: boolean): Promise<number> {
   params.set("page", "1"); params.set("limit", "20000");
   const w = window.open("about:blank", "dzs_measure");
   try {
@@ -28,6 +29,7 @@ async function measureAccountsFor(params: URLSearchParams): Promise<number> {
       ((json.data as any[]) ?? []).map((r) => (r.accountNo ?? "").toString().trim()).filter(Boolean),
     )];
     if (!accounts.length) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت لقياسها فى هذا النطاق"); return 0; }
+    if (await dispatchSpeedTool("measure", accounts, isSuper)) { try { w?.close(); } catch {} return 0; }
     if (w) w.location.href = buildDZSUrl(accounts);
     return accounts.length;
   } catch {
@@ -243,6 +245,7 @@ function CabinTab({ central, cabin, msan, minScore }: { central: string; cabin: 
 // ── تاب البكسيات ──────────────────────────────────────────────────────────────
 function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; minScore: string }) {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [sortKey, setSortKey] = useState<keyof BoxAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [box, setBox] = useState("");
@@ -310,7 +313,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
     setDzsBox(`${r.cabinNumber}/${r.boxNumber}`);
     const p = new URLSearchParams();
     p.set("central", r.centralName); p.set("cabin", r.cabinNumber); p.set("box", r.boxNumber);
-    await measureAccountsFor(p);
+    await measureAccountsFor(p, isSuper);
     setTimeout(() => setDzsBox(null), 1500);
   };
   const measureAll = async () => {
@@ -321,7 +324,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
     if (!central && !cabin && !box) {
       if (!confirm("هتفتح قياس DZS لكل الخطوط اللى لها أكونت فى كل السنترالات — متأكد؟")) return;
     }
-    await measureAccountsFor(p);
+    await measureAccountsFor(p, isSuper);
   };
 
   const sorted = useMemo(() => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2, Radar, Pencil, Save, X, Ban, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -90,6 +91,7 @@ interface WithAccountReportProps {
 
 export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title }: WithAccountReportProps = {}) {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -252,6 +254,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
       if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) { try { w?.close(); } catch {} return; }
       if (w) w.location.href = buildDZSUrl(items, scoreGt != null); // scoreGt != null = تقرير الأسكور>100 → فرض real-time
       setDzsCount(items.length);
     } catch {
@@ -262,7 +265,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     }
   };
 
-  const openDZSSingle = (r: PhoneLine) => window.open(buildDZSUrl([toItem(r)], scoreGt != null), "_blank");
+  const openDZSSingle = async (r: PhoneLine) => {
+    if (await dispatchSpeedTool("measure", [toItem(r).account], isSuper)) return;
+    window.open(buildDZSUrl([toItem(r)], scoreGt != null), "_blank");
+  };
 
   // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد. kind: "raise" = رفع سرعة | "stop" = إيقاف Nightly فقط.
   const handleRaiseSpeed = async (kind: "raise" | "stop") => {
@@ -289,6 +295,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const accounts = (json.data as PhoneLine[]).map((r) => (r.accountNo ?? "").toString().trim());
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");

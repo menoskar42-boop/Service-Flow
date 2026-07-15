@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge } from "lucide-reac
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -91,6 +92,7 @@ interface NeedsSpeedReportProps {
 
 export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/phone-lines/needs-speed", title }: NeedsSpeedReportProps) {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -135,8 +137,9 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
 
-  const openDZSSingle = (r: SpeedLine) => {
+  const openDZSSingle = async (r: SpeedLine) => {
     if (!r.accountNo) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
+    if (await dispatchSpeedTool("measure", [String(r.accountNo).trim()], isSuper)) return;
     window.open(buildDZSUrl([String(r.accountNo).trim()]), "_blank");
   };
 
@@ -154,6 +157,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
         .map((r) => (r.accountNo ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (await dispatchSpeedTool("measure", accounts, isSuper)) { try { w?.close(); } catch {} return; }
       if (w) w.location.href = buildDZSUrl(accounts);
       setDzsCount(accounts.length);
     } catch {
@@ -179,6 +183,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
         .map((r) => (r.accountNo ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");

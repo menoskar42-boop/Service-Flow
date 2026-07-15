@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge, Undo2 } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -126,6 +127,7 @@ const faultBadge = (cls: string | null) => {
 
 export function CurrentFaultsReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [repeatedOnly, setRepeatedOnly] = useState(false);
@@ -174,7 +176,7 @@ export function CurrentFaultsReport() {
     full: f.phoneShort ? "88" + f.phoneShort : "",
   });
 
-  const handleMeasureDZS = () => {
+  const handleMeasureDZS = async () => {
     const seen = new Set<string>();
     const items = displayed
       .map(toItem)
@@ -183,16 +185,18 @@ export function CurrentFaultsReport() {
       alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
       return;
     }
+    if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) return;
     window.open(buildDZSUrl(items), "_blank");
   };
 
   // رفع السرعة / إيقاف PO لأرقام الأعطال المعروضة. kind: "raise" = رفع سرعة | "stop" = إيقاف PO فقط.
-  const handleRaisePO = (kind: "raise" | "stop") => {
+  const handleRaisePO = async (kind: "raise" | "stop") => {
     const seen = new Set<string>();
     const accounts = displayed
       .map((f) => (f.accountNo ?? "").toString().trim())
       .filter((a) => a && !seen.has(a) && seen.add(a));
     if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى الأعطال المعروضة"); return; }
+    if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
     const afterStop = kind === "raise"
       ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
       : false;
@@ -200,7 +204,8 @@ export function CurrentFaultsReport() {
   };
 
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
-  const openDZSSingle = (f: CurrentFault) => {
+  const openDZSSingle = async (f: CurrentFault) => {
+    if (await dispatchSpeedTool("measure", [toItem(f).account], isSuper)) return;
     window.open(buildDZSUrl([toItem(f)]), "_blank");
   };
 

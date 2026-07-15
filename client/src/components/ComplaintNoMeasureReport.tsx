@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 
@@ -88,6 +89,7 @@ const scoreBadge = (v: number | null | undefined) => {
 
 export function ComplaintNoMeasureReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [dateFrom, setDateFrom] = useState(monthStart());
   const [dateTo, setDateTo] = useState(todayStr());
   const [central, setCentral] = useState("");
@@ -130,8 +132,9 @@ export function ComplaintNoMeasureReport() {
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
 
-  const openDZSSingle = (r: Row) => {
+  const openDZSSingle = async (r: Row) => {
     if (!r.accountNo) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
+    if (await dispatchSpeedTool("measure", [String(r.accountNo).trim()], isSuper)) return;
     window.open(buildDZSUrl([String(r.accountNo).trim()]), "_blank");
   };
 
@@ -148,6 +151,7 @@ export function ComplaintNoMeasureReport() {
         .map((r) => (r.accountNo ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (await dispatchSpeedTool("measure", accounts, isSuper)) { try { w?.close(); } catch {} return; }
       if (w) w.location.href = buildDZSUrl(accounts);
       setDzsCount(accounts.length);
     } catch {
@@ -172,6 +176,7 @@ export function ComplaintNoMeasureReport() {
         .map((r) => (r.accountNo ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");

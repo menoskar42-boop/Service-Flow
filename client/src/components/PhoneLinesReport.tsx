@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2, Radar, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -71,6 +72,7 @@ const PAGE_SIZE = 50;
 
 export function PhoneLinesReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -136,6 +138,7 @@ export function PhoneLinesReport() {
         alert("لا توجد أرقام أكونت فى النطاق المحدد — لا شىء للقياس");
         return;
       }
+      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) { if (win) win.close(); return; }
       if (items.length > 150 &&
           !confirm(`سيتم فتح DZS لقياس ${items.length} رقم فى هذا النطاق — متأكد؟`)) {
         if (win) win.close();
@@ -168,6 +171,7 @@ export function PhoneLinesReport() {
         .map((r) => (toItem(r).account ?? "").toString().trim())
         .filter((a) => a && !seen.has(a) && seen.add(a));
       if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");
@@ -175,7 +179,8 @@ export function PhoneLinesReport() {
   };
 
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
-  const openDZSSingle = (r: PhoneLine) => {
+  const openDZSSingle = async (r: PhoneLine) => {
+    if (await dispatchSpeedTool("measure", [toItem(r).account], isSuper)) return;
     window.open(buildDZSUrl([toItem(r)]), "_blank");
   };
 

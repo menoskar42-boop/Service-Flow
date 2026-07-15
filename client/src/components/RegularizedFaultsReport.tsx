@@ -10,8 +10,8 @@ import {
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, Radar, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive } from "@/lib/exec-queue";
-import { useSpeedToolsVisible } from "@/lib/use-speed-tools";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { format } from "date-fns";
 
@@ -123,6 +123,7 @@ const regBadge = (s: string | null) => {
 
 export function RegularizedFaultsReport() {
   const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -162,11 +163,8 @@ export function RegularizedFaultsReport() {
       alert("لا توجد أرقام أكونت فى الأعطال المعروضة — لا شىء للقياس");
       return;
     }
-    // لو فيه جهاز تنفيذ مفعّل → للطابور بدل الفتح المحلى
-    if (await enqueueIfExecutorActive("measure", items.map((i) => i.account))) {
-      alert(`تم إضافة ${items.length} رقم لطابور القياس — هيتنفّذ على جهاز التنفيذ`);
-      return;
-    }
+    // لو فيه جهاز تنفيذ مفعّل → للطابور بدل الفتح المحلى (وإلا رسالة عدم الإتاحة لغير السوبر أدمن)
+    if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) return;
     window.open(buildDZSUrl(items), "_blank");
   };
 
@@ -177,11 +175,8 @@ export function RegularizedFaultsReport() {
       .map((f) => (f.accountNo ?? "").toString().trim())
       .filter((a) => a && !seen.has(a) && seen.add(a));
     if (accounts.length === 0) { alert("لا توجد أرقام أكونت فى الأعطال المعروضة"); return; }
-    // لو فيه جهاز تنفيذ مفعّل → للطابور بدل التنفيذ المحلى
-    if (await enqueueIfExecutorActive(kind === "stop" ? "stop" : "raise", accounts)) {
-      alert(`تم إضافة ${accounts.length} رقم لطابور ${kind === "stop" ? "الإيقاف" : "رفع السرعة"} — هيتنفّذ على جهاز التنفيذ`);
-      return;
-    }
+    // لو فيه جهاز تنفيذ مفعّل → للطابور بدل التنفيذ المحلى (وإلا رسالة عدم الإتاحة لغير السوبر أدمن)
+    if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
     const afterStop = kind === "raise"
       ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
       : false;
@@ -189,7 +184,8 @@ export function RegularizedFaultsReport() {
   };
 
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
-  const openDZSSingle = (f: RegularizedFault) => {
+  const openDZSSingle = async (f: RegularizedFault) => {
+    if (await dispatchSpeedTool("measure", [toItem(f).account], isSuper)) return;
     window.open(buildDZSUrl([toItem(f)]), "_blank");
   };
 
