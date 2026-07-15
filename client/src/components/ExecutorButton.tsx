@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { executeSingle, latestMeasureAt, sleep, type ExecJob } from "@/lib/exec-queue";
+import { executeSingle, latestMeasureAt, latestPoEventAt, sleep, type ExecJob } from "@/lib/exec-queue";
 
 // زر «جهاز التنفيذ» — للسوبر أدمن فقط. لما يتفعّل، البراوزر ده يبقى هو المنفّذ:
 // يبعت نبضة كل 20ث، ويسحب المهام من الطابور كل 4ث وينفّذها (رفع سرعة/قياس/إيقاف).
@@ -36,8 +36,8 @@ export function ExecutorButton() {
 
     const heartbeat = () => { fetch("/api/exec-queue/heartbeat", { method: "POST", credentials: "include" }).catch(() => {}); };
 
-    // مهلة كل خط (بالمللى): قياس ٢د، رفع سرعة ٢د، إيقاف نص دقيقة (٣٠ث)
-    const RAISE_MS = 2 * 60 * 1000, MEASURE_MAX_MS = 2 * 60 * 1000, STOP_MS = 30 * 1000;
+    // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
+    const MEASURE_MAX_MS = 1.8 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
 
     // ينفّذ خط واحد وينتظر لحد ما يخلص/يتأكد قبل الخط اللى بعده (يمنع التداخل)
     const runAccount = async (type: ExecJob["type"], acc: string) => {
@@ -47,7 +47,7 @@ export function ExecutorButton() {
         // اترفعت لـ 138 خلاص، فيفضل تاب واحد بس مفتوح: بتاع القياس الحالى/الأخير.
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
         lastMeasureWin.current = executeSingle("measure", acc);
-        // استنى لحد ما القياس يتحدّث فعلاً (تأكيد) أو أقصى ٢ دقيقة
+        // استنى لحد ما القياس يتحدّث فعلاً (تأكيد) أو أقصى ١.٨ دقيقة
         const deadline = Date.now() + MEASURE_MAX_MS;
         while (!stopped && Date.now() < deadline) {
           await sleep(15 * 1000);
@@ -55,8 +55,21 @@ export function ExecutorButton() {
         }
         return; // انتهت المهلة القصوى
       }
-      executeSingle(type, acc);
-      await sleep(type === "stop" ? STOP_MS : RAISE_MS);
+      if (type === "raise") {
+        // مش مربوط بمهلة ثابتة — نعدّى للخط اللى بعده أول ما نتأكد إن رفع السرعة اتسجّل فعلاً
+        // (حدث raise فى line_po_events)، أو بحد أقصى ٨ دقايق للخط الواحد.
+        const before = await latestPoEventAt(acc, "raise");
+        executeSingle("raise", acc);
+        const deadline = Date.now() + RAISE_MAX_MS;
+        while (!stopped && Date.now() < deadline) {
+          await sleep(15 * 1000);
+          if ((await latestPoEventAt(acc, "raise")) > before) return; // اتأكد رفع السرعة اتسجّل → التالى
+        }
+        return; // انتهت المهلة القصوى
+      }
+      // إيقاف PO — مهلة ثابتة قصيرة
+      executeSingle("stop", acc);
+      await sleep(STOP_MS);
     };
 
     const claimAndRun = async () => {
