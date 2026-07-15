@@ -1108,6 +1108,8 @@ export async function ensureSchema() {
         created_at timestamp NOT NULL DEFAULT now()
       );
     `);
+    // إيقاف تنشيط حساب الكوابل (زى users.suspended فى الطلبات) — يمنع دخول الكوابل المباشر
+    await pool.query(`ALTER TABLE cfm_users ADD COLUMN IF NOT EXISTS suspended boolean DEFAULT false`);
   } catch (e) {
     console.error("[ensureSchema] CFM tables error:", (e as Error).message);
   }

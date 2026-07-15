@@ -101,6 +101,9 @@ export function registerCfmRoutes(app: Express) {
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
+      if ((user as any).suspended) {
+        return res.status(403).json({ error: "الحساب موقوف" });
+      }
 
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {

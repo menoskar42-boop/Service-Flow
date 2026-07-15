@@ -1403,7 +1403,7 @@ export async function registerRoutes(
         ) cu ON true
         UNION ALL
         SELECT NULL AS "sfId", cu.username, NULL AS "sfRole", NULL AS "workerCode",
-               false AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole", cu.name AS "cfmName"
+               COALESCE(cu.suspended, false) AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole", cu.name AS "cfmName"
         FROM cfm_users cu
         WHERE NOT EXISTS (SELECT 1 FROM users u2 WHERE u2.cfm_user_id = cu.id OR u2.username = cu.username)
         ORDER BY username`);
@@ -1525,6 +1525,18 @@ export async function registerRoutes(
       await pool.query(`UPDATE users SET password = $1 WHERE username = $2`, [await hashPassword(newPassword), uname]);
       await pool.query(`UPDATE cfm_users SET password = $1, is_initial_password = true WHERE username = $2`, [bcryptjs.hashSync(newPassword, 10), uname]);
       res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // إيقاف/تنشيط حساب — يوقف الدخول فى الموقعين (الطلبات + الكوابل)
+  app.post("/api/portal/users/:username/suspend", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const uname = String(req.params.username || "").trim();
+      if (uname === req.user.username) return res.status(400).json({ message: "لا يمكنك إيقاف حسابك" });
+      const suspended = !!req.body?.suspended;
+      await pool.query(`UPDATE users SET suspended = $1 WHERE username = $2`, [suspended, uname]);
+      await pool.query(`UPDATE cfm_users SET suspended = $1 WHERE username = $2`, [suspended, uname]).catch(() => {});
+      res.json({ ok: true, suspended });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

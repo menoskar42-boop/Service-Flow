@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, UsersRound, UserPlus, KeyRound, Trash2, Pencil } from "lucide-react";
+import { Loader2, UsersRound, UserPlus, KeyRound, Trash2, Pencil, Ban, CheckCircle } from "lucide-react";
 
 // بوابة إدارة المستخدمين الموحّدة (سوبر أدمن فقط):
 // حساب واحد للموقعين — الدور الموحّد يحدّد دور الطلبات ودور الكوابل، والدخول موحّد (SSO).
@@ -95,6 +95,13 @@ export function UnifiedUsersManager() {
     onError: (e: any) => alert(e.message),
   });
 
+  const suspendUser = useMutation({
+    mutationFn: ({ username, suspended }: { username: string; suspended: boolean }) =>
+      api(`/api/portal/users/${encodeURIComponent(username)}/suspend`, { method: "POST", body: JSON.stringify({ suspended }) }),
+    onSuccess: invalidate,
+    onError: (e: any) => alert(e.message),
+  });
+
   const needsWorker = form.role === "tech";
 
   return (
@@ -174,8 +181,8 @@ export function UnifiedUsersManager() {
                 </thead>
                 <tbody>
                   {users.map((u) => (
-                    <tr key={u.username} className="border-b hover:bg-muted/20">
-                      <td className="p-2 font-medium">{u.username}{u.workerCode ? <span className="text-xs text-muted-foreground"> ({u.workerCode})</span> : null}</td>
+                    <tr key={u.username} className={`border-b hover:bg-muted/20 ${u.suspended ? "opacity-60 bg-red-50/40" : ""}`}>
+                      <td className="p-2 font-medium">{u.username}{u.workerCode ? <span className="text-xs text-muted-foreground"> ({u.workerCode})</span> : null}{u.suspended ? <span className="mr-1 text-xs text-red-600 font-semibold">(موقوف)</span> : null}</td>
                       <td className="p-2">
                         {(u.cfmRole || roles.find((r) => r.key === u.unifiedRole)?.cfm) ? (
                           <button
@@ -201,6 +208,11 @@ export function UnifiedUsersManager() {
                       </td>
                       <td className="p-2">
                         <div className="flex gap-1 justify-end">
+                          <Button size="sm" variant="outline" className={`h-8 px-2 ${u.suspended ? "text-green-700 border-green-200" : "text-orange-700 border-orange-200"}`}
+                            title={u.suspended ? "تنشيط الحساب" : "إيقاف تنشيط الحساب"}
+                            onClick={() => { if (confirm(`${u.suspended ? "تنشيط" : "إيقاف"} حساب ${u.username}؟`)) suspendUser.mutate({ username: u.username, suspended: !u.suspended }); }}>
+                            {u.suspended ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                          </Button>
                           <Button size="sm" variant="outline" className="h-8 px-2 text-amber-700 border-amber-200" title="تغيير كلمة السر"
                             onClick={() => { const p = prompt(`كلمة سر جديدة لـ ${u.username}:`); if (p) resetPassword.mutate({ username: u.username, newPassword: p }); }}>
                             <KeyRound className="w-4 h-4" />
