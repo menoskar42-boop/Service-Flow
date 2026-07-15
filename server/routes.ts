@@ -18,6 +18,7 @@ import connectPgSimple from "connect-pg-simple";
 import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { registerCfmRoutes } from "./cfm/routes";
+import { storage as cfmStorage } from "./cfm/storage";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -7244,12 +7245,8 @@ export async function registerRoutes(
 
   app.get("/api/proxy/cfm-tickets", requireAuth, async (_req, res) => {
     try {
-      const upstream = await cfmFetch("/api/tickets");
-      if (!upstream.ok) {
-        return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
-      }
-      const data = await upstream.json();
-      const tickets: any[] = Array.isArray(data) ? data : (data.data ?? data.tickets ?? []);
+      // البيانات دلوقتى من قاعدة بياناتنا (الكوابل مدمج) بدل الموقع الخارجى القديم
+      const tickets: any[] = await cfmStorage.getAllTickets();
 
       // إثراء كل تذكرة بمتوسط قياس البكسات التابعة لها (من بيانات Service Flow)
       let agg: Map<string, { sum: number; measured: number; lines: number }> | null = null;
@@ -7295,11 +7292,8 @@ export async function registerRoutes(
       const dateFrom = (req.query.dateFrom as string | undefined)?.trim();
       const dateTo   = (req.query.dateTo   as string | undefined)?.trim();
 
-      // 1. سحب قائمة التذاكر من CFM
-      const upstream = await cfmFetch("/api/tickets");
-      if (!upstream.ok) return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
-      const rawData = await upstream.json();
-      const tickets: any[] = Array.isArray(rawData) ? rawData : (rawData.data ?? rawData.tickets ?? []);
+      // 1. سحب قائمة التذاكر من قاعدة بياناتنا (الكوابل مدمج)
+      const tickets: any[] = await cfmStorage.getAllTickets();
 
       // 2. جمع اسماء السنترالات وأرقام الكابينات الفريدة لتقليل حجم الـ query
       const exchSet = new Set<string>();
@@ -7423,10 +7417,7 @@ export async function registerRoutes(
   //   - يجلب كل خطوط phone_lines المطابِقة لهذه البكسيات + بيانات الأكونت + آخر قياس من شيت 138
   app.get("/api/proxy/cfm-open-ticket-lines", requireAuth, async (_req, res) => {
     try {
-      const upstream = await cfmFetch("/api/tickets");
-      if (!upstream.ok) return res.status(upstream.status).json({ message: `CFM returned ${upstream.status}` });
-      const rawData = await upstream.json();
-      const tickets: any[] = Array.isArray(rawData) ? rawData : (rawData.data ?? rawData.tickets ?? []);
+      const tickets: any[] = await cfmStorage.getAllTickets();
 
       // مفتاح "normCentral|cabin|box" → بيانات التذكرة (للإلحاق بكل خط)
       const keyMeta = new Map<string, { ticketNumber: string; faultType: string; createdAt: string }>();
@@ -7506,10 +7497,7 @@ export async function registerRoutes(
     try {
       const { central = "", cabin = "", box = "" } = req.query as Record<string, string>;
       if (!box) return res.json({ hasOpenTicket: false });
-      const upstream = await cfmFetch("/api/tickets");
-      if (!upstream.ok) return res.status(502).json({ message: `CFM returned ${upstream.status}` });
-      const rawData = await upstream.json();
-      const tickets: any[] = Array.isArray(rawData) ? rawData : (rawData.data ?? rawData.tickets ?? []);
+      const tickets: any[] = await cfmStorage.getAllTickets();
       const wantCentral = normCentral(central);
       const wantCabin = String(cabin).trim();
       const wantBox = String(box).trim();
