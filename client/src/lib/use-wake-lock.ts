@@ -66,14 +66,45 @@ export function useWakeLock(enabled: boolean = true) {
       }
     } catch { /* المتصفح مايدعمش captureStream — نكتفى بالـ Wake Lock */ }
 
+    // ── AudioContext صامت شغّال باستمرار ──
+    // ده الأضمن لمنع المتصفح من تجميد/إبطاء التاب فى الخلفية — طول ما فيه AudioContext «running»
+    // المؤقّتات (زى التحديث كل نص ساعة) بتفضل شغّالة حتى والتاب مش قدامك. محتاج تفاعل مستخدم
+    // واحد عشان يبدأ (سياسة الأوتوبلاي)، فبنبدأه عند أول ضغطة + بنحاول نرجّعه عند الرجوع للتاب.
+    let audioCtx: AudioContext | null = null;
+    const startAudio = () => {
+      try {
+        if (!audioCtx) {
+          const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+          if (!AC) return;
+          audioCtx = new AC();
+          const osc = audioCtx!.createOscillator();
+          const gain = audioCtx!.createGain();
+          gain.gain.value = 0; // صامت تماماً
+          osc.frequency.value = 440;
+          osc.connect(gain); gain.connect(audioCtx!.destination);
+          osc.start();
+        }
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+      } catch { /* ignore */ }
+    };
+    const onGesture = () => startAudio();
+    window.addEventListener("pointerdown", onGesture);
+    window.addEventListener("keydown", onGesture);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) startAudio(); });
+    startAudio(); // محاولة فورية (قد تفشل قبل أى تفاعل — الفيديو fallback)
+
     return () => {
       released = true;
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("keydown", onGesture);
       try { sentinel?.release?.(); } catch { /* ignore */ }
       sentinel = null;
       try { if (canvasTimer) clearInterval(canvasTimer); } catch { /* ignore */ }
       try { if (videoEl) { videoEl.pause(); (videoEl.srcObject as MediaStream | null)?.getTracks?.().forEach((t) => t.stop()); videoEl.srcObject = null; videoEl.remove(); } } catch { /* ignore */ }
       videoEl = null;
+      try { audioCtx?.close(); } catch { /* ignore */ }
+      audioCtx = null;
     };
   }, [enabled]);
 }
