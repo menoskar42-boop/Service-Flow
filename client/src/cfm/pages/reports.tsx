@@ -730,7 +730,7 @@ export default function Reports() {
             <td></td>
             <td></td>
             <td></td>
-            <td>${row.tasksUsed === '-' ? '' : row.tasksUsed}</td>
+            <td></td>
             <td></td>
           </tr>`).join('');
 
