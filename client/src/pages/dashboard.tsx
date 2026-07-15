@@ -7,6 +7,7 @@ import { CreateOrderModal } from "@/components/CreateOrderModal";
 import { OrdersTable } from "@/components/OrdersTable";
 import { CreateUserModal } from "@/components/CreateUserModal";
 import { UsersList } from "@/components/UsersList";
+import { UnifiedUsersManager } from "@/components/UnifiedUsersManager";
 import { BoxRejectionReport } from "@/components/BoxRejectionReport";
 import { PhoneLinesReport } from "@/components/PhoneLinesReport";
 import { PhoneLookupReport } from "@/components/PhoneLookupReport";
@@ -572,7 +573,10 @@ export default function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
               <div className="flex items-center gap-2">
                 {user.role === ROLES.SALES && <CreateOrderModal />}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.SALES_ADMIN) && (
+                {isSuperAdmin ? (
+                  // السوبر أدمن: بوابة موحّدة تدير مستخدمى الطلبات والكوابل معاً
+                  <UnifiedUsersManager />
+                ) : (user.role === ROLES.ADMIN || user.role === ROLES.SALES_ADMIN) && (
                   <>
                     <CreateUserModal />
                     <UsersList />

@@ -16,7 +16,7 @@ import { promisify } from "util";
 import MemoryStore from "memorystore";
 import connectPgSimple from "connect-pg-simple";
 import bcryptjs from "bcryptjs";
-import { sfRoleOf, cfmRoleOf, sitesForRole } from "@shared/roles-access";
+import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { registerCfmRoutes } from "./cfm/routes";
 
 const scryptAsync = promisify(scrypt);
@@ -1366,6 +1366,131 @@ export async function registerRoutes(
       const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM exec_jobs WHERE status IN ('pending','claimed')`);
       res.json({ pending: rows[0]?.n ?? 0 });
     } catch { res.json({ pending: 0 }); }
+  });
+
+  // ===== بوابة إدارة المستخدمين الموحّدة (سوبر أدمن فقط) =====
+  // حساب واحد للموقعين: الدور الموحّد يحدّد دور الطلبات (users/scrypt) ودور الكوابل (cfm_users/bcrypt).
+  // إنشاء/تعديل الدور/مسح/تصفير الباسورد يتعامل مع الجدولين معاً ويربطهم بـ cfm_user_id.
+  const unifiedRoleOf = (sfRole: string | null, cfmRole: string | null): string => {
+    if (sfRole && (UNIFIED_ROLE_ACCESS as any)[sfRole]) return sfRole; // كل دور له طلبات اسمه الموحّد = دوره فى الطلبات
+    const hit = Object.entries(UNIFIED_ROLE_ACCESS).find(([, v]) => v.sf === null && v.cfm === cfmRole);
+    return hit ? hit[0] : (cfmRole || sfRole || "");
+  };
+
+  // قائمة الأدوار الموحّدة (للواجهة)
+  app.get("/api/portal/roles", requireAuth, requireSuperAdmin, (_req, res) => {
+    res.json(Object.entries(UNIFIED_ROLE_ACCESS).map(([key, v]) => ({ key, labelAr: v.labelAr, sf: v.sf, cfm: v.cfm })));
+  });
+
+  // القائمة الموحّدة: من جدول الطلبات + حسابات الكوابل اللى مالهاش حساب طلبات
+  app.get("/api/portal/users", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(`
+        SELECT u.id AS "sfId", u.username, u.role AS "sfRole", u.worker_code AS "workerCode",
+               COALESCE(u.suspended, false) AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole"
+        FROM users u
+        LEFT JOIN LATERAL (
+          SELECT c.* FROM cfm_users c WHERE c.id = u.cfm_user_id OR c.username = u.username
+          ORDER BY (c.id = u.cfm_user_id) DESC LIMIT 1
+        ) cu ON true
+        UNION ALL
+        SELECT NULL AS "sfId", cu.username, NULL AS "sfRole", NULL AS "workerCode",
+               false AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole"
+        FROM cfm_users cu
+        WHERE NOT EXISTS (SELECT 1 FROM users u2 WHERE u2.cfm_user_id = cu.id OR u2.username = cu.username)
+        ORDER BY username`);
+      res.json(rows.map((r: any) => ({ ...r, unifiedRole: unifiedRoleOf(r.sfRole, r.cfmRole) })));
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // إنشاء مستخدم موحّد: ينشئ حساب الطلبات و/أو الكوابل حسب الدور، ويربطهم.
+  app.post("/api/portal/users", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const { username, password, role, workerCode, name } = req.body || {};
+      const uname = String(username || "").trim();
+      if (!uname || !password || !role) return res.status(400).json({ message: "الاسم وكلمة السر والدور مطلوبين" });
+      const acc = (UNIFIED_ROLE_ACCESS as any)[role];
+      if (!acc) return res.status(400).json({ message: "دور غير معروف" });
+      const dupSf = (await pool.query(`SELECT 1 FROM users WHERE username = $1`, [uname])).rowCount;
+      const dupCfm = (await pool.query(`SELECT 1 FROM cfm_users WHERE username = $1`, [uname])).rowCount;
+      if (dupSf || dupCfm) return res.status(400).json({ message: "اسم المستخدم موجود بالفعل" });
+      let cfmId: string | null = null;
+      if (acc.cfm) {
+        const ph = bcryptjs.hashSync(String(password), 10);
+        const ins = await pool.query(
+          `INSERT INTO cfm_users (id, username, password, name, role, is_initial_password, created_at)
+           VALUES (gen_random_uuid()::text, $1, $2, $3, $4, false, now()) RETURNING id`,
+          [uname, ph, String(name || uname).trim(), acc.cfm]);
+        cfmId = ins.rows[0].id;
+      }
+      let sfId: number | null = null;
+      if (acc.sf) {
+        const hp = await hashPassword(String(password));
+        const ins = await pool.query(
+          `INSERT INTO users (username, password, role, worker_code, cfm_user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+          [uname, hp, role, workerCode?.trim() || null, cfmId]);
+        sfId = ins.rows[0].id;
+      }
+      res.status(201).json({ ok: true, username: uname, role, sfId, cfmId });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // تغيير دور مستخدم حالى (سوبر أدمن فقط) — يظبط الجدولين حسب الدور الجديد.
+  app.patch("/api/portal/users/:username/role", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const uname = String(req.params.username || "").trim();
+      const { role } = req.body || {};
+      const acc = (UNIFIED_ROLE_ACCESS as any)[role];
+      if (!acc) return res.status(400).json({ message: "دور غير معروف" });
+      const sf = (await pool.query(`SELECT * FROM users WHERE username = $1`, [uname])).rows[0];
+      const cfm = (await pool.query(`SELECT * FROM cfm_users WHERE username = $1`, [uname])).rows[0];
+      // الدور الجديد يحتاج حساب طلبات لكن مفيش → نطلب إعادة الإنشاء بالباسورد
+      if (acc.sf && !sf) return res.status(400).json({ message: "الدور الجديد يحتاج حساب طلبات — احذف المستخدم وأنشئه من جديد بكلمة السر." });
+      // جهة الطلبات
+      if (acc.sf && sf) await pool.query(`UPDATE users SET role = $1 WHERE id = $2`, [role, sf.id]);
+      else if (!acc.sf && sf) await pool.query(`DELETE FROM users WHERE id = $1`, [sf.id]); // الدور الجديد كوابل فقط
+      // جهة الكوابل
+      if (acc.cfm) {
+        if (cfm) await pool.query(`UPDATE cfm_users SET role = $1 WHERE id = $2`, [acc.cfm, cfm.id]);
+        else {
+          // مفيش حساب كوابل → أنشئ واحد مربوط (باسورد عشوائى؛ الدخول عبر SSO من الطلبات)
+          const ph = bcryptjs.hashSync(randomBytes(24).toString("hex"), 10);
+          const ins = await pool.query(
+            `INSERT INTO cfm_users (id, username, password, name, role, is_initial_password, created_at)
+             VALUES (gen_random_uuid()::text, $1, $2, $1, $3, false, now())
+             ON CONFLICT (username) DO UPDATE SET role = EXCLUDED.role RETURNING id`,
+            [uname, ph, acc.cfm]);
+          if (sf && ins.rows[0]) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [ins.rows[0].id, sf.id]);
+        }
+      } else if (cfm) {
+        await pool.query(`DELETE FROM cfm_users WHERE id = $1`, [cfm.id]);
+        if (sf) await pool.query(`UPDATE users SET cfm_user_id = NULL WHERE id = $1`, [sf.id]);
+      }
+      res.json({ ok: true, username: uname, role });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // تصفير كلمة السر لمستخدم — تتغيّر فى الموقعين (scrypt + bcrypt)
+  app.post("/api/portal/users/:username/reset-password", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const uname = String(req.params.username || "").trim();
+      const newPassword = String(req.body?.newPassword || "");
+      if (newPassword.length < 3) return res.status(400).json({ message: "كلمة السر قصيرة جداً" });
+      await pool.query(`UPDATE users SET password = $1 WHERE username = $2`, [await hashPassword(newPassword), uname]);
+      await pool.query(`UPDATE cfm_users SET password = $1, is_initial_password = true WHERE username = $2`, [bcryptjs.hashSync(newPassword, 10), uname]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // مسح مستخدم من الموقعين
+  app.delete("/api/portal/users/:username", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const uname = String(req.params.username || "").trim();
+      if (uname === req.user.username) return res.status(400).json({ message: "لا يمكنك حذف حسابك" });
+      await pool.query(`DELETE FROM cfm_users WHERE username = $1`, [uname]);
+      await pool.query(`DELETE FROM users WHERE username = $1`, [uname]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // === User Management Routes ===
