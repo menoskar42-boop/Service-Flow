@@ -354,7 +354,7 @@ export default function Dashboard() {
                     بحث برقم التليفون
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && (
                   <button
                     onClick={() => setAdminTab("data-completion")}
                     data-testid="tab-admin-data-completion"
@@ -368,7 +368,7 @@ export default function Dashboard() {
                     استكمال بيانات
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.EXTERNAL) && (
                   <button
                     onClick={() => setAdminTab("file-upload")}
                     data-testid="tab-admin-file-upload"
@@ -556,15 +556,15 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── DATA COMPLETION TAB (Admin & Tech) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH) && adminTab === "data-completion" && (
+        {/* ── DATA COMPLETION TAB (Admin, Tech & External) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && adminTab === "data-completion" && (
           <div className="space-y-6">
             <DataCompletionSection />
           </div>
         )}
 
-        {/* ── FILE UPLOAD TAB (Admin only) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER) && adminTab === "file-upload" && (
+        {/* ── FILE UPLOAD TAB (Admin, Data Manager & External — external sees the upload cards only, not the super-admin control toolbar) ── */}
+        {(user.role === ROLES.ADMIN || user.role === ROLES.DATA_MANAGER || user.role === ROLES.EXTERNAL) && adminTab === "file-upload" && (
           <div className="space-y-6">
             <FileUploadSection />
           </div>
