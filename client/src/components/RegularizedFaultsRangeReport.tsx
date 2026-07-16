@@ -104,6 +104,7 @@ export function RegularizedFaultsRangeReport() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
   const [repeatedOnly, setRepeatedOnly] = useState(false);
+  const [closeReasonF, setCloseReasonF] = useState(""); // فلتر سبب الإغلاق (مثال: عطل يخص راوتر العميل)
 
   // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
@@ -124,10 +125,13 @@ export function RegularizedFaultsRangeReport() {
     ? `من ${dateFrom || "البداية"} إلى ${dateTo || "النهاية"}`
     : "كل الفترات";
 
-  // عند تفعيل زر "المكرر فقط" نعرض/نصدّر الأعطال المكررة فقط.
-  const displayed = repeatedOnly
-    ? faults.filter((f) => f.repeatStatus === "مكرر")
-    : faults;
+  // قائمة أسباب الإغلاق الموجودة فعلاً فى النتيجة (للدروب‌ليست)
+  const reasonOptions = Array.from(new Set(faults.map((f) => closeReason(f.closeCode)).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "ar"));
+
+  // عند تفعيل زر "المكرر فقط" نعرض/نصدّر الأعطال المكررة فقط + فلتر سبب الإغلاق لو متحدّد.
+  const displayed = (repeatedOnly ? faults.filter((f) => f.repeatStatus === "مكرر") : faults)
+    .filter((f) => !closeReasonF || closeReason(f.closeCode) === closeReasonF);
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -331,6 +335,16 @@ export function RegularizedFaultsRangeReport() {
         >
           <option value="">كل السنترالات</option>
           {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={closeReasonF}
+          onChange={(e) => setCloseReasonF(e.target.value)}
+          className="border rounded-md px-3 py-1.5 text-sm w-full sm:w-auto"
+          dir="rtl"
+          title="فلتر حسب سبب الإغلاق"
+        >
+          <option value="">كل أسباب الإغلاق</option>
+          {reasonOptions.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <Input
           placeholder="بحث برقم التليفون / الكابينه / البكس / status"
