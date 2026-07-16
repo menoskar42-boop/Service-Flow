@@ -213,8 +213,20 @@ export function ExecJobsReport() {
                       );
                     })()}
                   </TableCell>
-                  <TableCell className="max-w-[150px] truncate align-top" title={j.account || "-"}>
-                    {(j.account || "").split("،").filter((x) => x.trim()).length > 1 ? `${(j.account || "").split("،").filter((x) => x.trim()).length} أكونت` : (j.account || "-")}
+                  <TableCell className="align-top">
+                    {(() => {
+                      const accts = (j.account || "").split("،").map((x) => x.trim()).filter(Boolean);
+                      if (accts.length <= 1) return <span className="whitespace-nowrap">{accts[0] || "-"}</span>;
+                      const isOpen = expanded.has(j.id);
+                      return (
+                        <button
+                          onClick={() => setExpanded((prev) => { const s = new Set(prev); s.has(j.id) ? s.delete(j.id) : s.add(j.id); return s; })}
+                          className="text-blue-600 hover:underline text-xs whitespace-nowrap"
+                        >
+                          {isOpen ? "إخفاء ▲" : `${accts.length} أكونت ▾`}
+                        </button>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{j.requestedBy || "-"}</TableCell>
                   <TableCell className="whitespace-nowrap">{j.source || "-"}</TableCell>
