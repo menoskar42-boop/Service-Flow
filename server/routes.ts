@@ -1383,6 +1383,14 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // مسح الطابور يدوياً (سوبر أدمن): يعلّم كل المهام النشطة (pending/claimed) stale فوراً.
+  app.post("/api/exec-queue/clear", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'stale', done_at = now() WHERE status IN ('pending','claimed')`);
+      res.json({ ok: true, cleared: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // تنظيف المهام اليتيمة (اللى جهاز التنفيذ اتقفل عليها فى نصّها فبتفضل claimed/pending للأبد
   // وتضخّم الترتيب): نعلّمها stale لو (أ) جهاز التنفيذ مقفول (النبضة قديمة) والمهمة عدّى عليها >2 دقيقة،
   // أو (ب) مهمة claimed من أكثر من 5 ساعات (أطول من أقصى تشغيل باتش).

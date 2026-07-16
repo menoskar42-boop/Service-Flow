@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Server, Loader2 } from "lucide-react";
+import { Server, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { executeBatch, latestMeasureAt, latestPoEventAt, sleep, type ExecJob } from "@/lib/exec-queue";
@@ -16,8 +16,31 @@ export function ExecutorButton() {
   const [pending, setPending] = useState(0);
   const [current, setCurrent] = useState<string>("");
   const busy = useRef(false);
+  const [clearing, setClearing] = useState(false);
   // تاب القياس الأخير — نقفله أول ما نفتح قياس جديد (يفضل تاب واحد بس مفتوح: الأخير)
   const lastMeasureWin = useRef<Window | null>(null);
+
+  // استطلاع دائم لعدد المهام فى الطابور (للسوبر أدمن) — حتى لو الجهاز مش مفعّل — عشان يظهر زر المسح
+  useEffect(() => {
+    if (user?.role !== ROLES.SUPER_ADMIN) return;
+    const load = () => fetch("/api/exec-queue/pending", { credentials: "include" })
+      .then((r) => r.json()).then((d) => setPending(d?.pending ?? 0)).catch(() => {});
+    load();
+    const iv = setInterval(load, 10 * 1000);
+    return () => clearInterval(iv);
+  }, [user?.role]);
+
+  // مسح الطابور يدوياً (يعلّم كل المهام النشطة stale)
+  const clearQueue = async () => {
+    if (!window.confirm("مسح كل المهام العالقة فى الطابور؟ (المهام غير المنفّذة هتتلغى)")) return;
+    setClearing(true);
+    try {
+      const r = await fetch("/api/exec-queue/clear", { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      setPending(0);
+      alert(d?.ok ? `تم مسح ${d.cleared ?? 0} مهمة من الطابور` : "تعذّر مسح الطابور");
+    } catch { alert("تعذّر مسح الطابور"); } finally { setClearing(false); }
+  };
 
   const toggle = () => {
     setActive((v) => {
@@ -108,17 +131,33 @@ export function ExecutorButton() {
   if (user?.role !== ROLES.SUPER_ADMIN) return null;
 
   return (
-    <Button
-      variant={active ? "default" : "outline"}
-      size="sm"
-      onClick={toggle}
-      className={active ? "bg-indigo-600 hover:bg-indigo-700 gap-1" : "text-indigo-700 border-indigo-200 gap-1"}
-      title="جهاز التنفيذ المركزى: لما يتفعّل، رفع السرعة/القياس/الإيقاف من أى جهاز بيتنفّذ هنا عبر طابور"
-    >
-      {active ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />}
-      {active
-        ? (current ? `⏳ ${current}` : `جهاز التنفيذ: مُفعَّل${pending ? ` (${pending})` : ""}`)
-        : "جهاز التنفيذ"}
-    </Button>
+    <div className="flex items-center gap-1">
+      <Button
+        variant={active ? "default" : "outline"}
+        size="sm"
+        onClick={toggle}
+        className={active ? "bg-indigo-600 hover:bg-indigo-700 gap-1" : "text-indigo-700 border-indigo-200 gap-1"}
+        title="جهاز التنفيذ المركزى: لما يتفعّل، رفع السرعة/القياس/الإيقاف من أى جهاز بيتنفّذ هنا عبر طابور"
+      >
+        {active ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />}
+        {active
+          ? (current ? `⏳ ${current}` : `جهاز التنفيذ: مُفعَّل${pending ? ` (${pending})` : ""}`)
+          : "جهاز التنفيذ"}
+      </Button>
+      {/* زر مسح الطابور — يظهر للسوبر أدمن لما يكون فيه مهام عالقة */}
+      {pending > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={clearQueue}
+          disabled={clearing}
+          className="text-red-700 border-red-200 gap-1"
+          title="مسح كل المهام العالقة فى الطابور (المهام غير المنفّذة هتتلغى)"
+        >
+          {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          مسح الطابور ({pending})
+        </Button>
+      )}
+    </div>
   );
 }
