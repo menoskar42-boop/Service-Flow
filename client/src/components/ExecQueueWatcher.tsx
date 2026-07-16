@@ -12,6 +12,9 @@ type TrackedJob = {
   total: number | null;
   status: string;
   done: boolean;
+  jobDone: number | null;   // كام رقم اتنفّذ من مهمتى
+  jobTotal: number | null;  // إجمالى أرقام مهمتى
+  active: { type: ExecJobType; done: number; total: number } | null; // تقدّم المهمة الجارية دلوقتى
 };
 
 const LABEL: Record<string, string> = { measure: "القياس", raise: "رفع السرعة", stop: "إيقاف PO" };
@@ -30,7 +33,7 @@ export function ExecQueueWatcher() {
       setJobs((prev) =>
         prev.some((j) => j.id === d.id)
           ? prev
-          : [...prev, { id: d.id, type: d.type, count: d.count || 1, position: null, total: null, status: "pending", done: false }],
+          : [...prev, { id: d.id, type: d.type, count: d.count || 1, position: null, total: null, status: "pending", done: false, jobDone: null, jobTotal: d.count || 1, active: null }],
       );
     };
     window.addEventListener("sf-exec-track", onTrack as any);
@@ -54,7 +57,15 @@ export function ExecQueueWatcher() {
                 if (!x.done) setTimeout(() => setJobs((q) => q.filter((y) => y.id !== j.id)), 5000);
                 return { ...x, done: true, status: "done" };
               }
-              return { ...x, position: p.position ?? x.position, total: p.total ?? x.total, status: p.status || x.status };
+              return {
+                ...x,
+                position: p.position ?? x.position,
+                total: p.total ?? x.total,
+                status: p.status || x.status,
+                jobDone: p.jobDone ?? x.jobDone,
+                jobTotal: p.jobTotal ?? x.jobTotal,
+                active: p.active ?? null,
+              };
             }),
           );
         }
@@ -91,9 +102,18 @@ export function ExecQueueWatcher() {
                 : j.position == null
                   ? "جارٍ تحديد الترتيب…"
                   : j.position === 1
-                    ? "قيد التنفيذ الآن…"
+                    ? // مهمتى بتتنفّذ دلوقتى — لو أكثر من خط أعرض وصل لرقم كام
+                      (j.jobTotal ?? 1) > 1
+                      ? `قيد التنفيذ: تم ${j.jobDone ?? 0} من ${j.jobTotal}`
+                      : "قيد التنفيذ الآن…"
                     : `ترتيبك فى الطابور: ${j.position}${j.total ? " من " + j.total : ""}`}
             </div>
+            {/* لو أنا منتظر والمهمة الجارية دلوقتى فيها أكثر من خط — أعرض وصلت لفين */}
+            {!j.done && (j.position ?? 0) > 1 && j.active && j.active.total > 1 && (
+              <div className="text-[11px] text-blue-600 dark:text-blue-400">
+                الجارى تنفيذها الآن ({LABEL[j.active.type] || j.active.type}): {j.active.done} من {j.active.total}
+              </div>
+            )}
           </div>
           <button
             onClick={() => dismiss(j.id)}

@@ -67,8 +67,17 @@ export function trackQueueJob(id: number, type: ExecJobType, count = 1): void {
   try { window.dispatchEvent(new CustomEvent("sf-exec-track", { detail: { id, type, count } })); } catch { /* SSR/بيئة بدون window */ }
 }
 
-// ترتيب مهمة معيّنة فى الطابور الآن (للـ watcher)
-export async function fetchQueuePosition(id: number): Promise<{ found: boolean; status?: string; position?: number; total?: number }> {
+// ترتيب مهمة معيّنة فى الطابور الآن (للـ watcher) + تقدّم المهمة نفسها والمهمة الجارية
+export interface QueuePosition {
+  found: boolean;
+  status?: string;
+  position?: number;
+  total?: number;
+  jobDone?: number;   // كام رقم اتنفّذ من مهمة المستخدم
+  jobTotal?: number;  // إجمالى أرقام مهمة المستخدم
+  active?: { type: ExecJobType; done: number; total: number } | null; // تقدّم المهمة الجارية دلوقتى
+}
+export async function fetchQueuePosition(id: number): Promise<QueuePosition> {
   try {
     const r = await fetch(`/api/exec-queue/position?id=${id}`, { credentials: "include" });
     return await r.json();

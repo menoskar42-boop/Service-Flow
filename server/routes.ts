@@ -1373,16 +1373,42 @@ export async function registerRoutes(
     } catch { res.json({ pending: 0 }); }
   });
 
+  // كام رقم اتنفّذ فعلاً من مهمة (بعد بدء تنفيذها claimed_at):
+  //  - القياس: عدد أرقام الأكونت اللى ليها قياس جديد فى case_138 بعد claimed_at.
+  //  - رفع/إيقاف: line_po_events.last_raise_at / last_stop_at بعد claimed_at.
+  const jobProgress = async (accountsRaw: any, type: string, claimedAt: any): Promise<{ done: number; total: number }> => {
+    let accs: string[] = [];
+    try { accs = (Array.isArray(accountsRaw) ? accountsRaw : JSON.parse(accountsRaw || "[]")).map((a: any) => String(a).trim()).filter(Boolean); } catch { accs = []; }
+    const total = accs.length;
+    if (!total || !claimedAt) return { done: 0, total };
+    let q: string;
+    if (type === "measure") {
+      q = `SELECT COUNT(DISTINCT account_no)::int AS n FROM case_138 WHERE account_no = ANY($1::text[]) AND uploaded_at >= $2`;
+    } else {
+      const col = type === "stop" ? "last_stop_at" : "last_raise_at";
+      q = `SELECT COUNT(DISTINCT account_no)::int AS n FROM line_po_events WHERE account_no = ANY($1::text[]) AND ${col} >= $2`;
+    }
+    try {
+      const { rows } = await pool.query(q, [accs, claimedAt]);
+      return { done: Math.min(rows[0]?.n ?? 0, total), total };
+    } catch { return { done: 0, total }; }
+  };
+
   // ترتيب مهمة معيّنة فى الطابور (للعرض للمستخدم اللى طلبها) — يتقدّم كل ما تتنفّذ مهمة قبلها.
   // position = عدد المهام النشطة قبلها + 1 (بنفس ترتيب السحب: created_at ثم id). 0/done = خلصت.
+  // بيرجّع كمان تقدّم مهمة المستخدم (jobDone/jobTotal) وتقدّم المهمة الجارية دلوقتى (active) — عشان
+  // لو المهمة (بتاعته أو اللى قبله) فيها أكثر من خط يعرف وصلت لرقم كام.
   app.get("/api/exec-queue/position", requireAuth, async (req, res) => {
     try {
       const id = parseInt(String(req.query.id || ""));
       if (!id) return res.json({ found: false });
-      const { rows } = await pool.query(`SELECT status, created_at FROM exec_jobs WHERE id = $1`, [id]);
+      const { rows } = await pool.query(`SELECT status, created_at, claimed_at, accounts, type FROM exec_jobs WHERE id = $1`, [id]);
       const job = rows[0];
       if (!job) return res.json({ found: false });
-      if (job.status === "done") return res.json({ found: true, status: "done", position: 0, total: 0 });
+      const jobProg = await jobProgress(job.accounts, job.type, job.claimed_at);
+      if (job.status === "done") {
+        return res.json({ found: true, status: "done", position: 0, total: 0, jobDone: jobProg.total, jobTotal: jobProg.total, active: null });
+      }
       const { rows: a } = await pool.query(
         `SELECT COUNT(*)::int AS ahead FROM exec_jobs
          WHERE status IN ('pending','claimed') AND (created_at < $1 OR (created_at = $1 AND id < $2))`,
@@ -1390,7 +1416,18 @@ export async function registerRoutes(
       const { rows: t } = await pool.query(
         `SELECT COUNT(*)::int AS total FROM exec_jobs WHERE status IN ('pending','claimed')`);
       const ahead = a[0]?.ahead ?? 0;
-      res.json({ found: true, status: job.status, position: ahead + 1, total: t[0]?.total ?? ahead + 1 });
+      // المهمة الجاري تنفيذها الآن (أقدم مهمة claimed) — عشان المنتظرين يشوفوا وصلت لفين
+      const { rows: cj } = await pool.query(
+        `SELECT accounts, type, claimed_at FROM exec_jobs WHERE status = 'claimed' ORDER BY created_at, id LIMIT 1`);
+      let active: { type: string; done: number; total: number } | null = null;
+      if (cj[0]) {
+        const ap = await jobProgress(cj[0].accounts, cj[0].type, cj[0].claimed_at);
+        active = { type: cj[0].type, done: ap.done, total: ap.total };
+      }
+      res.json({
+        found: true, status: job.status, position: ahead + 1, total: t[0]?.total ?? ahead + 1,
+        jobDone: jobProg.done, jobTotal: jobProg.total, active,
+      });
     } catch {
       res.json({ found: false });
     }
