@@ -1463,6 +1463,24 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // إلغاء مهام محددة من الطابور (سوبر أدمن): بالـ id (رقم/خط واحد) أو batch_id (باتش كامل).
+  app.post("/api/exec-queue/cancel", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x: any) => parseInt(x)).filter((n: number) => !isNaN(n)) : [];
+      const batchId = String(req.body?.batchId || "").trim();
+      if (!ids.length && !batchId) return res.status(400).json({ message: "لا يوجد ما يُلغى" });
+      const params: any[] = [];
+      const or: string[] = [];
+      if (ids.length) { params.push(ids); or.push(`id = ANY($${params.length}::int[])`); }
+      if (batchId) { params.push(batchId); or.push(`batch_id = $${params.length}`); }
+      const { rowCount } = await pool.query(
+        `UPDATE exec_jobs SET status = 'stale', done_at = now() WHERE status IN ('pending','claimed') AND (${or.join(" OR ")})`,
+        params,
+      );
+      res.json({ ok: true, canceled: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // مسح الطابور يدوياً (سوبر أدمن): يعلّم كل المهام النشطة (pending/claimed) stale فوراً.
   app.post("/api/exec-queue/clear", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {

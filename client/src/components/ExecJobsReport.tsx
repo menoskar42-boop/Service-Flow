@@ -57,6 +57,7 @@ export function ExecJobsReport() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set()); // صفوف الفحوصات القديمة (متعددة الأرقام) المفتوحة
   const [q, setQ] = useState(""); // بحث برقم الباتش / التليفون / الأكونت / الطالب
   const [loading, setLoading] = useState(false);
+  const [canceling, setCanceling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -70,6 +71,22 @@ export function ExecJobsReport() {
   }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
+
+  // إلغاء مهام من الطابور: بالـ ids (رقم/أرقام) أو batchId (باتش كامل). يعلّمها stale ثم يعيد التحميل.
+  const cancel = useCallback(async (opts: { ids?: number[]; batchId?: string }, confirmMsg: string) => {
+    if (!window.confirm(confirmMsg)) return;
+    setCanceling(true); setError(null);
+    try {
+      const r = await fetch("/api/exec-queue/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(opts),
+      });
+      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "تعذّر الإلغاء"); }
+      await load();
+    } catch (e: any) { setError(e.message || "خطأ فى الإلغاء"); } finally { setCanceling(false); }
+  }, [load]);
 
   // بحث برقم الباتش / التليفون / الأكونت / الطالب / المصدر
   const displayed = useMemo(() => {
@@ -98,6 +115,12 @@ export function ExecJobsReport() {
     const measured = displayed.reduce((s, j) => s + (j.measured || 0), 0);
     return { total, doneOk, doneErr, active, canceled, measured };
   }, [displayed]);
+
+  // ids المهام النشطة (فى الطابور/جارية) المعروضة — لزر الإلغاء الجماعى (يعمل كإلغاء باتش لو البحث مفلتَر على باتش)
+  const activeDisplayedIds = useMemo(
+    () => displayed.filter((j) => j.status === "pending" || j.status === "claimed").map((j) => j.id),
+    [displayed],
+  );
 
   const COLUMNS = ["التاريخ", "النوع", "رقم التليفون", "رقم الأكونت", "طلبها", "من تقرير", "الباتش", "الحالة"];
   const toRow = (j: ExecJobRow) => [
@@ -166,6 +189,18 @@ export function ExecJobsReport() {
         <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">قيد التنفيذ/الطابور: <strong>{stats.active}</strong></span>
         {stats.canceled > 0 && <span className="px-2 py-1 rounded bg-amber-100 text-amber-800">أُلغِيت: <strong>{stats.canceled}</strong></span>}
         {q.trim() && <button onClick={() => setQ("")} className="px-2 py-1 rounded border text-muted-foreground hover:text-foreground">مسح البحث ✕</button>}
+        {activeDisplayedIds.length > 0 && (
+          <button
+            onClick={() => cancel(
+              { ids: activeDisplayedIds },
+              `هل تريد إلغاء ${activeDisplayedIds.length} مهمة نشطة من الطابور؟${q.trim() ? " (المعروض حسب البحث الحالى — يشمل الباتش المفلتَر)" : ""}`,
+            )}
+            disabled={canceling}
+            className="px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+          >
+            {canceling ? "جارٍ الإلغاء…" : `إلغاء المعروض النشط (${activeDisplayedIds.length})`}
+          </button>
+        )}
       </div>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
@@ -173,13 +208,16 @@ export function ExecJobsReport() {
       <div className="rounded-md border max-h-[65vh] overflow-auto">
         <Table>
           <TableHeader>
-            <TableRow>{COLUMNS.map((c) => <TableHead key={c} className="text-right whitespace-nowrap">{c}</TableHead>)}</TableRow>
+            <TableRow>
+              {COLUMNS.map((c) => <TableHead key={c} className="text-right whitespace-nowrap">{c}</TableHead>)}
+              <TableHead className="text-right whitespace-nowrap">إجراء</TableHead>
+            </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={COLUMNS.length + 1} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
             ) : displayed.length === 0 ? (
-              <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">{q.trim() ? "لا توجد نتائج للبحث" : "لا توجد عمليات فى الفترة المختارة"}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={COLUMNS.length + 1} className="text-center h-24 text-muted-foreground">{q.trim() ? "لا توجد نتائج للبحث" : "لا توجد عمليات فى الفترة المختارة"}</TableCell></TableRow>
             ) : (
               displayed.map((j) => (
                 <TableRow key={j.id}>
@@ -238,6 +276,30 @@ export function ExecJobsReport() {
                     ) : "-"}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{statusText(j)}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {(j.status === "pending" || j.status === "claimed") ? (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => cancel({ ids: [j.id] }, `إلغاء ${j.phone || j.account || "هذا الرقم"} من الطابور؟`)}
+                          disabled={canceling}
+                          className="px-2 py-0.5 rounded border border-red-300 text-red-700 hover:bg-red-50 text-xs disabled:opacity-60"
+                        >
+                          إلغاء الرقم
+                        </button>
+                        {j.batchId && (
+                          <button
+                            onClick={() => cancel({ batchId: j.batchId! }, `إلغاء الباتش كامل (${j.batchId!.slice(-6)}) من الطابور؟ سيتم إلغاء كل الأرقام النشطة فيه.`)}
+                            disabled={canceling}
+                            className="px-2 py-0.5 rounded border border-red-300 text-red-700 hover:bg-red-50 text-xs disabled:opacity-60"
+                          >
+                            إلغاء الباتش
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">-</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))
             )}
