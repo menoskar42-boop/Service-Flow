@@ -54,6 +54,7 @@ export function ExecJobsReport() {
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return ymd(d); });
   const [to, setTo] = useState(() => ymd(new Date()));
   const [jobs, setJobs] = useState<ExecJobRow[]>([]);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set()); // صفوف الفحوصات القديمة (متعددة الأرقام) المفتوحة
   const [q, setQ] = useState(""); // بحث برقم الباتش / التليفون / الأكونت / الطالب
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -184,8 +185,36 @@ export function ExecJobsReport() {
                 <TableRow key={j.id}>
                   <TableCell className="whitespace-nowrap">{fmt(j.createdAt)}</TableCell>
                   <TableCell>{TYPE_LABEL[j.type] || j.type}</TableCell>
-                  <TableCell className="whitespace-nowrap font-medium">{j.phone || "-"}</TableCell>
-                  <TableCell className="whitespace-nowrap">{j.account || "-"}</TableCell>
+                  <TableCell className="align-top">
+                    {(() => {
+                      const phones = (j.phone || "").split("،").map((x) => x.trim()).filter(Boolean);
+                      const accts = (j.account || "").split("،").map((x) => x.trim()).filter(Boolean);
+                      if (phones.length + accts.length <= 1) return <span className="font-medium whitespace-nowrap">{phones[0] || accts[0] || "-"}</span>;
+                      // فحص قديم متعدد الأرقام → زر يعرض القائمة
+                      const isOpen = expanded.has(j.id);
+                      const n = Math.max(phones.length, accts.length);
+                      return (
+                        <div>
+                          <button
+                            onClick={() => setExpanded((prev) => { const s = new Set(prev); s.has(j.id) ? s.delete(j.id) : s.add(j.id); return s; })}
+                            className="text-blue-600 hover:underline text-xs whitespace-nowrap"
+                          >
+                            {isOpen ? "إخفاء ▲" : `عرض ${n} أرقام ▾`}
+                          </button>
+                          {isOpen && (
+                            <div className="mt-1 max-h-40 overflow-auto border rounded p-1 bg-muted/30 min-w-[150px]">
+                              {(phones.length ? phones : accts).map((p, i) => (
+                                <div key={i} className="font-mono text-xs whitespace-nowrap">{p}{accts[i] && phones.length ? ` — أكونت ${accts[i]}` : ""}</div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell className="max-w-[150px] truncate align-top" title={j.account || "-"}>
+                    {(j.account || "").split("،").filter((x) => x.trim()).length > 1 ? `${(j.account || "").split("،").filter((x) => x.trim()).length} أكونت` : (j.account || "-")}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{j.requestedBy || "-"}</TableCell>
                   <TableCell className="whitespace-nowrap">{j.source || "-"}</TableCell>
                   <TableCell className="whitespace-nowrap">
