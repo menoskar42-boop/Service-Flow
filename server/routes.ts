@@ -6065,6 +6065,99 @@ export async function registerRoutes(
     });
   });
 
+  // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
+  const MF_FLAG_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.EXTERNAL];
+  const MF_REG_ROLES = [ROLES.TECH, ROLES.SUPER_ADMIN];
+
+  // تسجيل عطل يدوى للخط — يمنع التكرار لو فيه عطل مفتوح بالفعل
+  app.post("/api/manual-faults/flag", requireAuth, async (req: any, res) => {
+    if (!MF_FLAG_ROLES.includes(req.user.role)) return res.status(403).json({ message: "غير مسموح" });
+    const b = req.body || {};
+    const phoneShort = String(b.phoneShort || "").replace(/^88/, "").trim();
+    const fullPhone = String(b.fullPhone || (phoneShort ? "88" + phoneShort : "")).trim();
+    if (!phoneShort && !b.accountNo) return res.status(400).json({ message: "لا يوجد رقم خط" });
+    const { rows: ex } = await pool.query(
+      `SELECT id FROM manual_faults WHERE status='open' AND (phone_short=$1 OR full_phone=$2) LIMIT 1`, [phoneShort, fullPhone]);
+    if (ex.length) return res.json({ ok: false, duplicate: true, message: "الخط ده فيه عطل مسجّل بالفعل (لم ينتظم بعد)" });
+    await pool.query(
+      `INSERT INTO manual_faults (full_phone, phone_short, account_no, central, cabin_number, box_number, msan_code, tech_name, status, flagged_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9)`,
+      [fullPhone || null, phoneShort || null, b.accountNo || null, b.central || null, b.cabinNumber || null, b.boxNumber || null, b.msanCode || null, b.techName || null, String(req.user.username || "")]);
+    res.json({ ok: true });
+  });
+
+  // انتظام عطل يدوى: تسجيل سبب الإغلاق + الوقت + فنى الانتظام (لو سوبر أدمن يبعت اسم الفنى)
+  app.post("/api/manual-faults/regularize", requireAuth, async (req: any, res) => {
+    if (!MF_REG_ROLES.includes(req.user.role)) return res.status(403).json({ message: "غير مسموح" });
+    const b = req.body || {};
+    const phoneShort = String(b.phoneShort || "").replace(/^88/, "").trim();
+    const fullPhone = String(b.fullPhone || (phoneShort ? "88" + phoneShort : "")).trim();
+    const closeCode = String(b.closeCode || "").trim();
+    if (!closeCode) return res.status(400).json({ message: "اختر سبب الإغلاق" });
+    const techName = (req.user.role === ROLES.SUPER_ADMIN && b.techName) ? String(b.techName).trim() : String(req.user.username || "");
+    const { rows } = await pool.query(
+      `UPDATE manual_faults SET status='regularized', regularized_at=now(), regularized_by=$3, close_code=$4
+       WHERE status='open' AND (phone_short=$1 OR full_phone=$2) RETURNING id`,
+      [phoneShort, fullPhone, techName || null, closeCode]);
+    if (!rows.length) return res.json({ ok: false, message: "لا يوجد عطل مفتوح لهذا الخط" });
+    res.json({ ok: true, count: rows.length });
+  });
+
+  // الأعطال الحالية خارج الشاشة (المفتوحة)
+  app.get("/api/manual-faults/current", requireAuth, async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id, full_phone AS "fullPhone", phone_short AS "phoneShort", account_no AS "accountNo",
+              central, cabin_number AS "cabinNumber", box_number AS "boxNumber", msan_code AS "msanCode",
+              tech_name AS "techName", (flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", flagged_by AS "flaggedBy"
+       FROM manual_faults WHERE status='open' ORDER BY flagged_at DESC`);
+    res.json({ data: rows });
+  });
+
+  // الأعطال المنتظمة خارج الشاشة لفترة
+  app.get("/api/manual-faults/regularized", requireAuth, async (req, res) => {
+    const { from = "", to = "" } = req.query as Record<string, string>;
+    const conds = ["status='regularized'"]; const params: any[] = [];
+    if (from) { params.push(from); conds.push(`regularized_at >= $${params.length}`); }
+    if (to) { params.push(to + " 23:59:59"); conds.push(`regularized_at <= $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT id, full_phone AS "fullPhone", phone_short AS "phoneShort", account_no AS "accountNo",
+              central, cabin_number AS "cabinNumber", box_number AS "boxNumber", msan_code AS "msanCode",
+              tech_name AS "techName", close_code AS "closeCode",
+              (flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", flagged_by AS "flaggedBy",
+              (regularized_at AT TIME ZONE 'Africa/Cairo') AS "regularizedAt", regularized_by AS "regularizedBy"
+       FROM manual_faults WHERE ${conds.join(" AND ")} ORDER BY regularized_at DESC`, params);
+    res.json({ data: rows });
+  });
+
+  // حالة العطل المفتوح + آخر انتظام لخط (لأزرار بحث برقم التليفون) — يقارن اليدوى بـ 430D ويرجّع الأحدث
+  app.get("/api/manual-faults/for-line", requireAuth, async (req, res) => {
+    const phone = String((req.query as any).phone || "").trim();
+    if (!phone) return res.json({ hasOpenFault: false, lastRegularization: null });
+    const short = phone.replace(/^88/, ""); const full = phone.startsWith("88") ? phone : "88" + phone;
+    const { rows: op } = await pool.query(`SELECT id FROM manual_faults WHERE status='open' AND (phone_short=$1 OR full_phone=$2) LIMIT 1`, [short, full]);
+    const { rows: mr } = await pool.query(`SELECT (regularized_at AT TIME ZONE 'Africa/Cairo') AS at, close_code AS code FROM manual_faults WHERE status='regularized' AND (phone_short=$1 OR full_phone=$2) ORDER BY regularized_at DESC LIMIT 1`, [short, full]);
+    const { rows: dr } = await pool.query(`SELECT (close_time AT TIME ZONE 'Africa/Cairo') AS at, close_code AS code FROM complaint_details WHERE phone_number=$1 AND close_time IS NOT NULL ORDER BY close_time DESC LIMIT 1`, [short]);
+    const cand: any[] = [];
+    if (mr[0]?.at) cand.push({ at: mr[0].at, closeCode: mr[0].code, source: "manual" });
+    if (dr[0]?.at) cand.push({ at: dr[0].at, closeCode: dr[0].code, source: "430d" });
+    cand.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    res.json({ hasOpenFault: op.length > 0, lastRegularization: cand[0] || null });
+  });
+
+  // تاريخ أعطال الخط: كل الانتظامات (يدوية + 430D) بتواريخها وأسباب إغلاقها
+  app.get("/api/line-fault-history", requireAuth, async (req, res) => {
+    const phone = String((req.query as any).phone || "").trim();
+    if (!phone) return res.json({ history: [] });
+    const short = phone.replace(/^88/, ""); const full = phone.startsWith("88") ? phone : "88" + phone;
+    const { rows: mr } = await pool.query(`SELECT (regularized_at AT TIME ZONE 'Africa/Cairo') AS at, close_code AS code, regularized_by AS by FROM manual_faults WHERE status='regularized' AND (phone_short=$1 OR full_phone=$2) ORDER BY regularized_at DESC`, [short, full]);
+    const { rows: dr } = await pool.query(`SELECT (close_time AT TIME ZONE 'Africa/Cairo') AS at, close_code AS code, close_by AS by, (complain_time AT TIME ZONE 'Africa/Cairo') AS "complainAt" FROM complaint_details WHERE phone_number=$1 AND close_time IS NOT NULL ORDER BY close_time DESC`, [short]);
+    const history = [
+      ...(mr as any[]).map((r) => ({ date: r.at, closeCode: r.code, by: r.by, source: "manual" })),
+      ...(dr as any[]).map((r) => ({ date: r.at, closeCode: r.code, by: r.by, complainAt: r.complainAt, source: "430d" })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    res.json({ history });
+  });
+
   // GET /api/reports/current-faults — الأعطال الحالية (status 160,173,122,73,72,60,81)
   // Joins case_138 ← phone_ports ← cabinet_technicians
   // البيان معتمد على ملف شكاوى DSL الحالى (ticket_dsl_current) — وليس حاله 138.

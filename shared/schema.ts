@@ -383,6 +383,27 @@ export const complaintDetails = pgTable("complaint_details", {
 
 export type ComplaintDetail = typeof complaintDetails.$inferSelect;
 
+// الأعطال «خارج الشاشة» — أعطال يدوية تتسجّل من زر «الخط به عطل» فى بحث برقم التليفون
+// (منفصلة تماماً عن أعطال FCC/430D). الدورة: flag (تسجيل عطل) → regularize (انتظام بسبب إغلاق).
+export const manualFaults = pgTable("manual_faults", {
+  id: serial("id").primaryKey(),
+  fullPhone: text("full_phone"),
+  phoneShort: text("phone_short"),
+  accountNo: text("account_no"),
+  central: text("central"),
+  cabinNumber: text("cabin_number"),
+  boxNumber: text("box_number"),
+  msanCode: text("msan_code"),
+  techName: text("tech_name"),                          // اسم فنى المنطقة (للعرض)
+  status: text("status").notNull().default("open"),     // open | regularized
+  flaggedAt: timestamp("flagged_at").defaultNow().notNull(),
+  flaggedBy: text("flagged_by"),                        // مين سجّل العطل
+  regularizedAt: timestamp("regularized_at"),
+  regularizedBy: text("regularized_by"),                // فنى الانتظام
+  closeCode: text("close_code"),                        // سبب الإغلاق
+});
+export type ManualFault = typeof manualFaults.$inferSelect;
+
 // Start-of-day + current snapshot companions for complaint_details (430D التفاصيل).
 export const complaintDetailsSod = pgTable("complaint_details_sod", {
   id: serial("id").primaryKey(),

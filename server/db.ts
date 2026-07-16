@@ -339,6 +339,29 @@ export async function ensureSchema() {
     )
   `);
 
+  // manual_faults — الأعطال «خارج الشاشة» اليدوية (زر «الخط به عطل» + انتظام)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS manual_faults (
+      id serial PRIMARY KEY,
+      full_phone text,
+      phone_short text,
+      account_no text,
+      central text,
+      cabin_number text,
+      box_number text,
+      msan_code text,
+      tech_name text,
+      status text NOT NULL DEFAULT 'open',
+      flagged_at timestamptz NOT NULL DEFAULT now(),
+      flagged_by text,
+      regularized_at timestamptz,
+      regularized_by text,
+      close_code text
+    );
+    CREATE INDEX IF NOT EXISTS manual_faults_status_idx ON manual_faults (status, flagged_at);
+    CREATE INDEX IF NOT EXISTS manual_faults_phone_idx ON manual_faults (phone_short);
+  `);
+
   // Reconcile ticket_queue unique constraint → composite (ticket_id, status_code).
   // Needed when the table was created earlier with a single-column unique.
   await pool.query(`
