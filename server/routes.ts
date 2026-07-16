@@ -2395,11 +2395,16 @@ export async function registerRoutes(
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;
-      conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
+      conds.push(`(LOWER(k.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-    // نضيف line_subscriber_info لعرض اسم/عنوان العميل فى بيان التليفونات (phone_number مفتاح أساسى فمفيش تكرار صفوف)
-    const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_subscriber_info si2 ON si2.phone_number = pl.full_phone`;
+    // المرساة = اتحاد أرقام البيانات الفنية (phone_lines) وأرقام المنافذ (phone_ports)،
+    // عشان بيان التليفونات يشمل أى رقم ليه بورت حتى لو مالوش بيانات فنية.
+    // نضيف line_subscriber_info لعرض اسم/عنوان العميل (phone_number مفتاح أساسى فمفيش تكرار صفوف)
+    const joinClause = `FROM (SELECT full_phone FROM phone_lines UNION SELECT phone_number AS full_phone FROM phone_ports) k
+      LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
+      LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
+      LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone`;
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
@@ -2410,18 +2415,18 @@ export async function registerRoutes(
     // case_138.full_phone = phone_lines.full_phone (الاتنين بصيغة 88+رقم).
     const c138Join = `LEFT JOIN LATERAL (
         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
-        FROM case_138 c WHERE c.full_phone = pl.full_phone
+        FROM case_138 c WHERE c.full_phone = k.full_phone
         ORDER BY c.id DESC LIMIT 1
       ) c138p ON true
       LEFT JOIN line_po_events pe ON pe.account_no = c138p.account_no`;
     const dataRes = await pool.query(
-      `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+      `SELECT pl.id, COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', '')) AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
               pl.cabinet_in AS "cabinetIn", pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
-              pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone",
+              pl.tel_num_txt AS "telNumTxt", k.full_phone AS "fullPhone",
               si2.sub_name AS "subName", si2.sub_add AS "subAdd",
               c138p.account_no AS "accountNo",
               c138p.current_speed AS "lineCurrentSpeed",
@@ -2432,7 +2437,7 @@ export async function registerRoutes(
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
        ${joinClause} ${c138Join} ${where}
-       ORDER BY pl.id
+       ORDER BY pl.id NULLS LAST, k.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -2586,7 +2591,7 @@ export async function registerRoutes(
 
     const conds: string[] = ["la.full_phone IS NULL"];
     // استبعاد الخطوط المعلَّمة يدوياً بأنها "بدون رقم أكونت"
-    conds.push("NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = pl.full_phone)");
+    conds.push("NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = k.full_phone)");
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -2594,46 +2599,51 @@ export async function registerRoutes(
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;
-      conds.push(`(LOWER(pl.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
+      conds.push(`(LOWER(k.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
     }
     // فلتر: الأرقام التى نزلت لها شكوى خلال الشهر الحالى (شيت التفاصيل أو المتبقى) — المطابقة برقم التليفون
     if (complaintThisMonth === "1" || complaintThisMonth === "true") {
       conds.push(`(
         EXISTS (
           SELECT 1 FROM complaint_details cd
-          WHERE cd.phone_number = pl.tel_no
+          WHERE cd.phone_number = COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', ''))
             AND date_trunc('month', cd.complain_time AT TIME ZONE 'Africa/Cairo')
                 = date_trunc('month', now() AT TIME ZONE 'Africa/Cairo')
         )
         OR EXISTS (
           SELECT 1 FROM remaining_complaints rc
-          WHERE rc.phone_number = pl.tel_no
+          WHERE rc.phone_number = COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', ''))
             AND date_trunc('month', rc.complain_time AT TIME ZONE 'Africa/Cairo')
                 = date_trunc('month', now() AT TIME ZONE 'Africa/Cairo')
         )
       )`);
     }
     const where = `WHERE ${conds.join(" AND ")}`;
-    const joinClause = `FROM phone_lines pl LEFT JOIN phone_ports pp ON pp.phone_number = pl.full_phone LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone`;
-    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
+    // المرساة = اتحاد أرقام البيانات الفنية (phone_lines) وأرقام المنافذ (phone_ports)،
+    // عشان التقرير يجيب أى رقم ملوش أكونت سواء ليه بيانات فنية أو ليه بورت.
+    const joinClause = `FROM (SELECT full_phone FROM phone_lines UNION SELECT phone_number AS full_phone FROM phone_ports) k
+      LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
+      LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
+      LEFT JOIN line_accounts la ON la.full_phone = k.full_phone`;
+    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = k.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
-      `SELECT pl.id, pl.tel_no AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+      `SELECT pl.id, COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', '')) AS "telNo", pl.central, pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
               pl.cabin_number AS "cabinNumber", pl.primary_block_no AS "primaryBlockNo",
               pl.cabinet_in AS "cabinetIn", pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
-              pl.tel_num_txt AS "telNumTxt", pl.full_phone AS "fullPhone",
+              pl.tel_num_txt AS "telNumTxt", k.full_phone AS "fullPhone",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
-       ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), pl.id
+       ORDER BY pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), k.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
