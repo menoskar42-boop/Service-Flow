@@ -6298,10 +6298,17 @@ export async function registerRoutes(
              FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
              ORDER BY c.id DESC LIMIT 1
            ) c138p ON true
-           -- القياس الحالى لنفس رقم الشكوى (آخر قياس لو مكرر)
+           -- القياس الحالى للعطل المفتوح: إمّا قياس مربوط بنفس رقم الشكوى،
+           -- أو أى قياس لنفس الخط اتعمل بعد وقت فتح الشكوى (القياس من زر التقرير
+           -- بيترفع بالأكونت من غير رقم شكوى، فنعتبره قياس العطل الحالى لأنه بعد فتحه).
+           -- المقارنة بتحويل uploaded_at (timestamptz) لتوقيت القاهرة عشان تطابق complaint_time.
            LEFT JOIN LATERAL (
              SELECT c.score, c.current_speed, c.max_speed, c.complain_time, c.uploaded_at
-             FROM case_138 c WHERE c.complain_no = t.ticket_id
+             FROM case_138 c
+             WHERE c.complain_no = t.ticket_id
+                OR (c.full_phone = '88' || t.phone_number
+                    AND t.complaint_time IS NOT NULL
+                    AND (c.uploaded_at AT TIME ZONE 'Africa/Cairo') >= t.complaint_time)
              ORDER BY c.id DESC LIMIT 1
            ) c138c ON true
            -- وقت الحالة 135/138 من شيت تفاصيل المتبقى — مطابقة برقم الشكوى
