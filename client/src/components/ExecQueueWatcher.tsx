@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchQueuePosition, type ExecJobType } from "@/lib/exec-queue";
-import { Loader2, CheckCircle2, X } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, X } from "lucide-react";
 
 // لوحة عائمة بتعرض ترتيب مهام القياس/رفع السرعة/الإيقاف اللى طلبها المستخدم فى الطابور،
 // وبتحدّثه كل ~3ث. المهمة بتتضاف تلقائياً عند نجاح enqueueJob (حدث sf-exec-track).
@@ -12,6 +12,7 @@ type TrackedJob = {
   total: number | null;
   status: string;
   done: boolean;
+  canceled: boolean;        // اتلغت لأن جهاز التنفيذ اتقفل
   jobDone: number | null;   // كام رقم اتنفّذ من مهمتى
   jobTotal: number | null;  // إجمالى أرقام مهمتى
   active: { type: ExecJobType; done: number; total: number } | null; // تقدّم المهمة الجارية دلوقتى
@@ -33,7 +34,7 @@ export function ExecQueueWatcher() {
       setJobs((prev) =>
         prev.some((j) => j.id === d.id)
           ? prev
-          : [...prev, { id: d.id, type: d.type, count: d.count || 1, position: null, total: null, status: "pending", done: false, jobDone: null, jobTotal: d.count || 1, active: null }],
+          : [...prev, { id: d.id, type: d.type, count: d.count || 1, position: null, total: null, status: "pending", done: false, canceled: false, jobDone: null, jobTotal: d.count || 1, active: null }],
       );
     };
     window.addEventListener("sf-exec-track", onTrack as any);
@@ -53,9 +54,10 @@ export function ExecQueueWatcher() {
           setJobs((prev) =>
             prev.map((x) => {
               if (x.id !== j.id) return x;
-              if (!p.found || p.status === "done") {
-                if (!x.done) setTimeout(() => setJobs((q) => q.filter((y) => y.id !== j.id)), 5000);
-                return { ...x, done: true, status: "done" };
+              const canceled = p.canceled === true || p.status === "stale";
+              if (!p.found || p.status === "done" || canceled) {
+                if (!x.done) setTimeout(() => setJobs((q) => q.filter((y) => y.id !== j.id)), canceled ? 8000 : 5000);
+                return { ...x, done: true, canceled, status: p.status || "done" };
               }
               return {
                 ...x,
@@ -87,7 +89,11 @@ export function ExecQueueWatcher() {
           className="rounded-lg border bg-white dark:bg-gray-900 shadow-lg px-3 py-2 text-sm flex items-center gap-2"
         >
           {j.done ? (
-            <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+            j.canceled ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+            )
           ) : (
             <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
           )}
@@ -98,7 +104,9 @@ export function ExecQueueWatcher() {
             </div>
             <div className="text-xs text-muted-foreground">
               {j.done
-                ? "✅ تم التنفيذ"
+                ? j.canceled
+                  ? "⚠️ أُلغِيت — جهاز التنفيذ مقفول"
+                  : "✅ تم التنفيذ"
                 : j.position == null
                   ? "جارٍ تحديد الترتيب…"
                   : j.position === 1

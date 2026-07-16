@@ -71,6 +71,7 @@ export function trackQueueJob(id: number, type: ExecJobType, count = 1): void {
 export interface QueuePosition {
   found: boolean;
   status?: string;
+  canceled?: boolean; // اتلغت لأن جهاز التنفيذ اتقفل (stale) — مش اتنفّذت
   position?: number;
   total?: number;
   jobDone?: number;   // كام رقم اتنفّذ من مهمة المستخدم

@@ -1368,10 +1368,37 @@ export async function registerRoutes(
   // عدد المهام المنتظرة (للعرض)
   app.get("/api/exec-queue/pending", requireAuth, async (_req, res) => {
     try {
+      await expireOrphanedExecJobs();
       const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM exec_jobs WHERE status IN ('pending','claimed')`);
       res.json({ pending: rows[0]?.n ?? 0 });
     } catch { res.json({ pending: 0 }); }
   });
+
+  // إعادة ضبط المهام اليتيمة: يُستدعى عند تفعيل جهاز التنفيذ — أى مهمة claimed من جلسة سابقة
+  // (جهاز التنفيذ اتقفل عليها) تبقى يتيمة، فنعلّمها stale عشان متفضلش عالقة فى الطابور للأبد.
+  app.post("/api/exec-queue/reset-orphaned", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'stale', done_at = now() WHERE status = 'claimed'`);
+      res.json({ ok: true, cleared: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // تنظيف المهام اليتيمة (اللى جهاز التنفيذ اتقفل عليها فى نصّها فبتفضل claimed/pending للأبد
+  // وتضخّم الترتيب): نعلّمها stale لو (أ) جهاز التنفيذ مقفول (النبضة قديمة) والمهمة عدّى عليها >2 دقيقة،
+  // أو (ب) مهمة claimed من أكثر من 5 ساعات (أطول من أقصى تشغيل باتش).
+  const expireOrphanedExecJobs = async () => {
+    try {
+      await pool.query(
+        `UPDATE exec_jobs SET status = 'stale', done_at = now()
+         WHERE status IN ('pending','claimed')
+           AND (
+             (created_at < now() - interval '2 minutes'
+                AND NOT EXISTS (SELECT 1 FROM app_state s WHERE s.key = 'exec_heartbeat' AND now() - s.updated_at < interval '60 seconds'))
+             OR (status = 'claimed' AND claimed_at < now() - interval '5 hours')
+           )`,
+      );
+    } catch { /* تنظيف إضافى — لو فشل نكمّل عادى */ }
+  };
 
   // كام رقم اتنفّذ فعلاً من مهمة (بعد بدء تنفيذها claimed_at):
   //  - القياس: عدد أرقام الأكونت اللى ليها قياس جديد فى case_138 بعد claimed_at.
@@ -1400,14 +1427,17 @@ export async function registerRoutes(
   // لو المهمة (بتاعته أو اللى قبله) فيها أكثر من خط يعرف وصلت لرقم كام.
   app.get("/api/exec-queue/position", requireAuth, async (req, res) => {
     try {
+      await expireOrphanedExecJobs();
       const id = parseInt(String(req.query.id || ""));
       if (!id) return res.json({ found: false });
       const { rows } = await pool.query(`SELECT status, created_at, claimed_at, accounts, type FROM exec_jobs WHERE id = $1`, [id]);
       const job = rows[0];
       if (!job) return res.json({ found: false });
       const jobProg = await jobProgress(job.accounts, job.type, job.claimed_at);
-      if (job.status === "done") {
-        return res.json({ found: true, status: "done", position: 0, total: 0, jobDone: jobProg.total, jobTotal: jobProg.total, active: null });
+      // أى حالة غير نشطة = نهائية: done (اتنفّذت) أو stale/canceled (اتلغت لأن جهاز التنفيذ اتقفل)
+      if (job.status !== "pending" && job.status !== "claimed") {
+        const canceled = job.status !== "done";
+        return res.json({ found: true, status: job.status, canceled, position: 0, total: 0, jobDone: jobProg.done, jobTotal: jobProg.total, active: null });
       }
       const { rows: a } = await pool.query(
         `SELECT COUNT(*)::int AS ahead FROM exec_jobs
