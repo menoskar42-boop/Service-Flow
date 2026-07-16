@@ -189,10 +189,11 @@ export function ExecJobsReport() {
                     {(() => {
                       const phones = (j.phone || "").split("،").map((x) => x.trim()).filter(Boolean);
                       const accts = (j.account || "").split("،").map((x) => x.trim()).filter(Boolean);
-                      if (phones.length + accts.length <= 1) return <span className="font-medium whitespace-nowrap">{phones[0] || accts[0] || "-"}</span>;
+                      const n = Math.max(phones.length, accts.length);
+                      // فحص جديد (خط واحد) → اعرض الرقم مباشرة
+                      if (n <= 1) return <span className="font-medium whitespace-nowrap">{phones[0] || accts[0] || "-"}</span>;
                       // فحص قديم متعدد الأرقام → زر يعرض القائمة
                       const isOpen = expanded.has(j.id);
-                      const n = Math.max(phones.length, accts.length);
                       return (
                         <div>
                           <button
