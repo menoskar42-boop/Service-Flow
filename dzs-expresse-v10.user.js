@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.17.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.18: الخطوط بتتقاس كلها فى **نفس التاب** (انتقال داخلى للخط التالى) بدل فتح نافذة منبثقة لكل خط — أنظف، مفيش نوافذ متراكمة، والمقاطعة بتوقف الباتش فورًا. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.18.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -474,23 +474,17 @@
     }
   });
 
-  // يفتح الخط التالى مع احترام حد التابات المتزامنة (MAX_CONCURRENT) — يمنع امتلاء الذاكرة
-  // وتعارضات الـ real-time. cb (اختيارى) تتنفّذ بعد ما يفتح فعلاً (تُستخدم لقفل التاب الحالى بعد الفتح).
+  // AXON يسمح بقياس real-time واحد بس فى المرة (MAX_CONCURRENT=1)، فبننتقل داخل **نفس التاب**
+  // للخط التالى بدل ما نفتح نافذة/تاب جديد لكل خط (اللى كان بيعمل نوافذ منبثقة متراكمة).
+  // القايمة (LINE_IDS) والتقدّم (INDEX_KEY) والنتايج محفوظين فى localStorage، فالتاب بعد التنقّل
+  // بيكمّل من الخط الصح. فايدة إضافية: الباتش كله فى تاب واحد، والمقاطعة (لو جهاز التنفيذ نقل التاب
+  // لخط عاجل) بتوقف الباتش فوراً من غير تابات شغّالة فى الخلفية.
+  // cb (اختيارى) تتنفّذ بس لو مفيش خطوط تانية (حالة نادرة) — التنقّل الداخلى بيستبدل الصفحة فمابيحتاجش قفل.
   function openNextLine(cb) {
     const nextIndex = lineIndex + 1;
     if (nextIndex >= LINE_IDS.length) { console.log("🏁 No more lines."); if (cb) cb(); return; }
-    let waits = 0;
-    const attempt = () => {
-      // مزدحم؟ استنى لحد ما يقفل تاب قبل ما نفتح التالى (يمنع flood الذاكرة).
-      // أمان: بعد ~90 ثانية انتظار نفتح برضه (تجاوز بسيط) عشان نضمن إن السلسلة ماتقفلش أبداً.
-      if (countOpenTabs() > MAX_CONCURRENT && waits < 60) { waits++; setTimeout(attempt, 1500); return; }
-      localStorage.setItem(INDEX_KEY, String(nextIndex));
-      const features = "width=1280,height=800,left=" + (50 + ((nextIndex*40)%400)) + ",top=" + (50 + ((nextIndex*40)%200));
-      const w = window.open("/expresse/welcome", "_blank", features);
-      if (!(w && !w.closed)) { setTimeout(attempt, POPUP_RETRY_DELAY_MS); return; } // popup فشل — أعد
-      if (cb) cb();
-    };
-    setTimeout(attempt, STAGGER_BETWEEN_TABS_MS);
+    localStorage.setItem(INDEX_KEY, String(nextIndex));
+    setTimeout(() => { try { location.href = "/expresse/welcome"; } catch (e) {} }, STAGGER_BETWEEN_TABS_MS);
   }
 
   function maybeDownloadFinal() {
