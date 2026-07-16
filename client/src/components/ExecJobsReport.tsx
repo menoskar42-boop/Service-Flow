@@ -31,6 +31,7 @@ function statusText(j: ExecJobRow): string {
     if (j.result === "tab_closed") return "اتقفل قبل ما يخلص";
     if (j.result === "timeout") return "علّق قبل ما يخلص";
     if (j.result === "stopped") return "اتوقف يدوياً";
+    if (j.result === "preempted") return "اتوقف مؤقتاً لطلب عاجل (الباقى اترجّع)";
     return "تم";
   }
   return j.status;

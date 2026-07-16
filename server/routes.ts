@@ -1309,9 +1309,11 @@ export async function registerRoutes(
       if (!["raise", "stop", "measure"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
       const accs = Array.isArray(accounts) ? accounts.map((a: any) => String(a).trim()).filter(Boolean) : [];
       if (!accs.length) return res.status(400).json({ message: "لا توجد أرقام" });
+      // طلب عاجل صغير (≤3 خطوط) ياخد أولوية 1 → يقطع الباتش الكبير الجارى. الباتشات (>3) أولوية 0.
+      const priority = accs.length <= 3 ? 1 : 0;
       const { rows } = await pool.query(
-        `INSERT INTO exec_jobs (type, accounts, requested_by, note) VALUES ($1, $2, $3, $4) RETURNING id`,
-        [type, JSON.stringify(accs), String(req.user.username || ""), note || null]);
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [type, JSON.stringify(accs), String(req.user.username || ""), note || null, priority]);
       res.json({ ok: true, id: rows[0].id, count: accs.length });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1320,8 +1322,8 @@ export async function registerRoutes(
     try {
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
-         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-         RETURNING id, type, accounts, requested_by AS "requestedBy"`);
+         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' ORDER BY priority DESC, created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+         RETURNING id, type, accounts, requested_by AS "requestedBy", priority`);
       res.json(rows[0] || null);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1462,6 +1464,61 @@ export async function registerRoutes(
       return { done: Math.min(rows[0]?.n ?? 0, total), total };
     } catch { return { done: 0, total }; }
   };
+
+  // أرقام الأكونت اللى لسه ماتنفّذتش من مهمة (للاستئناف بعد المقاطعة): الأرقام اللى مالهاش نتيجة
+  // جديدة بعد claimed_at. (measure→case_138, raise/stop→line_po_events).
+  const jobRemainingAccounts = async (accountsRaw: any, type: string, claimedAt: any): Promise<string[]> => {
+    let accs: string[] = [];
+    try { accs = (Array.isArray(accountsRaw) ? accountsRaw : JSON.parse(accountsRaw || "[]")).map((a: any) => String(a).trim()).filter(Boolean); } catch { accs = []; }
+    if (!accs.length || !claimedAt) return accs;
+    let q: string;
+    if (type === "measure") {
+      q = `SELECT DISTINCT account_no FROM case_138 WHERE account_no = ANY($1::text[]) AND uploaded_at >= $2`;
+    } else {
+      const col = type === "stop" ? "last_stop_at" : "last_raise_at";
+      q = `SELECT DISTINCT account_no FROM line_po_events WHERE account_no = ANY($1::text[]) AND ${col} >= $2`;
+    }
+    try {
+      const { rows } = await pool.query(q, [accs, claimedAt]);
+      const done = new Set((rows as any[]).map((r) => String(r.account_no).trim()));
+      return accs.filter((a) => !done.has(a));
+    } catch { return accs; }
+  };
+
+  // هل فيه طلب عاجل (أولوية أعلى) منتظر يستاهل يقطع المهمة الجارية دى؟
+  app.get("/api/exec-queue/preempt-check", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const jobId = parseInt(String(req.query.jobId || ""));
+      if (!jobId) return res.json({ preempt: false });
+      const { rows } = await pool.query(`SELECT priority FROM exec_jobs WHERE id = $1`, [jobId]);
+      const curPri = rows[0]?.priority ?? 0;
+      const { rows: p } = await pool.query(
+        `SELECT 1 FROM exec_jobs WHERE status = 'pending' AND priority > $1 LIMIT 1`, [curPri]);
+      res.json({ preempt: p.length > 0 });
+    } catch { res.json({ preempt: false }); }
+  });
+
+  // مقاطعة مهمة جارية: نعلّمها done (result=preempted) ونرجّع الأرقام المتبقية كمهمة جديدة
+  // أولويتها 0 (تكملة) — فتتكمّل بعد الطلبات العاجلة كلها.
+  app.post("/api/exec-queue/:id/preempt", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { rows } = await pool.query(`SELECT type, accounts, claimed_at, note, requested_by FROM exec_jobs WHERE id = $1`, [id]);
+      const job = rows[0];
+      if (!job) return res.json({ ok: false });
+      const remaining = await jobRemainingAccounts(job.accounts, job.type, job.claimed_at);
+      await pool.query(`UPDATE exec_jobs SET status = 'done', done_at = now(), result = 'preempted' WHERE id = $1`, [id]);
+      let newId: number | null = null;
+      if (remaining.length) {
+        const note = (job.note ? job.note + " " : "") + "(تكملة)";
+        const { rows: ins } = await pool.query(
+          `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority) VALUES ($1, $2, $3, $4, 0) RETURNING id`,
+          [job.type, JSON.stringify(remaining), job.requested_by || null, note]);
+        newId = ins[0].id;
+      }
+      res.json({ ok: true, remaining: remaining.length, newId });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
 
   // ترتيب مهمة معيّنة فى الطابور (للعرض للمستخدم اللى طلبها) — يتقدّم كل ما تتنفّذ مهمة قبلها.
   // position = عدد المهام النشطة قبلها + 1 (بنفس ترتيب السحب: created_at ثم id). 0/done = خلصت.

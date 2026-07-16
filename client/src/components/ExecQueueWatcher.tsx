@@ -90,7 +90,7 @@ export function ExecQueueWatcher() {
           className="rounded-lg border bg-white dark:bg-gray-900 shadow-lg px-3 py-2 text-sm flex items-center gap-2"
         >
           {(() => {
-            const warn = j.canceled || j.result === "tab_closed" || j.result === "timeout";
+            const warn = j.canceled || j.result === "tab_closed" || j.result === "timeout" || j.result === "preempted";
             if (!j.done) return <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />;
             return warn
               ? <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -105,7 +105,9 @@ export function ExecQueueWatcher() {
               {j.done
                 ? j.canceled
                   ? "⚠️ أُلغِيت — جهاز التنفيذ مقفول"
-                  : j.result === "tab_closed"
+                  : j.result === "preempted"
+                    ? `⏸ اتوقف مؤقتاً لطلب عاجل — الباقى هيتكمّل${(j.jobTotal ?? 1) > 1 ? ` (تم ${j.jobDone ?? 0} من ${j.jobTotal})` : ""}`
+                    : j.result === "tab_closed"
                     ? `⚠️ اتقفل قبل ما يخلص${(j.jobTotal ?? 1) > 1 ? ` — تم ${j.jobDone ?? 0} من ${j.jobTotal}` : ""}`
                     : j.result === "timeout"
                       ? `⚠️ علّق قبل ما يخلص${(j.jobTotal ?? 1) > 1 ? ` — تم ${j.jobDone ?? 0} من ${j.jobTotal}` : ""}`

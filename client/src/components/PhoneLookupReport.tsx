@@ -517,7 +517,7 @@ export function PhoneLookupReport() {
                     {line.techName ? ` — الخط تابع للفنى: ${line.techName}` : " — الخط غير مُسنَد لفنى معروف"}
                   </span>
                 )
-              ) : (
+              ) : isSuper ? (
                 <Button
                   variant="outline"
                   onClick={() => openCustomer360([line.fullPhone])}
@@ -527,7 +527,7 @@ export function PhoneLookupReport() {
                   <IdCard className="w-4 h-4" />
                   جلب الأكونت من Customer360
                 </Button>
-              )}
+              ) : null}
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
                 Excel

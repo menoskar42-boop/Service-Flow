@@ -70,10 +70,20 @@ export function ExecutorButton() {
 
     // ينفّذ **الجوب كله دفعة واحدة**: نبعت كل الأرقام للسكربت اللى بيلفّ عليها بنفسه (6/185…)
     // بدل ما نفتح صفحة لكل رقم. ننتظر لحد ما آخر رقم (السكربت بيمشى بالترتيب) يتأكد، أو سقف زمنى.
+    // هل فيه طلب عاجل منتظر يستاهل يقطع الباتش الجارى؟ (بس للباتشات الكبيرة >3 خطوط)
+    const shouldPreempt = async (jobId: number): Promise<boolean> => {
+      try {
+        const r = await fetch(`/api/exec-queue/preempt-check?jobId=${jobId}`, { credentials: "include" });
+        const d = await r.json();
+        return !!d.preempt;
+      } catch { return false; }
+    };
+
     // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |
-    // "timeout" خلصت المهلة | "stopped" جهاز التنفيذ اتقفل يدوياً.
-    const runBatch = async (type: ExecJob["type"], accs: string[]): Promise<string> => {
+    // "timeout" خلصت المهلة | "stopped" جهاز التنفيذ اتقفل يدوياً | "preempted" اتقطع لصالح طلب عاجل.
+    const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number): Promise<string> => {
       const last = accs[accs.length - 1];
+      const canPreempt = accs.length > 3; // الباتش الكبير بس هو اللى يتقطع
       if (type === "measure") {
         const before = await latestMeasureAt(last);
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
@@ -82,11 +92,13 @@ export function ExecutorButton() {
         const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
         const deadline = Date.now() + Math.min(accs.length * MEASURE_MAX_MS, MAX_TOTAL_MS);
         while (!stopped && Date.now() < deadline) {
-          await sleep(15 * 1000);
+          await sleep(5 * 1000);
           // خلص: آخر رقم اتقاس (DZS بيمشى بالترتيب فآخر رقم اتقاس = عدّى على الكل) → نقفل التاب
           if ((await latestMeasureAt(last)) > before) { closeWin(); return "done"; }
           // التاب اتقفل (يدوياً/كراش) قبل ما آخر رقم يتقاس → اتقفل قبل ما يخلص
           if (win && win.closed) return "tab_closed";
+          // مقاطعة: فيه طلب عاجل منتظر → نوقف الباتش، نقفل التاب، والباقى يترجّع للطابور
+          if (canPreempt && await shouldPreempt(jobId)) { closeWin(); return "preempted"; }
         }
         closeWin();
         return stopped ? "stopped" : "timeout";
@@ -115,14 +127,19 @@ export function ExecutorButton() {
           if (accs.length && !stopped) {
             const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف" : "رفع سرعة";
             setCurrent(`${label} (${accs.length} رقم)`);
-            result = await runBatch(job.type, accs); // الجوب كله دفعة واحدة
+            result = await runBatch(job.type, accs, job.id); // الجوب كله دفعة واحدة
           }
-          // نبعت نتيجة التنفيذ مع علامة الانتهاء عشان اللوحة تعرف: خلص ولا اتقفل قبل ما يخلص
-          await fetch(`/api/exec-queue/${job.id}/done`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ result }),
-          }).catch(() => {});
+          if (result === "preempted") {
+            // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
+            await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});
+          } else {
+            // نبعت نتيجة التنفيذ مع علامة الانتهاء عشان اللوحة تعرف: خلص ولا اتقفل قبل ما يخلص
+            await fetch(`/api/exec-queue/${job.id}/done`, {
+              method: "POST", credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ result }),
+            }).catch(() => {});
+          }
           setCurrent("");
         }
       } catch {} finally { busy.current = false; }
