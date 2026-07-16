@@ -286,7 +286,7 @@ export function OpenTicketLinesReport() {
                           type="button"
                           onClick={async () => {
                             if (await dispatchSpeedTool("measure", [l.accountNo!.toString().trim()], isSuper)) return;
-                            window.open(buildDZSUrl([l.accountNo!.toString().trim()]), "_blank");
+                            window.open(buildDZSUrl([l.accountNo!.toString().trim()]), "dzs_measure");
                           }}
                           title="فتح DZS وقياس هذا الرقم"
                           className="text-blue-600 hover:text-blue-800 mr-1 align-middle"

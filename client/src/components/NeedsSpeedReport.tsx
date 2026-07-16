@@ -142,7 +142,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const openDZSSingle = async (r: SpeedLine) => {
     if (!r.accountNo) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
     if (await dispatchSpeedTool("measure", [String(r.accountNo).trim()], isSuper)) return;
-    window.open(buildDZSUrl([String(r.accountNo).trim()]), "_blank");
+    window.open(buildDZSUrl([String(r.accountNo).trim()]), "dzs_measure");
   };
 
   // قياس DZS للنطاق المحدد — يفتح كل أرقام الأكونت فى تاب واحد والسكريبت يتولّى التقسيم لدفعات

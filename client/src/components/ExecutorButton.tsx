@@ -70,35 +70,40 @@ export function ExecutorButton() {
 
     // ينفّذ **الجوب كله دفعة واحدة**: نبعت كل الأرقام للسكربت اللى بيلفّ عليها بنفسه (6/185…)
     // بدل ما نفتح صفحة لكل رقم. ننتظر لحد ما آخر رقم (السكربت بيمشى بالترتيب) يتأكد، أو سقف زمنى.
-    // هل فيه طلب عاجل منتظر يستاهل يقطع الباتش الجارى؟ (بس للباتشات الكبيرة >3 خطوط)
-    const shouldPreempt = async (jobId: number): Promise<boolean> => {
+    // فحص المهمة الجارية: لسه شغّالة؟ فيه طلب عاجل يقطعها؟ اتقاس كام رقم؟
+    const jobCheck = async (jobId: number): Promise<{ active: boolean; preempt: boolean; measured: number; total: number }> => {
       try {
-        const r = await fetch(`/api/exec-queue/preempt-check?jobId=${jobId}`, { credentials: "include" });
-        const d = await r.json();
-        return !!d.preempt;
-      } catch { return false; }
+        const r = await fetch(`/api/exec-queue/job-check?jobId=${jobId}`, { credentials: "include" });
+        return await r.json();
+      } catch { return { active: true, preempt: false, measured: 0, total: 0 }; }
     };
 
+    // لو مفيش تقدّم فى القياس لمدة STALL_MS (DZS وقف على خط فيه إيرور مثلاً) نوقف بدل ما نعلّق ساعات.
+    // أطول من أقصى وقت لخط واحد (١.٨د) بهامش، فمابنوقفش خط شغّال بطىء بالغلط.
+    const STALL_MS = 2.5 * 60 * 1000;
+
     // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |
-    // "timeout" خلصت المهلة | "stopped" جهاز التنفيذ اتقفل يدوياً | "preempted" اتقطع لصالح طلب عاجل.
+    // "timeout" علّق/وقف بدون تقدّم | "stopped" جهاز التنفيذ اتقفل | "canceled" اتمسح من الطابور يدوياً |
+    // "preempted" اتقطع لصالح طلب عاجل.
     const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number): Promise<string> => {
       const last = accs[accs.length - 1];
       const canPreempt = accs.length > 3; // الباتش الكبير بس هو اللى يتقطع
       if (type === "measure") {
-        const before = await latestMeasureAt(last);
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
         const win = executeBatch("measure", accs); // DZS يلفّ على كلهم فى run واحد
         lastMeasureWin.current = win;
         const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
         const deadline = Date.now() + Math.min(accs.length * MEASURE_MAX_MS, MAX_TOTAL_MS);
+        let lastMeasured = 0, lastProgAt = Date.now();
         while (!stopped && Date.now() < deadline) {
           await sleep(5 * 1000);
-          // خلص: آخر رقم اتقاس (DZS بيمشى بالترتيب فآخر رقم اتقاس = عدّى على الكل) → نقفل التاب
-          if ((await latestMeasureAt(last)) > before) { closeWin(); return "done"; }
-          // التاب اتقفل (يدوياً/كراش) قبل ما آخر رقم يتقاس → اتقفل قبل ما يخلص
-          if (win && win.closed) return "tab_closed";
-          // مقاطعة: فيه طلب عاجل منتظر → نوقف الباتش، نقفل التاب، والباقى يترجّع للطابور
-          if (canPreempt && await shouldPreempt(jobId)) { closeWin(); return "preempted"; }
+          const chk = await jobCheck(jobId);
+          if (!chk.active) { closeWin(); return "canceled"; } // اتمسح من الطابور يدوياً → وقف فوراً
+          if (chk.measured > lastMeasured) { lastMeasured = chk.measured; lastProgAt = Date.now(); }
+          if (chk.total > 0 && chk.measured >= chk.total) { closeWin(); return "done"; } // كل الأرقام اتقاست
+          if (win && win.closed) return "tab_closed"; // التاب اتقفل قبل ما يخلص
+          if (canPreempt && chk.preempt) { closeWin(); return "preempted"; } // طلب عاجل يقطع
+          if (Date.now() - lastProgAt > STALL_MS) { closeWin(); return "timeout"; } // مافيش تقدّم = وقف
         }
         closeWin();
         return stopped ? "stopped" : "timeout";
@@ -109,7 +114,9 @@ export function ExecutorButton() {
       executeBatch(type, accs); // PO يلفّ على كل الأرقام فى run واحد
       const deadline = Date.now() + Math.min(accs.length * perMax, MAX_TOTAL_MS);
       while (!stopped && Date.now() < deadline) {
-        await sleep(15 * 1000);
+        await sleep(5 * 1000);
+        const chk = await jobCheck(jobId);
+        if (!chk.active) return "canceled"; // اتمسح من الطابور يدوياً → وقف فوراً
         if ((await latestPoEventAt(last, ev)) > before) return "done"; // آخر رقم اتسجّل → الباتش خلص
       }
       return stopped ? "stopped" : "timeout";
@@ -132,6 +139,8 @@ export function ExecutorButton() {
           if (result === "preempted") {
             // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
             await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});
+          } else if (result === "canceled") {
+            // اتمسحت من الطابور يدوياً (بقت stale أصلاً) → مانعملش حاجة
           } else {
             // نبعت نتيجة التنفيذ مع علامة الانتهاء عشان اللوحة تعرف: خلص ولا اتقفل قبل ما يخلص
             await fetch(`/api/exec-queue/${job.id}/done`, {

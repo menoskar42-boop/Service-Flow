@@ -269,7 +269,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
 
   const openDZSSingle = async (r: PhoneLine) => {
     if (await dispatchSpeedTool("measure", [toItem(r).account], isSuper)) return;
-    window.open(buildDZSUrl([toItem(r)], scoreGt != null), "_blank");
+    window.open(buildDZSUrl([toItem(r)], scoreGt != null), "dzs_measure");
   };
 
   // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد. kind: "raise" = رفع سرعة | "stop" = إيقاف Nightly فقط.

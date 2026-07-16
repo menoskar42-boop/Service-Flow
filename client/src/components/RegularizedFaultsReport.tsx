@@ -167,7 +167,7 @@ export function RegularizedFaultsReport() {
     }
     // لو فيه جهاز تنفيذ مفعّل → للطابور بدل الفتح المحلى (وإلا رسالة عدم الإتاحة لغير السوبر أدمن)
     if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) return;
-    window.open(buildDZSUrl(items), "_blank");
+    window.open(buildDZSUrl(items), "dzs_measure");
   };
 
   // رفع السرعة / إيقاف PO لأرقام الأعطال المعروضة.
@@ -188,7 +188,7 @@ export function RegularizedFaultsReport() {
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
   const openDZSSingle = async (f: RegularizedFault) => {
     if (await dispatchSpeedTool("measure", [toItem(f).account], isSuper)) return;
-    window.open(buildDZSUrl([toItem(f)]), "_blank");
+    window.open(buildDZSUrl([toItem(f)]), "dzs_measure");
   };
 
   const handleExportExcel = () => {

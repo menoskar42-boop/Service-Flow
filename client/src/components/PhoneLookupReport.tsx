@@ -289,7 +289,7 @@ export function PhoneLookupReport() {
       return;
     }
     if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
-    window.open(buildDZSUrl([acc]), "_blank");
+    window.open(buildDZSUrl([acc]), "dzs_measure"); // نفس النافذة الثابتة — الجديد يحلّ محل القديم
   };
 
   // الترتيب مطابق للإكسيل: الشبكة RTL تملأ الخلية اليمنى ثم اليسرى فى كل صف —

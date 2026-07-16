@@ -137,7 +137,7 @@ export function ComplaintNoMeasureReport() {
   const openDZSSingle = async (r: Row) => {
     if (!r.accountNo) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
     if (await dispatchSpeedTool("measure", [String(r.accountNo).trim()], isSuper)) return;
-    window.open(buildDZSUrl([String(r.accountNo).trim()]), "_blank");
+    window.open(buildDZSUrl([String(r.accountNo).trim()]), "dzs_measure");
   };
 
   const handleMeasureDZS = async () => {

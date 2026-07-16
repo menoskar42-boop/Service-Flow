@@ -183,7 +183,7 @@ export function PhoneLinesReport() {
   // يفتح تاب DZS لخط واحد (الزر بجوار كل خط).
   const openDZSSingle = async (r: PhoneLine) => {
     if (await dispatchSpeedTool("measure", [toItem(r).account], isSuper)) return;
-    window.open(buildDZSUrl([toItem(r)]), "_blank");
+    window.open(buildDZSUrl([toItem(r)]), "dzs_measure");
   };
 
   const handleExport = async () => {

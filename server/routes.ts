@@ -1485,17 +1485,24 @@ export async function registerRoutes(
     } catch { return accs; }
   };
 
-  // هل فيه طلب عاجل (أولوية أعلى) منتظر يستاهل يقطع المهمة الجارية دى؟
-  app.get("/api/exec-queue/preempt-check", requireAuth, requireSuperAdmin, async (req, res) => {
+  // فحص حالة المهمة الجارية لجهاز التنفيذ: لسه شغّالة (claimed)؟ فيه طلب عاجل يقطعها؟ اتقاس كام رقم؟
+  //  - active=false → المهمة اتلغت/اتمسحت من الطابور (يدوى) → جهاز التنفيذ يوقف فوراً.
+  //  - measured → عشان جهاز التنفيذ يكتشف لو DZS وقف (مفيش تقدّم لمدة) فيوقف بدل ما يعلّق ساعات.
+  app.get("/api/exec-queue/job-check", requireAuth, requireSuperAdmin, async (req, res) => {
     try {
       const jobId = parseInt(String(req.query.jobId || ""));
-      if (!jobId) return res.json({ preempt: false });
-      const { rows } = await pool.query(`SELECT priority FROM exec_jobs WHERE id = $1`, [jobId]);
-      const curPri = rows[0]?.priority ?? 0;
+      if (!jobId) return res.json({ active: false, preempt: false, measured: 0, total: 0 });
+      const { rows } = await pool.query(`SELECT priority, status, accounts, type, claimed_at FROM exec_jobs WHERE id = $1`, [jobId]);
+      const job = rows[0];
+      if (!job) return res.json({ active: false, preempt: false, measured: 0, total: 0 });
+      const active = job.status === "claimed";
       const { rows: p } = await pool.query(
-        `SELECT 1 FROM exec_jobs WHERE status = 'pending' AND priority > $1 LIMIT 1`, [curPri]);
-      res.json({ preempt: p.length > 0 });
-    } catch { res.json({ preempt: false }); }
+        `SELECT 1 FROM exec_jobs WHERE status = 'pending' AND priority > $1 LIMIT 1`, [job.priority ?? 0]);
+      const prog = await jobProgress(job.accounts, job.type, job.claimed_at);
+      res.json({ active, preempt: p.length > 0, measured: prog.done, total: prog.total });
+    } catch {
+      res.json({ active: true, preempt: false, measured: 0, total: 0 }); // فشل الفحص → نكمّل (fail-safe)
+    }
   });
 
   // مقاطعة مهمة جارية: نعلّمها done (result=preempted) ونرجّع الأرقام المتبقية كمهمة جديدة
