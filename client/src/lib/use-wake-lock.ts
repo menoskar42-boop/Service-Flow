@@ -87,11 +87,46 @@ export function useWakeLock(enabled: boolean = true) {
         if (audioCtx && audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
       } catch { /* ignore */ }
     };
-    const onGesture = () => startAudio();
+    // ── صوت فعلى صامت المحتوى (غير مكتوم) شغّال باستمرار (loop) ──
+    // ده أهم إضافة لمنع *نوم النظام* (مش الشاشة بس): AudioContext بـ gain=0 والفيديو المكتوم
+    // النظام بيعتبرهم «مفيش صوت» فبينام. لكن عنصر <audio> بيشغّل ستريم صوت فعلى (محتواه صمت →
+    // غير مسموع) وغير مكتوم → النظام بيشوف «جلسة صوت نشطة» فيفضل صاحى (على Windows تحديداً).
+    let keepAudio: HTMLAudioElement | null = null;
+    let silentUrl = "";
+    const makeSilentWavUrl = (seconds = 1, rate = 8000) => {
+      const n = seconds * rate;
+      const buf = new ArrayBuffer(44 + n);
+      const v = new DataView(buf);
+      const w = (o: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+      w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt ");
+      v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true);
+      v.setUint16(34, 8, true); w(36, "data"); v.setUint32(40, n, true);
+      for (let i = 0; i < n; i++) v.setUint8(44 + i, 128); // 128 = صمت لـ 8-bit unsigned
+      return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    };
+    const startKeepAudio = () => {
+      try {
+        if (!keepAudio) {
+          silentUrl = makeSilentWavUrl(1, 8000);
+          keepAudio = document.createElement("audio");
+          keepAudio.src = silentUrl;
+          keepAudio.loop = true;
+          keepAudio.volume = 0.02; // منخفض جداً — والمحتوى صمت أصلاً فهو غير مسموع
+          keepAudio.setAttribute("playsinline", "");
+          keepAudio.style.cssText = "position:fixed;left:-100px;top:-100px;width:1px;height:1px;opacity:0;pointer-events:none;";
+          document.body.appendChild(keepAudio);
+          keepAudio.addEventListener("pause", () => { if (!released) keepAudio?.play().catch(() => {}); });
+        }
+        keepAudio.play().catch(() => {});
+      } catch { /* المتصفح رفض التشغيل قبل التفاعل — هيشتغل عند أول ضغطة */ }
+    };
+
+    const onGesture = () => { startAudio(); startKeepAudio(); };
     window.addEventListener("pointerdown", onGesture);
     window.addEventListener("keydown", onGesture);
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) startAudio(); });
-    startAudio(); // محاولة فورية (قد تفشل قبل أى تفاعل — الفيديو fallback)
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) { startAudio(); startKeepAudio(); } });
+    startAudio(); startKeepAudio(); // محاولة فورية (قد تفشل قبل أى تفاعل — تشتغل عند أول ضغطة)
 
     return () => {
       released = true;
@@ -105,6 +140,9 @@ export function useWakeLock(enabled: boolean = true) {
       videoEl = null;
       try { audioCtx?.close(); } catch { /* ignore */ }
       audioCtx = null;
+      try { if (keepAudio) { keepAudio.pause(); keepAudio.src = ""; keepAudio.remove(); } } catch { /* ignore */ }
+      try { if (silentUrl) URL.revokeObjectURL(silentUrl); } catch { /* ignore */ }
+      keepAudio = null;
     };
   }, [enabled]);
 }

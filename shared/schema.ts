@@ -596,6 +596,7 @@ export const execJobs = pgTable("exec_jobs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   claimedAt: timestamp("claimed_at"),
   doneAt: timestamp("done_at"),
+  result: text("result"), // نتيجة التنفيذ للقياس: done | tab_closed | timeout (خلص / اتقفل قبل ما يخلص / علّق)
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

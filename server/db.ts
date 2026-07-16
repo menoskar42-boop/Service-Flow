@@ -827,6 +827,7 @@ export async function ensureSchema() {
       done_at timestamptz
     );
     CREATE INDEX IF NOT EXISTS exec_jobs_status_idx ON exec_jobs (status, created_at);
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS result text;
   `);
 
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.

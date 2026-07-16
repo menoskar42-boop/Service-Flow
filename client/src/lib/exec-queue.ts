@@ -72,6 +72,7 @@ export interface QueuePosition {
   found: boolean;
   status?: string;
   canceled?: boolean; // اتلغت لأن جهاز التنفيذ اتقفل (stale) — مش اتنفّذت
+  result?: string;    // نتيجة القياس: done | tab_closed | timeout | stopped
   position?: number;
   total?: number;
   jobDone?: number;   // كام رقم اتنفّذ من مهمة المستخدم

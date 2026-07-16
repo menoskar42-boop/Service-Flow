@@ -70,18 +70,26 @@ export function ExecutorButton() {
 
     // ينفّذ **الجوب كله دفعة واحدة**: نبعت كل الأرقام للسكربت اللى بيلفّ عليها بنفسه (6/185…)
     // بدل ما نفتح صفحة لكل رقم. ننتظر لحد ما آخر رقم (السكربت بيمشى بالترتيب) يتأكد، أو سقف زمنى.
-    const runBatch = async (type: ExecJob["type"], accs: string[]) => {
+    // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |
+    // "timeout" خلصت المهلة | "stopped" جهاز التنفيذ اتقفل يدوياً.
+    const runBatch = async (type: ExecJob["type"], accs: string[]): Promise<string> => {
       const last = accs[accs.length - 1];
       if (type === "measure") {
         const before = await latestMeasureAt(last);
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
-        lastMeasureWin.current = executeBatch("measure", accs); // DZS يلفّ على كلهم فى run واحد
+        const win = executeBatch("measure", accs); // DZS يلفّ على كلهم فى run واحد
+        lastMeasureWin.current = win;
+        const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
         const deadline = Date.now() + Math.min(accs.length * MEASURE_MAX_MS, MAX_TOTAL_MS);
         while (!stopped && Date.now() < deadline) {
           await sleep(15 * 1000);
-          if ((await latestMeasureAt(last)) > before) return; // آخر رقم اتقاس → الباتش خلص
+          // خلص: آخر رقم اتقاس (DZS بيمشى بالترتيب فآخر رقم اتقاس = عدّى على الكل) → نقفل التاب
+          if ((await latestMeasureAt(last)) > before) { closeWin(); return "done"; }
+          // التاب اتقفل (يدوياً/كراش) قبل ما آخر رقم يتقاس → اتقفل قبل ما يخلص
+          if (win && win.closed) return "tab_closed";
         }
-        return;
+        closeWin();
+        return stopped ? "stopped" : "timeout";
       }
       const ev = type === "stop" ? "stop" : "raise";
       const perMax = type === "stop" ? STOP_MS : RAISE_MAX_MS;
@@ -90,8 +98,9 @@ export function ExecutorButton() {
       const deadline = Date.now() + Math.min(accs.length * perMax, MAX_TOTAL_MS);
       while (!stopped && Date.now() < deadline) {
         await sleep(15 * 1000);
-        if ((await latestPoEventAt(last, ev)) > before) return; // آخر رقم اتسجّل → الباتش خلص
+        if ((await latestPoEventAt(last, ev)) > before) return "done"; // آخر رقم اتسجّل → الباتش خلص
       }
+      return stopped ? "stopped" : "timeout";
     };
 
     const claimAndRun = async () => {
@@ -102,12 +111,18 @@ export function ExecutorButton() {
         const job: ExecJob | null = r.ok ? await r.json() : null;
         if (job && job.id) {
           const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
+          let result: string | null = null;
           if (accs.length && !stopped) {
             const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف" : "رفع سرعة";
             setCurrent(`${label} (${accs.length} رقم)`);
-            await runBatch(job.type, accs); // الجوب كله دفعة واحدة
+            result = await runBatch(job.type, accs); // الجوب كله دفعة واحدة
           }
-          await fetch(`/api/exec-queue/${job.id}/done`, { method: "POST", credentials: "include" }).catch(() => {});
+          // نبعت نتيجة التنفيذ مع علامة الانتهاء عشان اللوحة تعرف: خلص ولا اتقفل قبل ما يخلص
+          await fetch(`/api/exec-queue/${job.id}/done`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ result }),
+          }).catch(() => {});
           setCurrent("");
         }
       } catch {} finally { busy.current = false; }

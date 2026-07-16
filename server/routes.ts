@@ -1328,7 +1328,9 @@ export async function registerRoutes(
   // تعليم مهمة كمنفّذة
   app.post("/api/exec-queue/:id/done", requireAuth, requireSuperAdmin, async (req, res) => {
     try {
-      await pool.query(`UPDATE exec_jobs SET status = 'done', done_at = now() WHERE id = $1`, [parseInt(req.params.id)]);
+      // result اختيارى: done | tab_closed | timeout — بيوضّح إن كان القياس خلص فعلاً ولا اتقفل قبل ما يخلص
+      const result = String((req.body || {}).result || "").trim() || null;
+      await pool.query(`UPDATE exec_jobs SET status = 'done', done_at = now(), result = $2 WHERE id = $1`, [parseInt(req.params.id), result]);
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1438,14 +1440,14 @@ export async function registerRoutes(
       await expireOrphanedExecJobs();
       const id = parseInt(String(req.query.id || ""));
       if (!id) return res.json({ found: false });
-      const { rows } = await pool.query(`SELECT status, created_at, claimed_at, accounts, type FROM exec_jobs WHERE id = $1`, [id]);
+      const { rows } = await pool.query(`SELECT status, created_at, claimed_at, accounts, type, result FROM exec_jobs WHERE id = $1`, [id]);
       const job = rows[0];
       if (!job) return res.json({ found: false });
       const jobProg = await jobProgress(job.accounts, job.type, job.claimed_at);
       // أى حالة غير نشطة = نهائية: done (اتنفّذت) أو stale/canceled (اتلغت لأن جهاز التنفيذ اتقفل)
       if (job.status !== "pending" && job.status !== "claimed") {
         const canceled = job.status !== "done";
-        return res.json({ found: true, status: job.status, canceled, position: 0, total: 0, jobDone: jobProg.done, jobTotal: jobProg.total, active: null });
+        return res.json({ found: true, status: job.status, canceled, result: job.result || null, position: 0, total: 0, jobDone: jobProg.done, jobTotal: jobProg.total, active: null });
       }
       const { rows: a } = await pool.query(
         `SELECT COUNT(*)::int AS ahead FROM exec_jobs
