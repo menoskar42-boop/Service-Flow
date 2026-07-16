@@ -3,9 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch, AlertTriangle, Wrench, History, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor } from "@/lib/exec-queue";
@@ -292,6 +293,84 @@ export function PhoneLookupReport() {
     window.open(buildDZSUrl([acc]), "dzs_measure"); // نفس النافذة الثابتة — الجديد يحلّ محل القديم
   };
 
+  // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
+  const canFlagFault = isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL;
+  const canRegularize = isSuper || user?.role === ROLES.TECH;
+
+  // حالة العطل المفتوح + آخر انتظام (يقارن اليدوى بـ 430D ويرجّع الأحدث)
+  const { data: mfData, refetch: refetchMf } = useQuery({
+    queryKey: ["/api/manual-faults/for-line", phone, searchSeq],
+    queryFn: async () => {
+      const r = await fetch(`/api/manual-faults/for-line?phone=${encodeURIComponent(phone)}`, { credentials: "include" });
+      return (r.ok ? r.json() : { hasOpenFault: false, lastRegularization: null }) as Promise<{ hasOpenFault: boolean; lastRegularization: { at: string; closeCode: string; source: string } | null }>;
+    },
+    enabled: !!phone,
+    staleTime: 0,
+  });
+  const hasOpenFault = !!mfData?.hasOpenFault;
+  const lastReg = mfData?.lastRegularization || null;
+
+  // قائمة الفنيين (للسوبر أدمن عند الانتظام)
+  const { data: techList } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => { const r = await fetch("/api/technician-names", { credentials: "include" }); return r.ok ? r.json() : []; },
+    enabled: isSuper,
+    staleTime: 5 * 60 * 1000,
+  });
+  const techOptions = Array.from(new Set((techList ?? []).map((t) => (t.techName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+
+  const [regOpen, setRegOpen] = useState(false);
+  const [regCode, setRegCode] = useState("");
+  const [regTech, setRegTech] = useState("");
+  const [regBusy, setRegBusy] = useState(false);
+  const [histOpen, setHistOpen] = useState(false);
+  const [histRows, setHistRows] = useState<any[] | null>(null);
+
+  // تسجيل عطل يدوى (يمنع التكرار)
+  const flagFault = async () => {
+    if (!phone) return;
+    const body = {
+      fullPhone: line?.fullPhone || phone, phoneShort: line?.telNo || phone,
+      accountNo: line?.accountNo || "", central: line?.central || "", cabinNumber: line?.cabinNumber || "",
+      boxNumber: line?.boxNumber || "", msanCode: line?.msanCode || "", techName: line?.techName || "",
+    };
+    const r = await fetch("/api/manual-faults/flag", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (d?.duplicate) { alert(d.message || "الخط ده فيه عطل مسجّل بالفعل"); return; }
+    if (!d?.ok) { alert(d?.message || "تعذّر تسجيل العطل"); return; }
+    alert("تم تسجيل العطل — الخط بقى فى «الأعطال الحالية خارج الشاشة»");
+    refetchMf();
+  };
+
+  // انتظام العطل (+ قياس أوتوماتيك لو الخط ليه رقم أكونت)
+  const submitRegularize = async () => {
+    if (!regCode) { alert("اختر سبب الإغلاق"); return; }
+    if (isSuper && !regTech) { alert("اختر فنى الانتظام"); return; }
+    setRegBusy(true);
+    try {
+      const body: any = { fullPhone: line?.fullPhone || phone, phoneShort: line?.telNo || phone, closeCode: regCode };
+      if (isSuper && regTech) body.techName = regTech;
+      const r = await fetch("/api/manual-faults/regularize", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!d?.ok) { alert(d?.message || "تعذّر تسجيل الانتظام"); return; }
+      setRegOpen(false); setRegCode(""); setRegTech("");
+      refetchMf();
+      // قياس أوتوماتيك لو الخط ليه رقم أكونت
+      const acc = (line?.accountNo ?? "").toString().trim();
+      if (acc) { await measureDZS(); } else { alert("تم تسجيل الانتظام"); }
+    } finally { setRegBusy(false); }
+  };
+
+  // فتح تاريخ أعطال الخط
+  const openHistory = async () => {
+    setHistOpen(true); setHistRows(null);
+    try {
+      const r = await fetch(`/api/line-fault-history?phone=${encodeURIComponent(line?.fullPhone || phone)}`, { credentials: "include" });
+      const d = await r.json();
+      setHistRows(d.history || []);
+    } catch { setHistRows([]); }
+  };
+
   // الترتيب مطابق للإكسيل: الشبكة RTL تملأ الخلية اليمنى ثم اليسرى فى كل صف —
   // فالمصفوفة مرتّبة: (يمين1, شمال1, يمين2, شمال2 …) للصفوف 1–12، ثم الحقول الفنية الباقية كامل العرض (صف لكل حقل).
   const fields: [string, ReactNode][] = line
@@ -455,6 +534,29 @@ export function PhoneLookupReport() {
               مراجعة
             </Button>
           )}
+          {line && canFlagFault && (
+            <Button
+              variant="outline"
+              onClick={flagFault}
+              disabled={hasOpenFault}
+              className="gap-2 text-red-700 border-red-200 hover:bg-red-50 disabled:opacity-60"
+              title={hasOpenFault ? "الخط ده فيه عطل مسجّل بالفعل (لم ينتظم بعد)" : "تسجيل عطل يدوى لهذا الخط (خارج الشاشة)"}
+            >
+              <AlertTriangle className="w-4 h-4" />
+              {hasOpenFault ? "به عطل مسجّل" : "الخط به عطل"}
+            </Button>
+          )}
+          {line && canRegularize && hasOpenFault && (
+            <Button
+              variant="outline"
+              onClick={() => { setRegCode(""); setRegTech(""); setRegOpen(true); }}
+              className="gap-2 text-green-700 border-green-300 hover:bg-green-50"
+              title="تسجيل انتظام العطل (اختيار سبب الإغلاق) ثم قياس الخط أوتوماتيك"
+            >
+              <Wrench className="w-4 h-4" />
+              انتظام
+            </Button>
+          )}
           {line && (
             <div className="flex items-center gap-2 sm:mr-auto">
               {line.accountNo ? (
@@ -553,6 +655,22 @@ export function PhoneLookupReport() {
 
       {line && (
         <Card className="overflow-hidden shadow-sm border-0 bg-white">
+          {/* آخر انتظام (الأحدث من اليدوى/430D) + زر تاريخ الأعطال */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b text-sm">
+            <span className="text-muted-foreground">آخر انتظام:</span>
+            {lastReg ? (
+              <span className="font-semibold">
+                {fmtDate(lastReg.at)}
+                {lastReg.closeCode ? ` — ${closeReason(lastReg.closeCode) || lastReg.closeCode}` : ""}
+                <span className="text-xs text-muted-foreground mr-1">({lastReg.source === "manual" ? "خارج الشاشة" : "430D"})</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">لا يوجد</span>
+            )}
+            <Button variant="outline" size="sm" onClick={openHistory} className="gap-1 mr-auto text-indigo-700 border-indigo-200">
+              <History className="w-4 h-4" /> تاريخ الأعطال
+            </Button>
+          </div>
           {/* الديسكتوب: عمودين بالترتيب المطابق للإكسيل */}
           <div className="hidden sm:grid grid-cols-2 gap-px bg-gray-100">
             {fields.map(([label, value]) => {
@@ -578,6 +696,71 @@ export function PhoneLookupReport() {
             ))}
           </div>
         </Card>
+      )}
+
+      {/* مودال تسجيل الانتظام (سبب الإغلاق + فنى الانتظام للسوبر أدمن) */}
+      {regOpen && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setRegOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold">تسجيل انتظام العطل</h3>
+              <button onClick={() => setRegOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">سبب الإغلاق *</label>
+              <select value={regCode} onChange={(e) => setRegCode(e.target.value)} className="border rounded-md px-3 py-2 text-sm" dir="rtl">
+                <option value="">اختر سبب الإغلاق</option>
+                {Object.entries(CLOSE_CODE_REASONS).map(([code, reason]) => <option key={code} value={code}>{code} - {reason}</option>)}
+              </select>
+            </div>
+            {isSuper && (
+              <div className="grid gap-1">
+                <label className="text-sm text-muted-foreground">فنى الانتظام *</label>
+                <select value={regTech} onChange={(e) => setRegTech(e.target.value)} className="border rounded-md px-3 py-2 text-sm" dir="rtl">
+                  <option value="">اختر الفنى</option>
+                  {techOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">بعد التسجيل هيتقاس الخط أوتوماتيك لو ليه رقم أكونت.</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setRegOpen(false)}>إلغاء</Button>
+              <Button size="sm" onClick={submitRegularize} disabled={regBusy} className="bg-green-600 hover:bg-green-700 gap-1">
+                {regBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wrench className="w-4 h-4" />} OK — تسجيل الانتظام
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* مودال تاريخ أعطال الخط (يدوى + 430D) */}
+      {histOpen && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setHistOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-4 space-y-3 max-h-[80vh] overflow-auto" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold">تاريخ أعطال الخط {line?.telNo || phone}</h3>
+              <button onClick={() => setHistOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            {histRows == null ? (
+              <div className="text-center py-6"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>
+            ) : histRows.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">لا يوجد تاريخ أعطال</div>
+            ) : (
+              <table className="w-full text-sm border">
+                <thead><tr className="bg-gray-100"><th className="border px-2 py-1">تاريخ الانتظام</th><th className="border px-2 py-1">سبب الإغلاق</th><th className="border px-2 py-1">المصدر</th></tr></thead>
+                <tbody>
+                  {histRows.map((h, i) => (
+                    <tr key={i} className="odd:bg-gray-50">
+                      <td className="border px-2 py-1 whitespace-nowrap text-center">{fmtDate(h.date)}</td>
+                      <td className="border px-2 py-1">{closeReason(h.closeCode) || h.closeCode || "-"}</td>
+                      <td className="border px-2 py-1 text-center">{h.source === "manual" ? "خارج الشاشة" : "430D"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
