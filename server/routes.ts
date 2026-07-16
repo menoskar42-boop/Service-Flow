@@ -1373,6 +1373,29 @@ export async function registerRoutes(
     } catch { res.json({ pending: 0 }); }
   });
 
+  // ترتيب مهمة معيّنة فى الطابور (للعرض للمستخدم اللى طلبها) — يتقدّم كل ما تتنفّذ مهمة قبلها.
+  // position = عدد المهام النشطة قبلها + 1 (بنفس ترتيب السحب: created_at ثم id). 0/done = خلصت.
+  app.get("/api/exec-queue/position", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(String(req.query.id || ""));
+      if (!id) return res.json({ found: false });
+      const { rows } = await pool.query(`SELECT status, created_at FROM exec_jobs WHERE id = $1`, [id]);
+      const job = rows[0];
+      if (!job) return res.json({ found: false });
+      if (job.status === "done") return res.json({ found: true, status: "done", position: 0, total: 0 });
+      const { rows: a } = await pool.query(
+        `SELECT COUNT(*)::int AS ahead FROM exec_jobs
+         WHERE status IN ('pending','claimed') AND (created_at < $1 OR (created_at = $1 AND id < $2))`,
+        [job.created_at, id]);
+      const { rows: t } = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM exec_jobs WHERE status IN ('pending','claimed')`);
+      const ahead = a[0]?.ahead ?? 0;
+      res.json({ found: true, status: job.status, position: ahead + 1, total: t[0]?.total ?? ahead + 1 });
+    } catch {
+      res.json({ found: false });
+    }
+  });
+
   // ===== بوابة إدارة المستخدمين الموحّدة (سوبر أدمن فقط) =====
   // حساب واحد للموقعين: الدور الموحّد يحدّد دور الطلبات (users/scrypt) ودور الكوابل (cfm_users/bcrypt).
   // إنشاء/تعديل الدور/مسح/تصفير الباسورد يتعامل مع الجدولين معاً ويربطهم بـ cfm_user_id.

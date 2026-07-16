@@ -61,8 +61,22 @@ export async function isExecutorActive(): Promise<boolean> {
   } catch { return false; }
 }
 
+// تتبّع ترتيب مهمة فى الطابور: نبعت حدث للـ watcher العام (ExecQueueWatcher) اللى بيعرض الترتيب
+// ويحدّثه كل ما تتقدّم المهمة خطوة. بيتنادى تلقائياً من enqueueJob بعد نجاح الإضافة.
+export function trackQueueJob(id: number, type: ExecJobType, count = 1): void {
+  try { window.dispatchEvent(new CustomEvent("sf-exec-track", { detail: { id, type, count } })); } catch { /* SSR/بيئة بدون window */ }
+}
+
+// ترتيب مهمة معيّنة فى الطابور الآن (للـ watcher)
+export async function fetchQueuePosition(id: number): Promise<{ found: boolean; status?: string; position?: number; total?: number }> {
+  try {
+    const r = await fetch(`/api/exec-queue/position?id=${id}`, { credentials: "include" });
+    return await r.json();
+  } catch { return { found: false }; }
+}
+
 // إضافة مهمة للطابور
-export async function enqueueJob(type: ExecJobType, accounts: (string | number)[], note?: string): Promise<{ ok: boolean; count?: number; message?: string }> {
+export async function enqueueJob(type: ExecJobType, accounts: (string | number)[], note?: string): Promise<{ ok: boolean; id?: number; count?: number; message?: string }> {
   try {
     const accs = [...new Set(accounts.map((a) => String(a ?? "").trim()).filter(Boolean))];
     const r = await fetch("/api/exec-queue/enqueue", {
@@ -70,7 +84,10 @@ export async function enqueueJob(type: ExecJobType, accounts: (string | number)[
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, accounts: accs, note }),
     });
-    return await r.json();
+    const data = await r.json();
+    // نبدأ نتتبّع ترتيب المهمة فى الطابور تلقائياً (يظهر للمستخدم اللى طلبها)
+    if (data?.ok && data?.id) trackQueueJob(Number(data.id), type, data.count ?? accs.length);
+    return data;
   } catch (e: any) { return { ok: false, message: e?.message }; }
 }
 
