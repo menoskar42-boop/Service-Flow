@@ -95,6 +95,21 @@ export async function recordOpIntent(type: ExecJobType, accounts: (string | numb
 }
 
 export const NO_EXECUTOR_MSG = "غير متاح حالياً — لا توجد أجهزة مفعّلة للتنفيذ. فعّل «جهاز التنفيذ» على متصفح السوبر أدمن أولاً.";
+
+// التنفيذ المحلى (فتح بوابة DZS/PO الداخلية) بيشتغل على متصفح كمبيوتر مكتب فقط — الموبايل مايقدرش
+// يوصل بوابة DZS الداخلية، فبيفتح تاب فاضى بلا فايدة. لذلك لو مفيش جهاز تنفيذ مفعّل والجهاز موبايل،
+// حتى السوبر أدمن ياخد رسالة «لا توجد أجهزة» بدل التشغيل المحلى.
+export function canRunLocalExecutor(): boolean {
+  try {
+    const ua = navigator.userAgent || "";
+    const isMobile =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua) ||
+      ((navigator as any).maxTouchPoints > 1 && !/Windows/i.test(ua)); // iPad الحديث بيتقدّم كـ Mac
+    return !isMobile;
+  } catch {
+    return true;
+  }
+}
 const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", raise: "رفع السرعة", stop: "إيقاف PO" };
 
 // منطق موحّد لأزرار القياس/رفع السرعة/الإيقاف فى كل التقارير (نفس بحث برقم التليفون):
@@ -110,6 +125,6 @@ export async function dispatchSpeedTool(type: ExecJobType, accounts: (string | n
     alert(res.ok ? `تم إضافة ${accs.length} رقم لطابور ${QUEUE_LABEL[type]} — هيتنفّذ على جهاز التنفيذ` : (res.message || "تعذّر الإضافة للطابور"));
     return true;
   }
-  if (!isSuper) { alert(NO_EXECUTOR_MSG); return true; }
-  return false; // سوبر أدمن ومفيش جهاز تنفيذ → نفّذ محلياً
+  if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return true; }
+  return false; // سوبر أدمن على كمبيوتر مكتب ومفيش جهاز تنفيذ → نفّذ محلياً
 }

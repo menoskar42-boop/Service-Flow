@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor } from "@/lib/exec-queue";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { Gauge } from "lucide-react";
@@ -286,7 +286,7 @@ export function PhoneLookupReport() {
       void waitForOpThenRefresh("measure", acc);
       return;
     }
-    if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
+    if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
     window.open(buildDZSUrl([acc]), "_blank");
   };
 
@@ -480,7 +480,7 @@ export function PhoneLookupReport() {
                         void waitForOpThenRefresh("raise", String(line.accountNo));
                         return;
                       }
-                      if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
+                      if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
                       openProfileOptimization([line.accountNo], { afterStop });
                     }}
                     className="bg-white gap-2 text-emerald-700 border-emerald-200"
@@ -499,7 +499,7 @@ export function PhoneLookupReport() {
                         void waitForOpThenRefresh("stop", String(line.accountNo));
                         return;
                       }
-                      if (!isSuper) { alert(NO_EXECUTOR_MSG); return; }
+                      if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
                       openProfileOptimization([line.accountNo], { stopOnly: true });
                     }}
                     className="bg-white gap-2 text-orange-700 border-orange-200"
