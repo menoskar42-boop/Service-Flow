@@ -1385,6 +1385,38 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // تقرير معاملات التنفيذ (سوبر أدمن): كل مهام الطابور خلال فترة، مع عدد الخطوط المطلوبة
+  // والمتنفّذة فعلاً + مين طلبها + من تقرير إيه + الحالة/النتيجة.
+  app.get("/api/exec-queue/history", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const from = String((req.query.from as string) || "").trim();
+      const to = String((req.query.to as string) || "").trim();
+      const conds: string[] = [];
+      const params: any[] = [];
+      if (from) { params.push(from); conds.push(`created_at >= $${params.length}`); }
+      if (to) { params.push(to + " 23:59:59"); conds.push(`created_at <= $${params.length}`); }
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+      const { rows } = await pool.query(
+        `SELECT id, type, accounts, status, requested_by AS "requestedBy", note AS source,
+                created_at AS "createdAt", claimed_at AS "claimedAt", done_at AS "doneAt", result
+         FROM exec_jobs ${where} ORDER BY created_at DESC LIMIT 500`,
+        params,
+      );
+      // نحسب عدد الخطوط المطلوبة والمتنفّذة فعلاً لكل مهمة
+      const out = [];
+      for (const j of rows as any[]) {
+        const prog = await jobProgress(j.accounts, j.type, j.claimedAt);
+        out.push({
+          id: j.id, type: j.type, status: j.status, result: j.result || null,
+          requestedBy: j.requestedBy || null, source: j.source || null,
+          createdAt: j.createdAt, doneAt: j.doneAt,
+          requested: prog.total, measured: prog.done,
+        });
+      }
+      res.json({ jobs: out });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // مسح الطابور يدوياً (سوبر أدمن): يعلّم كل المهام النشطة (pending/claimed) stale فوراً.
   app.post("/api/exec-queue/clear", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {

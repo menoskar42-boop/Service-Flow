@@ -86,6 +86,11 @@ export async function fetchQueuePosition(id: number): Promise<QueuePosition> {
   } catch { return { found: false }; }
 }
 
+// مصدر العملية (اسم التقرير اللى اتطلب منه القياس/الرفع/الإيقاف) — كل تقرير يضبطه عند فتحه
+// (useSpeedToolSource)، وenqueueJob بيسجّله فى note عشان يظهر فى تقرير معاملات التنفيذ.
+let currentSource = "";
+export function setSpeedToolSource(s: string): void { currentSource = s || ""; }
+
 // إضافة مهمة للطابور
 export async function enqueueJob(type: ExecJobType, accounts: (string | number)[], note?: string): Promise<{ ok: boolean; id?: number; count?: number; message?: string }> {
   try {
@@ -93,7 +98,7 @@ export async function enqueueJob(type: ExecJobType, accounts: (string | number)[
     const r = await fetch("/api/exec-queue/enqueue", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, accounts: accs, note }),
+      body: JSON.stringify({ type, accounts: accs, note: note || currentSource || null }),
     });
     const data = await r.json();
     // نبدأ نتتبّع ترتيب المهمة فى الطابور تلقائياً (يظهر للمستخدم اللى طلبها)

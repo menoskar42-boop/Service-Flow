@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,7 @@ const scoreBadge = (v: number | null | undefined) => {
 export function ComplaintNoMeasureReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("شكوى بدون قياس");
   const [dateFrom, setDateFrom] = useState(monthStart());
   const [dateTo, setDateTo] = useState(todayStr());
   const [central, setCentral] = useState("");

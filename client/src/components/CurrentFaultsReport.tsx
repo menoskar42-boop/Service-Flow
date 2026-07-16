@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -128,6 +129,7 @@ const faultBadge = (cls: string | null) => {
 export function CurrentFaultsReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("المتعذرات الحالية");
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [repeatedOnly, setRepeatedOnly] = useState(false);

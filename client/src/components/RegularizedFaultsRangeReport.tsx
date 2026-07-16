@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,7 @@ const buildDZSUrl = (items: DZSItem[]) => {
 export function RegularizedFaultsRangeReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("الأعطال المنتظمة (مدى)");
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState(() => {

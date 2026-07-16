@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,7 @@ interface WithAccountReportProps {
 export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title }: WithAccountReportProps = {}) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("خطوط لها أكونت");
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");

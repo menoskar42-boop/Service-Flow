@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -96,6 +97,7 @@ function buildDZSUrl(items: DZSItem[]) {
 export function CfmTicketsReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("أعطال الشبكة الأرضية");
   // --- ticket data ---
   const [data, setData] = useState<CfmTicket[] | null>(null);
   const [loading, setLoading] = useState(false);

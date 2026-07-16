@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -246,6 +247,7 @@ function CabinTab({ central, cabin, msan, minScore }: { central: string; cabin: 
 function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; minScore: string }) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("متوسط قياس البكس");
   const [sortKey, setSortKey] = useState<keyof BoxAvgRow>("centralName");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [box, setBox] = useState("");

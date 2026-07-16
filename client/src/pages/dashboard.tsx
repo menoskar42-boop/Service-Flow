@@ -46,18 +46,19 @@ import { CabinetCapacityReport } from "@/components/CabinetCapacityReport";
 import { ExecutorButton } from "@/components/ExecutorButton";
 import { DailyAutoRefresh } from "@/components/DailyAutoRefresh";
 import { ExecQueueWatcher } from "@/components/ExecQueueWatcher";
+import { ExecJobsReport } from "@/components/ExecJobsReport";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { canAccessCFM } from "@shared/roles-access";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable, Server } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -164,6 +165,13 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "cfm-tickets", label: "تذاكر الأعطال" },
     ],
   },
+  {
+    label: "معاملات التنفيذ",
+    icon: Server,
+    items: [
+      { id: "exec-jobs", label: "سجل القياس/رفع السرعة/الإيقاف" },
+    ],
+  },
 ];
 
 export default function Dashboard() {
@@ -198,7 +206,9 @@ export default function Dashboard() {
     .filter((g) =>
       (user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label)) &&
       (user?.role !== ROLES.TECH || TECH_ALLOWED_GROUPS.includes(g.label)) &&
-      (user?.role !== ROLES.SALES_ADMIN || SALES_ADMIN_ALLOWED_GROUPS.includes(g.label)),
+      (user?.role !== ROLES.SALES_ADMIN || SALES_ADMIN_ALLOWED_GROUPS.includes(g.label)) &&
+      // «معاملات التنفيذ» للسوبر أدمن فقط
+      (g.label !== "معاملات التنفيذ" || isSuperAdmin),
     )
     .map((g) => {
       if (user?.role === ROLES.DATA_MANAGER) return { ...g, items: g.items.filter((it) => DM_ALLOWED.includes(it.id)) };
@@ -556,6 +566,7 @@ export default function Dashboard() {
               {reportTab === "phone-lookup"        && <PhoneLookupReport />}
               {reportTab === "account-edits"       && <AccountEditsReport />}
               {reportTab === "cfm-tickets"         && <CfmTicketsReport />}
+              {reportTab === "exec-jobs"           && isSuperAdmin && <ExecJobsReport />}
             </div>
           </div>
         )}

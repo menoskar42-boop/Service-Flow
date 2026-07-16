@@ -9,6 +9,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor } from "@/lib/exec-queue";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { Gauge } from "lucide-react";
@@ -107,6 +108,7 @@ export function PhoneLookupReport() {
   // السوبر أدمن هو مشغّل النظام — يقدر ينفّذ محلياً حتى لو مفيش جهاز تنفيذ مفعّل.
   // باقى المستخدمين لازم يكون فيه جهاز تنفيذ مفعّل، وإلا تظهر رسالة عدم الإتاحة.
   const isSuper = user?.role === ROLES.SUPER_ADMIN;
+  useSpeedToolSource("بحث برقم التليفون");
   const NO_EXECUTOR_MSG = "غير متاح حالياً — لا توجد أجهزة مفعّلة للتنفيذ. فعّل «جهاز التنفيذ» على متصفح السوبر أدمن أولاً.";
   const [input, setInput] = useState("");
   const [phone, setPhone] = useState("");

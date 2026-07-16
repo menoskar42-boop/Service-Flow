@@ -12,6 +12,7 @@ import { Loader2, FileSpreadsheet, Printer, Radar, Gauge } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { format } from "date-fns";
 
@@ -124,6 +125,7 @@ const regBadge = (s: string | null) => {
 export function RegularizedFaultsReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("الأعطال المنتظمة");
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));

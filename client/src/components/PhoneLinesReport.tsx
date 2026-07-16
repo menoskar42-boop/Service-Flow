@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -73,6 +74,7 @@ const PAGE_SIZE = 50;
 export function PhoneLinesReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("خطوط التليفون");
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");

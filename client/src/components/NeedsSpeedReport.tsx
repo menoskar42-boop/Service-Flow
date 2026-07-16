@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -93,6 +94,7 @@ interface NeedsSpeedReportProps {
 export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/phone-lines/needs-speed", title }: NeedsSpeedReportProps) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("محتاجة رفع سرعة");
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");

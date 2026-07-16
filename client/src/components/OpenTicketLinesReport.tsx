@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -57,6 +58,7 @@ const scoreBadge = (v: string | number | null | undefined) => {
 export function OpenTicketLinesReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("خطوط عليها تكت مفتوح");
   const [lines, setLines] = useState<OpenTicketLine[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
