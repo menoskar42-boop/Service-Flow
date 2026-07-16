@@ -1404,12 +1404,13 @@ export async function registerRoutes(
     } catch { res.json({ pending: 0 }); }
   });
 
-  // إعادة ضبط المهام اليتيمة: يُستدعى عند تفعيل جهاز التنفيذ — أى مهمة claimed من جلسة سابقة
-  // (جهاز التنفيذ اتقفل عليها) تبقى يتيمة، فنعلّمها stale عشان متفضلش عالقة فى الطابور للأبد.
+  // إعادة ضبط المهام اليتيمة: يُستدعى عند تفعيل جهاز التنفيذ — أى مهمة claimed كانت شغّالة لحظة
+  // قفل الجهاز/انقطاع الشحن نرجّعها للطابور (pending) عشان **تتعاد من الأول** (بترتيبها الأصلى
+  // حسب created_at)، بدل ما تتلغى. المهام المنتظرة الأخرى تفضل زى ما هى ويكمّلها الجهاز.
   app.post("/api/exec-queue/reset-orphaned", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {
-      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'stale', done_at = now() WHERE status = 'claimed'`);
-      res.json({ ok: true, cleared: rowCount ?? 0 });
+      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'pending', claimed_at = NULL WHERE status = 'claimed'`);
+      res.json({ ok: true, requeued: rowCount ?? 0 });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -1475,14 +1476,13 @@ export async function registerRoutes(
   // أو (ب) مهمة claimed من أكثر من 5 ساعات (أطول من أقصى تشغيل باتش).
   const expireOrphanedExecJobs = async () => {
     try {
+      // مابنلغّيش المهام المنتظرة (pending) عند انقطاع جهاز التنفيذ — تفضل فى الطابور صامدة،
+      // ويكمّلها الجهاز لما يرجع (انقطاع شحن/ريستارت). بس نعلّم أى مهمة claimed «عالقة» جداً
+      // (>6 ساعات) كـ stale — احتياط لو علّقت والجهاز شغّال (المهمة اللى وقف عندها جهاز مقفول
+      // بترجع للطابور تلقائياً عند تفعيله عبر reset-orphaned).
       await pool.query(
         `UPDATE exec_jobs SET status = 'stale', done_at = now()
-         WHERE status IN ('pending','claimed')
-           AND (
-             (created_at < now() - interval '2 minutes'
-                AND NOT EXISTS (SELECT 1 FROM app_state s WHERE s.key = 'exec_heartbeat' AND now() - s.updated_at < interval '60 seconds'))
-             OR (status = 'claimed' AND claimed_at < now() - interval '5 hours')
-           )`,
+         WHERE status = 'claimed' AND claimed_at < now() - interval '6 hours'`,
       );
     } catch { /* تنظيف إضافى — لو فشل نكمّل عادى */ }
   };
