@@ -13,6 +13,7 @@ import {
 import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge, Undo2 } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
+import { closeReason } from "@/lib/close-codes";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -603,7 +604,7 @@ export function CurrentFaultsReport() {
                     <table className="w-full text-xs border-collapse">
                       <thead>
                         <tr className="bg-green-700 text-white">
-                          {["#", "رقم الشكوى", "تاريخ الشكوى", "تاريخ الإغلاق", "كود الإغلاق", "فنى الإغلاق"].map((h) => (
+                          {["#", "رقم الشكوى", "تاريخ الشكوى", "تاريخ الإغلاق", "سبب الإغلاق", "فنى الإغلاق"].map((h) => (
                             <th key={h} className="border border-green-800 px-2 py-1 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
@@ -615,7 +616,7 @@ export function CurrentFaultsReport() {
                             <td className="border px-2 py-1 text-center">{r.complainNo}</td>
                             <td className="border px-2 py-1 text-center whitespace-nowrap">{fmtDt(r.complainTime)}</td>
                             <td className="border px-2 py-1 text-center whitespace-nowrap">{fmtDt(r.closeTime)}</td>
-                            <td className="border px-2 py-1 text-center">{r.closeCode || "-"}</td>
+                            <td className="border px-2 py-1 text-center">{closeReason(r.closeCode) || r.closeCode || "-"}</td>
                             <td className="border px-2 py-1 whitespace-nowrap">{r.closeByName || "-"}</td>
                           </tr>
                         ))}
