@@ -2025,6 +2025,20 @@ export async function registerRoutes(
 
   // === Phone Lines Reports ===
 
+  // GET /api/fcc-centrals — أسماء السنترالات المرجعية الصحيحة من FCC (phone_lines).
+  // تُستخدم لتغذية دروب‌ليست السنترال فى معاينة الفنى/الشئون الخارجية بأسماء FCC مباشرةً.
+  app.get("/api/fcc-centrals", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT central FROM phone_lines WHERE central IS NOT NULL AND btrim(central) <> '' ORDER BY central`,
+      );
+      res.json((rows as any[]).map((r) => r.central));
+    } catch (e) {
+      console.error("Get FCC centrals error:", e);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // GET /api/phone-lines/filter-options — returns unique centrals, cabins per central, boxes per central+cabin
   app.get("/api/phone-lines/filter-options", requireAuth, async (req, res) => {
     const { rows } = await pool.query(`

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useOrders } from "@/hooks/use-orders";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { REJECTION_REASONS, CENTRAL_NAMES, type RejectionReason, type CentralName, type Order } from "@shared/schema";
+import { useFccCentrals } from "@/hooks/use-fcc-centrals";
 
 interface ExternalActionModalProps {
   order: Order;
@@ -17,6 +18,8 @@ interface ExternalActionModalProps {
 export function ExternalActionModal({ order, action }: ExternalActionModalProps) {
   const [open, setOpen] = useState(false);
   const { externalResponse, isSubmittingExternal } = useOrders();
+  // أسماء السنترالات من FCC (المرجع) — مدموجة مع الثابت/البيانات الفنية
+  const centralOptions = useFccCentrals();
 
   const [cabinNumber, setCabinNumber] = useState("");
   const [boxNumber, setBoxNumber] = useState("");
@@ -131,7 +134,7 @@ export function ExternalActionModal({ order, action }: ExternalActionModalProps)
                         <SelectValue placeholder="اختر السنترال" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Object.values(CENTRAL_NAMES).map((c) => (
+                        {centralOptions.map((c) => (
                           <SelectItem key={c} value={c} className="text-right" dir="rtl">{c}</SelectItem>
                         ))}
                       </SelectContent>
