@@ -1307,14 +1307,19 @@ export async function registerRoutes(
     try {
       const { type, accounts, note } = req.body || {};
       if (!["raise", "stop", "measure"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
-      const accs = Array.isArray(accounts) ? accounts.map((a: any) => String(a).trim()).filter(Boolean) : [];
-      if (!accs.length) return res.status(400).json({ message: "لا توجد أرقام" });
-      // طلب عاجل صغير (≤3 خطوط) ياخد أولوية 1 → يقطع الباتش الكبير الجارى. الباتشات (>3) أولوية 0.
-      const priority = accs.length <= 3 ? 1 : 0;
+      const uniqAccs = [...new Set((Array.isArray(accounts) ? accounts : []).map((a: any) => String(a).trim()).filter(Boolean))];
+      if (!uniqAccs.length) return res.status(400).json({ message: "لا توجد أرقام" });
+      const user = String(req.user.username || "");
+      // نقسّم **دايماً** لمهام خط-خط (كل خط مهمة). أولوية الطلب: طلب صغير (≤3 خطوط) = عاجل (1)
+      // يتخطّى مهام الباتش؛ باتش كبير (>3) = عادى (0). المنفّذ يبعت رقم-رقم حسب الأولوية، ويخلّص كل
+      // خط كامل قبل اللى بعده (مفيش تداخل)، وكل خط فى نفس النافذة (DZS بيقيس خط واحد مفيش chaining).
+      const priority = uniqAccs.length <= 3 ? 1 : 0;
+      const params: any[] = [type, user, note || null, priority];
+      const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4)`; }).join(",");
       const { rows } = await pool.query(
-        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-        [type, JSON.stringify(accs), String(req.user.username || ""), note || null, priority]);
-      res.json({ ok: true, id: rows[0].id, count: accs.length });
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority) VALUES ${valueSql} RETURNING id`,
+        params);
+      res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // جهاز التنفيذ يسحب أقدم مهمة (atomic) — SKIP LOCKED

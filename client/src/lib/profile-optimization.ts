@@ -28,5 +28,7 @@ export function openProfileOptimization(
   }
   const flags = opts.stopOnly ? "&sf_stop=1" : (opts.afterStop ? "&sf_after=1" : "");
   const url = `${PO_BASE}?lineId=${encodeURIComponent(accs[0])}#sf_po=${encodeURIComponent(accs.join(","))}${flags}`;
-  window.open(url, "_blank");
+  // نفس اسم نافذة القياس (dzs_measure) — القياس/رفع السرعة/الإيقاف كلهم يعيدوا استخدام **نفس النافذة**
+  // (النافذة الجديدة تحلّ محل القديمة) فمفيش نوافذ متعددة ولا تداخل.
+  window.open(url, "dzs_measure");
 }
