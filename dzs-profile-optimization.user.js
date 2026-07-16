@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
-// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE. v0.9.5: فى وضع رفع السرعة، إيقاف الـ nightly التمهيدى مايتسجّلش كـ «إيقاف PO» (كان بيحدّث تاريخ الإيقاف مع الرفع بالغلط) — الإيقاف يتسجّل بس فى الوضع الصريح.
-// @version      0.9.5
+// @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE. v0.9.6: تسجيل «إيقاف PO» بقى لما الحالة ترجع Not Started فعلاً (وقت الاكتمال) بدل وقت طلب الإيقاف — عشان مايظهرش «تم» قبل ما يخلّص فعلياً. v0.9.5: فى وضع رفع السرعة، إيقاف الـ nightly التمهيدى مايتسجّلش كـ «إيقاف PO».
+// @version      0.9.6
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -306,9 +306,9 @@
     // ---- confirm-stop: تأكيد إيقاف الـ Nightly PO (Yes بدون شيك مارك) ----
     if (phase === "confirm-stop") {
       const dlg = /confirm\s*action|stop\s*nightly\s*po|are\s*you\s*sure/i.test(txt());
-      // نسجّل «إيقاف PO» بس فى وضع الإيقاف الصريح (MODE=stop). فى وضع رفع السرعة، إيقاف الـ nightly
-      // ده مجرّد خطوة تمهيدية قبل Start Realtime PO — مش عملية إيقاف حقيقية، فمنسجّلهاش.
-      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { if (MODE === "stop") postPoEvent(CURRENT, "stop"); phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
+      // ⚠️ مانسجّلش «إيقاف PO» هنا (وقت طلب الإيقاف/ضغط Yes) — نسجّله بس لما الحالة ترجع Not Started
+      // فعلاً (فى await-not-started) عشان جهاز التنفيذ مايعلّمهاش «تم» قبل ما الإيقاف يخلّص فعلياً.
+      if (dlg) { dialogShown = true; if (confirmDialogYes(false)) { phase = "await-not-started"; banner("⏳ جارٍ الإيقاف — استنى ترجع Not Started…", "#ef6c00"); } }
       else if (!dialogShown) selectAction(RE_STOP);
       return;
     }
@@ -316,8 +316,8 @@
     // ---- await-not-started: بعد الإيقاف نستنى الحالة ترجع Not Started ----
     if (phase === "await-not-started") {
       if (/not\s*started/i.test(status)) {
-        // وضع الإيقاف فقط: خلصنا لهذا الرقم (مانبدأش Realtime PO) → التالى
-        if (MODE === "stop") { banner("✅ اتوقف الـ PO للرقم " + CURRENT + " — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); return; }
+        // وضع الإيقاف فقط: خلصنا لهذا الرقم فعلاً (الحالة بقت Not Started) → نسجّل الإيقاف دلوقتى ثم التالى
+        if (MODE === "stop") { postPoEvent(CURRENT, "stop"); banner("✅ اتوقف الـ PO للرقم " + CURRENT + " فعلاً — التالى.", "#2e7d32"); clearInterval(tick); setTimeout(advance, 1200); return; }
         // وضع كامل: نعيد تحميل الصفحة نظيفة (بعد الإيقاف الدروب ليست بتفضل فى حالة مش نظيفة)
         // ثم نبدأ Start Realtime PO من صفحة جديدة حالتها Not Started.
         banner("↻ اتوقف الـ Nightly — إعادة تحميل للبدء برفع السرعة…", "#1565c0");
