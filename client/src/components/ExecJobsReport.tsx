@@ -24,6 +24,8 @@ interface ExecJobRow {
 }
 
 const TYPE_LABEL: Record<string, string> = { measure: "قياس", raise: "رفع سرعة", stop: "إيقاف PO" };
+// نتائج تعتبر «تم بإيرور» (خلصت المهمة بس من غير نتيجة سليمة)
+const ERR_RESULTS = ["tab_closed", "timeout", "stopped", "preempted"];
 
 // حالة العملية بشكل مقروء (الحالة + النتيجة)
 function statusText(j: ExecJobRow): string {
@@ -81,17 +83,19 @@ export function ExecJobsReport() {
     );
   }, [jobs, q]);
 
-  // إحصائية المعروض: خلص كام من كام (+ توزيع الحالات)
+  // إحصائية المعروض: خلص كام من كام + تفريق «تم فعلًا» عن «تم بإيرور»
   const stats = useMemo(() => {
     const total = displayed.length;
-    let done = 0, active = 0, canceled = 0;
+    let doneOk = 0, doneErr = 0, active = 0, canceled = 0;
     for (const j of displayed) {
-      if (j.status === "done") done++;
-      else if (j.status === "stale") canceled++;
+      if (j.status === "done") {
+        if (j.result && ERR_RESULTS.includes(j.result)) doneErr++;
+        else doneOk++;
+      } else if (j.status === "stale") canceled++;
       else active++; // pending/claimed
     }
     const measured = displayed.reduce((s, j) => s + (j.measured || 0), 0);
-    return { total, done, active, canceled, measured };
+    return { total, doneOk, doneErr, active, canceled, measured };
   }, [displayed]);
 
   const COLUMNS = ["التاريخ", "النوع", "رقم التليفون", "رقم الأكونت", "طلبها", "من تقرير", "الباتش", "الحالة"];
@@ -156,7 +160,8 @@ export function ExecJobsReport() {
       {/* إحصائية: خلص كام من كام (على المعروض — يتحدّث مع البحث بالباتش) */}
       <div className="flex flex-wrap gap-3 text-sm">
         <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800">إجمالى: <strong>{stats.total}</strong></span>
-        <span className="px-2 py-1 rounded bg-green-100 text-green-800">تم: <strong>{stats.done}</strong> من {stats.total}</span>
+        <span className="px-2 py-1 rounded bg-green-100 text-green-800">تم فعلًا: <strong>{stats.doneOk}</strong> من {stats.total}</span>
+        {stats.doneErr > 0 && <span className="px-2 py-1 rounded bg-orange-100 text-orange-800">تم بإيرور (اتقفل/علّق): <strong>{stats.doneErr}</strong></span>}
         <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">قيد التنفيذ/الطابور: <strong>{stats.active}</strong></span>
         {stats.canceled > 0 && <span className="px-2 py-1 rounded bg-amber-100 text-amber-800">أُلغِيت: <strong>{stats.canceled}</strong></span>}
         {q.trim() && <button onClick={() => setQ("")} className="px-2 py-1 rounded border text-muted-foreground hover:text-foreground">مسح البحث ✕</button>}
