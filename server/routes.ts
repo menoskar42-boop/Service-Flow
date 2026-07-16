@@ -1313,13 +1313,15 @@ export async function registerRoutes(
       // نقسّم **دايماً** لمهام خط-خط (كل خط مهمة). أولوية الطلب: طلب صغير (≤3 خطوط) = عاجل (1)
       // يتخطّى مهام الباتش؛ باتش كبير (>3) = عادى (0). المنفّذ يبعت رقم-رقم حسب الأولوية، ويخلّص كل
       // خط كامل قبل اللى بعده (مفيش تداخل)، وكل خط فى نفس النافذة (DZS بيقيس خط واحد مفيش chaining).
+      // batchId يجمّع كل مهام الطلب الواحد → لتتبّع «تم X من N».
       const priority = uniqAccs.length <= 3 ? 1 : 0;
-      const params: any[] = [type, user, note || null, priority];
-      const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4)`; }).join(",");
+      const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      const params: any[] = [type, user, note || null, priority, batchId];
+      const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4, $5)`; }).join(",");
       const { rows } = await pool.query(
-        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority) VALUES ${valueSql} RETURNING id`,
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id) VALUES ${valueSql} RETURNING id`,
         params);
-      res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length });
+      res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length, batchId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // جهاز التنفيذ يسحب أقدم مهمة (atomic) — SKIP LOCKED
@@ -1374,6 +1376,25 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // تقدّم باتش كامل (كل مهامه ليها نفس batch_id) — لتتبّع «تم X من N» للطلب اللى فيه أرقام كتير.
+  app.get("/api/exec-queue/batch-progress", requireAuth, async (req, res) => {
+    try {
+      await expireOrphanedExecJobs();
+      const batchId = String(req.query.batchId || "").trim();
+      if (!batchId) return res.json({ found: false });
+      const { rows } = await pool.query(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE status = 'done')::int AS done,
+                COUNT(*) FILTER (WHERE status IN ('pending','claimed'))::int AS active,
+                COUNT(*) FILTER (WHERE status = 'stale')::int AS canceled,
+                COUNT(*) FILTER (WHERE status = 'claimed')::int AS running
+         FROM exec_jobs WHERE batch_id = $1`, [batchId]);
+      const r = rows[0];
+      if (!r || r.total === 0) return res.json({ found: false });
+      res.json({ found: true, total: r.total, done: r.done, active: r.active, canceled: r.canceled, running: r.running });
+    } catch { res.json({ found: false }); }
+  });
+
   // عدد المهام المنتظرة (للعرض)
   app.get("/api/exec-queue/pending", requireAuth, async (_req, res) => {
     try {
@@ -1405,19 +1426,36 @@ export async function registerRoutes(
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const { rows } = await pool.query(
         `SELECT id, type, accounts, status, requested_by AS "requestedBy", note AS source,
-                created_at AS "createdAt", claimed_at AS "claimedAt", done_at AS "doneAt", result
-         FROM exec_jobs ${where} ORDER BY created_at DESC LIMIT 500`,
+                created_at AS "createdAt", claimed_at AS "claimedAt", done_at AS "doneAt", result, batch_id AS "batchId"
+         FROM exec_jobs ${where} ORDER BY created_at DESC LIMIT 2000`,
         params,
       );
-      // نحسب عدد الخطوط المطلوبة والمتنفّذة فعلاً لكل مهمة
+      // نجيب رقم التليفون لكل رقم أكونت (من line_accounts) دفعة واحدة
+      const allAccs = new Set<string>();
+      for (const j of rows as any[]) {
+        try { (Array.isArray(j.accounts) ? j.accounts : JSON.parse(j.accounts || "[]")).forEach((a: any) => allAccs.add(String(a).trim())); } catch {}
+      }
+      const phoneMap: Record<string, string> = {};
+      if (allAccs.size) {
+        const { rows: pr } = await pool.query(
+          `SELECT account_no, full_phone FROM line_accounts WHERE account_no = ANY($1::text[])`,
+          [[...allAccs]]);
+        for (const r of pr as any[]) phoneMap[String(r.account_no).trim()] = String(r.full_phone || "");
+      }
+      // نحسب عدد الخطوط المطلوبة والمتنفّذة فعلاً + رقم الأكونت/التليفون لكل مهمة
       const out = [];
       for (const j of rows as any[]) {
+        let accs: string[] = [];
+        try { accs = (Array.isArray(j.accounts) ? j.accounts : JSON.parse(j.accounts || "[]")).map((a: any) => String(a).trim()).filter(Boolean); } catch {}
         const prog = await jobProgress(j.accounts, j.type, j.claimedAt);
         out.push({
           id: j.id, type: j.type, status: j.status, result: j.result || null,
           requestedBy: j.requestedBy || null, source: j.source || null,
           createdAt: j.createdAt, doneAt: j.doneAt,
           requested: prog.total, measured: prog.done,
+          account: accs.join("، "),
+          phone: accs.map((a) => phoneMap[a] || "").filter(Boolean).join("، "),
+          batchId: j.batchId || null,
         });
       }
       res.json({ jobs: out });

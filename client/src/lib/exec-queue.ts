@@ -64,10 +64,19 @@ export async function isExecutorActive(): Promise<boolean> {
   } catch { return false; }
 }
 
-// تتبّع ترتيب مهمة فى الطابور: نبعت حدث للـ watcher العام (ExecQueueWatcher) اللى بيعرض الترتيب
-// ويحدّثه كل ما تتقدّم المهمة خطوة. بيتنادى تلقائياً من enqueueJob بعد نجاح الإضافة.
-export function trackQueueJob(id: number, type: ExecJobType, count = 1): void {
-  try { window.dispatchEvent(new CustomEvent("sf-exec-track", { detail: { id, type, count } })); } catch { /* SSR/بيئة بدون window */ }
+// تتبّع الباتش فى الطابور: نبعت حدث للـ watcher العام (ExecQueueWatcher) اللى بيعرض «تم X من N»
+// ويحدّثه كل ما يتنفّذ خط. بيتنادى تلقائياً من enqueueJob بعد نجاح الإضافة (كل الطلب = batch واحد).
+export function trackQueueJob(batchId: string, type: ExecJobType, count = 1): void {
+  try { window.dispatchEvent(new CustomEvent("sf-exec-track", { detail: { batchId, type, count } })); } catch { /* SSR/بيئة بدون window */ }
+}
+
+// تقدّم باتش كامل (كل مهامه ليها نفس batch_id)
+export interface BatchProgress { found: boolean; total?: number; done?: number; active?: number; canceled?: number; running?: number; }
+export async function fetchBatchProgress(batchId: string): Promise<BatchProgress> {
+  try {
+    const r = await fetch(`/api/exec-queue/batch-progress?batchId=${encodeURIComponent(batchId)}`, { credentials: "include" });
+    return await r.json();
+  } catch { return { found: false }; }
 }
 
 // ترتيب مهمة معيّنة فى الطابور الآن (للـ watcher) + تقدّم المهمة نفسها والمهمة الجارية
@@ -95,7 +104,7 @@ let currentSource = "";
 export function setSpeedToolSource(s: string): void { currentSource = s || ""; }
 
 // إضافة مهمة للطابور
-export async function enqueueJob(type: ExecJobType, accounts: (string | number)[], note?: string): Promise<{ ok: boolean; id?: number; count?: number; message?: string }> {
+export async function enqueueJob(type: ExecJobType, accounts: (string | number)[], note?: string): Promise<{ ok: boolean; id?: number; count?: number; message?: string; batchId?: string }> {
   try {
     const accs = [...new Set(accounts.map((a) => String(a ?? "").trim()).filter(Boolean))];
     const r = await fetch("/api/exec-queue/enqueue", {
@@ -104,8 +113,8 @@ export async function enqueueJob(type: ExecJobType, accounts: (string | number)[
       body: JSON.stringify({ type, accounts: accs, note: note || currentSource || null }),
     });
     const data = await r.json();
-    // نبدأ نتتبّع ترتيب المهمة فى الطابور تلقائياً (يظهر للمستخدم اللى طلبها)
-    if (data?.ok && data?.id) trackQueueJob(Number(data.id), type, data.count ?? accs.length);
+    // نبدأ نتتبّع الباتش كامل تلقائياً (يظهر للمستخدم اللى طلبه: تم X من N)
+    if (data?.ok && data?.batchId) trackQueueJob(String(data.batchId), type, data.count ?? accs.length);
     return data;
   } catch (e: any) { return { ok: false, message: e?.message }; }
 }

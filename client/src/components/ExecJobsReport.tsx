@@ -18,6 +18,9 @@ interface ExecJobRow {
   doneAt: string | null;
   requested: number; // عدد الخطوط المطلوبة
   measured: number;  // اتنفّذ فعلاً
+  account: string;   // رقم الأكونت
+  phone: string;     // رقم التليفون
+  batchId: string | null; // رقم الباتش (كل الأرقام اللى اتطلبت مرة واحدة ليها نفس القيمة)
 }
 
 const TYPE_LABEL: Record<string, string> = { measure: "قياس", raise: "رفع سرعة", stop: "إيقاف PO" };
@@ -49,6 +52,7 @@ export function ExecJobsReport() {
   const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return ymd(d); });
   const [to, setTo] = useState(() => ymd(new Date()));
   const [jobs, setJobs] = useState<ExecJobRow[]>([]);
+  const [q, setQ] = useState(""); // بحث برقم الباتش / التليفون / الأكونت / الطالب
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,26 +68,46 @@ export function ExecJobsReport() {
 
   useEffect(() => { load(); }, [load]);
 
-  // إجماليات
-  const totals = useMemo(() => {
-    const measured = jobs.reduce((s, j) => s + (j.measured || 0), 0);
-    const requested = jobs.reduce((s, j) => s + (j.requested || 0), 0);
-    return { jobs: jobs.length, measured, requested };
-  }, [jobs]);
+  // بحث برقم الباتش / التليفون / الأكونت / الطالب / المصدر
+  const displayed = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return jobs;
+    return jobs.filter((j) =>
+      (j.batchId || "").toLowerCase().includes(s) ||
+      (j.phone || "").toLowerCase().includes(s) ||
+      (j.account || "").toLowerCase().includes(s) ||
+      (j.requestedBy || "").toLowerCase().includes(s) ||
+      (j.source || "").toLowerCase().includes(s),
+    );
+  }, [jobs, q]);
 
-  const COLUMNS = ["التاريخ", "النوع", "عدد الخطوط", "اتنفّذ فعلاً", "طلبها", "من تقرير", "الحالة"];
+  // إحصائية المعروض: خلص كام من كام (+ توزيع الحالات)
+  const stats = useMemo(() => {
+    const total = displayed.length;
+    let done = 0, active = 0, canceled = 0;
+    for (const j of displayed) {
+      if (j.status === "done") done++;
+      else if (j.status === "stale") canceled++;
+      else active++; // pending/claimed
+    }
+    const measured = displayed.reduce((s, j) => s + (j.measured || 0), 0);
+    return { total, done, active, canceled, measured };
+  }, [displayed]);
+
+  const COLUMNS = ["التاريخ", "النوع", "رقم التليفون", "رقم الأكونت", "طلبها", "من تقرير", "الباتش", "الحالة"];
   const toRow = (j: ExecJobRow) => [
     fmt(j.createdAt),
     TYPE_LABEL[j.type] || j.type,
-    j.requested,
-    j.measured,
+    j.phone || "-",
+    j.account || "-",
     j.requestedBy || "-",
     j.source || "-",
+    j.batchId || "-",
     statusText(j),
   ];
 
   const handleExportExcel = () => {
-    const aoa = [COLUMNS, ...jobs.map(toRow)];
+    const aoa = [COLUMNS, ...displayed.map(toRow)];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "معاملات التنفيذ");
@@ -91,7 +115,7 @@ export function ExecJobsReport() {
   };
 
   const handleExportPDF = () => {
-    printTablePDF({ title: `تقرير معاملات التنفيذ (${from} → ${to})`, columns: COLUMNS, rows: jobs.map(toRow) });
+    printTablePDF({ title: `تقرير معاملات التنفيذ (${from} → ${to})`, columns: COLUMNS, rows: displayed.map(toRow) });
   };
 
   return (
@@ -123,9 +147,19 @@ export function ExecJobsReport() {
         <Button onClick={load} size="sm" className="gap-1" disabled={loading}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث
         </Button>
-        <div className="text-sm text-muted-foreground mr-auto">
-          {totals.jobs} عملية · إجمالى الخطوط المطلوبة {totals.requested} · اتنفّذ فعلاً {totals.measured}
+        <div className="grid gap-1 flex-1 min-w-[220px]">
+          <label className="text-xs text-muted-foreground">بحث برقم الباتش / التليفون / الأكونت</label>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="اكتب رقم الباتش أو التليفون أو الأكونت…" className="h-9" dir="rtl" />
         </div>
+      </div>
+
+      {/* إحصائية: خلص كام من كام (على المعروض — يتحدّث مع البحث بالباتش) */}
+      <div className="flex flex-wrap gap-3 text-sm">
+        <span className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800">إجمالى: <strong>{stats.total}</strong></span>
+        <span className="px-2 py-1 rounded bg-green-100 text-green-800">تم: <strong>{stats.done}</strong> من {stats.total}</span>
+        <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">قيد التنفيذ/الطابور: <strong>{stats.active}</strong></span>
+        {stats.canceled > 0 && <span className="px-2 py-1 rounded bg-amber-100 text-amber-800">أُلغِيت: <strong>{stats.canceled}</strong></span>}
+        {q.trim() && <button onClick={() => setQ("")} className="px-2 py-1 rounded border text-muted-foreground hover:text-foreground">مسح البحث ✕</button>}
       </div>
 
       {error && <div className="text-sm text-red-600">{error}</div>}
@@ -138,17 +172,24 @@ export function ExecJobsReport() {
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-            ) : jobs.length === 0 ? (
-              <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">لا توجد عمليات فى الفترة المختارة</TableCell></TableRow>
+            ) : displayed.length === 0 ? (
+              <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">{q.trim() ? "لا توجد نتائج للبحث" : "لا توجد عمليات فى الفترة المختارة"}</TableCell></TableRow>
             ) : (
-              jobs.map((j) => (
+              displayed.map((j) => (
                 <TableRow key={j.id}>
                   <TableCell className="whitespace-nowrap">{fmt(j.createdAt)}</TableCell>
                   <TableCell>{TYPE_LABEL[j.type] || j.type}</TableCell>
-                  <TableCell className="text-center">{j.requested}</TableCell>
-                  <TableCell className="text-center font-semibold">{j.measured}</TableCell>
+                  <TableCell className="whitespace-nowrap font-medium">{j.phone || "-"}</TableCell>
+                  <TableCell className="whitespace-nowrap">{j.account || "-"}</TableCell>
                   <TableCell className="whitespace-nowrap">{j.requestedBy || "-"}</TableCell>
                   <TableCell className="whitespace-nowrap">{j.source || "-"}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {j.batchId ? (
+                      <button onClick={() => setQ(j.batchId!)} className="text-blue-600 hover:underline font-mono text-xs" title={"فلترة الباتش: " + j.batchId}>
+                        {j.batchId.slice(-6)}
+                      </button>
+                    ) : "-"}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">{statusText(j)}</TableCell>
                 </TableRow>
               ))

@@ -598,6 +598,7 @@ export const execJobs = pgTable("exec_jobs", {
   doneAt: timestamp("done_at"),
   result: text("result"), // نتيجة التنفيذ للقياس: done | tab_closed | timeout (خلص / اتقفل قبل ما يخلص / علّق)
   priority: integer("priority").notNull().default(0), // 1 = طلب عاجل صغير (يقطع الباتش الكبير) | 0 = باتش عادى
+  batchId: text("batch_id"), // معرّف الباتش: كل مهام الباتش الواحد (المقسّم لخطوط) ليها نفس القيمة — لتتبّع «تم X من N»
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;
