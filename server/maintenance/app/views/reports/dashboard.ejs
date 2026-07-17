@@ -1,0 +1,266 @@
+<%- include('../partials/header') %>
+<h4 class="mb-4"><i class="bi bi-bar-chart me-2"></i><%= title %></h4>
+
+<!-- Stat cards -->
+<div class="row g-3 mb-4">
+  <% const cards = [
+    { key: 'pending_inspection', label: 'بانتظار الفحص',  cls: 'secondary', icon: 'clock' },
+    { key: 'inspected',          label: 'تم الفحص',        cls: 'info',      icon: 'clipboard-check' },
+    { key: 'needs_maintenance',  label: 'يحتاج صيانة',    cls: 'warning',   icon: 'exclamation-triangle' },
+    { key: 'in_progress',        label: 'قيد الصيانة',     cls: 'warning',   icon: 'tools' },
+    { key: 'completed',          label: 'مكتمل',           cls: 'success',   icon: 'check-circle' },
+  ]; %>
+  <% cards.forEach(c => { %>
+  <div class="col-6 col-md-2">
+    <div class="card text-center py-3">
+      <i class="bi bi-<%= c.icon %> text-<%= c.cls %> fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold"><%= counts[c.key] || 0 %></div>
+      <div class="small text-muted"><%= c.label %></div>
+    </div>
+  </div>
+  <% }) %>
+  <div class="col-6 col-md-2">
+    <div class="card text-center py-3">
+      <i class="bi bi-box2 text-primary fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-primary"><%= totalBoxes %></div>
+      <div class="small text-muted">إجمالي البوكسات</div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick links -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <a href="/reports/inspected" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-clipboard-check fs-2 text-info"></i>
+        <div class="fw-semibold mt-2">البوكسات التي تم فحصها</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/issues" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-exclamation-triangle fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2">البوكسات التي بها ملاحظات</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/maintenance" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-tools fs-2 text-danger"></i>
+        <div class="fw-semibold mt-2">البوكسات المطلوبة للصيانة</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/boxes" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-file-earmark-pdf fs-2 text-danger"></i>
+        <div class="fw-semibold mt-2">تقرير PDF لكل بوكس</div>
+        <div class="small text-muted">من صفحة تفاصيل البوكس</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/completed" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-check-circle fs-2 text-success"></i>
+        <div class="fw-semibold mt-2">الأعمال المكتملة</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/cabinet" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-server fs-2 text-danger"></i>
+        <div class="fw-semibold mt-2">PDF مجمع للكابينة</div>
+        <div class="small text-muted">كل بوكسات الكابينة</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/needs-box-cover" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-box-seam fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2">تحتاج غطاء بوكس</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/needs-connector-fix" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-plug fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2">تحتاج تثبيت الخوصة</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/needs-wire-path" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-diagram-2 fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2">مسار السلك سيء</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/needs-box-height" class="card text-decoration-none hover-card">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-arrow-up-square fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2">ارتفاع البوكس سيء</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/comprehensive" class="card text-decoration-none hover-card border-primary">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-table fs-2 text-primary"></i>
+        <div class="fw-semibold mt-2 text-primary">تقرير الفحوصات الشامل</div>
+        <div class="small text-muted">جميع البنود والإحداثيات والصيانة</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/completed-work" class="card text-decoration-none hover-card border-success">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-patch-check fs-2 text-success"></i>
+        <div class="fw-semibold mt-2 text-success">الفحوصات الشاملة - الأعمال المنجزة</div>
+        <div class="small text-muted">بوكسات أنجز فنيو الصيانة أعمالها</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/technician-summary" class="card text-decoration-none hover-card border-success">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-person-badge fs-2 text-success"></i>
+        <div class="fw-semibold mt-2 text-success">ملخص أعمال فنيي الصيانة</div>
+        <div class="small text-muted">إجمالي الأعمال المنجزة لكل فني</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/overlap-distance-pending" class="card text-decoration-none hover-card border-warning">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-diagram-2 fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2">مسافات التخاطي والتعارض</div>
+        <div class="small text-muted">لم يتم الإصلاح بعد</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/overlap-distance-completed" class="card text-decoration-none hover-card border-success">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-diagram-2 fs-2 text-success"></i>
+        <div class="fw-semibold mt-2">مسافات التخاطي والتعارض</div>
+        <div class="small text-muted">تم الإصلاح بواسطة الفني</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/missing-boxes" class="card text-decoration-none hover-card border-danger">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-exclamation-triangle fs-2 text-danger"></i>
+        <div class="fw-semibold mt-2">البكسيات الناقصة</div>
+        <div class="small text-muted">فجوات في تسلسل أرقام الكباين</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/technical-data" class="card text-decoration-none hover-card border-primary">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-list-columns fs-2 text-primary"></i>
+        <div class="fw-semibold mt-2 text-primary">البيانات الفنية المسجلة</div>
+        <div class="small text-muted">جميع البوكسات وحالاتها بدون تكرار</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/photos" class="card text-decoration-none hover-card border-primary">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-images fs-2 text-primary"></i>
+        <div class="fw-semibold mt-2 text-primary">تقرير الصور الكامل</div>
+        <div class="small text-muted">كل الصور مرتبة ومضغوطة للتحميل</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/service-flow" class="card text-decoration-none hover-card border-info">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-link-45deg fs-2 text-info"></i>
+        <div class="fw-semibold mt-2 text-info">ملخص البوكسيات</div>
+        <div class="small text-muted">بيانات مباشرة من service-flow</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/phone-report" class="card text-decoration-none hover-card border-primary">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-telephone-fill fs-2 text-primary"></i>
+        <div class="fw-semibold mt-2 text-primary">بيان التليفونات</div>
+        <div class="small text-muted">بيانات مباشرة من service-flow</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/maintenance-report" class="card text-decoration-none hover-card border-success">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-wrench-adjustable fs-2 text-success"></i>
+        <div class="fw-semibold mt-2 text-success">تقرير الصيانة</div>
+        <div class="small text-muted">البوكسات المنجزة بتاريخ الأعمال وكود MSAN</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/no-issues-report" class="card text-decoration-none hover-card border-success">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-check-circle-fill fs-2 text-success"></i>
+        <div class="fw-semibold mt-2 text-success">تقرير البوكسات بدون ملاحظات</div>
+        <div class="small text-muted">البوكسات التي فُحصت وليس بها أي ملاحظات</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/prelim-confirmation" class="card text-decoration-none hover-card border-info">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-check2-circle fs-2 text-info"></i>
+        <div class="fw-semibold mt-2 text-info">تقرير التأكيد المبدئى</div>
+        <div class="small text-muted">البوكسات التي أكدتها الشئون الخارجية مبدئياً</div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-3">
+    <a href="/reports/cabinet-codes" class="card text-decoration-none hover-card border-warning">
+      <div class="card-body text-center py-4">
+        <i class="bi bi-upc-scan fs-2 text-warning"></i>
+        <div class="fw-semibold mt-2 text-warning">أكواد الكباين</div>
+        <div class="small text-muted">ربط رقم الكابينة بكود الكابينة والفني</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- Recent inspections -->
+<div class="card">
+  <div class="card-header fw-semibold">آخر الفحوصات</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead><tr><th>السنترال</th><th>الكابينة</th><th>البوكس</th><th>المراقب</th><th>التاريخ</th></tr></thead>
+        <tbody>
+          <% recentInspections.forEach(i => { %>
+          <tr>
+            <td><%= i.exchange_name %></td>
+            <td><%= i.cabinet_number %></td>
+            <td><a href="/boxes/<%= i.box_id %>"><%= i.box_number %></a></td>
+            <td><%= i.inspector_name %></td>
+            <td><%= new Date(i.date).toISOString().split('T')[0] %></td>
+          </tr>
+          <% }) %>
+          <% if (!recentInspections.length) { %><tr><td colspan="5" class="text-center text-muted py-3">لا توجد فحوصات.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

@@ -1,0 +1,114 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-list-columns me-2 text-primary"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/technical-data/export?<%= new URLSearchParams(query).toString() %>" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Status summary -->
+<% const statusMap = [
+  { key: 'pending_inspection', label: 'بانتظار الفحص',    cls: 'secondary' },
+  { key: 'inspected',          label: 'تم الفحص',          cls: 'info'      },
+  { key: 'needs_maintenance',  label: 'يحتاج صيانة',      cls: 'warning'   },
+  { key: 'in_progress',        label: 'قيد الصيانة',       cls: 'warning'   },
+  { key: 'pending_approval',   label: 'في انتظار التأكيد', cls: 'primary'   },
+  { key: 'completed',          label: 'مكتمل',             cls: 'success'   },
+]; %>
+<div class="row g-2 mb-3">
+  <% statusMap.forEach(s => { %>
+  <div class="col-4 col-md-2">
+    <a href="/reports/technical-data?status=<%= s.key %><%= query.exchange_id ? '&exchange_id='+query.exchange_id : '' %><%= query.cabinet_id ? '&cabinet_id='+query.cabinet_id : '' %>" class="text-decoration-none">
+      <div class="card text-center py-2 <%= query.status === s.key ? 'border-'+s.cls+' border-2' : '' %>">
+        <div class="fw-bold text-<%= s.cls %>"><%= statusCounts[s.key] || 0 %></div>
+        <div class="small text-muted" style="font-size:0.7rem"><%= s.label %></div>
+      </div>
+    </a>
+  </div>
+  <% }) %>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <div class="col-md-3">
+    <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %>
+      <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="cabinet_id" class="form-select form-select-sm">
+      <option value="">كل الكباين</option>
+      <% (cabinets||[]).forEach(c => { %>
+      <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input type="text" name="box_q" class="form-control form-control-sm" placeholder="رقم البوكس" value="<%= query.box_q||'' %>">
+  </div>
+  <div class="col-md-2">
+    <select name="status" class="form-select form-select-sm">
+      <option value="">كل الحالات</option>
+      <% statusMap.forEach(s => { %>
+      <option value="<%= s.key %>" <%= query.status === s.key ? 'selected' : '' %>><%= s.label %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-auto">
+    <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+    <a href="/reports/technical-data" class="btn btn-outline-secondary btn-sm">إعادة</a>
+  </div>
+</form>
+
+<div class="text-muted small mb-2"><%= rows.length %> بوكس</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>السنترال</th>
+            <th>الكابينة</th>
+            <th>رقم البوكس</th>
+            <th>الحالة</th>
+            <th>آخر فحص</th>
+            <th>المراقب</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach((r, idx) => { %>
+          <tr>
+            <td class="text-muted small"><%= idx + 1 %></td>
+            <td><%= r.exchange_name %></td>
+            <td><%= r.cabinet_number %></td>
+            <td><strong><%= r.box_number %></strong></td>
+            <td><%- include('../partials/status_badge', { status: r.box_status || 'pending_inspection' }) %></td>
+            <td class="small text-muted">
+              <% if (r.last_inspection_date) { %>
+                <%= new Date(r.last_inspection_date).toISOString().split('T')[0] %>
+              <% } else { %>
+                <span class="text-danger">لم يُفحص</span>
+              <% } %>
+            </td>
+            <td class="small text-muted"><%= r.inspector_name || '—' %></td>
+            <td>
+              <a href="/boxes/<%= r.box_id %>" class="btn btn-sm btn-outline-primary" title="تفاصيل البوكس"><i class="bi bi-eye"></i></a>
+            </td>
+          </tr>
+          <% }) %>
+          <% if (!rows.length) { %>
+          <tr><td colspan="8" class="text-center text-muted py-4">لا توجد نتائج.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

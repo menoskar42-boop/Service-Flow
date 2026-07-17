@@ -1,0 +1,148 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-telephone-fill me-2 text-primary"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <% if (!error && totalCount > 0) { %>
+    <a href="/reports/phone-report/export?<%= new URLSearchParams(query).toString() %>"
+       class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <% } %>
+    <button onclick="location.reload()" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-arrow-clockwise"></i> تحديث
+    </button>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="card card-body mb-3 py-2">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small mb-1">السنترال</label>
+      <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل السنترالات</option>
+        <% (exchanges||[]).forEach(e => { %>
+        <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">الكابينة</label>
+      <select name="cabinet_id" class="form-select form-select-sm" onchange="this.form.submit()" <%= !query.exchange_id ? 'disabled' : '' %>>
+        <option value="">كل الكباين</option>
+        <% (cabinets||[]).forEach(c => { %>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>><%= c.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-1">
+      <label class="form-label small mb-1">البوكس</label>
+      <input type="text" name="box" class="form-control form-control-sm"
+             placeholder="رقم البوكس" value="<%= query.box || '' %>">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">بحث عام</label>
+      <input type="text" name="q" class="form-control form-control-sm"
+             placeholder="ابحث في أي حقل..." value="<%= query.q || '' %>">
+    </div>
+    <div class="col-md-auto">
+      <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+      <a href="/reports/phone-report" class="btn btn-outline-secondary btn-sm">إعادة</a>
+    </div>
+    <% if (!error && totalCount > 0) { %>
+    <div class="col-md-auto text-muted small pt-2">
+      الإجمالي: <strong><%= totalCount.toLocaleString() %></strong>
+      <% if (totalPages > 1) { %> | صفحة <strong><%= currentPage %></strong> / <%= totalPages %><% } %>
+    </div>
+    <% } %>
+  </div>
+</form>
+
+<% if (error) { %>
+<div class="alert alert-danger">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  <strong>تعذّر الاتصال بـ service-flow</strong>
+  <pre class="mt-2 mb-2 small bg-dark text-light p-2 rounded" style="white-space:pre-wrap"><%= error %></pre>
+  <div class="small mt-2">
+    <strong>لتصحيح الـ endpoint:</strong>
+    <ol class="mb-0 mt-1">
+      <li>افتح موقع <strong>service-flow</strong> وانتقل لتبويب <strong>بيان التليفونات</strong></li>
+      <li>افتح <strong>DevTools → Network</strong> (F12) وابحث عن طلب JSON</li>
+      <li>انسخ الـ URL الكامل للـ API</li>
+      <li>أضفه في <strong>Replit Secrets</strong> باسم <code>SERVICE_FLOW_PHONES_URL</code></li>
+    </ol>
+  </div>
+</div>
+<% } else if (!rows.length) { %>
+<div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لا توجد بيانات مطابقة.</div>
+<% } else { %>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm table-hover mb-0 phone-table">
+        <thead class="text-center">
+          <tr>
+            <% columns.forEach(col => { %>
+            <th class="align-middle" style="white-space:nowrap;font-size:0.8rem"><%= col %></th>
+            <% }) %>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(row => { %>
+          <tr>
+            <% columns.forEach(col => { %>
+            <% const val = row[col] !== null && row[col] !== undefined ? String(row[col]) : '—'; %>
+            <% const isPhone = /phone|تليفون|telephone/i.test(col); %>
+            <td class="small" style="white-space:nowrap">
+              <% if (isPhone && val !== '—') { %>
+              <strong class="text-primary"><%= val %></strong>
+              <% } else { %>
+              <%= val %>
+              <% } %>
+            </td>
+            <% }) %>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<% if (totalPages > 1) { %>
+<%
+  const _pqs = new URLSearchParams(query);
+  _pqs.delete('page');
+  const _pqsStr = _pqs.toString();
+  const _showFrom = Math.max(1, currentPage - 3);
+  const _showTo   = Math.min(totalPages, currentPage + 3);
+%>
+<nav class="mt-3 d-flex justify-content-center align-items-center gap-2 flex-wrap">
+  <% if (currentPage > 1) { %>
+  <a class="btn btn-outline-secondary btn-sm" href="/reports/phone-report?<%= _pqsStr %>&page=1">«</a>
+  <a class="btn btn-outline-secondary btn-sm" href="/reports/phone-report?<%= _pqsStr %>&page=<%= currentPage - 1 %>">‹</a>
+  <% } %>
+  <% for (let p = _showFrom; p <= _showTo; p++) { %>
+  <a class="btn btn-sm <%= p === currentPage ? 'btn-primary' : 'btn-outline-secondary' %>"
+     href="/reports/phone-report?<%= _pqsStr %>&page=<%= p %>"><%= p %></a>
+  <% } %>
+  <% if (currentPage < totalPages) { %>
+  <a class="btn btn-outline-secondary btn-sm" href="/reports/phone-report?<%= _pqsStr %>&page=<%= currentPage + 1 %>">›</a>
+  <a class="btn btn-outline-secondary btn-sm" href="/reports/phone-report?<%= _pqsStr %>&page=<%= totalPages %>">»</a>
+  <% } %>
+  <span class="text-muted small">صفحة <%= currentPage %> / <%= totalPages %></span>
+</nav>
+<% } %>
+
+<% } %>
+
+<style>
+.phone-table thead tr th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: #0d6efd;
+  color: #fff;
+}
+</style>
+<%- include('../partials/footer') %>

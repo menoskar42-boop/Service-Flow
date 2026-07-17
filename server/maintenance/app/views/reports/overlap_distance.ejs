@@ -1,0 +1,121 @@
+<%- include('../partials/header') %>
+<% const ITEM_LABELS = { overlap: 'تخاطي', air_conflict: 'تعارض هواء' }; %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0">
+    <i class="bi bi-diagram-2 me-2 text-warning"></i><%= title %>
+  </h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/<%= completed ? 'overlap-distance-completed' : 'overlap-distance-pending' %>/export?<%= new URLSearchParams(query).toString() %>"
+       class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <div class="col-md-3">
+    <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %>
+      <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="cabinet_id" class="form-select form-select-sm">
+      <option value="">كل الكباين</option>
+      <% (cabinets||[]).forEach(c => { %>
+      <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input type="text" name="box_q" class="form-control form-control-sm" placeholder="رقم البوكس" value="<%= query.box_q||'' %>">
+  </div>
+  <div class="col-md-2">
+    <input type="date" name="from" class="form-control form-control-sm" value="<%= query.from||'' %>">
+  </div>
+  <div class="col-md-1">
+    <input type="date" name="to" class="form-control form-control-sm" value="<%= query.to||'' %>">
+  </div>
+  <div class="col-md-auto">
+    <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+    <a href="/reports/<%= completed ? 'overlap-distance-completed' : 'overlap-distance-pending' %>" class="btn btn-outline-secondary btn-sm">إعادة</a>
+  </div>
+</form>
+
+<!-- Summary totals -->
+<% const typeKeys = ['كابل هوائي ٦ جوز','كابل هوائي ١٠ جوز','بكس مناول ١٠ جوز']; %>
+<div class="row g-3 mb-3">
+  <% typeKeys.forEach(function(t){ var val = totals[t] || 0; %>
+  <div class="col-6 col-md-2">
+    <div class="card text-center py-3 border-warning">
+      <i class="bi bi-rulers text-warning fs-4 mb-1"></i>
+      <div class="fs-4 fw-bold"><%= val.toFixed(1) %> م</div>
+      <div class="small text-muted">إجمالي أطوال <%= t %></div>
+    </div>
+  </div>
+  <% }); %>
+  <div class="col-6 col-md-2">
+    <div class="card text-center py-3 border-success">
+      <i class="bi bi-boxes text-success fs-4 mb-1"></i>
+      <div class="fs-4 fw-bold text-success"><%= counts['بكس مناول ١٠ جوز'] || 0 %></div>
+      <div class="small text-muted">عدد البكسيات المناوله ١٠ جوز</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <div class="card text-center py-3 border-primary">
+      <i class="bi bi-sigma text-primary fs-4 mb-1"></i>
+      <div class="fs-4 fw-bold text-primary">
+        <%= (Object.values(totals).reduce(function(a,b){return a+b;},0)).toFixed(1) %> م
+      </div>
+      <div class="small text-muted">إجمالي المسافات</div>
+    </div>
+  </div>
+</div>
+
+<% if (!rows.length) { %>
+<div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لا توجد سجلات مطابقة.</div>
+<% } else { %>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>السنترال</th>
+            <th>الكابينة</th>
+            <th>البوكس</th>
+            <th>الحالة</th>
+            <th>البند</th>
+            <th>نوع الكابل / البكس</th>
+            <th>المسافة (م)</th>
+            <th>المراقب</th>
+            <th>التاريخ</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(function(r, idx){ %>
+          <tr>
+            <td class="text-muted"><%= idx+1 %></td>
+            <td><%= r.exchange_name %></td>
+            <td><%= r.cabinet_number %></td>
+            <td><strong><%= r.box_number %></strong></td>
+            <td><%- include('../partials/status_badge', { status: r.box_status }) %></td>
+            <td><span class="badge bg-warning text-dark"><%= ITEM_LABELS[r.item_key] || r.item_key %></span></td>
+            <td><span class="badge bg-info text-dark"><%= r.extra_type || '—' %></span></td>
+            <td><strong class="text-primary"><%= r.extra_distance != null ? r.extra_distance + ' م' : '—' %></strong></td>
+            <td><%= r.inspector_name %></td>
+            <td><%= r.date ? new Date(r.date).toISOString().split('T')[0] : '—' %></td>
+            <td><a href="/boxes/<%= r.box_id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<% } %>
+<%- include('../partials/footer') %>

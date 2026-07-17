@@ -1,0 +1,46 @@
+<%- include('../partials/header') %>
+<div class="row justify-content-center">
+  <div class="col-md-7">
+    <h4 class="mb-3"><i class="bi bi-file-earmark-excel me-2 text-success"></i><%= title %></h4>
+
+    <% if (result) { %>
+      <% if (result.error) { %>
+      <div class="alert alert-danger"><i class="bi bi-x-circle me-1"></i><%= result.error %></div>
+      <% } else { %>
+      <div class="alert alert-success">
+        <i class="bi bi-check-circle me-1"></i>
+        تم الاستيراد: <strong><%= result.created %></strong> بوكس جديد،
+        <strong><%= result.skipped %></strong> موجود مسبقاً.
+        <% if (result.errors.length) { %><ul class="mb-0 mt-2"><% result.errors.forEach(e => { %><li><%= e %></li><% }) %></ul><% } %>
+      </div>
+      <% } %>
+    <% } %>
+
+    <div class="card mb-3">
+      <div class="card-header">تنزيل نموذج Excel</div>
+      <div class="card-body">
+        <p class="text-muted mb-2">نزّل النموذج، أضف بياناتك، ثم ارفعه للاستيراد.</p>
+        <a href="/admin/import/template" class="btn btn-outline-success"><i class="bi bi-download me-1"></i> تنزيل النموذج</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">رفع ملف Excel</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          الأعمدة المطلوبة: <strong>اسم السنترال</strong> | <strong>رقم الكابينة</strong> | <strong>رقم البوكس</strong><br>
+          الصف الأول يُعامَل كرأس الجدول (يتم تخطيه).
+        </p>
+        <form method="post" action="/admin/import" enctype="multipart/form-data">
+          <div class="mb-3">
+            <input type="file" name="file" class="form-control"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              required>
+          </div>
+          <button type="submit" class="btn btn-success"><i class="bi bi-upload me-1"></i> استيراد</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

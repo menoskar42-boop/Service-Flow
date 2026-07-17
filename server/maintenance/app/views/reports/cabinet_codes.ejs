@@ -1,0 +1,103 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-upc-scan me-2 text-warning"></i>أكواد الكباين</h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/cabinet-codes/export" class="btn btn-success btn-sm">
+      <i class="bi bi-file-earmark-excel"></i> Excel
+    </a>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <div class="col-md-3">
+    <select name="exchange" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %>
+      <option value="<%= e.exchange_name %>" <%= query.exchange === e.exchange_name ? 'selected' : '' %>><%= e.exchange_name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-4">
+    <input type="text" name="q" class="form-control form-control-sm"
+           placeholder="بحث: رقم كابينة / كود كابينة / فنى / كود سنترال"
+           value="<%= query.q || '' %>">
+  </div>
+  <div class="col-md-auto">
+    <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+    <a href="/reports/cabinet-codes" class="btn btn-outline-secondary btn-sm">إعادة</a>
+  </div>
+  <div class="col-md-auto text-muted small pt-2">
+    إجمالي: <strong><%= rows.length %></strong> سجل
+  </div>
+</form>
+
+<% if (!rows.length) { %>
+<div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لا توجد بيانات مطابقة.</div>
+<% } else { %>
+
+<%
+  // Group by exchange_name for display
+  const grouped = {};
+  rows.forEach(r => {
+    if (!grouped[r.exchange_name]) grouped[r.exchange_name] = [];
+    grouped[r.exchange_name].push(r);
+  });
+%>
+
+<% Object.entries(grouped).forEach(([exchName, exchRows]) => { %>
+<div class="card mb-3">
+  <div class="card-header fw-bold d-flex justify-content-between align-items-center py-2"
+       style="background:#1a1a2e;color:#fff">
+    <span>
+      <i class="bi bi-building me-2"></i><%= exchName %>
+      <% if (exchRows[0].exchange_code) { %>
+      <span class="badge bg-secondary ms-2"><%= exchRows[0].exchange_code %></span>
+      <% } %>
+    </span>
+    <span class="badge bg-light text-dark"><%= exchRows.length %> كابينة</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm table-hover mb-0">
+        <thead class="text-center" style="background:#f8f9fa">
+          <tr>
+            <th>اسم السنترال</th>
+            <th>رقم الكابينة</th>
+            <th>كود الكابينه</th>
+            <th>فنى المنطقه</th>
+            <th>كود العامل</th>
+            <th>حياة كريمة</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% exchRows.forEach(r => { %>
+          <tr>
+            <td><%= r.exchange_name %></td>
+            <td class="text-center fw-bold"><%= r.cabinet_number %></td>
+            <td class="text-center">
+              <span class="badge bg-warning text-dark fw-bold" style="font-size:0.9rem">
+                <%= r.cabinet_code || '—' %>
+              </span>
+            </td>
+            <td><%= r.area_technician || '—' %></td>
+            <td class="text-center text-muted small"><%= r.worker_code || '—' %></td>
+            <td class="text-center">
+              <% if (r.decent_life && r.decent_life.includes('داخل')) { %>
+              <span class="badge bg-success"><i class="bi bi-check-circle me-1"></i><%= r.decent_life %></span>
+              <% } else { %>
+              <span class="badge bg-secondary"><%= r.decent_life || '—' %></span>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<% }) %>
+
+<% } %>
+<%- include('../partials/footer') %>

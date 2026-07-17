@@ -1,0 +1,163 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-images me-2 text-primary"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <% if (totalPhotos > 0) { %>
+    <a href="/reports/photos/download?<%= new URLSearchParams(query).toString() %>" class="btn btn-success btn-sm">
+      <i class="bi bi-file-zip"></i> تحميل ZIP
+    </a>
+    <% } %>
+    <button onclick="window.print()" class="btn btn-outline-danger btn-sm"><i class="bi bi-printer"></i> طباعة</button>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="card card-body mb-3 py-2">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small mb-1">السنترال</label>
+      <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل السنترالات</option>
+        <% exchanges.forEach(e => { %>
+        <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">الكابينة</label>
+      <select name="cabinet_id" class="form-select form-select-sm" onchange="this.form.submit()" <%= !(cabinets||[]).length ? 'disabled' : '' %>>
+        <option value="">كل الكباين</option>
+        <% (cabinets||[]).forEach(c => { %>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">البوكس</label>
+      <select name="box_id" class="form-select form-select-sm" <%= !(boxes||[]).length ? 'disabled' : '' %>>
+        <option value="">كل البوكسات</option>
+        <% (boxes||[]).forEach(b => { %>
+        <option value="<%= b.id %>" <%= query.box_id == b.id ? 'selected' : '' %>>بوكس <%= b.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-auto">
+      <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+      <a href="/reports/photos" class="btn btn-outline-secondary btn-sm">إعادة</a>
+    </div>
+  </div>
+</form>
+
+<!-- Stats -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-primary">
+      <i class="bi bi-images text-primary fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-primary"><%= totalPhotos %></div>
+      <div class="small text-muted">إجمالي الصور</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-warning">
+      <i class="bi bi-camera text-warning fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-warning"><%= totalBefore %></div>
+      <div class="small text-muted">قبل الصيانة</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-success">
+      <i class="bi bi-camera-fill text-success fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-success"><%= totalAfter %></div>
+      <div class="small text-muted">بعد الصيانة</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-info">
+      <i class="bi bi-box2 text-info fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-info"><%= totalBoxesWithPhotos %></div>
+      <div class="small text-muted">بوكسات بها صور</div>
+    </div>
+  </div>
+</div>
+
+<% if (totalPhotos === 0) { %>
+<div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لا توجد صور مطابقة.</div>
+<% } else { %>
+
+<% const exchangeNames = Object.keys(exchangeMap).sort(); %>
+<% exchangeNames.forEach(exchName => { %>
+<% const exchData = exchangeMap[exchName]; %>
+<% const cabNames = Object.keys(exchData.cabinets).sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0)); %>
+
+<div class="card mb-3">
+  <div class="card-header bg-dark text-white fw-bold d-flex justify-content-between align-items-center py-2">
+    <span><i class="bi bi-building me-2"></i><%= exchName %></span>
+    <% let exchBefore=0, exchAfter=0;
+       cabNames.forEach(cn => {
+         Object.values(exchData.cabinets[cn].boxes).forEach(bx => {
+           exchBefore+=bx.before; exchAfter+=bx.after;
+         });
+       });
+    %>
+    <span class="small fw-normal">
+      <span class="badge bg-warning text-dark me-1"><i class="bi bi-camera"></i> <%= exchBefore %> قبل</span>
+      <span class="badge bg-success me-1"><i class="bi bi-camera-fill"></i> <%= exchAfter %> بعد</span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm mb-0">
+        <thead class="table-secondary text-center sticky-header">
+          <tr>
+            <th>الكابينة</th>
+            <th>البوكس</th>
+            <th style="width:110px">قبل الصيانة</th>
+            <th style="width:110px">بعد الصيانة</th>
+            <th style="width:80px">الإجمالي</th>
+            <th style="width:80px">الصفحة</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% cabNames.forEach(cabNum => { %>
+          <% const cabData = exchData.cabinets[cabNum]; %>
+          <% const boxNums = Object.keys(cabData.boxes).sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0)); %>
+          <% boxNums.forEach((boxNum, bi) => { %>
+          <% const bx = cabData.boxes[boxNum]; %>
+          <tr>
+            <% if (bi === 0) { %>
+            <td class="fw-semibold text-center align-middle" rowspan="<%= boxNums.length %>">كابينة <%= cabNum %></td>
+            <% } %>
+            <td class="text-center fw-bold"><%= boxNum %></td>
+            <td class="text-center">
+              <% if (bx.before > 0) { %>
+              <span class="badge bg-warning text-dark"><i class="bi bi-camera me-1"></i><%= bx.before %></span>
+              <% } else { %><span class="text-muted small">—</span><% } %>
+            </td>
+            <td class="text-center">
+              <% if (bx.after > 0) { %>
+              <span class="badge bg-success"><i class="bi bi-camera-fill me-1"></i><%= bx.after %></span>
+              <% } else { %><span class="text-muted small">—</span><% } %>
+            </td>
+            <td class="text-center fw-bold"><%= bx.before + bx.after %></td>
+            <td class="text-center">
+              <a href="/boxes/<%= bx.id %>" target="_blank" class="btn btn-outline-primary btn-sm py-0 px-2" title="عرض البوكس">
+                <i class="bi bi-box-arrow-up-right"></i>
+              </a>
+            </td>
+          </tr>
+          <% }) %>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<% }) %>
+<% } %>
+
+<style>
+@media print { .btn, form, nav, .navbar { display: none !important; } .table-responsive { overflow: visible !important; } }
+.sticky-header th { position: sticky; top: 0; z-index: 2; background-color: #e2e3e5; }
+</style>
+<%- include('../partials/footer') %>

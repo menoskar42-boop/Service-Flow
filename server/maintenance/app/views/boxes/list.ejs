@@ -1,0 +1,117 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-box2 me-2"></i><%= title %></h4>
+  <% if (user.role === 'admin') { %>
+  <div class="d-flex gap-2">
+    <a href="/boxes/exchanges" class="btn btn-outline-secondary btn-sm"><i class="bi bi-diagram-3"></i> إدارة السنترالات</a>
+    <a href="/admin/import" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> استيراد Excel</a>
+  </div>
+  <% } %>
+</div>
+
+<!-- Status summary cards -->
+<% if (user.role !== 'technician') { %>
+<div class="row g-3 mb-4">
+  <% const statCards = [
+    {key:'pending_inspection', label:'بانتظار الفحص', icon:'clock', cls:'secondary'},
+    {key:'inspected', label:'تم الفحص', icon:'clipboard-check', cls:'info'},
+    {key:'needs_maintenance', label:'يحتاج صيانة', icon:'exclamation-triangle', cls:'warning'},
+    {key:'in_progress', label:'قيد الصيانة', icon:'tools', cls:'orange'},
+    {key:'completed', label:'مكتمل', icon:'check-circle', cls:'success'},
+  ]; %>
+  <% statCards.forEach(sc => { %>
+  <div class="col-6 col-md-2">
+    <a href="/boxes?status=<%= sc.key %>" class="text-decoration-none">
+      <div class="card text-center py-3 h-100">
+        <div class="fs-3 text-<%= sc.cls === 'orange' ? 'warning' : sc.cls %>"><%= counts[sc.key] || 0 %></div>
+        <div class="small text-muted"><%= sc.label %></div>
+      </div>
+    </a>
+  </div>
+  <% }) %>
+  <div class="col-6 col-md-2">
+    <a href="/boxes" class="text-decoration-none">
+      <div class="card text-center py-3 h-100">
+        <div class="fs-3 text-primary"><%= Object.values(counts).reduce((a,b)=>a+b,0) %></div>
+        <div class="small text-muted">الإجمالي</div>
+      </div>
+    </a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-3">
+  <div class="col-md-3">
+    <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %>
+      <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-3">
+    <select name="cabinet_id" class="form-select form-select-sm">
+      <option value="">كل الكباين</option>
+      <% (cabinets||[]).forEach(c => { %>
+      <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="status" class="form-select form-select-sm">
+      <option value="">كل الحالات</option>
+      <option value="pending_inspection" <%= query.status==='pending_inspection'?'selected':'' %>>بانتظار الفحص</option>
+      <option value="inspected" <%= query.status==='inspected'?'selected':'' %>>تم الفحص</option>
+      <option value="needs_maintenance" <%= query.status==='needs_maintenance'?'selected':'' %>>يحتاج صيانة</option>
+      <option value="in_progress" <%= query.status==='in_progress'?'selected':'' %>>قيد الصيانة</option>
+      <option value="completed" <%= query.status==='completed'?'selected':'' %>>مكتمل</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input type="text" name="search" class="form-control form-control-sm" placeholder="بحث..." value="<%= query.search||'' %>">
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-primary btn-sm me-1" type="submit"><i class="bi bi-search"></i> بحث</button>
+    <a href="/boxes" class="btn btn-outline-secondary btn-sm">إعادة تعيين</a>
+  </div>
+</form>
+<% } %>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>السنترال</th><th>الكابينة</th><th>رقم البوكس</th><th>الحالة</th><th>إجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% boxes.forEach(box => { %>
+          <tr>
+            <td><%= box.exchange_name %></td>
+            <td><%= box.cabinet_number %></td>
+            <td><strong><%= box.number %></strong></td>
+            <td><%- include('../partials/status_badge', { status: box.status }) %></td>
+            <td>
+              <a href="/boxes/<%= box.id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a>
+              <% if (user.role === 'admin' || user.role === 'inspector') { %>
+              <a href="/inspector/create/<%= box.id %>" class="btn btn-sm btn-outline-success ms-1" title="فحص"><i class="bi bi-clipboard-plus"></i></a>
+              <% } %>
+              <% if (user.role === 'admin') { %>
+              <form method="post" action="/boxes/<%= box.id %>/delete" style="display:inline">
+                <button class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('حذف هذا البوكس؟')"><i class="bi bi-trash"></i></button>
+              </form>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+          <% if (!boxes.length) { %>
+          <tr><td colspan="5" class="text-center text-muted py-4">لا توجد بوكسات.</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

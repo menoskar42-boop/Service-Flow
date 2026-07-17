@@ -1,0 +1,80 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0 fw-bold"><i class="bi bi-clipboard-check me-1"></i><%= title %></h5>
+  <a href="/boxes?status=pending_inspection" class="btn btn-success btn-sm">
+    <i class="bi bi-plus-lg"></i> فحص جديد
+  </a>
+</div>
+
+<!-- Filters -->
+<form method="get" action="/inspector" class="mb-3">
+  <div class="row g-2">
+    <div class="col-6 col-md-3">
+      <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل السنترالات</option>
+        <% exchanges.forEach(e => { %>
+        <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <select name="cabinet_id" class="form-select form-select-sm">
+        <option value="">كل الكباين</option>
+        <% (cabinets||[]).forEach(c => { %>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <input type="text" name="box_q" class="form-control form-control-sm"
+             placeholder="رقم البوكس" value="<%= query.box_q || '' %>">
+    </div>
+    <div class="col-3 col-md-2">
+      <input type="date" name="from" class="form-control form-control-sm" title="من تاريخ" value="<%= query.from || '' %>">
+    </div>
+    <div class="col-3 col-md-2">
+      <input type="date" name="to" class="form-control form-control-sm" title="إلى تاريخ" value="<%= query.to || '' %>">
+    </div>
+    <div class="col-12 col-md-auto d-flex gap-1">
+      <button class="btn btn-primary btn-sm"><i class="bi bi-search"></i> بحث</button>
+      <a href="/inspector" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg"></i></a>
+    </div>
+  </div>
+</form>
+
+<% if (!inspections.length) { %>
+<div class="text-center text-muted py-5">
+  <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+  <%= (query.exchange_id || query.cabinet_id || query.box_q || query.from || query.to) ? 'لا توجد نتائج للبحث.' : 'لا توجد فحوصات بعد.' %>
+</div>
+<% } else { %>
+<div class="list-group">
+  <% inspections.forEach(i => { %>
+  <a href="/inspector/<%= i.id %>" class="list-group-item list-group-item-action py-3">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+      <div class="flex-fill min-w-0">
+        <div class="fw-semibold mb-1">
+          <i class="bi bi-box2 text-primary me-1"></i>بوكس <strong><%= i.box_number %></strong>
+          <% if (i.is_archived) { %><span class="badge bg-secondary ms-1" title="تم إنشاء فحص أحدث لهذا البوكس">مؤرشف</span><% } %>
+        </div>
+        <div class="small text-muted text-truncate">
+          <i class="bi bi-building me-1"></i><%= i.exchange_name %>
+          &nbsp;·&nbsp; كابينة <%= i.cabinet_number %>
+        </div>
+        <div class="small text-muted mt-1">
+          <i class="bi bi-person me-1"></i><%= i.inspector_name %>
+          &nbsp;·&nbsp; <span class="text-secondary"><%= new Date(i.date).toISOString().split('T')[0] %></span>
+        </div>
+      </div>
+      <div class="flex-shrink-0">
+        <a href="/boxes/<%= i.box_id %>" class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation()">
+          <i class="bi bi-box2"></i>
+        </a>
+      </div>
+    </div>
+  </a>
+  <% }) %>
+</div>
+<div class="text-muted small text-center mt-2"><%= inspections.length %> نتيجة</div>
+<% } %>
+<%- include('../partials/footer') %>

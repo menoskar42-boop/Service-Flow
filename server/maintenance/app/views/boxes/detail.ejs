@@ -1,0 +1,470 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+  <h5 class="mb-0 fw-bold"><i class="bi bi-box2 me-1 text-primary"></i>بوكس <%= box.number %></h5>
+  <div class="d-flex flex-wrap gap-2">
+    <% if (user.role === 'admin' || user.role === 'inspector') { %>
+    <a href="/inspector/create/<%= box.id %>" class="btn btn-success btn-sm">
+      <i class="bi bi-clipboard-plus"></i>
+      <%= box.status === 'pending_inspection' ? 'فحص' : 'إعادة فحص' %>
+    </a>
+    <% } %>
+    <% if (typeof archivedInspections !== 'undefined' && archivedInspections.length) { %>
+    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#archived-panel">
+      <i class="bi bi-archive"></i> الفحوصات السابقة (<%= archivedInspections.length %>)
+    </button>
+    <% } %>
+    <a href="/boxes/<%= box.id %>/photos/download" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-zip"></i> تحميل الصور
+    </a>
+    <% if (user.role === 'admin' || user.role === 'inspector') { %>
+    <a href="/reports/box/<%= box.id %>" target="_blank" class="btn btn-outline-danger btn-sm">
+      <i class="bi bi-file-earmark-pdf"></i> PDF
+    </a>
+    <% } %>
+    <a href="<%= (typeof query !== 'undefined' && query.back) ? query.back : '/boxes' %>" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> العودة</a>
+  </div>
+</div>
+
+<!-- Archived inspections collapse panel -->
+<% if (typeof archivedInspections !== 'undefined' && archivedInspections.length) { %>
+<div class="collapse mb-3" id="archived-panel">
+  <div class="card card-body py-2">
+    <div class="small text-muted mb-2 fw-semibold"><i class="bi bi-archive me-1"></i>الفحوصات المؤرشفة</div>
+    <div class="d-flex flex-wrap gap-2">
+      <% archivedInspections.forEach((ai, idx) => { %>
+      <a href="/inspector/<%= ai.id %>" class="btn btn-outline-secondary btn-sm" title="<%= ai.inspector_name %> — <%= new Date(ai.date).toISOString().split('T')[0] %>">
+        <i class="bi bi-clipboard-check me-1"></i>فحص <%= idx + 1 %>
+        <small class="opacity-75 ms-1"><%= new Date(ai.date).toISOString().split('T')[0] %></small>
+      </a>
+      <% }) %>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<!-- Box info bar -->
+<div class="alert alert-secondary py-2 mb-3 small">
+  <strong>السنترال:</strong> <%= box.exchange_name %> &nbsp;|&nbsp;
+  <strong>الكابينة:</strong> <%= box.cabinet_number %> &nbsp;|&nbsp;
+  <strong>البوكس:</strong> <%= box.number %> &nbsp;|&nbsp;
+  <strong>الحالة:</strong> <%- include('../partials/status_badge', { status: box.status }) %> &nbsp;|&nbsp;
+  <strong>أُضيف:</strong> <%= new Date(box.created_at).toISOString().split('T')[0] %>
+</div>
+
+<div class="row g-3">
+  <!-- Left: inspection checklist + photos -->
+  <div class="col-md-8">
+    <% if (inspection) { %>
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-1">
+        <span class="fw-semibold">
+          <i class="bi bi-clipboard-data me-1"></i>آخر فحص
+          <span class="text-muted fw-normal">— <%= new Date(inspection.date).toISOString().split('T')[0] %> &nbsp;·&nbsp; <%= inspection.inspector_name %></span>
+        </span>
+      </div>
+      <% if (inspection.general_notes) { %>
+      <div class="px-3 pt-2 pb-0 small text-muted"><strong>ملاحظات:</strong> <%= inspection.general_notes %></div>
+      <% } %>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>البند</th><th>النوع</th><th>الحالة</th><th>الإصلاح</th><th>ملاحظات</th><th>تفاصيل</th></tr></thead>
+            <tbody>
+            <% (typeof checklist !== 'undefined' ? checklist : []).forEach(ci => {
+              const _items = (typeof items !== 'undefined') ? items : [];
+              const found = _items.find(it => it.item_key === ci.key);
+              const isBad = found && (found.value === 'bad' || found.value === 'yes');
+              const fixSt = (typeof itemStatusMap !== 'undefined') ? itemStatusMap[ci.key] : null;
+              const isDone = fixSt && fixSt.is_done;
+            %>
+            <tr class="<%= isDone ? 'table-success' : (isBad ? 'table-danger' : '') %>">
+              <td class="fw-semibold"><%= ci.label %></td>
+              <td><span class="badge bg-secondary"><%= ci.type === 'good_bad' ? 'جيد/سيء' : 'يوجد/لا' %></span></td>
+              <td>
+                <% if (!found) { %>—
+                <% } else if (found.value === 'good') { %><span class="badge bg-success">جيد</span>
+                <% } else if (found.value === 'bad') { %><span class="badge bg-danger">سيء</span>
+                <% } else if (found.value === 'yes') { %><span class="badge bg-danger">يوجد</span>
+                <% } else { %><span class="badge bg-success">لا يوجد</span><% } %>
+              </td>
+              <td>
+                <% if (isBad) { %>
+                  <% if (isDone) { %>
+                    <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>تم الإصلاح</span>
+                    <% if (fixSt.done_at) { %><br><small class="text-muted"><%= new Date(fixSt.done_at).toISOString().split('T')[0] %></small><% } %>
+                  <% } else { %>
+                    <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>قيد الصيانة</span>
+                  <% } %>
+                <% } else { %>—<% } %>
+              </td>
+              <td class="text-muted small"><%= found ? (found.notes || '—') : '—' %></td>
+              <td class="small">
+                <% if (found && found.extra_type) { %>
+                  <span class="badge bg-info text-dark"><%= found.extra_type %></span>
+                  <% if (found.extra_distance) { %><br><span class="text-muted"><%= found.extra_distance %> م</span><% } %>
+                <% } else { %>—<% } %>
+              </td>
+            </tr>
+            <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <% } else { %>
+    <div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لم يتم فحص هذا البوكس بعد.</div>
+    <% } %>
+
+    <!-- Photos -->
+    <% const beforePhotos = photos.filter(p => p.photo_type === 'before'); %>
+    <% const afterPhotos  = photos.filter(p => p.photo_type === 'after'); %>
+    <div class="row g-3">
+
+      <!-- Before photos: with upload button for inspector/admin -->
+      <% if (inspection && (user.role === 'admin' || user.role === 'inspector')) { %>
+      <div class="col-12 col-sm-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>صور قبل الصيانة (<%= beforePhotos.length %>)</span>
+            <button class="btn btn-primary btn-sm" id="before-upload-btn" title="رفع صورة">
+              <i class="bi bi-camera-fill"></i>
+            </button>
+          </div>
+          <div class="card-body">
+            <input type="file" id="before-photo-input" accept="image/*" capture="environment" style="display:none">
+            <div id="before-upload-queue" class="mb-2"></div>
+            <% if (beforePhotos.length) { %>
+            <div class="photo-grid">
+              <% beforePhotos.forEach(p => { %>
+              <div class="photo-item">
+                <a href="/uploads/<%= p.filename %>" target="_blank">
+                  <img src="/uploads/<%= p.filename %>" class="photo-thumb" alt="قبل">
+                </a>
+                <% var _ts = p.taken_at || p.uploaded_at; if (_ts) { %><div class="photo-meta"><%= new Date(_ts).toISOString().replace('T',' ').substring(0,16) %></div><% } %>
+                <% if (p.latitude && p.longitude) { %><a href="https://maps.google.com/?q=<%= p.latitude %>,<%= p.longitude %>" target="_blank" class="btn btn-outline-danger btn-sm py-0 px-1 mt-1 w-100"><i class="bi bi-geo-alt-fill"></i> تتبع</a><% } else { %><button class="btn btn-outline-secondary btn-sm py-0 px-1 mt-1 w-100 add-loc-btn" data-pid="<%= p.id %>"><i class="bi bi-geo-alt"></i> إضافة موقع</button><% } %>
+              </div>
+              <% }) %>
+            </div>
+            <% } else { %>
+            <p class="text-muted small mb-0">لا توجد صور. اضغط <i class="bi bi-camera-fill"></i> للرفع.</p>
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <% } else if (beforePhotos.length) { %>
+      <div class="col-12 col-sm-6">
+        <div class="card">
+          <div class="card-header">صور قبل الصيانة (<%= beforePhotos.length %>)</div>
+          <div class="card-body"><div class="photo-grid">
+            <% beforePhotos.forEach(p => { %>
+            <div class="photo-item">
+              <a href="/uploads/<%= p.filename %>" target="_blank">
+                <img src="/uploads/<%= p.filename %>" class="photo-thumb" alt="قبل">
+              </a>
+              <% var _ts = p.taken_at || p.uploaded_at; if (_ts) { %><div class="photo-meta"><%= new Date(_ts).toISOString().replace('T',' ').substring(0,16) %></div><% } %>
+              <% if (p.latitude && p.longitude) { %><a href="https://maps.google.com/?q=<%= p.latitude %>,<%= p.longitude %>" target="_blank" class="btn btn-outline-danger btn-sm py-0 px-1 mt-1 w-100"><i class="bi bi-geo-alt-fill"></i> تتبع</a><% } else { %><button class="btn btn-outline-secondary btn-sm py-0 px-1 mt-1 w-100 add-loc-btn" data-pid="<%= p.id %>"><i class="bi bi-geo-alt"></i> إضافة موقع</button><% } %>
+            </div>
+            <% }) %>
+          </div></div>
+        </div>
+      </div>
+      <% } %>
+
+      <!-- After photos: with upload button for technician/admin when task not completed -->
+      <% if (task && task.status !== 'completed' && (user.role === 'admin' || user.role === 'technician')) { %>
+      <div class="col-12 col-sm-6">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>صور بعد الصيانة (<%= afterPhotos.length %>)</span>
+            <button class="btn btn-warning btn-sm" id="after-upload-btn" title="رفع صورة">
+              <i class="bi bi-camera-fill"></i>
+            </button>
+          </div>
+          <div class="card-body">
+            <input type="file" id="after-photo-input" accept="image/*" capture="environment" style="display:none">
+            <div id="after-upload-queue" class="mb-2"></div>
+            <% if (afterPhotos.length) { %>
+            <div class="photo-grid">
+              <% afterPhotos.forEach(p => { %>
+              <div class="photo-item">
+                <a href="/uploads/<%= p.filename %>" target="_blank">
+                  <img src="/uploads/<%= p.filename %>" class="photo-thumb" alt="بعد">
+                </a>
+                <% var _ts = p.taken_at || p.uploaded_at; if (_ts) { %><div class="photo-meta"><%= new Date(_ts).toISOString().replace('T',' ').substring(0,16) %></div><% } %>
+                <% if (p.latitude && p.longitude) { %><a href="https://maps.google.com/?q=<%= p.latitude %>,<%= p.longitude %>" target="_blank" class="btn btn-outline-danger btn-sm py-0 px-1 mt-1 w-100"><i class="bi bi-geo-alt-fill"></i> تتبع</a><% } else { %><button class="btn btn-outline-secondary btn-sm py-0 px-1 mt-1 w-100 add-loc-btn" data-pid="<%= p.id %>"><i class="bi bi-geo-alt"></i> إضافة موقع</button><% } %>
+              </div>
+              <% }) %>
+            </div>
+            <% } else { %>
+            <p class="text-muted small mb-0">لا توجد صور. اضغط <i class="bi bi-camera-fill"></i> للرفع.</p>
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <% } else if (afterPhotos.length) { %>
+      <div class="col-12 col-sm-6">
+        <div class="card">
+          <div class="card-header">صور بعد الصيانة (<%= afterPhotos.length %>)</div>
+          <div class="card-body"><div class="photo-grid">
+            <% afterPhotos.forEach(p => { %>
+            <div class="photo-item">
+              <a href="/uploads/<%= p.filename %>" target="_blank">
+                <img src="/uploads/<%= p.filename %>" class="photo-thumb" alt="بعد">
+              </a>
+              <% var _ts = p.taken_at || p.uploaded_at; if (_ts) { %><div class="photo-meta"><%= new Date(_ts).toISOString().replace('T',' ').substring(0,16) %></div><% } %>
+              <% if (p.latitude && p.longitude) { %><a href="https://maps.google.com/?q=<%= p.latitude %>,<%= p.longitude %>" target="_blank" class="btn btn-outline-danger btn-sm py-0 px-1 mt-1 w-100"><i class="bi bi-geo-alt-fill"></i> تتبع</a><% } else { %><button class="btn btn-outline-secondary btn-sm py-0 px-1 mt-1 w-100 add-loc-btn" data-pid="<%= p.id %>"><i class="bi bi-geo-alt"></i> إضافة موقع</button><% } %>
+            </div>
+            <% }) %>
+          </div></div>
+        </div>
+      </div>
+      <% } %>
+
+    </div>
+  </div>
+
+  <!-- Right: location + maintenance task -->
+  <div class="col-md-4">
+    <!-- Box location card -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold"><i class="bi bi-geo-alt me-1"></i>موقع البوكس</div>
+      <div class="card-body text-center">
+        <% if (box.latitude && box.longitude) { %>
+          <a href="https://maps.google.com/?q=<%= box.latitude %>,<%= box.longitude %>" target="_blank" class="btn btn-danger w-100">
+            <i class="bi bi-map me-1"></i> فتح الخريطة
+          </a>
+          <div class="small text-muted mt-1"><%= box.latitude.toFixed(5) %>, <%= box.longitude.toFixed(5) %></div>
+          <% if (user.role === 'admin' || user.role === 'inspector') { %>
+          <button id="update-loc-btn" class="btn btn-outline-secondary btn-sm w-100 mt-2">
+            <i class="bi bi-arrow-repeat"></i> تحديث الموقع
+          </button>
+          <% } %>
+        <% } else if (user.role === 'admin' || user.role === 'inspector') { %>
+          <button id="save-loc-btn" class="btn btn-primary w-100">
+            <i class="bi bi-geo-alt-fill me-1"></i> تسجيل الموقع
+          </button>
+          <p class="text-muted small mt-2 mb-0">لم يتم تسجيل موقع البوكس بعد.</p>
+        <% } else { %>
+          <p class="text-muted small mb-0">لا يوجد موقع مسجل.</p>
+        <% } %>
+        <div id="loc-status" class="small mt-2 text-danger"></div>
+      </div>
+    </div>
+
+    <% if (task) { %>
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">مهمة الصيانة</div>
+      <div class="card-body">
+        <table class="table table-sm mb-0">
+          <tr><th>الحالة</th><td><%- include('../partials/status_badge', { status: task.status }) %></td></tr>
+          <% if (task.tech_name) { %><tr><th>الفني</th><td><%= task.tech_name %></td></tr><% } %>
+          <% if (task.started_at) { %><tr><th>بدأ في</th><td><%= new Date(task.started_at).toISOString().split('T')[0] %></td></tr><% } %>
+          <% if (task.completed_at) { %><tr><th>اكتمل في</th><td><%= new Date(task.completed_at).toISOString().split('T')[0] %></td></tr><% } %>
+          <% if (task.notes) { %><tr><th>ملاحظات الفني</th><td class="small"><%= task.notes %></td></tr><% } %>
+        </table>
+        <% if ((user.role === 'admin' || user.role === 'technician') && task.status !== 'completed') { %>
+        <a href="/technician/<%= task.id %>" class="btn btn-warning btn-sm w-100 mt-2">
+          <i class="bi bi-tools me-1"></i> فتح مهمة الصيانة
+        </a>
+        <% } %>
+
+        <!-- Preliminary confirmation (external affairs / admin) -->
+        <% if (user.role === 'admin' || user.role === 'inspector') { %>
+          <% if (task.prelim_confirmed_at) { %>
+          <div class="alert alert-info small mb-0 mt-2 py-2">
+            <i class="bi bi-check2-circle me-1"></i> تم التأكيد المبدئى:
+            <strong><%= new Date(task.prelim_confirmed_at).toISOString().split('T')[0] %></strong>
+          </div>
+          <% } else if (typeof prelimReady !== 'undefined' && prelimReady) { %>
+          <form method="post" action="/inspector/tasks/<%= task.id %>/prelim-confirm" class="mt-2">
+            <button class="btn btn-info btn-sm w-100">
+              <i class="bi bi-check2-circle me-1"></i> تأكيد مبدئى على إزالة الملاحظات
+            </button>
+          </form>
+          <% } %>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<!-- Before-photo async upload script -->
+<% if (inspection && (user.role === 'admin' || user.role === 'inspector')) { %>
+<script>
+(function(){
+  var UPLOAD_URL = '/inspector/<%= inspection.id %>/photos';
+  var pending = 0;
+  var queueEl = document.getElementById('before-upload-queue');
+  var inputEl = document.getElementById('before-photo-input');
+  document.getElementById('before-upload-btn').addEventListener('click', function(){ inputEl.click(); });
+  function getCoords() {
+    return new Promise(function(resolve) {
+      if (!navigator.geolocation) { resolve(null); return; }
+      var t = setTimeout(function() { resolve(null); }, 8000);
+      navigator.geolocation.getCurrentPosition(
+        function(p) { clearTimeout(t); resolve({ lat: p.coords.latitude, lng: p.coords.longitude }); },
+        function() { clearTimeout(t); resolve(null); }
+      );
+    });
+  }
+  function uploadFile(file) {
+    pending++;
+    var takenAt = new Date().toISOString();
+    var item = document.createElement('div');
+    item.className = 'badge bg-secondary me-1 mb-1';
+    item.textContent = file.name + ' — جارٍ الرفع…';
+    queueEl.appendChild(item);
+    getCoords().then(function(coords) {
+      var fd = new FormData();
+      fd.append('photo', file);
+      fd.append('taken_at', takenAt);
+      if (coords) { fd.append('lat', coords.lat); fd.append('lng', coords.lng); }
+      return fetch(UPLOAD_URL, { method: 'POST', headers: { 'Accept': 'application/json' }, body: fd });
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.ok) { item.className = 'badge bg-success me-1 mb-1'; item.textContent = '✓ ' + file.name; }
+      else { item.className = 'badge bg-danger me-1 mb-1'; item.textContent = '✗ ' + (data.msg || 'خطأ'); }
+    })
+    .catch(function(){ item.className = 'badge bg-danger me-1 mb-1'; item.textContent = '✗ ' + file.name + ' — فشل'; })
+    .finally(function(){ pending--; if (pending === 0) setTimeout(function(){ location.reload(); }, 800); });
+  }
+  inputEl.addEventListener('change', function(){
+    if (this.files && this.files[0]) uploadFile(this.files[0]);
+    this.value = '';
+  });
+})();
+</script>
+<% } %>
+
+<!-- After-photo async upload script -->
+<% if (task && task.status !== 'completed' && (user.role === 'admin' || user.role === 'technician')) { %>
+<script>
+(function(){
+  var UPLOAD_URL = '/technician/<%= task.id %>/photos';
+  var pending = 0;
+  var queueEl = document.getElementById('after-upload-queue');
+  var inputEl = document.getElementById('after-photo-input');
+  document.getElementById('after-upload-btn').addEventListener('click', function(){ inputEl.click(); });
+  function getCoords() {
+    return new Promise(function(resolve) {
+      if (!navigator.geolocation) { resolve(null); return; }
+      var t = setTimeout(function() { resolve(null); }, 8000);
+      navigator.geolocation.getCurrentPosition(
+        function(p) { clearTimeout(t); resolve({ lat: p.coords.latitude, lng: p.coords.longitude }); },
+        function() { clearTimeout(t); resolve(null); }
+      );
+    });
+  }
+  function uploadFile(file) {
+    pending++;
+    var takenAt = new Date().toISOString();
+    var item = document.createElement('div');
+    item.className = 'badge bg-secondary me-1 mb-1';
+    item.textContent = file.name + ' — جارٍ الرفع…';
+    queueEl.appendChild(item);
+    getCoords().then(function(coords) {
+      var fd = new FormData();
+      fd.append('photo', file);
+      fd.append('taken_at', takenAt);
+      if (coords) { fd.append('lat', coords.lat); fd.append('lng', coords.lng); }
+      return fetch(UPLOAD_URL, { method: 'POST', headers: { 'Accept': 'application/json' }, body: fd });
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if (data.ok) { item.className = 'badge bg-success me-1 mb-1'; item.textContent = '✓ ' + file.name; }
+      else { item.className = 'badge bg-danger me-1 mb-1'; item.textContent = '✗ ' + (data.msg || 'خطأ'); }
+    })
+    .catch(function(){ item.className = 'badge bg-danger me-1 mb-1'; item.textContent = '✗ ' + file.name + ' — فشل'; })
+    .finally(function(){ pending--; if (pending === 0) setTimeout(function(){ location.reload(); }, 800); });
+  }
+  inputEl.addEventListener('change', function(){
+    if (this.files && this.files[0]) uploadFile(this.files[0]);
+    this.value = '';
+  });
+})();
+</script>
+<% } %>
+
+<!-- Box-level GPS capture (inspector/admin) -->
+<% if (user.role === 'admin' || user.role === 'inspector') { %>
+<script>
+(function(){
+  function captureAndSave(btn) {
+    if (!navigator.geolocation) { alert('المتصفح لا يدعم تحديد الموقع.'); return; }
+    var orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جارٍ التحديد…';
+    var statusEl = document.getElementById('loc-status');
+    navigator.geolocation.getCurrentPosition(function(pos){
+      fetch('/boxes/<%= box.id %>/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok) { location.reload(); }
+        else { btn.disabled = false; btn.innerHTML = orig; statusEl.textContent = d.msg || 'خطأ.'; }
+      })
+      .catch(function(){ btn.disabled = false; btn.innerHTML = orig; statusEl.textContent = 'فشل الاتصال.'; });
+    }, function(){
+      btn.disabled = false; btn.innerHTML = orig;
+      alert('لم يتم السماح بالوصول للموقع. يرجى السماح من إعدادات المتصفح.');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+  var s = document.getElementById('save-loc-btn');
+  var u = document.getElementById('update-loc-btn');
+  if (s) s.addEventListener('click', function(){ captureAndSave(this); });
+  if (u) u.addEventListener('click', function(){ captureAndSave(this); });
+})();
+</script>
+<% } %>
+
+<!-- Attach GPS to photos that were uploaded without coordinates -->
+<script>
+(function(){
+  document.querySelectorAll('.add-loc-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var pid = this.dataset.pid;
+      var self = this;
+      if (!navigator.geolocation) { alert('المتصفح لا يدعم تحديد الموقع.'); return; }
+      self.disabled = true;
+      self.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جارٍ التحديد…';
+      navigator.geolocation.getCurrentPosition(function(pos){
+        var lat = pos.coords.latitude, lng = pos.coords.longitude;
+        fetch('/boxes/photos/' + pid + '/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ lat: lat, lng: lng })
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.ok) {
+            var a = document.createElement('a');
+            a.href = 'https://maps.google.com/?q=' + d.lat + ',' + d.lng;
+            a.target = '_blank';
+            a.className = 'btn btn-outline-danger btn-sm py-0 px-1 mt-1 w-100';
+            a.innerHTML = '<i class="bi bi-geo-alt-fill"></i> تتبع';
+            self.parentNode.replaceChild(a, self);
+          } else {
+            self.disabled = false;
+            self.innerHTML = '<i class="bi bi-geo-alt"></i> إضافة موقع';
+          }
+        })
+        .catch(function(){
+          self.disabled = false;
+          self.innerHTML = '<i class="bi bi-geo-alt"></i> إضافة موقع';
+        });
+      }, function(){
+        self.disabled = false;
+        self.innerHTML = '<i class="bi bi-geo-alt"></i> إضافة موقع';
+        alert('لم يتم السماح بالوصول للموقع. يرجى السماح من إعدادات المتصفح.');
+      }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    });
+  });
+})();
+</script>
+
+<%- include('../partials/footer') %>

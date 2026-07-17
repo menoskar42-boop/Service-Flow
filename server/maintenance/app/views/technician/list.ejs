@@ -1,0 +1,127 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0 fw-bold"><i class="bi bi-tools me-1"></i><%= title %></h5>
+</div>
+
+<!-- Filters -->
+<form method="get" action="/technician" class="mb-2">
+  <% if (query.status) { %><input type="hidden" name="status" value="<%= query.status %>"><% } %>
+  <div class="row g-2 mb-2">
+    <div class="col-6 col-md-4">
+      <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل السنترالات</option>
+        <% exchanges.forEach(e => { %>
+        <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-6 col-md-3">
+      <select name="cabinet_id" class="form-select form-select-sm">
+        <option value="">كل الكباين</option>
+        <% cabinets.forEach(c => { %>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-6 col-md-2">
+      <input type="text" name="box_q" class="form-control form-control-sm"
+             placeholder="رقم البوكس" value="<%= query.box_q || '' %>">
+    </div>
+    <div class="col-3 col-md-1half">
+      <input type="date" name="from" class="form-control form-control-sm" title="من تاريخ" value="<%= query.from || '' %>">
+    </div>
+    <div class="col-3 col-md-1half">
+      <input type="date" name="to" class="form-control form-control-sm" title="إلى تاريخ" value="<%= query.to || '' %>">
+    </div>
+    <div class="col-12 col-md-auto d-flex gap-1">
+      <button class="btn btn-primary btn-sm"><i class="bi bi-search"></i> بحث</button>
+      <a href="/technician<%= query.status ? '?status='+query.status : '' %>" class="btn btn-outline-secondary btn-sm"><i class="bi bi-x-lg"></i></a>
+    </div>
+  </div>
+</form>
+
+<!-- Status filters -->
+<div class="d-flex gap-1 flex-wrap mb-3">
+  <a href="/technician<%= query.q ? '?q='+encodeURIComponent(query.q) : '' %>"
+    class="btn btn-sm <%= !query.status ? 'btn-primary' : 'btn-outline-primary' %>">الكل</a>
+  <a href="/technician?status=pending<%= query.q ? '&q='+encodeURIComponent(query.q) : '' %>"
+    class="btn btn-sm <%= query.status==='pending' ? 'btn-secondary' : 'btn-outline-secondary' %>">بانتظار البدء</a>
+  <a href="/technician?status=in_progress<%= query.q ? '&q='+encodeURIComponent(query.q) : '' %>"
+    class="btn btn-sm <%= query.status==='in_progress' ? 'btn-warning' : 'btn-outline-warning' %>">قيد التنفيذ</a>
+  <a href="/technician?status=completed<%= query.q ? '&q='+encodeURIComponent(query.q) : '' %>"
+    class="btn btn-sm <%= query.status==='completed' ? 'btn-success' : 'btn-outline-success' %>">مكتملة</a>
+</div>
+
+<% if (!tasks.length) { %>
+<div class="text-center text-muted py-5">
+  <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+  <%= query.q ? 'لا توجد نتائج للبحث.' : 'لا توجد مهام صيانة.' %>
+</div>
+<% } else { %>
+<div class="list-group">
+  <% tasks.forEach(t => { %>
+  <a href="/technician/<%= t.id %>" class="list-group-item list-group-item-action py-3<%= t.rejection_reason ? ' border-start border-danger border-4' : '' %>">
+    <div class="d-flex justify-content-between align-items-start gap-2">
+      <div class="flex-fill min-w-0">
+        <div class="fw-semibold mb-1">
+          <i class="bi bi-box2 text-primary me-1"></i>بوكس <strong><%= t.box_number %></strong>
+          <% if (t.rejection_reason) { %><span class="badge bg-danger ms-1"><i class="bi bi-arrow-counterclockwise"></i> مرتجع</span><% } %>
+        </div>
+        <div class="small text-muted text-truncate">
+          <i class="bi bi-building me-1"></i><%= t.exchange_name %>
+          &nbsp;·&nbsp; كابينة <%= t.cabinet_number %>
+        </div>
+        <% if (t.tech_name) { %>
+        <div class="small text-muted mt-1">
+          <i class="bi bi-person-badge me-1"></i><%= t.tech_name %>
+        </div>
+        <% } %>
+      </div>
+      <div class="flex-shrink-0 text-end">
+        <% if (t.status === 'pending') { %>
+          <span class="badge bg-secondary">بانتظار البدء</span>
+        <% } else if (t.status === 'in_progress') { %>
+          <span class="badge bg-warning text-dark">قيد التنفيذ</span>
+        <% } else if (t.status === 'pending_approval') { %>
+          <span class="badge bg-primary">في انتظار التأكيد</span>
+        <% } else { %>
+          <span class="badge bg-success">مكتملة</span>
+        <% } %>
+      </div>
+    </div>
+  </a>
+  <% }) %>
+</div>
+<div class="text-muted small text-center mt-2"><%= tasks.length %> نتيجة</div>
+<% } %>
+
+<% if (typeof archivedTasks !== 'undefined' && archivedTasks.length > 0) { %>
+<details class="mt-4">
+  <summary class="btn btn-outline-secondary btn-sm mb-2">
+    <i class="bi bi-archive me-1"></i> مهام مؤرشفة (<%= archivedTasks.length %>)
+  </summary>
+  <div class="list-group mt-2">
+    <% archivedTasks.forEach(t => { %>
+    <a href="/technician/<%= t.id %>" class="list-group-item list-group-item-action py-2 opacity-75">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="flex-fill min-w-0">
+          <div class="fw-semibold mb-1 small">
+            <i class="bi bi-box2 text-secondary me-1"></i>بوكس <strong><%= t.box_number %></strong>
+            <span class="badge bg-secondary ms-1">مؤرشف</span>
+          </div>
+          <div class="small text-muted text-truncate">
+            <i class="bi bi-building me-1"></i><%= t.exchange_name %> · كابينة <%= t.cabinet_number %>
+          </div>
+        </div>
+        <div class="flex-shrink-0">
+          <% if (t.status === 'pending') { %><span class="badge bg-secondary">بانتظار البدء</span>
+          <% } else if (t.status === 'in_progress') { %><span class="badge bg-warning text-dark">قيد التنفيذ</span>
+          <% } else { %><span class="badge bg-success">مكتملة</span><% } %>
+        </div>
+      </div>
+    </a>
+    <% }) %>
+  </div>
+</details>
+<% } %>
+<%- include('../partials/footer') %>

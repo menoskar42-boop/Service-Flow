@@ -1,0 +1,157 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-person-badge me-2 text-success"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/technician-summary/export?<%= new URLSearchParams(query).toString() %>" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+    <button onclick="window.print()" class="btn btn-outline-danger btn-sm"><i class="bi bi-printer"></i> طباعة</button>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="card card-body mb-3 py-2">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small mb-1">السنترال</label>
+      <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل السنترالات</option>
+        <% exchanges.forEach(e => { %>
+        <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">الكابينة</label>
+      <select name="cabinet_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل الكباين</option>
+        <% (cabinets||[]).forEach(c => { %>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">البوكس</label>
+      <select name="box_id" class="form-select form-select-sm" <%= !(cabinets||[]).length ? 'disabled' : '' %>>
+        <option value="">كل البوكسات</option>
+        <% (boxes||[]).forEach(b => { %>
+        <option value="<%= b.id %>" <%= query.box_id == b.id ? 'selected' : '' %>><%= b.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">من تاريخ</label>
+      <input type="date" name="from" class="form-control form-control-sm" value="<%= query.from||'' %>">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">إلى تاريخ</label>
+      <input type="date" name="to" class="form-control form-control-sm" value="<%= query.to||'' %>">
+    </div>
+    <div class="col-md-auto">
+      <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+      <a href="/reports/technician-summary" class="btn btn-outline-secondary btn-sm">إعادة</a>
+    </div>
+  </div>
+</form>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-success">
+      <i class="bi bi-people text-success fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-success"><%= techs.length %></div>
+      <div class="small text-muted">عدد الفنيين</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-primary">
+      <i class="bi bi-clipboard-check text-primary fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-primary"><%= grandTotal %></div>
+      <div class="small text-muted">إجمالي الأعمال المنجزة</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-warning">
+      <i class="bi bi-box2 text-warning fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-warning"><%= totalBoxCount %></div>
+      <div class="small text-muted">بوكسات منجزة</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-danger">
+      <i class="bi bi-exclamation-triangle text-danger fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-danger"><%= totalNeedingWork %></div>
+      <div class="small text-muted">إجمالي تحتاج صيانة</div>
+    </div>
+  </div>
+</div>
+
+<% if (!techs.length) { %>
+<div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لا توجد أعمال منجزة مطابقة.</div>
+<% } else { %>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm mb-0 text-center align-middle">
+        <thead class="table-dark sticky-header">
+          <tr>
+            <th class="text-end align-middle">الفني</th>
+            <% CHECKLIST.forEach(ci => { %>
+            <th class="align-middle" title="<%= ci.label %>" style="min-width:54px;font-size:0.72rem"><%= ci.short %></th>
+            <% }) %>
+            <th class="align-middle table-warning">الإجمالي</th>
+            <th class="align-middle table-info" style="min-width:70px">البوكسات</th>
+            <th class="align-middle table-success" style="min-width:60px">النسبة %</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% techs.forEach(t => {
+            const pct = totalNeedingWork > 0 ? (t.boxCount / totalNeedingWork * 100).toFixed(1) : '0.0';
+          %>
+          <tr>
+            <td class="text-end fw-semibold"><%= t.tech_name %></td>
+            <% CHECKLIST.forEach(ci => {
+              const n = t.counts[ci.key] || 0;
+            %>
+            <td class="<%= n ? '' : 'text-muted' %>"><%= n || '—' %></td>
+            <% }) %>
+            <td class="fw-bold table-warning"><%= t.total %></td>
+            <td class="fw-semibold table-info"><%= t.boxCount || 0 %></td>
+            <td class="fw-semibold table-success"><%= pct %>%</td>
+          </tr>
+          <% }) %>
+        </tbody>
+        <tfoot class="table-secondary fw-bold">
+          <tr>
+            <td class="text-end">الإجمالي العام</td>
+            <% CHECKLIST.forEach(ci => { %>
+            <td><%= totals[ci.key] || 0 %></td>
+            <% }) %>
+            <td class="table-warning"><%= grandTotal %></td>
+            <td class="table-info"><%= totalBoxCount %></td>
+            <td class="table-success"><%= totalNeedingWork > 0 ? (totalBoxCount / totalNeedingWork * 100).toFixed(1) : '0.0' %>%</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<style>
+@media print {
+  .btn, form, nav, .navbar { display: none !important; }
+  .table-responsive { overflow: visible !important; }
+}
+.sticky-header th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: #212529;
+  color: #fff;
+}
+.sticky-header th.table-warning {
+  background-color: #fff3cd !important;
+  color: #000 !important;
+}
+</style>
+<%- include('../partials/footer') %>

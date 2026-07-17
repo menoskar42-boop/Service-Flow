@@ -1,0 +1,126 @@
+/* Arabic RTL customizations */
+body {
+    font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+    background-color: #f8f9fa;
+}
+
+.navbar-brand {
+    font-weight: 700;
+    font-size: 1.3rem;
+}
+
+.sidebar {
+    min-height: calc(100vh - 56px);
+    background: #343a40;
+}
+
+.sidebar .nav-link {
+    color: #adb5bd;
+    padding: 0.75rem 1rem;
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+}
+
+.sidebar .nav-link:hover,
+.sidebar .nav-link.active {
+    color: #fff;
+    background: #495057;
+}
+
+.sidebar .nav-link i {
+    margin-left: 0.5rem;
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    border-radius: 0.5rem;
+}
+
+.card-header {
+    background: #fff;
+    border-bottom: 2px solid #e9ecef;
+    font-weight: 600;
+}
+
+/* Status badges */
+.badge-pending { background-color: #6c757d; }
+.badge-inspected { background-color: #0dcaf0; color: #000; }
+.badge-needs-maintenance { background-color: #ffc107; color: #000; }
+.badge-in-progress { background-color: #fd7e14; }
+.badge-completed { background-color: #198754; }
+
+/* Checklist form */
+.checklist-item {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+
+.checklist-item:has(input[value="bad"]:checked),
+.checklist-item:has(input[value="yes"]:checked) {
+    border-color: #dc3545;
+    background: #fff5f5;
+}
+
+.checklist-item:has(input[value="good"]:checked),
+.checklist-item:has(input[value="no"]:checked) {
+    border-color: #198754;
+    background: #f0fff4;
+}
+
+/* Photo gallery */
+.photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+}
+
+.photo-thumb {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 0.375rem;
+    border: 2px solid #dee2e6;
+    cursor: pointer;
+    transition: transform 0.2s, border-color 0.2s;
+}
+
+.photo-thumb:hover {
+    transform: scale(1.03);
+    border-color: #0d6efd;
+}
+
+/* Stat cards */
+.stat-card {
+    text-align: center;
+    padding: 1.5rem;
+}
+
+.stat-card .stat-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.stat-card .stat-label {
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+/* Table improvements */
+.table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .sidebar {
+        min-height: auto;
+    }
+}

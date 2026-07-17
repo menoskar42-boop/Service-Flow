@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> — نظام صيانة البوكسات</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<% if (user) { %>
+<nav class="navbar navbar-expand-md navbar-dark bg-primary">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="/"><i class="bi bi-box-seam me-1"></i> نظام صيانة البوكسات</a>
+    <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#nav" style="padding:.4rem .6rem">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="nav">
+      <ul class="navbar-nav me-auto">
+        <% if (user.role === 'admin' || user.role === 'inspector') { %>
+          <li class="nav-item"><a class="nav-link" href="/boxes"><i class="bi bi-box2"></i> البوكسات</a></li>
+          <li class="nav-item"><a class="nav-link" href="/boxes/exchanges"><i class="bi bi-diagram-3"></i> السنترالات</a></li>
+          <li class="nav-item"><a class="nav-link" href="/inspector"><i class="bi bi-clipboard-check"></i> الفحوصات</a></li>
+          <li class="nav-item"><a class="nav-link" href="/reports"><i class="bi bi-bar-chart"></i> التقارير</a></li>
+        <% } %>
+        <% if (user.role === 'admin') { %>
+          <li class="nav-item"><a class="nav-link" href="/technician"><i class="bi bi-tools"></i> الصيانة</a></li>
+          <li class="nav-item"><a class="nav-link" href="/admin/users"><i class="bi bi-people"></i> المستخدمون</a></li>
+          <li class="nav-item"><a class="nav-link" href="/admin/import"><i class="bi bi-file-earmark-excel"></i> استيراد Excel</a></li>
+        <% } %>
+        <% if (user.role === 'technician') { %>
+          <li class="nav-item"><a class="nav-link" href="/technician"><i class="bi bi-tools"></i> مهامي</a></li>
+        <% } %>
+      </ul>
+      <ul class="navbar-nav">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+            <i class="bi bi-person-circle"></i> <%= user.full_name || user.username %>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-start">
+            <li><span class="dropdown-item-text text-muted small">
+              <%= user.role === 'admin' ? 'مدير النظام' : user.role === 'inspector' ? 'مراقب شؤون خارجية' : 'فني صيانة' %>
+            </span></li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <form method="post" action="/auth/logout" style="margin:0">
+                <button class="dropdown-item text-danger" type="submit"><i class="bi bi-box-arrow-right"></i> تسجيل الخروج</button>
+              </form>
+            </li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+<% } %>
+<div class="container-fluid py-3">
+<% if (flash) { %>
+<div class="alert alert-<%= flash.type %> alert-dismissible fade show auto-dismiss" role="alert">
+  <%= flash.msg %>
+  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<% } %>

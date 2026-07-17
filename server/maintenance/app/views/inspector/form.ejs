@@ -1,0 +1,261 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-clipboard-plus me-2"></i><%= title %></h4>
+  <a href="/boxes/<%= box.id %>" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> العودة</a>
+</div>
+
+<div class="alert alert-info py-2">
+  <strong>السنترال:</strong> <%= box.exchange_name %> |
+  <strong>الكابينة:</strong> <%= box.cabinet_number %> |
+  <strong>البوكس:</strong> <%= box.number %>
+</div>
+
+<% if (errors.length) { %><div class="alert alert-danger"><% errors.forEach(e => { %><div><i class="bi bi-x-circle me-1"></i><%= e %></div><% }) %></div><% } %>
+
+<form method="post" action="/inspector/create/<%= box.id %>">
+<%
+/* Ensure wire_path is present even before server restart picks up the route change */
+var _cl = checklist.some(function(c){return c.key==='wire_path';}) ? checklist :
+  checklist.reduce(function(acc,item){
+    acc.push(item);
+    if(item.key==='branch_path') acc.push({key:'wire_path',label:'مسار السلك',type:'good_bad'});
+    return acc;
+  },[]);
+%>
+  <!-- Type A: Good / Bad -->
+  <div class="card mb-3">
+    <div class="card-header fw-semibold"><i class="bi bi-toggle-on me-2 text-primary"></i>أ) جيد / سيء</div>
+    <div class="card-body">
+      <% _cl.filter(c => c.type === 'good_bad').forEach(item => { %>
+      <div class="checklist-item mb-3" id="item-<%= item.key %>">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <span class="fw-semibold"><%= item.label %></span>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input checklist-radio" type="radio" name="item_<%= item.key %>" value="good" id="<%= item.key %>_good" checked required>
+              <label class="form-check-label text-success fw-semibold" for="<%= item.key %>_good"><i class="bi bi-check-circle"></i> جيد</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input checklist-radio" type="radio" name="item_<%= item.key %>" value="bad" id="<%= item.key %>_bad">
+              <label class="form-check-label text-danger fw-semibold" for="<%= item.key %>_bad"><i class="bi bi-x-circle"></i> سيء</label>
+            </div>
+          </div>
+        </div>
+        <div class="input-group input-group-sm mt-2">
+          <input type="text" name="notes_<%= item.key %>" id="notes_<%= item.key %>" class="form-control" placeholder="ملاحظات (اختياري)">
+          <button type="button" class="btn btn-outline-secondary mic-btn" data-target="notes_<%= item.key %>" title="تحدث لإدخال الملاحظة"><i class="bi bi-mic-fill"></i></button>
+        </div>
+      </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <!-- Type B: Yes / No -->
+  <div class="card mb-3">
+    <div class="card-header fw-semibold"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>ب) يوجد / لا يوجد</div>
+    <div class="card-body">
+      <% _cl.filter(c => c.type === 'yes_no').forEach(item => { %>
+      <% var needsExtra = (item.key === 'overlap' || item.key === 'air_conflict'); %>
+      <div class="checklist-item mb-3" id="item-<%= item.key %>">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <span class="fw-semibold"><%= item.label %></span>
+          <div class="d-flex gap-3">
+            <div class="form-check">
+              <input class="form-check-input checklist-radio" type="radio" name="item_<%= item.key %>" value="yes" id="<%= item.key %>_yes"
+                <% if (needsExtra) { %> onclick="showExtra('<%= item.key %>')"<% } %> required>
+              <label class="form-check-label text-danger fw-semibold" for="<%= item.key %>_yes"><i class="bi bi-check-circle"></i> يوجد</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input checklist-radio" type="radio" name="item_<%= item.key %>" value="no" id="<%= item.key %>_no"
+                <% if (needsExtra) { %> onclick="hideExtra('<%= item.key %>')"<% } %> checked>
+              <label class="form-check-label text-success fw-semibold" for="<%= item.key %>_no"><i class="bi bi-x-circle"></i> لا يوجد</label>
+            </div>
+          </div>
+        </div>
+        <% if (needsExtra) { %>
+        <div id="extra-fields-<%= item.key %>" class="mt-2 p-3 border border-warning rounded bg-warning-subtle" style="display:none">
+          <div class="fw-semibold small mb-2 text-warning-emphasis"><i class="bi bi-info-circle me-1"></i>تفاصيل إضافية — <%= item.label %></div>
+          <div class="mb-2">
+            <label class="form-label small fw-semibold mb-1">نوع الكابل / البكس</label>
+            <div class="d-flex flex-column gap-1">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="extra_type_<%= item.key %>" id="<%= item.key %>_t1" value="كابل هوائي ٦ جوز">
+                <label class="form-check-label" for="<%= item.key %>_t1">كابل هوائي ٦ جوز</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="extra_type_<%= item.key %>" id="<%= item.key %>_t2" value="كابل هوائي ١٠ جوز">
+                <label class="form-check-label" for="<%= item.key %>_t2">كابل هوائي ١٠ جوز</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="extra_type_<%= item.key %>" id="<%= item.key %>_t3" value="بكس مناول ١٠ جوز">
+                <label class="form-check-label" for="<%= item.key %>_t3">بكس مناول ١٠ جوز</label>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="form-label small fw-semibold mb-1" for="extra_distance_<%= item.key %>">المسافة بالمتر</label>
+            <input type="number" name="extra_distance_<%= item.key %>" id="extra_distance_<%= item.key %>" class="form-control form-control-sm" min="0" step="0.1" placeholder="أدخل المسافة بالمتر">
+          </div>
+        </div>
+        <% } %>
+        <div class="input-group input-group-sm mt-2">
+          <input type="text" name="notes_<%= item.key %>" id="notes_<%= item.key %>" class="form-control" placeholder="ملاحظات (اختياري)">
+          <button type="button" class="btn btn-outline-secondary mic-btn" data-target="notes_<%= item.key %>" title="تحدث لإدخال الملاحظة"><i class="bi bi-mic-fill"></i></button>
+        </div>
+      </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <!-- General notes -->
+  <div class="card mb-3">
+    <div class="card-header fw-semibold"><i class="bi bi-chat-text me-2"></i>ج) ملاحظات عامة</div>
+    <div class="card-body">
+      <textarea name="general_notes" id="general_notes" class="form-control mb-2" rows="3" placeholder="أدخل أي ملاحظات إضافية..."></textarea>
+      <button type="button" class="btn btn-outline-secondary btn-sm mic-btn w-100" data-target="general_notes">
+        <i class="bi bi-mic-fill me-1"></i> تحدث لإضافة ملاحظة عامة
+      </button>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" id="submit-btn" class="btn btn-primary btn-lg"><i class="bi bi-save me-1"></i> حفظ الفحص</button>
+    <a href="/boxes/<%= box.id %>" class="btn btn-outline-secondary btn-lg">إلغاء</a>
+  </div>
+</form>
+
+<script>
+function showExtra(key) {
+  var el = document.getElementById('extra-fields-' + key);
+  if (el) el.style.display = '';
+}
+function hideExtra(key) {
+  var el = document.getElementById('extra-fields-' + key);
+  if (!el) return;
+  el.style.display = 'none';
+  el.querySelectorAll('input[type="radio"]').forEach(function(r){ r.checked = false; });
+  el.querySelectorAll('input[type="number"]').forEach(function(r){ r.value = ''; });
+}
+</script>
+
+<script>
+document.querySelector('form').addEventListener('submit', function() {
+  var btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> جارٍ الحفظ…';
+});
+</script>
+<script>
+(function(){
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
+
+  var activeBtn = null;
+  var activeRec = null;
+
+  /* ── helpers ─────────────────────────────────────────── */
+  function iconFor(b) {
+    return 'bi bi-mic-fill' + (b.dataset.target === 'general_notes' ? ' me-1' : '');
+  }
+  function stopFor(b) {
+    return 'bi bi-stop-fill' + (b.dataset.target === 'general_notes' ? ' me-1' : '');
+  }
+
+  function setInterim(target, text) {
+    var id = '__mic_interim_' + target.id;
+    var el = document.getElementById(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = id;
+      el.className = 'text-primary small mt-1 fst-italic';
+      target.insertAdjacentElement('afterend', el);
+    }
+    el.textContent = text ? '🎤 ' + text : '';
+  }
+
+  function stopBtn(b) {
+    b.classList.remove('btn-danger');
+    b.classList.add('btn-outline-secondary');
+    b.querySelector('i').className = iconFor(b);
+    var t = document.getElementById(b.dataset.target);
+    if (t) setInterim(t, '');
+    if (activeBtn === b) { activeBtn = null; activeRec = null; }
+  }
+
+  function startRec(btn) {
+    var targetId = btn.dataset.target;
+    var target   = document.getElementById(targetId);
+    if (!target) return;
+
+    var rec = new SpeechRecognition();
+    rec.lang             = 'ar-EG';   // Egyptian Arabic — best accuracy for Egyptian speakers
+    rec.continuous       = false;
+    rec.interimResults   = true;      // real-time preview while speaking
+    rec.maxAlternatives  = 5;         // ask for alternatives to pick highest confidence
+
+    rec.onresult = function(e) {
+      var interim = '';
+      var committed = '';
+      for (var i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          // pick the alternative with the highest confidence score
+          var best = e.results[i][0];
+          for (var j = 1; j < e.results[i].length; j++) {
+            if (e.results[i][j].confidence > best.confidence) best = e.results[i][j];
+          }
+          // ignore near-zero confidence (background noise artefacts)
+          if (best.confidence > 0.15 || best.transcript.trim().length > 0) {
+            committed += best.transcript;
+          }
+        } else {
+          interim += e.results[i][0].transcript;
+        }
+      }
+      setInterim(target, interim);
+      if (committed.trim()) {
+        setInterim(target, '');
+        target.value += (target.value ? ' ' : '') + committed.trim();
+      }
+    };
+
+    rec.onerror = function(ev) {
+      setInterim(target, '');
+      if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
+        alert('يرجى السماح بالوصول للميكروفون من إعدادات المتصفح.');
+      } else if (ev.error === 'network') {
+        alert('خطأ في الشبكة — يرجى التحقق من الاتصال بالإنترنت.');
+      }
+      // no-speech / aborted: silent stop
+      stopBtn(btn);
+    };
+    rec.onend = function() { stopBtn(btn); };
+
+    // visual: red + stop icon while recording
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-danger');
+    btn.querySelector('i').className = stopFor(btn);
+
+    activeBtn = btn;
+    activeRec = rec;
+    try { rec.start(); } catch(e) { stopBtn(btn); }
+  }
+
+  /* ── click handler ───────────────────────────────────── */
+  document.querySelectorAll('.mic-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var isSelf = (activeBtn === btn);
+
+      // always stop whatever is running
+      if (activeRec) { try { activeRec.stop(); } catch(e){} activeRec = null; }
+      if (activeBtn) { stopBtn(activeBtn); }
+
+      // toggle: clicking the active button just stops it
+      if (isSelf) return;
+
+      // start recording for the clicked button
+      startRec(btn);
+    });
+  });
+})();
+</script>
+<%- include('../partials/footer') %>

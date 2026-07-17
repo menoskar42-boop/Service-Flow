@@ -1,0 +1,12 @@
+<%
+const statusMap = {
+  pending_inspection: { label: 'بانتظار الفحص',  cls: 'bg-secondary' },
+  inspected:          { label: 'تم الفحص',        cls: 'bg-info text-dark' },
+  needs_maintenance:  { label: 'يحتاج صيانة',    cls: 'bg-warning text-dark' },
+  in_progress:        { label: 'قيد الصيانة',     cls: 'bg-orange text-white' },
+  pending_approval:   { label: 'في انتظار التأكيد', cls: 'bg-primary' },
+  completed:          { label: 'مكتمل',           cls: 'bg-success' },
+};
+const s = statusMap[status] || { label: status, cls: 'bg-secondary' };
+%>
+<span class="badge <%= s.cls %>"><%= s.label %></span>

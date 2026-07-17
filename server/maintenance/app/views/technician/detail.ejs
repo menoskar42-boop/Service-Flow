@@ -1,0 +1,389 @@
+<%- include('../partials/header') %>
+<%
+const CHECKLIST_LABELS = {
+  connector_fix:        'تثبيت الخوصة',
+  box_fix:              'تثبيت البوكس',
+  box_cover:            'غطاء البوكس',
+  box_numbering:        'ترقيم البوكس',
+  box_height:           'ارتفاع البوكس',
+  branch_path:          'الفرعات على الترمنال',
+  wire_path:            'مسار السلك',
+  electricity_conflict: 'تعارض كهرباء',
+  air_conflict:         'تعارض هواء',
+  overlap:              'تخاطي',
+};
+const _itemStatusMap = (typeof itemStatusMap !== 'undefined') ? itemStatusMap : {};
+const _beforeVideos = (typeof beforeVideos !== 'undefined') ? beforeVideos : [];
+const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
+%>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-tools me-2"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <a href="/boxes/<%= task.box_id %>/photos/download" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-zip"></i> تحميل الصور
+    </a>
+    <a href="/technician" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> العودة</a>
+  </div>
+</div>
+
+<!-- Info bar -->
+<div class="alert alert-secondary py-2 mb-3">
+  <strong>السنترال:</strong> <%= task.exchange_name %> |
+  <strong>الكابينة:</strong> <%= task.cabinet_number %> |
+  <strong>البوكس:</strong> <%= task.box_number %> |
+  <strong>المراقب:</strong> <%= task.inspector_name %> |
+  <strong>تاريخ الفحص:</strong> <%= task.inspection_date ? new Date(task.inspection_date).toISOString().split('T')[0] : '—' %>
+</div>
+
+<div class="row g-3">
+  <!-- Left: task status + actions + media upload -->
+  <div class="col-md-5">
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">حالة المهمة</div>
+      <div class="card-body">
+        <table class="table table-sm mb-3">
+          <tr><th>الحالة</th><td>
+            <% if (task.status === 'pending') { %><span class="badge bg-secondary">بانتظار البدء</span>
+            <% } else if (task.status === 'in_progress') { %><span class="badge bg-warning text-dark">قيد التنفيذ</span>
+            <% } else if (task.status === 'pending_approval') { %><span class="badge bg-primary">في انتظار تأكيد المراقب</span>
+            <% } else { %><span class="badge bg-success">مكتملة</span><% } %>
+          </td></tr>
+          <% if (task.tech_name) { %><tr><th>الفني</th><td><%= task.tech_name %></td></tr><% } %>
+          <% if (task.started_at) { %><tr><th>بدأ في</th><td><%= new Date(task.started_at).toISOString().split('T')[0] %></td></tr><% } %>
+          <% if (task.completed_at) { %><tr><th>اكتمل في</th><td><%= new Date(task.completed_at).toISOString().split('T')[0] %></td></tr><% } %>
+        </table>
+
+        <% const _navLat = task.insp_latitude || task.box_latitude; const _navLng = task.insp_longitude || task.box_longitude; %>
+        <% if (_navLat && _navLng) { %>
+        <a href="https://maps.google.com/?q=<%= _navLat %>,<%= _navLng %>" target="_blank" class="btn btn-danger w-100 mb-2">
+          <i class="bi bi-map me-1"></i> الذهاب إلى موقع البوكس
+        </a>
+        <% } %>
+
+        <% if (task.rejection_reason && task.status === 'in_progress') { %>
+        <div class="alert alert-danger small mb-2 py-2">
+          <strong><i class="bi bi-x-circle me-1"></i>تم رفض الإكمال السابق:</strong><br><%= task.rejection_reason %>
+        </div>
+        <% } %>
+        <% if (task.status === 'pending') { %>
+        <form method="post" action="/technician/<%= task.id %>/start">
+          <button class="btn btn-warning w-100"><i class="bi bi-play-circle me-1"></i> بدء العمل</button>
+        </form>
+        <% } else if (task.status === 'in_progress') { %>
+        <%
+          const _badItems = inspItems.filter(i => i.value === 'bad' || i.value === 'yes');
+          const _undone   = _badItems.filter(i => !(_itemStatusMap[i.item_key] && _itemStatusMap[i.item_key].is_done));
+          const _canComplete = _undone.length === 0;
+        %>
+        <form method="post" action="/technician/<%= task.id %>/complete">
+          <% if (_canComplete) { %>
+          <button type="submit" class="btn btn-success w-100">
+            <i class="bi bi-check-circle me-1"></i> إكمال المهمة
+          </button>
+          <% } else { %>
+          <button type="button" class="btn btn-secondary w-100" disabled>
+            <i class="bi bi-lock me-1"></i> إكمال المهمة
+          </button>
+          <div class="alert alert-warning py-1 px-2 mt-2 mb-0 small text-center">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            يجب الضغط على "تم الإصلاح" لـ <strong><%= _undone.length %></strong> ملاحظة أولاً
+          </div>
+          <% } %>
+        </form>
+        <% } else if (task.status === 'pending_approval') { %>
+        <div class="alert alert-primary py-2 mb-0 small text-center">
+          <i class="bi bi-hourglass-split me-1"></i>
+          تم إرسال المهمة للمراقب للتأكيد — بانتظار الرد.
+        </div>
+        <% } else if (task.status === 'completed' && user && user.role === 'admin') { %>
+        <div class="alert alert-success py-2 mb-2 small text-center">
+          <i class="bi bi-check-circle-fill me-1"></i> مكتملة
+        </div>
+        <form method="post" action="/inspector/tasks/<%= task.id %>/revert"
+              onsubmit="return confirm('هل أنت متأكد من إرجاع هذه المهمة للفني؟');">
+          <textarea name="reason" class="form-control form-control-sm mb-2" rows="2" placeholder="سبب الإرجاع (اختياري)"></textarea>
+          <button class="btn btn-warning w-100"><i class="bi bi-arrow-counterclockwise me-1"></i> إرجاع للفني</button>
+        </form>
+        <% } %>
+      </div>
+    </div>
+
+    <!-- Technician notes -->
+    <% if (task.status !== 'completed' && task.status !== 'pending_approval') { %>
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">ملاحظات الفني</div>
+      <div class="card-body">
+        <form method="post" action="/technician/<%= task.id %>/notes">
+          <textarea name="notes" id="tech-notes" class="form-control mb-2" rows="3" placeholder="أضف ملاحظاتك هنا..."><%= task.notes || '' %></textarea>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-secondary btn-sm flex-fill"><i class="bi bi-save me-1"></i> حفظ الملاحظات</button>
+            <button type="button" id="notes-mic-btn" class="btn btn-outline-secondary btn-sm" title="تحدث لإدخال الملاحظة"><i class="bi bi-mic-fill"></i></button>
+          </div>
+        </form>
+        <div id="notes-mic-interim" class="text-primary small mt-1 fst-italic"></div>
+      </div>
+    </div>
+    <script>
+    (function(){
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) return;
+      var btn = document.getElementById('notes-mic-btn');
+      var ta  = document.getElementById('tech-notes');
+      var interim = document.getElementById('notes-mic-interim');
+      var rec = null, recording = false;
+      btn.addEventListener('click', function(){
+        if (recording) { try { rec.stop(); } catch(e) {} return; }
+        rec = new SR();
+        rec.lang = 'ar-EG'; rec.continuous = false; rec.interimResults = true; rec.maxAlternatives = 5;
+        rec.onresult = function(e) {
+          var interimText = '';
+          for (var i = e.resultIndex; i < e.results.length; i++) {
+            if (e.results[i].isFinal) {
+              var best = e.results[i][0];
+              for (var j=1;j<e.results[i].length;j++) { if(e.results[i][j].confidence>best.confidence) best=e.results[i][j]; }
+              if (best.confidence>0.15||best.transcript.trim().length>0) ta.value+=(ta.value?' ':'')+best.transcript.trim();
+              interim.textContent='';
+            } else { interimText+=e.results[i][0].transcript; }
+          }
+          if (interimText) interim.textContent='🎙️ '+interimText;
+        };
+        rec.onerror=function(ev){ interim.textContent=''; if(ev.error==='not-allowed') alert('يرجى السماح بالوصول للميكروفون.'); };
+        rec.onstart=function(){ recording=true; btn.classList.replace('btn-outline-secondary','btn-danger'); btn.querySelector('i').className='bi bi-stop-fill'; };
+        rec.onend=function(){ recording=false; interim.textContent=''; btn.classList.replace('btn-danger','btn-outline-secondary'); btn.querySelector('i').className='bi bi-mic-fill'; };
+        try { rec.start(); } catch(e) {}
+      });
+    })();
+    </script>
+    <% } else if (task.notes) { %>
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">ملاحظات الفني</div>
+      <div class="card-body"><p class="mb-0"><%= task.notes %></p></div>
+    </div>
+    <% } %>
+
+    <!-- Upload after photos + videos (in_progress only) -->
+    <% if (task.status === 'in_progress') { %>
+    <div class="card">
+      <div class="card-header fw-semibold">رفع صور وفيديو بعد الصيانة</div>
+      <div class="card-body">
+        <div class="d-flex gap-2 mb-2 flex-wrap">
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-fill"
+            onclick="document.getElementById('after-gallery-input').click()">
+            <i class="bi bi-image"></i> صورة من الجاليري
+          </button>
+          <button type="button" class="btn btn-outline-primary btn-sm flex-fill"
+            onclick="document.getElementById('after-camera-input').click()">
+            <i class="bi bi-camera"></i> صورة بالكاميرا
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm flex-fill"
+            onclick="document.getElementById('after-vid-gallery').click()">
+            <i class="bi bi-film"></i> فيديو من الجاليري
+          </button>
+          <button type="button" class="btn btn-outline-primary btn-sm flex-fill"
+            onclick="document.getElementById('after-vid-camera').click()">
+            <i class="bi bi-camera-video-fill"></i> تسجيل فيديو
+          </button>
+        </div>
+        <input type="file" id="after-gallery-input" accept="image/*" multiple style="display:none">
+        <input type="file" id="after-camera-input" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="after-vid-gallery" accept="video/*" style="display:none">
+        <input type="file" id="after-vid-camera" accept="video/*" capture="environment" style="display:none">
+        <div id="upload-queue" class="mt-1"></div>
+        <div class="small text-muted mt-1"><i class="bi bi-info-circle"></i> ضغط الفيديو قد يستغرق دقيقة</div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- Right: checklist + media display -->
+  <div class="col-md-7">
+    <!-- Inspection checklist -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">نتائج الفحص</div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead><tr><th>البند</th><th>الحالة</th><th>ملاحظات</th><th>تفاصيل إضافية</th><th></th></tr></thead>
+          <tbody>
+          <% inspItems.forEach(item => {
+            const isBad = item.value === 'bad' || item.value === 'yes';
+            const itemSt = _itemStatusMap[item.item_key] || null;
+            const isDone = itemSt && itemSt.is_done;
+          %>
+          <tr class="<%= isDone ? 'table-success' : (isBad ? 'table-danger' : '') %>">
+            <td>
+              <%= CHECKLIST_LABELS[item.item_key] || item.item_key %>
+              <% if (isDone) { %><br><small class="text-success"><i class="bi bi-check-circle-fill"></i> تم الإصلاح — <%= itemSt.done_at ? new Date(itemSt.done_at).toISOString().split('T')[0] : '' %></small><% } %>
+            </td>
+            <td>
+              <% if (item.value === 'good') { %><span class="badge bg-success">جيد</span>
+              <% } else if (item.value === 'bad') { %><span class="badge bg-danger">سيئ</span>
+              <% } else if (item.value === 'yes') { %><span class="badge bg-danger">يوجد</span>
+              <% } else { %><span class="badge bg-success">لا يوجد</span><% } %>
+            </td>
+            <td class="text-muted small"><%= item.notes || '—' %></td>
+            <td class="small">
+              <% if (item.extra_type) { %>
+                <span class="badge bg-info text-dark"><%= item.extra_type %></span>
+                <% if (item.extra_distance) { %><br><span class="text-muted"><%= item.extra_distance %> م</span><% } %>
+              <% } else { %>—<% } %>
+            </td>
+            <td>
+              <% if (isBad && task.status === 'in_progress') { %>
+              <form method="post" action="/technician/<%= task.id %>/items/<%= item.item_key %>/toggle" style="margin:0">
+                <button type="submit" class="btn btn-sm <%= isDone ? 'btn-outline-secondary' : 'btn-success' %>" style="white-space:nowrap">
+                  <% if (isDone) { %><i class="bi bi-arrow-counterclockwise"></i> تراجع
+                  <% } else { %><i class="bi bi-check-lg"></i> تم الإصلاح<% } %>
+                </button>
+              </form>
+              <% } else if (isDone) { %>
+              <span class="badge bg-success"><i class="bi bi-check-circle"></i> مكتمل</span>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <% if (task.inspection_notes) { %>
+    <div class="alert alert-light border mb-3"><strong>ملاحظات المراقب:</strong> <%= task.inspection_notes %></div>
+    <% } %>
+
+    <!-- Before photos + videos -->
+    <div class="card mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>صور قبل الصيانة (<%= beforePhotos.length %>)<% if (_beforeVideos.length) { %> <span class="badge bg-primary ms-1"><i class="bi bi-camera-video"></i> <%= _beforeVideos.length %></span><% } %></span>
+        <% if (task.status === 'in_progress') { %>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="صورة" onclick="document.getElementById('before-gallery-input').click()"><i class="bi bi-image"></i></button>
+          <button type="button" class="btn btn-outline-primary btn-sm" title="كاميرا" onclick="document.getElementById('before-camera-input').click()"><i class="bi bi-camera"></i></button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="فيديو" onclick="document.getElementById('before-vid-input').click()"><i class="bi bi-film"></i></button>
+          <button type="button" class="btn btn-outline-primary btn-sm" title="تسجيل فيديو" onclick="document.getElementById('before-vid-cam-input').click()"><i class="bi bi-camera-video-fill"></i></button>
+        </div>
+        <input type="file" id="before-gallery-input" accept="image/*" multiple style="display:none">
+        <input type="file" id="before-camera-input" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="before-vid-input" accept="video/*" style="display:none">
+        <input type="file" id="before-vid-cam-input" accept="video/*" capture="environment" style="display:none">
+        <% } %>
+      </div>
+      <div class="card-body">
+        <div id="before-upload-queue" class="mb-1"></div>
+        <% if (beforePhotos.length) { %>
+        <div class="photo-grid">
+          <% beforePhotos.forEach(p => { %><a href="/uploads/<%= p.filename %>" target="_blank"><img src="/uploads/<%= p.filename %>" class="photo-thumb" alt="صورة"></a><% }) %>
+        </div>
+        <% } %>
+        <% if (_beforeVideos.length) { %>
+        <% if (beforePhotos.length) { %><hr class="my-2"><% } %>
+        <div class="small fw-semibold text-primary mb-2"><i class="bi bi-camera-video me-1"></i>فيديوهات</div>
+        <% _beforeVideos.forEach(v => { %>
+        <div class="mb-2"><video controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:4px"><source src="/uploads/<%= v.filename %>" type="video/mp4"></video></div>
+        <% }) %>
+        <% } %>
+        <% if (!beforePhotos.length && !_beforeVideos.length) { %><p class="text-muted mb-0">لا توجد صور أو فيديوهات.</p><% } %>
+      </div>
+    </div>
+
+    <!-- After photos + videos -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>صور بعد الصيانة (<%= afterPhotos.length %>)<% if (_afterVideos.length) { %> <span class="badge bg-primary ms-1"><i class="bi bi-camera-video"></i> <%= _afterVideos.length %></span><% } %></span>
+        <% if (task.status === 'in_progress') { %>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="صورة" onclick="document.getElementById('after-gallery-input2').click()"><i class="bi bi-image"></i></button>
+          <button type="button" class="btn btn-outline-primary btn-sm" title="كاميرا" onclick="document.getElementById('after-camera-input2').click()"><i class="bi bi-camera"></i></button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" title="فيديو" onclick="document.getElementById('after-vid-input2').click()"><i class="bi bi-film"></i></button>
+          <button type="button" class="btn btn-outline-primary btn-sm" title="تسجيل فيديو" onclick="document.getElementById('after-vid-cam-input2').click()"><i class="bi bi-camera-video-fill"></i></button>
+        </div>
+        <input type="file" id="after-gallery-input2" accept="image/*" multiple style="display:none">
+        <input type="file" id="after-camera-input2" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="after-vid-input2" accept="video/*" style="display:none">
+        <input type="file" id="after-vid-cam-input2" accept="video/*" capture="environment" style="display:none">
+        <% } %>
+      </div>
+      <div class="card-body">
+        <div id="after-upload-queue2" class="mb-1"></div>
+        <% if (afterPhotos.length) { %>
+        <div class="photo-grid">
+          <% afterPhotos.forEach(p => { %><a href="/uploads/<%= p.filename %>" target="_blank"><img src="/uploads/<%= p.filename %>" class="photo-thumb" alt="صورة"></a><% }) %>
+        </div>
+        <% } %>
+        <% if (_afterVideos.length) { %>
+        <% if (afterPhotos.length) { %><hr class="my-2"><% } %>
+        <div class="small fw-semibold text-primary mb-2"><i class="bi bi-camera-video me-1"></i>فيديوهات</div>
+        <% _afterVideos.forEach(v => { %>
+        <div class="mb-2"><video controls preload="metadata" style="max-width:100%;max-height:250px;border-radius:4px"><source src="/uploads/<%= v.filename %>" type="video/mp4"></video></div>
+        <% }) %>
+        <% } %>
+        <% if (!afterPhotos.length && !_afterVideos.length) { %><p class="text-muted mb-0">لا توجد صور أو فيديوهات بعد الصيانة.</p><% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% if (task.status === 'in_progress') { %>
+<script>
+(function(){
+  function makeUploader(queueId, url, isVideo) {
+    var pending = 0;
+    return function uploadFile(file) {
+      pending++;
+      var queue = document.getElementById(queueId);
+      var item = document.createElement('div');
+      item.className = 'd-flex align-items-center gap-2 py-1 border-bottom small';
+      var msg = isVideo ? 'جارٍ الرفع والضغط...' : 'جارٍ الرفع...';
+      item.innerHTML = '<div class="spinner-border spinner-border-sm text-primary flex-shrink-0"></div>'
+        + '<span class="flex-fill text-truncate">' + (file.name || (isVideo ? 'فيديو' : 'صورة')) + '</span>'
+        + '<span class="badge bg-secondary">' + msg + '</span>';
+      queue.appendChild(item);
+      var fd = new FormData(); fd.append(isVideo ? 'video' : 'photo', file);
+      fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' }, body: fd })
+        .then(function(r){ return r.json().catch(function(){ return { ok: r.ok }; }); })
+        .then(function(data){
+          pending--;
+          var sp = item.querySelector('.spinner-border'), bg = item.querySelector('.badge');
+          if (data.ok) {
+            if (sp) sp.outerHTML = '<i class="bi bi-check-circle-fill text-success flex-shrink-0"></i>';
+            bg.className = 'badge bg-success'; bg.textContent = 'تم ✓';
+            if (pending === 0) setTimeout(function(){ location.reload(); }, 900);
+          } else {
+            if (sp) sp.outerHTML = '<i class="bi bi-x-circle-fill text-danger flex-shrink-0"></i>';
+            bg.className = 'badge bg-danger'; bg.textContent = 'فشل: ' + (data.msg || 'خطأ');
+          }
+        })
+        .catch(function(){
+          pending--;
+          var sp = item.querySelector('.spinner-border'), bg = item.querySelector('.badge');
+          if (sp) sp.outerHTML = '<i class="bi bi-x-circle-fill text-danger flex-shrink-0"></i>';
+          if (bg) { bg.className = 'badge bg-danger'; bg.textContent = 'فشل الاتصال'; }
+        });
+    };
+  }
+
+  // After photos/videos (main upload area)
+  var upAfterPh = makeUploader('upload-queue', '/technician/<%= task.id %>/photos',       false);
+  var upAfterVd = makeUploader('upload-queue', '/technician/<%= task.id %>/after-videos', true);
+  document.getElementById('after-gallery-input').addEventListener('change', function(){ Array.from(this.files).forEach(upAfterPh); this.value=''; });
+  document.getElementById('after-camera-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterPh(this.files[0]); this.value=''; });
+  document.getElementById('after-vid-gallery').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd(this.files[0]); this.value=''; });
+  document.getElementById('after-vid-camera').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd(this.files[0]); this.value=''; });
+
+  // Before photos/videos (in card header)
+  var upBeforePh = makeUploader('before-upload-queue', '/technician/<%= task.id %>/before-photos', false);
+  var upBeforeVd = makeUploader('before-upload-queue', '/technician/<%= task.id %>/before-videos', true);
+  document.getElementById('before-gallery-input').addEventListener('change', function(){ Array.from(this.files).forEach(upBeforePh); this.value=''; });
+  document.getElementById('before-camera-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforePh(this.files[0]); this.value=''; });
+  document.getElementById('before-vid-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforeVd(this.files[0]); this.value=''; });
+  document.getElementById('before-vid-cam-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforeVd(this.files[0]); this.value=''; });
+
+  // After photos/videos (in card header — second set)
+  var upAfterPh2 = makeUploader('after-upload-queue2', '/technician/<%= task.id %>/photos',       false);
+  var upAfterVd2 = makeUploader('after-upload-queue2', '/technician/<%= task.id %>/after-videos', true);
+  document.getElementById('after-gallery-input2').addEventListener('change', function(){ Array.from(this.files).forEach(upAfterPh2); this.value=''; });
+  document.getElementById('after-camera-input2').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterPh2(this.files[0]); this.value=''; });
+  document.getElementById('after-vid-input2').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd2(this.files[0]); this.value=''; });
+  document.getElementById('after-vid-cam-input2').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd2(this.files[0]); this.value=''; });
+})();
+</script>
+<% } %>
+<%- include('../partials/footer') %>

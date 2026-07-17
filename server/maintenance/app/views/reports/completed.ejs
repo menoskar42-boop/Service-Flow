@@ -1,0 +1,153 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-check-circle me-2 text-success"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/completed/export?<%= new URLSearchParams(query).toString() %>" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Tab navigation -->
+<%
+  const _filterQs = new URLSearchParams({ exchange_id: query.exchange_id || '', cabinet_id: query.cabinet_id || '', box_q: query.box_q || '', from: query.from || '', to: query.to || '' }).toString();
+%>
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link <%= (query.tab !== 'pending') ? 'active' : '' %>"
+       href="/reports/completed?tab=final&<%= _filterQs %>">
+      <i class="bi bi-check-circle me-1"></i> مكتمل بشكل نهائي
+      <span class="badge bg-success ms-1"><%= countFinal %></span>
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link <%= (query.tab === 'pending') ? 'active' : '' %>"
+       href="/reports/completed?tab=pending&<%= _filterQs %>">
+      <i class="bi bi-hourglass-split me-1"></i> في انتظار التأكيد
+      <span class="badge bg-primary ms-1"><%= countPending %></span>
+    </a>
+  </li>
+</ul>
+
+<!-- Filter form -->
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <% if (query.tab) { %><input type="hidden" name="tab" value="<%= query.tab %>"><% } %>
+  <div class="col-md-3">
+    <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %>
+      <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="cabinet_id" class="form-select form-select-sm">
+      <option value="">كل الكباين</option>
+      <% (cabinets||[]).forEach(c => { %>
+      <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input type="text" name="box_q" class="form-control form-control-sm" placeholder="رقم البوكس" value="<%= query.box_q||'' %>">
+  </div>
+  <div class="col-md-2">
+    <input type="date" name="from" class="form-control form-control-sm" value="<%= query.from %>">
+  </div>
+  <div class="col-md-2">
+    <input type="date" name="to" class="form-control form-control-sm" value="<%= query.to %>">
+  </div>
+  <div class="col-md-auto">
+    <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+    <a href="/reports/completed" class="btn btn-outline-secondary btn-sm">إعادة</a>
+  </div>
+</form>
+
+<%
+  // Sum SF orders only for the boxes shown in this completed-works report
+  let sfMatchedTotal = 0;
+  if (typeof sfMap !== 'undefined' && sfMap instanceof Map) {
+    rows.forEach(r => {
+      const _e = String(r.exchange_name || '').split(/\s*-\s*/)[0].trim();
+      const _c = String(r.cabinet_number || '').trim().replace(/\s*-\s*/g, '-');
+      const _k = (_e + '__' + _c + '__' + r.box_number).toLowerCase();
+      sfMatchedTotal += (sfMap.get(_k) || 0);
+    });
+  }
+%>
+
+<!-- Summary stats -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-success">
+      <i class="bi bi-check-circle text-success fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-success"><%= rows.length %></div>
+      <div class="small text-muted"><%= (query.from || query.to) ? 'مكتملة خلال الفترة' : 'إجمالي المكتملة' %></div>
+    </div>
+  </div>
+  <% if (sfMatchedTotal > 0) { %>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3 border-info">
+      <i class="bi bi-link-45deg text-info fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold text-info"><%= sfMatchedTotal %></div>
+      <div class="small text-muted">إجمالي شغل SF للبوكسات المكتملة</div>
+    </div>
+  </div>
+  <% } %>
+  <% if (query.from || query.to) { %>
+  <div class="col-6 col-md-3">
+    <div class="card text-center py-3">
+      <i class="bi bi-check2-all text-secondary fs-3 mb-1"></i>
+      <div class="fs-2 fw-bold"><%= totalAll %></div>
+      <div class="small text-muted">إجمالي الكل</div>
+    </div>
+  </div>
+  <% } %>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead><tr>
+          <th>#</th>
+          <th>السنترال</th>
+          <th>الكابينة</th>
+          <th>البوكس</th>
+          <th>المراقب</th>
+          <th>الفني</th>
+          <th>اكتمل في</th>
+          <th class="text-center text-info" title="عدد طلبات service-flow لهذا البوكس">شغل SF <i class="bi bi-link-45deg"></i></th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+          <% rows.forEach(r => {
+            const _sfExch = String(r.exchange_name || '').split(/\s*-\s*/)[0].trim();
+            const _sfCab  = String(r.cabinet_number || '').trim().replace(/\s*-\s*/g, '-');
+            const sfKey   = (_sfExch + '__' + _sfCab + '__' + r.box_number).toLowerCase();
+            const sfCount = (typeof sfMap !== 'undefined' && sfMap instanceof Map) ? (sfMap.get(sfKey) || 0) : 0;
+          %>
+          <tr>
+            <td><%= r.id %></td>
+            <td><%= r.exchange_name %></td>
+            <td><%= r.cabinet_number %></td>
+            <td><strong><%= r.box_number %></strong></td>
+            <td><%= r.inspector_name %></td>
+            <td><%= r.tech_name || '—' %></td>
+            <td><%= r.completed_at ? new Date(r.completed_at).toISOString().split('T')[0] : '—' %></td>
+            <td class="text-center">
+              <% if (sfCount > 0) { %>
+              <span class="badge bg-info text-dark fw-bold"><%= sfCount %></span>
+              <% } else { %>
+              <span class="text-muted small">—</span>
+              <% } %>
+            </td>
+            <td><a href="/technician/<%= r.id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          <% }) %>
+          <% if (!rows.length) { %><tr><td colspan="9" class="text-center text-muted py-4">لا توجد مهام مكتملة.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

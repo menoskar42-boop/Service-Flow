@@ -1,0 +1,161 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <h4 class="mb-0"><i class="bi bi-patch-check me-2 text-success"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/completed-work/export?<%= new URLSearchParams(query).toString() %>" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> تصدير Excel</a>
+    <button onclick="window.print()" class="btn btn-outline-danger btn-sm"><i class="bi bi-printer"></i> طباعة</button>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="card card-body mb-3 py-2">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small mb-1">السنترال</label>
+      <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">كل السنترالات</option>
+        <% exchanges.forEach(e => { %>
+        <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">الكابينة</label>
+      <select name="cabinet_id" class="form-select form-select-sm">
+        <option value="">كل الكباين</option>
+        <% (cabinets||[]).forEach(c => { %>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">رقم البوكس</label>
+      <input type="text" name="box_q" class="form-control form-control-sm" placeholder="رقم البوكس" value="<%= query.box_q||'' %>">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">من تاريخ</label>
+      <input type="date" name="from" class="form-control form-control-sm" value="<%= query.from||'' %>">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">إلى تاريخ</label>
+      <input type="date" name="to" class="form-control form-control-sm" value="<%= query.to||'' %>">
+    </div>
+    <div class="col-md-auto">
+      <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+      <a href="/reports/completed-work" class="btn btn-outline-secondary btn-sm">إعادة</a>
+    </div>
+    <div class="col-md-3 text-muted small pt-2">
+      إجمالي النتائج: <strong><%= rows.length %></strong>
+    </div>
+  </div>
+</form>
+
+<% if (!rows.length) { %>
+<div class="alert alert-info"><i class="bi bi-info-circle me-1"></i>لا توجد فحوصات مطابقة بها أعمال منجزة.</div>
+<% } else { %>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered table-sm mb-0 comprehensive-table">
+        <thead class="text-center" style="">
+          <tr>
+            <th class="align-middle">السنترال</th>
+            <th class="align-middle">الكابينة</th>
+            <th class="align-middle">البوكس</th>
+            <th class="align-middle">التاريخ</th>
+            <th class="align-middle">المراقب</th>
+            <th class="align-middle">الإحداثيات</th>
+            <% CHECKLIST.forEach(ci => { %>
+            <th class="align-middle table-warning" title="<%= ci.label %>" style="min-width:52px;font-size:0.7rem"><%= ci.short %></th>
+            <% }) %>
+            <th class="align-middle border-start border-2 border-info">ملاحظات الفحص</th>
+            <th class="align-middle border-start border-2 border-success">الفني</th>
+            <th class="align-middle">الأعمال المنجزة</th>
+            <th class="align-middle">ملاحظات الصيانة</th>
+          </tr>
+        </thead>
+        <tbody>
+        <% rows.forEach(row => {
+          const iItems = inspItems[row.insp_id] || {};
+          const tItems = taskItems[row.insp_id] || {};
+          const doneItems = CHECKLIST.filter(ci => tItems[ci.key] && tItems[ci.key].is_done);
+          const hasBadItems = CHECKLIST.some(ci => {
+            const it = iItems[ci.key];
+            return it && (it.value === 'bad' || it.value === 'yes');
+          });
+        %>
+        <tr class="<%= hasBadItems ? 'table-warning' : '' %>">
+          <td class="fw-semibold small"><%= row.exchange_name %></td>
+          <td class="text-center"><%= row.cabinet_number %></td>
+          <td class="text-center fw-bold"><a href="/boxes/<%= row.box_id %>" target="_blank"><%= row.box_number %></a></td>
+          <td class="text-center small text-nowrap"><%= new Date(row.date).toISOString().split('T')[0] %></td>
+          <td class="small"><%= row.inspector_name %></td>
+          <td class="text-center">
+            <% if (row.box_lat && row.box_lng) { %>
+            <a href="https://maps.google.com/?q=<%= row.box_lat %>,<%= row.box_lng %>" target="_blank" class="btn btn-outline-danger btn-sm py-0 px-1">
+              <i class="bi bi-geo-alt-fill"></i>
+            </a>
+            <% } else { %>
+            <span class="text-muted small">—</span>
+            <% } %>
+          </td>
+          <% CHECKLIST.forEach(ci => {
+            const it = iItems[ci.key];
+            const isBad = it && (it.value === 'bad' || it.value === 'yes');
+            const isGood = it && (it.value === 'good' || it.value === 'no');
+            const done = tItems[ci.key] && tItems[ci.key].is_done;
+            let badgeClass = 'bg-secondary';
+            let icon = '—';
+            if (isGood)            { badgeClass = 'bg-success'; icon = '✓'; }
+            else if (isBad && done) { badgeClass = 'bg-info text-dark'; icon = '✓✓'; }
+            else if (isBad)        { badgeClass = 'bg-danger'; icon = '✗'; }
+            const noteTitle = (it && it.notes) ? it.notes : '';
+            const extraTitle = it && it.extra_type ? (' | ' + it.extra_type + (it.extra_distance ? ' ' + it.extra_distance + 'م' : '')) : '';
+          %>
+          <td class="text-center p-1" title="<%= ci.label %><%= noteTitle ? ': ' + noteTitle : '' %><%= extraTitle %>">
+            <% if (!it) { %><span class="text-muted" style="font-size:0.75rem">—</span>
+            <% } else { %>
+            <span class="badge <%= badgeClass %> py-1" style="font-size:0.65rem"><%= icon %></span>
+            <% if (it.notes) { %><div style="font-size:0.6rem;max-width:50px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis" class="text-muted" title="<%= it.notes %>"><%= it.notes %></div><% } %>
+            <% if (it.extra_type) { %><div class="badge bg-info text-dark mt-1" style="font-size:0.55rem;white-space:normal"><%= it.extra_type %><% if (it.extra_distance) { %> / <%= it.extra_distance %>م<% } %></div><% } %>
+            <% } %>
+          </td>
+          <% }) %>
+          <td class="small" style="max-width:160px"><%= row.general_notes || '—' %></td>
+          <td class="small text-nowrap border-start border-2 border-success"><%= row.tech_name || '—' %></td>
+          <td class="small" style="max-width:160px">
+            <% if (doneItems.length) { %>
+            <% doneItems.forEach(ci => { %><span class="badge bg-success me-1 mb-1" style="font-size:0.65rem"><%= ci.short %></span><% }) %>
+            <% } else { %>—<% } %>
+          </td>
+          <td class="small" style="max-width:160px"><%= row.task_notes || '—' %></td>
+        </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<style>
+@media print {
+  .btn, form, nav, .navbar { display: none !important; }
+  .comprehensive-table { font-size: 0.6rem !important; }
+  .table-responsive { overflow: visible !important; }
+}
+.comprehensive-table th, .comprehensive-table td { vertical-align: middle; }
+.comprehensive-table thead tr th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: #212529;
+  color: #fff;
+}
+.comprehensive-table thead tr th.table-warning {
+  background-color: #fff3cd !important;
+  color: #000 !important;
+}
+</style>
+<%- include('../partials/footer') %>

@@ -1,0 +1,146 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 no-print">
+  <h4 class="mb-0"><i class="bi bi-check2-circle me-2 text-info"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <% if (rows.length > 0) { %>
+    <a href="/reports/prelim-confirmation/export?<%= new URLSearchParams(query).toString() %>"
+       class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <button onclick="window.print()" class="btn btn-danger btn-sm">
+      <i class="bi bi-printer"></i> PDF / طباعة
+    </button>
+    <% } %>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+
+<!-- Print header (hidden on screen) -->
+<div class="print-only text-center mb-3">
+  <h5 class="fw-bold">الادارة العامة: أسيوط &nbsp;|&nbsp; ادارة تشغيل الشبكة و عمليات العملاء: سنترال الغنايم</h5>
+  <h4 class="fw-bold">تقرير التأكيد المبدئى — البوكسات المؤكَّدة مبدئياً</h4>
+  <% if (query.from || query.to) { %>
+  <p class="mb-0">من: <%= query.from || '—' %> إلى: <%= query.to || '—' %></p>
+  <% } %>
+</div>
+
+<!-- Filters -->
+<form method="get" class="row g-2 mb-3 align-items-end no-print">
+  <div class="col-md-3">
+    <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %>
+      <option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected' : '' %>><%= e.name %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="cabinet_id" class="form-select form-select-sm" onchange="this.form.submit()" <%= !query.exchange_id ? 'disabled' : '' %>>
+      <option value="">كل الكباين</option>
+      <% (cabinets||[]).forEach(c => { %>
+      <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>><%= c.number %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input type="text" name="box_q" class="form-control form-control-sm"
+           placeholder="رقم البوكس" value="<%= query.box_q || '' %>">
+  </div>
+  <div class="col-md-2">
+    <input type="date" name="from" class="form-control form-control-sm" value="<%= query.from || '' %>">
+  </div>
+  <div class="col-md-2">
+    <input type="date" name="to" class="form-control form-control-sm" value="<%= query.to || '' %>">
+  </div>
+  <div class="col-md-auto">
+    <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+    <a href="/reports/prelim-confirmation" class="btn btn-outline-secondary btn-sm">إعادة</a>
+  </div>
+  <div class="col-md-auto text-muted small pt-2">
+    إجمالي: <strong><%= rows.length %></strong> بوكس
+  </div>
+</form>
+
+<% if (!rows.length) { %>
+<div class="alert alert-info no-print"><i class="bi bi-info-circle me-1"></i>لا توجد بوكسات مؤكَّدة مبدئياً للمعايير المحددة.</div>
+<% } else { %>
+
+<div class="table-responsive prelim-scroll" style="border-radius:.5rem;box-shadow:0 1px 4px rgba(0,0,0,.08);max-height:calc(100vh - 200px);overflow:auto;">
+      <table class="table table-bordered table-sm table-hover mb-0 prelim-table" style="min-width:1500px;width:max-content">
+        <thead class="text-center">
+          <tr>
+            <th>#</th>
+            <th>الادارة العامة</th>
+            <th>ادارة تشغيل الشبكة و عمليات العملاء</th>
+            <th>رقم العامل</th>
+            <th>الاسم</th>
+            <th>العمل الفعلى القائم بة</th>
+            <th>تاريخ الاعمال</th>
+            <th>تاريخ التأكيد المبدئى</th>
+            <th>exchange code للسنترال الفرعي</th>
+            <th>نوع البوكس (نحاس- فيبر)</th>
+            <th>MSAN CODE \ GPON CODE</th>
+            <th>PASSIVE NO</th>
+            <th>BOX NO</th>
+            <th>رقم ارضي</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach((r, idx) => { %>
+          <tr>
+            <td class="text-center text-muted small"><%= idx + 1 %></td>
+            <td class="small text-muted">أسيوط</td>
+            <td class="small text-muted">سنترال الغنايم</td>
+            <td class="text-center small"><%= r.worker_code || '—' %></td>
+            <td><%= r.tech_name %></td>
+            <td class="small text-muted">فنى صيانه بوكسيات</td>
+            <td class="text-center fw-bold text-success">
+              <%= r.work_date ? new Date(r.work_date).toISOString().split('T')[0] : '—' %>
+            </td>
+            <td class="text-center fw-bold text-info-emphasis">
+              <%= r.prelim_date ? new Date(r.prelim_date).toISOString().split('T')[0] : '—' %>
+            </td>
+            <td class="text-center">
+              <% if (r.exchange_code) { %>
+              <span class="badge bg-secondary"><%= r.exchange_code %></span>
+              <% } else { %><span class="text-muted">—</span><% } %>
+            </td>
+            <td class="text-center small">نحاس</td>
+            <td class="text-center">
+              <% if (r.cabinet_code) { %>
+              <span class="badge bg-warning text-dark fw-bold"><%= r.cabinet_code %></span>
+              <% } else { %><span class="text-muted small">—</span><% } %>
+            </td>
+            <td class="text-center fw-bold"><%= r.cabinet_number %></td>
+            <td class="text-center fw-bold"><%= r.box_number %></td>
+            <td class="text-center small text-primary"><%= r.phone_number || '—' %></td>
+            <td class="text-center no-print">
+              <a href="/boxes/<%= r.box_id %>?back=<%= encodeURIComponent('/reports/prelim-confirmation' + (Object.keys(query).length ? '?' + new URLSearchParams(query).toString() : '')) %>" class="btn btn-sm btn-outline-primary py-0 px-2">
+                <i class="bi bi-eye"></i>
+              </a>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+</div>
+
+<% } %>
+
+<style>
+.prelim-table thead tr th {
+  position: sticky; top: 0; z-index: 2;
+  background-color: #0dcaf0; color: #053b48;
+}
+@media print {
+  .no-print { display: none !important; }
+  .print-only { display: block !important; }
+  .table-bordered td, .table-bordered th { border: 1px solid #dee2e6 !important; }
+  .prelim-table thead tr th { background-color: #0dcaf0 !important; color: #053b48 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-size: 11px !important; }
+  .table-responsive { overflow: visible !important; max-height:none !important; border-radius:0 !important; box-shadow:none !important; }
+  @page { size: A4 landscape; margin: 1cm; }
+}
+.print-only { display: none; }
+</style>
+<%- include('../partials/footer') %>

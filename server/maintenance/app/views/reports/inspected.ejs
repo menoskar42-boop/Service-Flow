@@ -1,0 +1,55 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-clipboard-check me-2 text-info"></i><%= title %></h4>
+  <div class="d-flex gap-2">
+    <a href="/reports/inspected/export?<%= new URLSearchParams(query).toString() %>" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+    <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+  </div>
+</div>
+<form method="get" class="row g-2 mb-3 align-items-end">
+  <div class="col-md-3">
+    <select name="exchange_id" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="">كل السنترالات</option>
+      <% exchanges.forEach(e => { %><option value="<%= e.id %>" <%= query.exchange_id == e.id ? 'selected':'' %>><%= e.name %></option><% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="cabinet_id" class="form-select form-select-sm">
+      <option value="">كل الكباين</option>
+      <% (cabinets||[]).forEach(c => { %>
+      <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <input type="text" name="box_q" class="form-control form-control-sm" placeholder="رقم البوكس" value="<%= query.box_q||'' %>">
+  </div>
+  <div class="col-md-2"><input type="date" name="from" class="form-control form-control-sm" value="<%= query.from||'' %>"></div>
+  <div class="col-md-2"><input type="date" name="to" class="form-control form-control-sm" value="<%= query.to||'' %>"></div>
+  <div class="col-md-auto">
+    <button class="btn btn-primary btn-sm me-1"><i class="bi bi-search"></i> بحث</button>
+    <a href="/reports/inspected" class="btn btn-outline-secondary btn-sm">إعادة</a>
+  </div>
+</form>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table mb-0">
+        <thead><tr><th>السنترال</th><th>الكابينة</th><th>البوكس</th><th>الحالة</th><th>المراقب</th><th>التاريخ</th><th></th></tr></thead>
+        <tbody>
+          <% rows.forEach(r => { %>
+          <tr>
+            <td><%= r.exchange_name %></td><td><%= r.cabinet_number %></td>
+            <td><strong><%= r.box_number %></strong></td>
+            <td><%- include('../partials/status_badge', { status: r.box_status }) %></td>
+            <td><%= r.inspector_name %></td><td><%= new Date(r.date).toISOString().split('T')[0] %></td>
+            <td><a href="/inspector/<%= r.id %>" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          <% }) %>
+          <% if (!rows.length) { %><tr><td colspan="7" class="text-center text-muted py-4">لا توجد نتائج.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>

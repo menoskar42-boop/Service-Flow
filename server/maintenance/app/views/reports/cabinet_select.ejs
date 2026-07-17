@@ -1,0 +1,54 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i><%= title %></h4>
+  <a href="/reports" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> التقارير</a>
+</div>
+
+<div class="card">
+  <div class="card-header fw-semibold">اختر الكابينة</div>
+  <div class="card-body">
+    <div class="mb-3">
+      <label class="form-label">تصفية حسب السنترال</label>
+      <select id="exchange-filter" class="form-select">
+        <option value="">كل السنترالات</option>
+        <% exchanges.forEach(ex => { %>
+        <option value="<%= ex.id %>"><%= ex.name %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div class="row g-3" id="cabinet-list">
+      <% cabinets.forEach(cab => { %>
+      <div class="col-md-4 cab-card" data-exchange="<%= cab.exchange_id %>">
+        <% if (cab.inspected_count > 0) { %>
+        <a href="/reports/cabinet/<%= cab.id %>" class="card text-decoration-none h-100 hover-card">
+          <div class="card-body">
+            <div class="fw-bold mb-1"><i class="bi bi-server me-1 text-primary"></i>كابينة <span class="n"><%= cab.number %></span></div>
+            <div class="small text-muted"><i class="bi bi-building me-1"></i><%= cab.exchange_name %></div>
+            <div class="small text-muted mt-1"><i class="bi bi-box2 me-1"></i><%= cab.box_count %> بوكس — <%= cab.inspected_count %> فحص</div>
+            <span class="badge bg-danger mt-2"><i class="bi bi-file-earmark-pdf me-1"></i>طباعة PDF</span>
+          </div>
+        </a>
+        <% } else { %>
+        <div class="card h-100 opacity-50">
+          <div class="card-body">
+            <div class="fw-bold mb-1"><i class="bi bi-server me-1 text-secondary"></i>كابينة <span class="n"><%= cab.number %></span></div>
+            <div class="small text-muted"><i class="bi bi-building me-1"></i><%= cab.exchange_name %></div>
+            <div class="small text-muted mt-1"><i class="bi bi-box2 me-1"></i><%= cab.box_count %> بوكس — لا توجد فحوصات</div>
+          </div>
+        </div>
+        <% } %>
+      </div>
+      <% }) %>
+      <% if (!cabinets.length) { %><div class="col-12"><div class="alert alert-info">لا توجد كباين.</div></div><% } %>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('exchange-filter').addEventListener('change', function(){
+  var val = this.value;
+  document.querySelectorAll('.cab-card').forEach(function(c){
+    c.style.display = (!val || c.dataset.exchange === val) ? '' : 'none';
+  });
+});
+</script>
+<%- include('../partials/footer') %>

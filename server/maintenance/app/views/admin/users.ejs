@@ -1,0 +1,40 @@
+<%- include('../partials/header') %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-people me-2"></i><%= title %></h4>
+  <a href="/admin/users/create" class="btn btn-primary btn-sm"><i class="bi bi-person-plus"></i> إضافة مستخدم</a>
+</div>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>#</th><th>اسم المستخدم</th><th>الاسم الكامل</th><th>الدور</th><th>البريد</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+        <tbody>
+          <% users.forEach(u => { %>
+          <tr>
+            <td><%= u.id %></td>
+            <td><strong><%= u.username %></strong></td>
+            <td><%= u.full_name || '—' %></td>
+            <td>
+              <% if (u.role === 'admin') { %><span class="badge bg-danger">مدير النظام</span>
+              <% } else if (u.role === 'inspector') { %><span class="badge bg-info text-dark">مراقب خارجي</span>
+              <% } else { %><span class="badge bg-warning text-dark">فني صيانة</span><% } %>
+            </td>
+            <td><%= u.email || '—' %></td>
+            <td><span class="badge <%= u.is_active ? 'bg-success' : 'bg-secondary' %>"><%= u.is_active ? 'نشط' : 'معطل' %></span></td>
+            <td>
+              <a href="/admin/users/<%= u.id %>/edit" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+              <% if (u.id !== user.id) { %>
+              <form method="post" action="/admin/users/<%= u.id %>/delete" style="display:inline">
+                <button class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف هذا المستخدم؟')"><i class="bi bi-trash"></i></button>
+              </form>
+              <% } %>
+            </td>
+          </tr>
+          <% }) %>
+          <% if (!users.length) { %><tr><td colspan="7" class="text-center py-4 text-muted">لا يوجد مستخدمون.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<%- include('../partials/footer') %>
