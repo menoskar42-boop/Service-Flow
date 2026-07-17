@@ -28,23 +28,48 @@ function toPositional(sql) {
   return sql.replace(/\?/g, () => `$${++i}`);
 }
 
+// ⚠️ مهم جداً مع Neon pooled endpoint (PgBouncer transaction pooling):
+// الـ `SET search_path` على مستوى الجلسة (pool.on('connect')) **لا يبقى** بين الاستعلامات،
+// لأن كل استعلام قد يقع على backend مختلف. فلازم نضبط الـ search_path داخل **نفس المعاملة**
+// بتاعة كل استعلام عبر `SET LOCAL` — كده الاستعلام + الـ SET يشتغلوا على نفس الـ backend مضمون،
+// وكل جداول الصيانة تتقرأ/تتكتب فى سكيما maintenance وليس public.
+const SP_SQL = `SET LOCAL search_path TO ${MAINT_SCHEMA}, public`;
+
+// ينفّذ استعلام واحد داخل معاملة صغيرة بعد ضبط search_path (SET LOCAL) — مضمون تحت أى وضع pooling.
+async function sp(sql, params = []) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(SP_SQL);
+    const r = await client.query(sql, params);
+    await client.query('COMMIT');
+    return r;
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 const db = {
   async all(sql, params = []) {
-    const r = await pool.query(toPositional(sql), params);
+    const r = await sp(toPositional(sql), params);
     return r.rows;
   },
   async get(sql, params = []) {
-    const r = await pool.query(toPositional(sql), params);
+    const r = await sp(toPositional(sql), params);
     return r.rows[0] || null;
   },
   async run(sql, params = []) {
-    return pool.query(toPositional(sql), params);
+    return sp(toPositional(sql), params);
   },
   async transaction(fn) {
     const client = await pool.connect();
     const q = (sql, params = []) => client.query(toPositional(sql), params);
     try {
       await client.query('BEGIN');
+      await client.query(SP_SQL); // نفس الـ backend طوال المعاملة → search_path مضمون
       const result = await fn(q);
       await client.query('COMMIT');
       return result;
@@ -61,19 +86,20 @@ const db = {
 // (بعد ما نلغى Repl الصيانة ونستخدم قاعدة مستقلة عبر MAINTENANCE_DATABASE_URL). منقول حرفياً
 // من هيكل قاعدة الصيانة الأصلية (بـ SERIAL بدل sequences منفصلة). الترتيب حسب الـ FKs.
 async function createSchema() {
-  await pool.query(`CREATE SCHEMA IF NOT EXISTS ${MAINT_SCHEMA}`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS exchanges (
+  // كل الـ DDL يمر عبر sp() عشان الجداول تتخلق جوه سكيما maintenance مش public (مهم جداً مع الـ pooler).
+  await sp(`CREATE SCHEMA IF NOT EXISTS ${MAINT_SCHEMA}`);
+  await sp(`CREATE TABLE IF NOT EXISTS exchanges (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT now()
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS cabinets (
+  await sp(`CREATE TABLE IF NOT EXISTS cabinets (
     id SERIAL PRIMARY KEY,
     exchange_id INTEGER NOT NULL REFERENCES exchanges(id) ON DELETE CASCADE,
     number TEXT NOT NULL,
     UNIQUE(exchange_id, number)
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS boxes (
+  await sp(`CREATE TABLE IF NOT EXISTS boxes (
     id SERIAL PRIMARY KEY,
     cabinet_id INTEGER NOT NULL REFERENCES cabinets(id) ON DELETE CASCADE,
     number TEXT NOT NULL,
@@ -85,7 +111,7 @@ async function createSchema() {
     longitude REAL,
     UNIQUE(cabinet_id, number)
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS users (
+  await sp(`CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password TEXT NOT NULL,
@@ -96,7 +122,7 @@ async function createSchema() {
     created_at TIMESTAMPTZ DEFAULT now(),
     worker_code TEXT
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS inspections (
+  await sp(`CREATE TABLE IF NOT EXISTS inspections (
     id SERIAL PRIMARY KEY,
     box_id INTEGER NOT NULL REFERENCES boxes(id),
     inspector_id INTEGER NOT NULL REFERENCES users(id),
@@ -106,7 +132,7 @@ async function createSchema() {
     latitude REAL,
     longitude REAL
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS inspection_items (
+  await sp(`CREATE TABLE IF NOT EXISTS inspection_items (
     id SERIAL PRIMARY KEY,
     inspection_id INTEGER NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
     item_key TEXT NOT NULL,
@@ -117,7 +143,7 @@ async function createSchema() {
     extra_distance REAL,
     UNIQUE(inspection_id, item_key)
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS maintenance_tasks (
+  await sp(`CREATE TABLE IF NOT EXISTS maintenance_tasks (
     id SERIAL PRIMARY KEY,
     inspection_id INTEGER NOT NULL REFERENCES inspections(id),
     technician_id INTEGER REFERENCES users(id),
@@ -129,7 +155,7 @@ async function createSchema() {
     prelim_confirmed_at TIMESTAMP,
     prelim_confirmed_by INTEGER
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS maintenance_item_status (
+  await sp(`CREATE TABLE IF NOT EXISTS maintenance_item_status (
     id SERIAL PRIMARY KEY,
     task_id INTEGER NOT NULL REFERENCES maintenance_tasks(id) ON DELETE CASCADE,
     item_key TEXT NOT NULL,
@@ -138,7 +164,7 @@ async function createSchema() {
     done_by INTEGER REFERENCES users(id),
     UNIQUE(task_id, item_key)
   )`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS photos (
+  await sp(`CREATE TABLE IF NOT EXISTS photos (
     id SERIAL PRIMARY KEY,
     box_id INTEGER NOT NULL REFERENCES boxes(id),
     inspection_id INTEGER REFERENCES inspections(id),
@@ -156,25 +182,25 @@ async function createSchema() {
 
 async function migrate() {
   try {
-    await pool.query(`ALTER TABLE photos ADD COLUMN IF NOT EXISTS data BYTEA`);
+    await sp(`ALTER TABLE photos ADD COLUMN IF NOT EXISTS data BYTEA`);
   } catch {}
-  try { await pool.query(`ALTER TABLE boxes ADD COLUMN IF NOT EXISTS latitude REAL`); } catch {}
-  try { await pool.query(`ALTER TABLE boxes ADD COLUMN IF NOT EXISTS longitude REAL`); } catch {}
-  try { await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS extra_type TEXT`); } catch {}
-  try { await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS extra_distance REAL`); } catch {}
-  try { await pool.query(`ALTER TABLE inspections ALTER COLUMN date SET DEFAULT CURRENT_DATE`); } catch {}
-  try { await pool.query(`UPDATE inspections SET date = CURRENT_DATE WHERE date IS NULL`); } catch {}
-  try { await pool.query(`ALTER TABLE maintenance_tasks ADD COLUMN IF NOT EXISTS rejection_reason TEXT`); } catch {}
-  try { await pool.query(`ALTER TABLE maintenance_tasks ADD COLUMN IF NOT EXISTS prelim_confirmed_at TIMESTAMP`); } catch {}
-  try { await pool.query(`ALTER TABLE maintenance_tasks ADD COLUMN IF NOT EXISTS prelim_confirmed_by INTEGER`); } catch {}
-  try { await pool.query(`ALTER TABLE photos ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'photo'`); } catch {}
-  try { await pool.query(`UPDATE photos SET media_type = 'photo' WHERE media_type IS NULL`); } catch {}
-  try { await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS worker_code TEXT`); } catch {}
-  try { await pool.query(`UPDATE users SET worker_code = '180769' WHERE full_name ILIKE '%خالد عبد الرحمن%' AND worker_code IS NULL`); } catch {}
+  try { await sp(`ALTER TABLE boxes ADD COLUMN IF NOT EXISTS latitude REAL`); } catch {}
+  try { await sp(`ALTER TABLE boxes ADD COLUMN IF NOT EXISTS longitude REAL`); } catch {}
+  try { await sp(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS extra_type TEXT`); } catch {}
+  try { await sp(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS extra_distance REAL`); } catch {}
+  try { await sp(`ALTER TABLE inspections ALTER COLUMN date SET DEFAULT CURRENT_DATE`); } catch {}
+  try { await sp(`UPDATE inspections SET date = CURRENT_DATE WHERE date IS NULL`); } catch {}
+  try { await sp(`ALTER TABLE maintenance_tasks ADD COLUMN IF NOT EXISTS rejection_reason TEXT`); } catch {}
+  try { await sp(`ALTER TABLE maintenance_tasks ADD COLUMN IF NOT EXISTS prelim_confirmed_at TIMESTAMP`); } catch {}
+  try { await sp(`ALTER TABLE maintenance_tasks ADD COLUMN IF NOT EXISTS prelim_confirmed_by INTEGER`); } catch {}
+  try { await sp(`ALTER TABLE photos ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'photo'`); } catch {}
+  try { await sp(`UPDATE photos SET media_type = 'photo' WHERE media_type IS NULL`); } catch {}
+  try { await sp(`ALTER TABLE users ADD COLUMN IF NOT EXISTS worker_code TEXT`); } catch {}
+  try { await sp(`UPDATE users SET worker_code = '180769' WHERE full_name ILIKE '%خالد عبد الرحمن%' AND worker_code IS NULL`); } catch {}
 
   // cabinet_codes lookup table (Exchange + Cabinet → cabinet code + technician info)
   try {
-    await pool.query(`
+    await sp(`
       CREATE TABLE IF NOT EXISTS cabinet_codes (
         id              SERIAL PRIMARY KEY,
         exchange_name   TEXT NOT NULL,
@@ -189,7 +215,7 @@ async function migrate() {
     `);
   } catch {}
   try {
-    const { rows: cc } = await pool.query('SELECT COUNT(*) AS c FROM cabinet_codes');
+    const { rows: cc } = await sp('SELECT COUNT(*) AS c FROM cabinet_codes');
     if (parseInt(cc[0].c) === 0) {
       const cabData = [
         ['الغنايم','1-8','GHNAT','خارج حياه كريمه','اسلام عبد العال هريدى','347817','11-2-26-24'],
@@ -249,7 +275,7 @@ async function migrate() {
         ['الغنايم-نجع العمدة','shlter','NGOAT','خارج حياه كريمه','محمد عبد المجيد محمد رشدى','222081','11-2-76-01'],
       ];
       for (const [en, cn, ec, dl, at, wc, cc_val] of cabData) {
-        await pool.query(
+        await sp(
           `INSERT INTO cabinet_codes(exchange_name,cabinet_number,exchange_code,decent_life,area_technician,worker_code,cabinet_code)
            VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
           [en, cn, ec, dl, at, wc, cc_val]
