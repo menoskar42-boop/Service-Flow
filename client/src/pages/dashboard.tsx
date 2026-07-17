@@ -315,6 +315,14 @@ export default function Dashboard() {
                 <span className="sm:hidden">الكوابل</span>
               </a>
             )}
+            {/* موقع الصيانة المدمج (smart-box-maintenance) — تطبيق مستقل تحت /maintenance
+                (فتح صفحة كاملة، له تسجيل دخول خاص). نفس جمهور الكوابل. */}
+            {canAccessCFM(authUser?.role ?? "") && (
+              <a href="/maintenance" className="inline-flex items-center gap-1 rounded-md border border-teal-300 text-teal-700 hover:bg-teal-50 text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3 font-medium">
+                <span className="hidden sm:inline">موقع الصيانة</span>
+                <span className="sm:hidden">الصيانة</span>
+              </a>
+            )}
             <ExecutorButton />
             {/* مؤقّت التحديث كل نص ساعة فى الخلفية (غير مرئى) — يشتغل على أى تاب */}
             <DailyAutoRefresh />
