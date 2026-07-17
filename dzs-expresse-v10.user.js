@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.19: جهاز التنفيذ بيبعت الأرقام خط-خط (كل خط مهمة حسب الأولوية) فكل تشغيلة = خط واحد؛ رجّعنا منطق فتح التاب المستقر (v10.17) للاستخدام اليدوى متعدد الخطوط؛ ومع الرفع التلقائى لـ138 وقفنا تنزيل CSV التلقائى (نسيبه للزر اليدوى) عشان مايبقاش مئات الملفات. v10.18 (متراجَع عنه): انتقال داخلى فى نفس التاب. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.19.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.20: القياس الجاى من «بحث برقم التليفون» (sf_fix=recent) يختار «A recent fix was performed on the line over the past 24 hours» فى شاشة Real-time Analysis قبل ضغط Yes؛ الافتراضى بدون العلامة يفضل «No fix performed on the line». v10.19: جهاز التنفيذ بيبعت الأرقام خط-خط (كل خط مهمة حسب الأولوية) فكل تشغيلة = خط واحد؛ رجّعنا منطق فتح التاب المستقر (v10.17) للاستخدام اليدوى متعدد الخطوط؛ ومع الرفع التلقائى لـ138 وقفنا تنزيل CSV التلقائى (نسيبه للزر اليدوى) عشان مايبقاش مئات الملفات. v10.18 (متراجَع عنه): انتقال داخلى فى نفس التاب. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.20.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -213,6 +213,15 @@
   if (_fromHash) localStorage.setItem(FORCE_RT_KEY, /[#&]sf_force=1\b/.test(location.hash) ? "1" : "0");
   const FORCE_REALTIME = localStorage.getItem(FORCE_RT_KEY) === "1";
   if (FORCE_REALTIME) console.log("🎯 FORCE real-time mode ON — الحالات المخزّنة (POP_O/out-of-service) هتتقاس فعلياً.");
+
+  // v10.20: وضع «الإصلاح» فى شاشة Real-time Analysis. القياس الجاى من «بحث برقم التليفون»
+  // بيحطّ sf_fix=recent فى الهاش → قبل ضغط Yes نختار «A recent fix was performed on the line
+  // over the past 24 hours». الافتراضى (بدون العلامة) = «No fix performed on the line» زى ما هو.
+  // نخزّنها فى localStorage عشان تعيش بعد التنقّل لصفحة clearview (زى sf_force).
+  const FIX_MODE_KEY = "DZS_FIX_MODE";
+  if (_fromHash) localStorage.setItem(FIX_MODE_KEY, (location.hash.match(/[#&]sf_fix=([^&]+)/) || [])[1] || "");
+  const FIX_MODE = localStorage.getItem(FIX_MODE_KEY) || "";
+  if (FIX_MODE === "recent") console.log("🛠️ Fix mode = recent — هيختار «A recent fix (past 24h)» قبل Yes.");
 
   let lineIndex = parseInt(localStorage.getItem(INDEX_KEY), 10);
   if (isNaN(lineIndex) || lineIndex < 0) lineIndex = 0;
@@ -627,6 +636,22 @@
       if (!(dialog && dialog.style.display !== "none")) { if (cf >= MAX_CF) { clearInterval(confirmTimer); handleSpecialAndClose(SCORE_TIMEOUT); } return; }
       const yesBtn = document.querySelector("button[id*='confirmationForm:yesButton']");
       if (!yesBtn) return;
+      // v10.20: لو القياس جاى من «بحث برقم التليفون» (sf_fix=recent) → اختار الراديو
+      // «A recent fix was performed on the line over the past 24 hours» قبل ضغط Yes.
+      if (FIX_MODE === "recent") {
+        try {
+          const radios = [...dialog.querySelectorAll("input[type='radio']")];
+          const recent = radios.find((r) => {
+            let t = "";
+            if (r.id) { const lab = dialog.querySelector("label[for='" + r.id + "']"); if (lab) t = lab.textContent || ""; }
+            if (!t && r.parentElement) t = r.parentElement.textContent || "";
+            if (!t) { const row = r.closest("tr,div,li,td"); if (row) t = row.textContent || ""; }
+            return /recent fix|past 24 hours|over the past 24/i.test(t);
+          });
+          if (recent && !recent.checked) { recent.click(); console.log("🛠️ اخترت «A recent fix (past 24h)» قبل Yes."); }
+          else if (!recent) console.warn("⚠️ مالقيتش راديو «recent fix» — هكمّل بالافتراضى.");
+        } catch (e) {}
+      }
       yesBtn.click(); yesClicked = true; clearInterval(confirmTimer);
       afterYesClicked();
       startResourceWatcher();

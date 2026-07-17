@@ -6,7 +6,10 @@
 import { openProfileOptimization } from "./profile-optimization";
 
 export type ExecJobType = "raise" | "stop" | "measure";
-export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; }
+export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; }
+
+// مصدر «بحث برقم التليفون» — القياس اللى بييجى منه بيختار «A recent fix (past 24h)» فى شاشة DZS.
+export const PHONE_LOOKUP_SOURCE = "بحث برقم التليفون";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
@@ -18,22 +21,24 @@ const DZS_MEASURE_TARGET = "dzs_measure";
 
 // تنفيذ **خط واحد** (رقم أكونت واحد) — عشان جهاز التنفيذ يباعد بينهم بمهلة ويمنع التداخل.
 // بيرجّع نافذة القياس (لو measure) بنفس الاسم الثابت فيتعاد استخدامها للقياس اللى بعده.
-export function executeSingle(type: ExecJobType, account: string | number): Window | null {
+export function executeSingle(type: ExecJobType, account: string | number, opts?: { fixRecent?: boolean }): Window | null {
   const acc = String(account ?? "").trim();
   if (!acc) return null;
   if (type === "raise") { openProfileOptimization([acc]); return null; }
   if (type === "stop") { openProfileOptimization([acc], { stopOnly: true }); return null; }
-  return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}`, DZS_MEASURE_TARGET);
+  const fix = opts?.fixRecent ? "&sf_fix=recent" : "";
+  return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(acc)}${fix}`, DZS_MEASURE_TARGET);
 }
 
 // تنفيذ **مجموعة أرقام دفعة واحدة** — نبعتها كلها للسكربت (DZS/PO) اللى بيلفّ عليها بنفسه
 // (زى ما لو ضغطنا عليها والزر مطفى: 6/185…). كده مايفتحش صفحة منفصلة لكل رقم.
-export function executeBatch(type: ExecJobType, accounts: (string | number)[]): Window | null {
+export function executeBatch(type: ExecJobType, accounts: (string | number)[], opts?: { fixRecent?: boolean }): Window | null {
   const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
   if (!accs.length) return null;
   if (type === "raise") { openProfileOptimization(accs); return null; }
   if (type === "stop") { openProfileOptimization(accs, { stopOnly: true }); return null; }
-  return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accs.join(","))}`, DZS_MEASURE_TARGET);
+  const fix = opts?.fixRecent ? "&sf_fix=recent" : "";
+  return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accs.join(","))}${fix}`, DZS_MEASURE_TARGET);
 }
 
 // آخر وقت قياس لرقم أكونت (للتأكد إن القياس اتحدّث) — millis أو 0

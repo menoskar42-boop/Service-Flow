@@ -290,7 +290,8 @@ export function PhoneLookupReport() {
       return;
     }
     if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
-    window.open(buildDZSUrl([acc]), "dzs_measure"); // نفس النافذة الثابتة — الجديد يحلّ محل القديم
+    // قياس من بحث برقم التليفون → اختار «A recent fix (past 24h)» فى شاشة DZS
+    window.open(buildDZSUrl([acc]) + "&sf_fix=recent", "dzs_measure"); // نفس النافذة الثابتة — الجديد يحلّ محل القديم
   };
 
   // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====

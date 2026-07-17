@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { executeBatch, latestMeasureAt, latestPoEventAt, sleep, type ExecJob } from "@/lib/exec-queue";
+import { executeBatch, latestMeasureAt, latestPoEventAt, sleep, PHONE_LOOKUP_SOURCE, type ExecJob } from "@/lib/exec-queue";
 
 // زر «جهاز التنفيذ» — للسوبر أدمن فقط. لما يتفعّل، البراوزر ده يبقى هو المنفّذ:
 // يبعت نبضة كل 20ث، ويسحب المهام من الطابور كل 4ث وينفّذها (رفع سرعة/قياس/إيقاف).
@@ -85,12 +85,14 @@ export function ExecutorButton() {
     // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |
     // "timeout" علّق/وقف بدون تقدّم | "stopped" جهاز التنفيذ اتقفل | "canceled" اتمسح من الطابور يدوياً |
     // "preempted" اتقطع لصالح طلب عاجل.
-    const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number): Promise<string> => {
+    const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number, note?: string | null): Promise<string> => {
       const last = accs[accs.length - 1];
       const canPreempt = accs.length > 3; // الباتش الكبير بس هو اللى يتقطع
       if (type === "measure") {
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
-        const win = executeBatch("measure", accs); // DZS يلفّ على كلهم فى run واحد
+        // القياس الجاى من «بحث برقم التليفون» يختار «A recent fix (past 24h)» فى شاشة DZS
+        const fixRecent = String(note || "").includes(PHONE_LOOKUP_SOURCE);
+        const win = executeBatch("measure", accs, { fixRecent }); // DZS يلفّ على كلهم فى run واحد
         lastMeasureWin.current = win;
         const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
         const deadline = Date.now() + Math.min(accs.length * MEASURE_MAX_MS, MAX_TOTAL_MS);
@@ -134,7 +136,7 @@ export function ExecutorButton() {
           if (accs.length && !stopped) {
             const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف" : "رفع سرعة";
             setCurrent(`${label} (${accs.length} رقم)`);
-            result = await runBatch(job.type, accs, job.id); // الجوب كله دفعة واحدة
+            result = await runBatch(job.type, accs, job.id, job.note); // الجوب كله دفعة واحدة
           }
           if (result === "preempted") {
             // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
