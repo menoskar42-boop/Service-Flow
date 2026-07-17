@@ -75,7 +75,24 @@ app.use(session({
   cookie: { path: BASE_PATH || "/", maxAge: 8 * 60 * 60 * 1000 },
 }));
 
+// SSO موحّد: تطبيق الصيانة مركّب جوّه سيرفر Service-Flow، والـ passport بتاعه بيملأ req.user
+// (مستخدم الطلبات) قبل ما نوصل هنا. لو مفيش جلسة صيانة والمستخدم داخل Service-Flow بدور له وصول
+// للصيانة → نسجّله تلقائياً بالدور المقابل (من غير شاشة لوجين تانية ولا حساب فى قاعدة الصيانة).
+// نفس مفاتيح shared/roles-access.ts (SF_ROLE_TO_MAINT) — مكرّرة هنا لأن ده ملف CJS مستقل.
+const SF_ROLE_TO_MAINT = { super_admin: "admin", admin: "admin", external: "inspector", maintenance_tech: "technician" };
 app.use((req, res, next) => {
+  if (!req.session.user && req.user && req.user.username) {
+    const mrole = SF_ROLE_TO_MAINT[req.user.role];
+    if (mrole) {
+      req.session.user = {
+        id: "sf:" + (req.user.id != null ? req.user.id : req.user.username),
+        username: req.user.username,
+        full_name: req.user.name || req.user.full_name || req.user.username,
+        role: mrole,
+        sso: true, // دخول موحّد من Service-Flow (مش حساب فى قاعدة الصيانة)
+      };
+    }
+  }
   res.locals.user = req.session.user || null;
   res.locals.flash = req.session.flash || null;
   if (req.session.flash) delete req.session.flash;

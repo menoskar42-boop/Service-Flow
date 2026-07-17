@@ -1644,7 +1644,7 @@ export async function registerRoutes(
 
   // قائمة الأدوار الموحّدة (للواجهة)
   app.get("/api/portal/roles", requireAuth, requireSuperAdmin, (_req, res) => {
-    res.json(Object.entries(UNIFIED_ROLE_ACCESS).map(([key, v]) => ({ key, labelAr: v.labelAr, sf: v.sf, cfm: v.cfm })));
+    res.json(Object.entries(UNIFIED_ROLE_ACCESS).map(([key, v]) => ({ key, labelAr: v.labelAr, sf: v.sf, cfm: v.cfm, maint: v.maint })));
   });
 
   // القائمة الموحّدة: من جدول الطلبات + حسابات الكوابل اللى مالهاش حساب طلبات

@@ -9,7 +9,7 @@ import { Loader2, UsersRound, UserPlus, KeyRound, Trash2, Pencil, Ban, CheckCirc
 
 // بوابة إدارة المستخدمين الموحّدة (سوبر أدمن فقط):
 // حساب واحد للموقعين — الدور الموحّد يحدّد دور الطلبات ودور الكوابل، والدخول موحّد (SSO).
-interface UnifiedRoleOpt { key: string; labelAr: string; sf: string | null; cfm: string | null; }
+interface UnifiedRoleOpt { key: string; labelAr: string; sf: string | null; cfm: string | null; maint?: string | null; }
 interface PortalUser {
   sfId: number | null; username: string; sfRole: string | null; workerCode: string | null;
   suspended: boolean; cfmId: string | null; cfmRole: string | null; cfmName: string | null; unifiedRole: string;
@@ -142,7 +142,7 @@ export function UnifiedUsersManager() {
               <SelectContent>
                 {roles.map((r) => (
                   <SelectItem key={r.key} value={r.key} className="text-right">
-                    {r.labelAr} — {[r.sf ? "طلبات" : null, r.cfm ? "كوابل" : null].filter(Boolean).join(" + ") || "—"}
+                    {r.labelAr} — {[r.sf ? "طلبات" : null, r.cfm ? "كوابل" : null, r.maint ? "صيانة" : null].filter(Boolean).join(" + ") || "—"}
                   </SelectItem>
                 ))}
               </SelectContent>

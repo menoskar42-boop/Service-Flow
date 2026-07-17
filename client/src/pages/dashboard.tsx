@@ -232,6 +232,9 @@ export default function Dashboard() {
   useEffect(() => {
     if (!authLoading && !user) {
       setLocation("/login");
+    } else if (!authLoading && user?.role === ROLES.MAINTENANCE_TECH) {
+      // فنى الصيانة: مالوش تقارير فى الطلبات — نوجّهه فوراً لموقع الصيانة (SSO بيسجّله تلقائياً).
+      window.location.href = "/maintenance";
     } else if (!authLoading && user?.role === ROLES.DATA_MANAGER) {
       setAdminTab("reports");
       setOpenGroups(["القياسات"]);
