@@ -9,7 +9,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, enqueueJob, isExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor } from "@/lib/exec-queue";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -577,15 +577,30 @@ export function PhoneLookupReport() {
                     variant="outline"
                     onClick={async () => {
                       if (awaitingOp === "raise") { cancelOpWait(); return; }
-                      const afterStop = window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة ثم إيقاف الـ Nightly الناتج\nإلغاء = رفع السرعة فقط");
-                      void recordOpIntent("raise", [line.accountNo]);
-                      if (await enqueueIfExecutorActive("raise", [line.accountNo])) {
-                        alert("تم إضافة الرقم لطابور رفع السرعة — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد التنفيذ");
-                        void waitForOpThenRefresh("raise", String(line.accountNo));
+                      const acc = line.accountNo;
+                      if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
+                      // فى بحث برقم التليفون: زر رفع السرعة يضيف 3 مهام للطابور بالترتيب —
+                      // رفع السرعة (لازم الأول) ثم إيقاف PO ثم القياس.
+                      if (!window.confirm("سيتم إضافة 3 مهام للطابور بالترتيب:\n1) رفع السرعة\n2) إيقاف PO\n3) القياس\n\nمتابعة؟")) return;
+                      void recordOpIntent("raise", [acc]);
+                      void recordOpIntent("stop", [acc]);
+                      void recordOpIntent("measure", [acc]);
+                      if (await isExecutorActive()) {
+                        // نضيفهم بالتسلسل (await لكل واحدة) عشان ترتيب created_at يضمن رفع→إيقاف→قياس
+                        const r1 = await enqueueJob("raise", [acc]);
+                        const r2 = await enqueueJob("stop", [acc]);
+                        const r3 = await enqueueJob("measure", [acc]);
+                        if (r1.ok && r2.ok && r3.ok) {
+                          alert("تمت إضافة رفع السرعة ثم إيقاف PO ثم القياس للطابور بالترتيب — هيتنفّذوا على جهاز التنفيذ، والصفحة هتتحدّث بعد القياس");
+                          void waitForOpThenRefresh("measure", String(acc)); // ننتظر آخر خطوة (القياس)
+                        } else {
+                          alert("تعذّرت إضافة بعض المهام للطابور — حاول تانى");
+                        }
                         return;
                       }
+                      // مفيش جهاز تنفيذ: سوبر أدمن على كمبيوتر مكتب → تنفيذ محلى (رفع ثم إيقاف)
                       if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
-                      openProfileOptimization([line.accountNo], { afterStop });
+                      openProfileOptimization([acc], { afterStop: true });
                     }}
                     className="bg-white gap-2 text-emerald-700 border-emerald-200"
                     title={awaitingOp === "raise" ? "اضغط لإلغاء انتظار رفع السرعة" : "تشغيل Profile Optimization (رفع السرعة) لهذا الرقم"}
