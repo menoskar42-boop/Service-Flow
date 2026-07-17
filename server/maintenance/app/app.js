@@ -80,19 +80,33 @@ app.use(session({
 // للصيانة → نسجّله تلقائياً بالدور المقابل (من غير شاشة لوجين تانية ولا حساب فى قاعدة الصيانة).
 // نفس مفاتيح shared/roles-access.ts (SF_ROLE_TO_MAINT) — مكرّرة هنا لأن ده ملف CJS مستقل.
 const SF_ROLE_TO_MAINT = { super_admin: "admin", admin: "admin", external: "inspector", maintenance_tech: "technician" };
-app.use((req, res, next) => {
-  if (!req.session.user && req.user && req.user.username) {
-    const mrole = SF_ROLE_TO_MAINT[req.user.role];
-    if (mrole) {
-      req.session.user = {
-        id: "sf:" + (req.user.id != null ? req.user.id : req.user.username),
-        username: req.user.username,
-        full_name: req.user.name || req.user.full_name || req.user.username,
-        role: mrole,
-        sso: true, // دخول موحّد من Service-Flow (مش حساب فى قاعدة الصيانة)
-      };
+app.use(async (req, res, next) => {
+  try {
+    if (!req.session.user && req.user && req.user.username) {
+      const mrole = SF_ROLE_TO_MAINT[req.user.role];
+      if (mrole) {
+        // مهم: جداول الصيانة (inspections/maintenance_tasks/photos…) بتربط بـ users.id (integer FK).
+        // فبنعمل upsert لصف حقيقى فى users بتاعت الصيانة ونستخدم الـ id الرقمى فى الجلسة — عشان
+        // الكتابة تشتغل. الباسورد ماركر مش صالح للّوجين (الدخول عبر SSO فقط). SF هو مصدر الدور.
+        const uname = String(req.user.username);
+        const fullName = req.user.name || req.user.full_name || uname;
+        const workerCode = req.user.worker_code || req.user.workerCode || null;
+        const row = await db.get(
+          `INSERT INTO users (username, password, role, full_name, worker_code, is_active)
+           VALUES (?, ?, ?, ?, ?, 1)
+           ON CONFLICT (username) DO UPDATE SET
+             role = EXCLUDED.role,
+             full_name = EXCLUDED.full_name,
+             worker_code = COALESCE(EXCLUDED.worker_code, users.worker_code)
+           RETURNING id, username, role, full_name`,
+          [uname, "sso:" + uname, mrole, fullName, workerCode],
+        );
+        if (row && row.id != null) {
+          req.session.user = { id: row.id, username: row.username, full_name: row.full_name, role: row.role, sso: true };
+        }
+      }
     }
-  }
+  } catch (e) { console.error("[maintenance] SSO upsert failed:", e.message); }
   res.locals.user = req.session.user || null;
   res.locals.flash = req.session.flash || null;
   if (req.session.flash) delete req.session.flash;
