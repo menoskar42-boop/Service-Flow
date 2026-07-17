@@ -638,18 +638,43 @@
       if (!yesBtn) return;
       // v10.20: لو القياس جاى من «بحث برقم التليفون» (sf_fix=recent) → اختار الراديو
       // «A recent fix was performed on the line over the past 24 hours» قبل ضغط Yes.
+      // (الافتراضى بدون العلامة = «No fix performed on the line» زى ما هو.)
       if (FIX_MODE === "recent") {
         try {
-          const radios = [...dialog.querySelectorAll("input[type='radio']")];
-          const recent = radios.find((r) => {
-            let t = "";
-            if (r.id) { const lab = dialog.querySelector("label[for='" + r.id + "']"); if (lab) t = lab.textContent || ""; }
-            if (!t && r.parentElement) t = r.parentElement.textContent || "";
-            if (!t) { const row = r.closest("tr,div,li,td"); if (row) t = row.textContent || ""; }
-            return /recent fix|past 24 hours|over the past 24/i.test(t);
-          });
-          if (recent && !recent.checked) { recent.click(); console.log("🛠️ اخترت «A recent fix (past 24h)» قبل Yes."); }
-          else if (!recent) console.warn("⚠️ مالقيتش راديو «recent fix» — هكمّل بالافتراضى.");
+          const RECENT_RE = /recent fix|past 24 hours|over the past 24/i;
+          const MORE_RE = /more than 24/i; // نستبعد «A fix ... more than 24 hours ago»
+          const isRecent = (t) => RECENT_RE.test(t || "") && !MORE_RE.test(t || "");
+          // PrimeFaces: الـ <input type=radio> الحقيقى مخفى جوّه .ui-helper-hidden-accessible،
+          // والعنصر اللى عليه الـ click listener هو .ui-radiobutton-box. فبنضغط الـ box المرتبط
+          // بالراديو (ضغط الـ input المخفى أو checked=true مش بيحدّث الويدجت).
+          const selectRadio = (radio) => {
+            const wrap = radio.closest(".ui-radiobutton");
+            const box = wrap && wrap.querySelector(".ui-radiobutton-box");
+            (box || radio).click();
+          };
+          // نجيب الراديو المطلوب: من الـ label المطابق (عبر for)، وإلا نضغط الـ label نفسه،
+          // وإلا fallback بالنص المجاور مباشرة لكل input (مش نص الحاوية كلها عشان مانطابقش الغلط).
+          let radio = null, labelToClick = null;
+          for (const lab of dialog.querySelectorAll("label")) {
+            if (!isRecent(lab.textContent)) continue;
+            if (lab.htmlFor) { try { radio = dialog.querySelector("#" + (window.CSS && CSS.escape ? CSS.escape(lab.htmlFor) : lab.htmlFor)); } catch (e) { radio = document.getElementById(lab.htmlFor); } }
+            if (!radio) labelToClick = lab;
+            break;
+          }
+          if (!radio && !labelToClick) {
+            const nearText = (r) => {
+              let s = "", n = r.nextSibling, hops = 0;
+              while (n && hops < 12) {
+                if (n.nodeType === 1 && (n.tagName === "INPUT" || (n.querySelector && n.querySelector("input")))) break;
+                s += (n.textContent != null ? n.textContent : (n.nodeValue || "")); n = n.nextSibling; hops++;
+              }
+              return s;
+            };
+            radio = [...dialog.querySelectorAll("input[type='radio']")].find((r) => isRecent(nearText(r))) || null;
+          }
+          if (radio) { if (!radio.checked) selectRadio(radio); console.log("🛠️ اخترت «A recent fix (past 24h)» قبل Yes."); }
+          else if (labelToClick) { labelToClick.click(); console.log("🛠️ اخترت «A recent fix (past 24h)» قبل Yes (label)."); }
+          else console.warn("⚠️ مالقيتش «recent fix» — هكمّل بالافتراضى.");
         } catch (e) {}
       }
       yesBtn.click(); yesClicked = true; clearInterval(confirmTimer);

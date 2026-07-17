@@ -1329,7 +1329,7 @@ export async function registerRoutes(
     try {
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
-         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' ORDER BY priority DESC, created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' ORDER BY priority DESC, created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED)
          RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority`);
       res.json(rows[0] || null);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
