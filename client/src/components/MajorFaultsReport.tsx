@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertOctagon } from "lucide-react";
+import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertOctagon, ClipboardCopy } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 
@@ -79,6 +79,26 @@ export function MajorFaultsReport() {
   };
   const handleExportPDF = () => printTablePDF({ title: "الأعطال الجسيمة (اغلاق جسيم)", columns: COLUMNS, rows: rows.map(toRow) });
 
+  // نسخ الجدول كـ HTML بحدود → يتلصق فى الإيميل (Outlook) بالبوردر مباشرة (بدل Excel اللى بيتلصق بلا حدود).
+  const handleCopyTable = async () => {
+    const cell = (t: any, head = false) =>
+      `<${head ? "th" : "td"} style="border:1px solid #000;padding:4px 8px;${head ? "background:#f2f2f2;" : ""}white-space:nowrap">${t ?? ""}</${head ? "th" : "td"}>`;
+    const head = `<tr>${COLUMNS.map((c) => cell(c, true)).join("")}</tr>`;
+    const body = rows.map((f) => `<tr>${toRow(f).map((c) => cell(c || "")).join("")}</tr>`).join("");
+    const html = `<table dir="rtl" border="1" style="border-collapse:collapse;font-family:Arial;font-size:13px">${head}${body}</table>`;
+    const text = [COLUMNS, ...rows.map(toRow)].map((r) => r.join("\t")).join("\n");
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" }),
+      })]);
+      alert("تم نسخ الجدول (بحدود) — الصقه فى الإيميل مباشرة (Ctrl+V)");
+    } catch (e) {
+      try { await navigator.clipboard.writeText(text); alert("تم نسخ الجدول كنص (المتصفح لا يدعم نسخ الجدول المنسّق)"); }
+      catch { alert("تعذّر النسخ"); }
+    }
+  };
+
   return (
     <Card className="p-4 space-y-4" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -88,6 +108,7 @@ export function MajorFaultsReport() {
         </div>
         <div className="flex gap-2">
           <Button onClick={load} size="sm" className="gap-1" disabled={loading}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
+          <Button onClick={handleCopyTable} variant="outline" size="sm" className="gap-1 text-indigo-700 border-indigo-200" disabled={!rows.length} title="نسخ الجدول بحدود للصقه فى الإيميل مباشرة"><ClipboardCopy className="w-4 h-4" /> نسخ الجدول</Button>
           <Button onClick={handleExportExcel} variant="outline" size="sm" className="gap-1 text-green-700 border-green-200" disabled={!rows.length}><FileSpreadsheet className="w-4 h-4" /> تصدير Excel</Button>
           <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1 text-red-700 border-red-200" disabled={!rows.length}><FileText className="w-4 h-4" /> تصدير PDF</Button>
         </div>
