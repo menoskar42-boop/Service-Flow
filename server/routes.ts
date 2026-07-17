@@ -2915,6 +2915,7 @@ export async function registerRoutes(
           ORDER BY c.full_phone, c.id DESC
         ) latest
         WHERE latest.score IS NOT NULL
+          AND latest.score <= 100                               -- استبعاد الأرقام اللى الاسكور فيها أكبر من 100
           AND latest.uploaded_at >= now() - interval '3 days'   -- آخر قياس مرّ عليه أقل من 3 أيام
           AND NOT (                                              -- لا تحتاج رفع سرعة (عكس معيار needs-speed)
             NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
