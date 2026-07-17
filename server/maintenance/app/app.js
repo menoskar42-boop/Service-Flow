@@ -115,6 +115,25 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// endpoint تشخيصى مؤقت: يقول قاعدة أنهى التطبيق المنشور بيقرأها فعلاً وكام بوكس فيها —
+// عشان نميّز هل المشكلة search_path ولا إن الميجريشن اتعمل على dev DB والمنشور على prod DB.
+// متاح لأى مستخدم داخل الصيانة فقط (لا يكشف غير أعداد صفوف). يتشال بعد ما نحل المشكلة.
+app.get("/__whoami", async (req, res) => {
+  if (!req.session.user) return res.status(404).end();
+  const out = { schema: MAINT_SCHEMA };
+  try {
+    const info = await db.get("SELECT current_database() AS db, current_user AS usr, current_setting('search_path') AS sp");
+    out.current_database = info.db; out.current_user = info.usr; out.search_path = info.sp;
+  } catch (e) { out.info_error = e.message; }
+  try { out.maintenance_boxes_qualified = (await db.get("SELECT count(*)::int AS n FROM maintenance.boxes")).n; }
+  catch (e) { out.maintenance_boxes_qualified = "ERR: " + e.message; }
+  try { out.boxes_via_search_path = (await db.get("SELECT count(*)::int AS n FROM boxes")).n; }
+  catch (e) { out.boxes_via_search_path = "ERR: " + e.message; }
+  try { out.public_boxes = (await db.get("SELECT count(*)::int AS n FROM public.boxes")).n; }
+  catch (e) { out.public_boxes = "ERR: " + e.message; }
+  res.json(out);
+});
+
 app.use("/auth", require("./routes/auth"));
 app.use("/boxes", require("./routes/boxes"));
 app.use("/inspector", require("./routes/inspector"));
