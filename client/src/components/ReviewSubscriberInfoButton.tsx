@@ -9,7 +9,8 @@ import { UserSearch, Loader2 } from "lucide-react";
 
 // زر "مراجعة الاسم والعنوان": يعيد جلب الأسماء/العناوين من FCC لأرقام البورتات.
 // نعم = الأرقام بدون اسم/عنوان فقط. الكل = كل الأرقام. ثم يفتح FCC ويشغّل السكربت تلقائياً.
-export function ReviewSubscriberInfoButton() {
+// filters: لو اتمرّرت (من بيان التليفونات) → المراجعة بتقتصر على الأرقام المفلترة بس.
+export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: string; cabin?: string; box?: string } }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
@@ -21,7 +22,7 @@ export function ReviewSubscriberInfoButton() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ scope }),
+        body: JSON.stringify({ scope, ...(filters || {}) }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "خطأ");
       const j = await res.json();

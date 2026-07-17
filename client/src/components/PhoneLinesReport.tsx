@@ -300,7 +300,7 @@ export function PhoneLinesReport() {
             </Button>
             </>)}
             {/* مراجعة البيانات: يعيد جلب اسم/عنوان العميل من FCC للأرقام (بدون بيانات أو الكل) — سوبر أدمن. */}
-            {isSuper && <ReviewSubscriberInfoButton />}
+            {isSuper && <ReviewSubscriberInfoButton filters={{ central, cabin, box }} />}
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>

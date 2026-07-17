@@ -4938,13 +4938,19 @@ export async function registerRoutes(
   //   scope=empty → الأرقام بدون اسم (يعاد جلبها فقط). scope=all → كل الأرقام (يعاد جلب الكل).
   app.post("/api/line-subscriber-info/requeue", requireAuth, requireAdmin, async (req: any, res) => {
     const scope = String(req.body?.scope || "empty");
-    let r;
-    if (scope === "all") {
-      r = await pool.query(`DELETE FROM line_subscriber_info`);
-    } else {
-      r = await pool.query(`DELETE FROM line_subscriber_info WHERE sub_name IS NULL OR TRIM(sub_name) = ''`);
-    }
-    res.json({ ok: true, requeued: r.rowCount ?? 0, scope });
+    // فلتر اختيارى بالسنترال/الكابينة/البكس (من بيان التليفونات) — يقصر المراجعة على الأرقام المفلترة فقط.
+    const b = req.body || {};
+    const params: any[] = [];
+    const fconds: string[] = [];
+    if (b.central) { params.push(String(b.central)); fconds.push(`pl.central = $${params.length}`); }
+    if (b.cabin) { params.push(String(b.cabin)); fconds.push(`pl.cabin_number = $${params.length}`); }
+    if (b.box) { params.push(String(b.box)); fconds.push(`pl.box_number = $${params.length}`); }
+    const filterClause = fconds.length
+      ? `phone_number IN (SELECT full_phone FROM phone_lines pl WHERE ${fconds.join(" AND ")})`
+      : "TRUE";
+    const scopeClause = scope === "all" ? "TRUE" : "(sub_name IS NULL OR TRIM(sub_name) = '')";
+    const r = await pool.query(`DELETE FROM line_subscriber_info WHERE ${filterClause} AND ${scopeClause}`, params);
+    res.json({ ok: true, requeued: r.rowCount ?? 0, scope, filtered: fconds.length > 0 });
   });
 
   // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====
