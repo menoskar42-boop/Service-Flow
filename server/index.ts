@@ -72,9 +72,10 @@ app.use((req, res, next) => {
   // ركّب تطبيق الصيانة (Express+EJS) تحت /maintenance — بيتحمّل كـ CommonJS **غير مبنْدَل** عشان
   // مكتباته الأصلية (sharp/bcrypt…) و__dirname/قوالب EJS يتحلّوا وقت التشغيل. لازم قبل الـ catch-all
   // بتاع الـ SPA. لو فشل التحميل (مثلاً مكتبة ناقصة) نكمّل من غيره بدل ما نوقّف السيرفر كله.
-  // نركّبه فقط لو قاعدة بيانات الصيانة المنفصلة متضبوطة — عشان تحميل database.js (اللى بيشغّل
-  // migrate/initialize وقت الـ require) مايشتغلش بالغلط على قاعدة بيانات Service-Flow.
-  if (process.env.MAINTENANCE_DATABASE_URL) {
+  // جداول الصيانة معزولة فى سكيما maintenance، فتشغيلها على قاعدة Service-Flow نفسها آمن.
+  // نركّبه لو MAINTENANCE_ENABLED=true (يستخدم قاعدة Service-Flow بسكيما maintenance) أو لو فيه
+  // MAINTENANCE_DATABASE_URL منفصل. لو مفيش الاتنين → مايتركّبش (تجنّب تحميل database.js بالغلط).
+  if (process.env.MAINTENANCE_ENABLED === "true" || process.env.MAINTENANCE_DATABASE_URL) {
     try {
       // base مزدوج: __filename فى بناء الإنتاج (CJS) و import.meta.url فى التطوير (ESM/tsx).
       // بنحمّله بمسار نسبى فيتحلّ جنب ملف الدخول (server/ فى dev، dist/ فى prod).
@@ -86,7 +87,7 @@ app.use((req, res, next) => {
       console.error("[maintenance] mount failed:", e?.message || e);
     }
   } else {
-    log("maintenance app not mounted (MAINTENANCE_DATABASE_URL غير مضبوط)");
+    log("maintenance app not mounted (MAINTENANCE_ENABLED غير مفعّل)");
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

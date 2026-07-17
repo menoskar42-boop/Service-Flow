@@ -1,10 +1,14 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 
+// جداول الصيانة بتعيش فى **نفس قاعدة Service-Flow** (توفير الاستضافة) بس فى **سكيما منفصلة**
+// اسمها maintenance — فمفيش تعارض مع جداول Service-Flow (زى users). بنضبط search_path على
+// كل اتصال (عبر startup option) فالتطبيق يشتغل بأسماء الجداول العادية من غير تعديل استعلامات.
+const MAINT_SCHEMA = (process.env.MAINTENANCE_DB_SCHEMA || 'maintenance').replace(/[^a-zA-Z0-9_]/g, '') || 'maintenance';
 const pool = new Pool({
-  // قاعدة بيانات الصيانة المنفصلة (مش قاعدة Service-Flow) عشان جدول users وغيره مايتعارضش.
   connectionString: process.env.MAINTENANCE_DATABASE_URL || process.env.DATABASE_URL,
-  max: 10,
+  options: `-c search_path=${MAINT_SCHEMA},public`,
+  max: 5,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
   keepAlive: true,
@@ -13,6 +17,10 @@ const pool = new Pool({
 
 pool.on('error', (err) => {
   console.error('pg pool idle error (non-fatal):', err.message);
+});
+// احتياطى للـ search_path لو الـ startup option اتجاهل (بعض الـ poolers): نضبطه على كل اتصال جديد.
+pool.on('connect', (client) => {
+  client.query(`SET search_path TO ${MAINT_SCHEMA}, public`).catch(() => {});
 });
 
 function toPositional(sql) {
@@ -53,6 +61,7 @@ const db = {
 // (بعد ما نلغى Repl الصيانة ونستخدم قاعدة مستقلة عبر MAINTENANCE_DATABASE_URL). منقول حرفياً
 // من هيكل قاعدة الصيانة الأصلية (بـ SERIAL بدل sequences منفصلة). الترتيب حسب الـ FKs.
 async function createSchema() {
+  await pool.query(`CREATE SCHEMA IF NOT EXISTS ${MAINT_SCHEMA}`);
   await pool.query(`CREATE TABLE IF NOT EXISTS exchanges (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -276,3 +285,4 @@ async function initialize() {
 })();
 
 module.exports = db;
+module.exports.MAINT_SCHEMA = MAINT_SCHEMA;

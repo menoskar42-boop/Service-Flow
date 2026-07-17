@@ -18,6 +18,7 @@ const basePath = require("./basepath");
 
 const BASE_PATH = (process.env.MAINTENANCE_BASE_PATH || "/maintenance").replace(/\/+$/, "");
 const MAINT_DB_URL = process.env.MAINTENANCE_DATABASE_URL || process.env.DATABASE_URL;
+const MAINT_SCHEMA = db.MAINT_SCHEMA || "maintenance"; // نفس سكيما الصيانة المستخدمة فى database.js
 
 const app = express();
 
@@ -64,11 +65,12 @@ app.use(express.json());
 app.use("/api/integration", require("./routes/integration"));
 app.use("/api", require("./routes/api"));
 
-const pool = new Pool({ connectionString: MAINT_DB_URL, max: 3, connectionTimeoutMillis: 5000 });
+const pool = new Pool({ connectionString: MAINT_DB_URL, options: `-c search_path=${MAINT_SCHEMA},public`, max: 3, connectionTimeoutMillis: 5000 });
+pool.on("connect", (client) => { client.query(`SET search_path TO ${MAINT_SCHEMA}, public`).catch(() => {}); });
 
 app.use(session({
   name: "maint.sid", // اسم مستقل عن جلسة Service-Flow
-  store: new pgSession({ pool, createTableIfMissing: true }),
+  store: new pgSession({ pool, schemaName: MAINT_SCHEMA, createTableIfMissing: true }),
   secret: process.env.MAINTENANCE_SESSION_SECRET || process.env.SESSION_SECRET || "maint-dev-secret",
   resave: false,
   saveUninitialized: false,
