@@ -49,6 +49,102 @@ const db = {
   },
 };
 
+// إنشاء كل جداول الصيانة (idempotent) — عشان التطبيق يبنى نفسه على أى قاعدة فاضية جديدة
+// (بعد ما نلغى Repl الصيانة ونستخدم قاعدة مستقلة عبر MAINTENANCE_DATABASE_URL). منقول حرفياً
+// من هيكل قاعدة الصيانة الأصلية (بـ SERIAL بدل sequences منفصلة). الترتيب حسب الـ FKs.
+async function createSchema() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS exchanges (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT now()
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS cabinets (
+    id SERIAL PRIMARY KEY,
+    exchange_id INTEGER NOT NULL REFERENCES exchanges(id) ON DELETE CASCADE,
+    number TEXT NOT NULL,
+    UNIQUE(exchange_id, number)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS boxes (
+    id SERIAL PRIMARY KEY,
+    cabinet_id INTEGER NOT NULL REFERENCES cabinets(id) ON DELETE CASCADE,
+    number TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending_inspection'
+      CHECK (status IN ('pending_inspection','inspected','needs_maintenance','in_progress','completed')),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    latitude REAL,
+    longitude REAL,
+    UNIQUE(cabinet_id, number)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('admin','inspector','technician')),
+    full_name TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    worker_code TEXT
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS inspections (
+    id SERIAL PRIMARY KEY,
+    box_id INTEGER NOT NULL REFERENCES boxes(id),
+    inspector_id INTEGER NOT NULL REFERENCES users(id),
+    date DATE DEFAULT CURRENT_DATE,
+    general_notes TEXT DEFAULT '',
+    is_archived INTEGER DEFAULT 0,
+    latitude REAL,
+    longitude REAL
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS inspection_items (
+    id SERIAL PRIMARY KEY,
+    inspection_id INTEGER NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    item_type TEXT NOT NULL CHECK (item_type IN ('good_bad','yes_no')),
+    value TEXT NOT NULL,
+    notes TEXT DEFAULT '',
+    extra_type TEXT,
+    extra_distance REAL,
+    UNIQUE(inspection_id, item_key)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS maintenance_tasks (
+    id SERIAL PRIMARY KEY,
+    inspection_id INTEGER NOT NULL REFERENCES inspections(id),
+    technician_id INTEGER REFERENCES users(id),
+    notes TEXT DEFAULT '',
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed')),
+    rejection_reason TEXT,
+    prelim_confirmed_at TIMESTAMP,
+    prelim_confirmed_by INTEGER
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS maintenance_item_status (
+    id SERIAL PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES maintenance_tasks(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    is_done INTEGER DEFAULT 0,
+    done_at TIMESTAMPTZ,
+    done_by INTEGER REFERENCES users(id),
+    UNIQUE(task_id, item_key)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS photos (
+    id SERIAL PRIMARY KEY,
+    box_id INTEGER NOT NULL REFERENCES boxes(id),
+    inspection_id INTEGER REFERENCES inspections(id),
+    photo_type TEXT NOT NULL CHECK (photo_type IN ('before','after')),
+    filename TEXT NOT NULL,
+    uploaded_by INTEGER REFERENCES users(id),
+    uploaded_at TIMESTAMPTZ DEFAULT now(),
+    taken_at TIMESTAMPTZ,
+    latitude REAL,
+    longitude REAL,
+    data BYTEA,
+    media_type TEXT DEFAULT 'photo'
+  )`);
+}
+
 async function migrate() {
   try {
     await pool.query(`ALTER TABLE photos ADD COLUMN IF NOT EXISTS data BYTEA`);
@@ -170,7 +266,13 @@ async function initialize() {
   console.log('✓ Seeded 3 test users');
 }
 
-migrate().catch(console.error);
-initialize().catch(console.error);
+// إنشاء الجداول أولاً (لو القاعدة فاضية جديدة) ثم الترقيات ثم البيانات الأولية.
+(async () => {
+  try {
+    await createSchema();
+    await migrate();
+    await initialize();
+  } catch (e) { console.error('[maintenance] db init error:', e.message); }
+})();
 
 module.exports = db;
