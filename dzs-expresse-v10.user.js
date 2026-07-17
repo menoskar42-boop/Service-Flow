@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.20: القياس الجاى من «بحث برقم التليفون» (sf_fix=recent) يختار «A recent fix was performed on the line over the past 24 hours» فى شاشة Real-time Analysis قبل ضغط Yes؛ الافتراضى بدون العلامة يفضل «No fix performed on the line». v10.19: جهاز التنفيذ بيبعت الأرقام خط-خط (كل خط مهمة حسب الأولوية) فكل تشغيلة = خط واحد؛ رجّعنا منطق فتح التاب المستقر (v10.17) للاستخدام اليدوى متعدد الخطوط؛ ومع الرفع التلقائى لـ138 وقفنا تنزيل CSV التلقائى (نسيبه للزر اليدوى) عشان مايبقاش مئات الملفات. v10.18 (متراجَع عنه): انتقال داخلى فى نفس التاب. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.20.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.21: تصحيح اختيار «A recent fix (past 24h)» — الـ label من نوع ui-outputlabel من غير for، فبنختار الـ .ui-radiobutton-box بفهرس الخيار المستخرَج من آى دى/كلاس الـ label (الأثبت). v10.20: القياس الجاى من «بحث برقم التليفون» (sf_fix=recent) يختار «A recent fix was performed on the line over the past 24 hours» فى شاشة Real-time Analysis قبل ضغط Yes؛ الافتراضى بدون العلامة يفضل «No fix performed on the line». v10.19: جهاز التنفيذ بيبعت الأرقام خط-خط (كل خط مهمة حسب الأولوية) فكل تشغيلة = خط واحد؛ رجّعنا منطق فتح التاب المستقر (v10.17) للاستخدام اليدوى متعدد الخطوط؛ ومع الرفع التلقائى لـ138 وقفنا تنزيل CSV التلقائى (نسيبه للزر اليدوى) عشان مايبقاش مئات الملفات. v10.18 (متراجَع عنه): انتقال داخلى فى نفس التاب. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.21.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -644,38 +644,40 @@
           const RECENT_RE = /recent fix|past 24 hours|over the past 24/i;
           const MORE_RE = /more than 24/i; // نستبعد «A fix ... more than 24 hours ago»
           const isRecent = (t) => RECENT_RE.test(t || "") && !MORE_RE.test(t || "");
-          // PrimeFaces: الـ <input type=radio> الحقيقى مخفى جوّه .ui-helper-hidden-accessible،
-          // والعنصر اللى عليه الـ click listener هو .ui-radiobutton-box. فبنضغط الـ box المرتبط
-          // بالراديو (ضغط الـ input المخفى أو checked=true مش بيحدّث الويدجت).
-          const selectRadio = (radio) => {
-            const wrap = radio.closest(".ui-radiobutton");
-            const box = wrap && wrap.querySelector(".ui-radiobutton-box");
-            (box || radio).click();
-          };
-          // نجيب الراديو المطلوب: من الـ label المطابق (عبر for)، وإلا نضغط الـ label نفسه،
-          // وإلا fallback بالنص المجاور مباشرة لكل input (مش نص الحاوية كلها عشان مانطابقش الغلط).
-          let radio = null, labelToClick = null;
+          // الـ label هنا ui-outputlabel من غير for، بس آى ديه/كلاسه فيهم فهرس الخيار:
+          //   id="...:selectedRtDiagnosticDisplay:1:rtOptionL"  و  class="...option-1"  (الفهرس 1 = «A recent fix»)
+          // فبنجيب الفهرس، ونضغط الـ .ui-radiobutton-box المقابل (هو العنصر اللى عليه الـ listener).
+          let matchedLabel = null, idx = -1;
           for (const lab of dialog.querySelectorAll("label")) {
             if (!isRecent(lab.textContent)) continue;
-            if (lab.htmlFor) { try { radio = dialog.querySelector("#" + (window.CSS && CSS.escape ? CSS.escape(lab.htmlFor) : lab.htmlFor)); } catch (e) { radio = document.getElementById(lab.htmlFor); } }
-            if (!radio) labelToClick = lab;
+            matchedLabel = lab;
+            const m = (lab.id || "").match(/:(\d+):[a-z]*option/i) || (lab.className || "").match(/option-(\d+)/i);
+            if (m) idx = parseInt(m[1], 10);
             break;
           }
-          if (!radio && !labelToClick) {
-            const nearText = (r) => {
-              let s = "", n = r.nextSibling, hops = 0;
-              while (n && hops < 12) {
-                if (n.nodeType === 1 && (n.tagName === "INPUT" || (n.querySelector && n.querySelector("input")))) break;
-                s += (n.textContent != null ? n.textContent : (n.nodeValue || "")); n = n.nextSibling; hops++;
-              }
-              return s;
-            };
-            radio = [...dialog.querySelectorAll("input[type='radio']")].find((r) => isRecent(nearText(r))) || null;
+          const clickBoxFrom = (el) => {
+            let box = null, p = el, up = 0;
+            while (p && up < 6 && !box) {
+              box = (p.classList && p.classList.contains("ui-radiobutton-box")) ? p : (p.querySelector ? p.querySelector(".ui-radiobutton-box") : null);
+              p = p.parentElement; up++;
+            }
+            if (box) { box.click(); return true; }
+            return false;
+          };
+          let done = false;
+          // (1) الأكثر ثباتاً: الـ .ui-radiobutton-box رقم idx (0=No fix, 1=recent, 2=more) —
+          //     الراديوهات الثلاثة بس هى اللى ليها .ui-radiobutton-box (SELT/MELT عبارة عن checkbox).
+          const boxes = [...dialog.querySelectorAll(".ui-radiobutton-box")];
+          if (idx >= 0 && boxes[idx]) { boxes[idx].click(); done = true; console.log("🛠️ recent fix: box[" + idx + "]/" + boxes.length); }
+          // (2) عبر الـ wrapper .ui-radiobutton: آى دى الـ label من غير آخر حرف L (rtOptionL → rtOption)
+          if (!done && matchedLabel && matchedLabel.id && /optionl$/i.test(matchedLabel.id)) {
+            const el = document.getElementById(matchedLabel.id.replace(/l$/i, ""));
+            if (el) { done = clickBoxFrom(el); console.log("🛠️ recent fix via wrapper → " + (done ? "clicked" : "NOT-FOUND")); }
           }
-          if (radio) { if (!radio.checked) selectRadio(radio); console.log("🛠️ اخترت «A recent fix (past 24h)» قبل Yes."); }
-          else if (labelToClick) { labelToClick.click(); console.log("🛠️ اخترت «A recent fix (past 24h)» قبل Yes (label)."); }
-          else console.warn("⚠️ مالقيتش «recent fix» — هكمّل بالافتراضى.");
-        } catch (e) {}
+          // (3) آخر محاولة: ضغط الـ label نفسه
+          if (!done && matchedLabel) { matchedLabel.click(); console.log("🛠️ recent fix: clicked label fallback."); }
+          if (!matchedLabel) console.warn("⚠️ recent fix: مالقيتش الخيار. labels=" + JSON.stringify([...dialog.querySelectorAll("label")].map((l) => (l.textContent || "").trim().slice(0, 35))));
+        } catch (e) { console.warn("recent fix error:", e); }
       }
       yesBtn.click(); yesClicked = true; clearInterval(confirmTimer);
       afterYesClicked();
