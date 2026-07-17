@@ -32,10 +32,11 @@ export function executeSingle(type: ExecJobType, account: string | number, opts?
 
 // تنفيذ **مجموعة أرقام دفعة واحدة** — نبعتها كلها للسكربت (DZS/PO) اللى بيلفّ عليها بنفسه
 // (زى ما لو ضغطنا عليها والزر مطفى: 6/185…). كده مايفتحش صفحة منفصلة لكل رقم.
-export function executeBatch(type: ExecJobType, accounts: (string | number)[], opts?: { fixRecent?: boolean }): Window | null {
+export function executeBatch(type: ExecJobType, accounts: (string | number)[], opts?: { fixRecent?: boolean; afterStop?: boolean }): Window | null {
   const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
   if (!accs.length) return null;
-  if (type === "raise") { openProfileOptimization(accs); return null; }
+  // afterStop: يرفع السرعة ثم يوقف الـ nightly الناتج فى **نفس تشغيلة PO** (مهمة واحدة، مفيش تداخل).
+  if (type === "raise") { openProfileOptimization(accs, opts?.afterStop ? { afterStop: true } : {}); return null; }
   if (type === "stop") { openProfileOptimization(accs, { stopOnly: true }); return null; }
   const fix = opts?.fixRecent ? "&sf_fix=recent" : "";
   return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accs.join(","))}${fix}`, DZS_MEASURE_TARGET);

@@ -110,10 +110,13 @@ export function ExecutorButton() {
         closeWin();
         return stopped ? "stopped" : "timeout";
       }
-      const ev = type === "stop" ? "stop" : "raise";
-      const perMax = type === "stop" ? STOP_MS : RAISE_MAX_MS;
+      // رفع السرعة المعلّم «+إيقاف» = رفع ثم إيقاف الـ nightly فى **نفس تشغيلة PO** (afterStop):
+      // مهمة واحدة بدل مهمتين، ومنستنى حدث الإيقاف (آخر خطوة) قبل ما نعتبرها خلصت عشان مايبقاش تداخل.
+      const raiseWithStop = type === "raise" && String(note || "").includes("+إيقاف");
+      const ev: "raise" | "stop" = (type === "stop" || raiseWithStop) ? "stop" : "raise";
+      const perMax = type === "stop" ? STOP_MS : (raiseWithStop ? RAISE_MAX_MS + STOP_MS : RAISE_MAX_MS);
       const before = await latestPoEventAt(last, ev);
-      executeBatch(type, accs); // PO يلفّ على كل الأرقام فى run واحد
+      executeBatch(type, accs, raiseWithStop ? { afterStop: true } : undefined); // PO يلفّ على كل الأرقام فى run واحد
       const deadline = Date.now() + Math.min(accs.length * perMax, MAX_TOTAL_MS);
       while (!stopped && Date.now() < deadline) {
         await sleep(5 * 1000);
