@@ -19,6 +19,7 @@ import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
+import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 
 // رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
@@ -298,6 +299,8 @@ export function PhoneLinesReport() {
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             </>)}
+            {/* مراجعة البيانات: يعيد جلب اسم/عنوان العميل من FCC للأرقام (بدون بيانات أو الكل) — سوبر أدمن. */}
+            {isSuper && <ReviewSubscriberInfoButton />}
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
