@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertOctagon } from "lucide-react";
 import * as XLSX from "xlsx";
@@ -27,13 +28,17 @@ const fmtComplain = (d: string | null) => {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}:${p(t.getUTCSeconds())}.0`;
 };
-// تاريخ رفع الجسيم = تاريخ اليوم (يوم/شهر/سنة) — قابل للتعديل يدوياً فى الإكسيل.
-const todayDMY = () => { const d = new Date(); const p = (n: number) => String(n).padStart(2, "0"); return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`; };
+// تحويل تاريخ الإدخال YYYY-MM-DD → يوم/شهر/سنة (صيغة الإيميل).
+const dmy = (s: string) => { const [y, m, d] = (s || "").split("-"); return y && m && d ? `${d}/${m}/${y}` : ""; };
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
 export function MajorFaultsReport() {
   const [rows, setRows] = useState<Fault[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // خانات أعلى التقرير: تاريخ رفع الجسيم (أى تاريخ) + نوع الجسيم (اتلاف/صيانة، الافتراضى صيانة).
+  const [raiseDate, setRaiseDate] = useState(todayISO());
+  const [reason, setReason] = useState("صيانة");
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -59,8 +64,8 @@ export function MajorFaultsReport() {
     f.centralCode || "",        // كود السنترال (GHNAT/…)
     "",                         // رقم العنصر المرفوع جسيم — يُملأ يدوياً (الكابينة/بكسيات…)
     f.cabinetNo || "",          // رقم الكابينة الحالى
-    "صيانة",                    // سبب رفع الجسيم (افتراضى — قابل للتعديل)
-    todayDMY(),                 // تاريخ رفع الجسيم (اليوم — قابل للتعديل)
+    reason,                     // سبب رفع الجسيم (من الدروب ليست: اتلاف/صيانة)
+    dmy(raiseDate),             // تاريخ رفع الجسيم (من خانة التاريخ)
     fmtComplain(f.complainTime),// تاريخ شكوي المشترك
     "",                         // ايميل مرسل الطلب — يُملأ يدوياً
   ];
@@ -86,7 +91,21 @@ export function MajorFaultsReport() {
           <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1 text-red-700 border-red-200" disabled={!rows.length}><FileText className="w-4 h-4" /> تصدير PDF</Button>
         </div>
       </div>
-      <div className="text-sm text-muted-foreground">إجمالى: <strong>{rows.length}</strong> عطل جسيم</div>
+      {/* خانات التحكّم — تنطبق على كل الصفوف عند التصدير */}
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="grid gap-1">
+          <label className="text-xs text-muted-foreground">تاريخ رفع الجسيم</label>
+          <Input type="date" value={raiseDate} onChange={(e) => setRaiseDate(e.target.value)} className="h-9 w-40" />
+        </div>
+        <div className="grid gap-1">
+          <label className="text-xs text-muted-foreground">نوع الجسيم</label>
+          <select value={reason} onChange={(e) => setReason(e.target.value)} className="h-9 w-40 rounded-md border px-2 text-sm bg-background">
+            <option value="صيانة">صيانة</option>
+            <option value="اتلاف">اتلاف</option>
+          </select>
+        </div>
+        <div className="text-sm text-muted-foreground mr-auto">إجمالى: <strong>{rows.length}</strong> عطل جسيم</div>
+      </div>
       {error && <div className="text-sm text-red-600">{error}</div>}
       <div className="rounded-md border max-h-[65vh] overflow-auto">
         <Table>
