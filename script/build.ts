@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, cp } from "fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -59,6 +59,11 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // تطبيق الصيانة المدمج بيتحمّل كـ CommonJS غير مبنْدَل وقت التشغيل من dist/maintenance/app/app.js
+  // (عشان __dirname/قوالب EJS/الأصول تتحلّ صح). ننسخ الكود كامل جنب dist/index.cjs.
+  console.log("copying maintenance app...");
+  await cp("server/maintenance", "dist/maintenance", { recursive: true });
 }
 
 buildAll().catch((err) => {

@@ -2,7 +2,8 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  // قاعدة بيانات الصيانة المنفصلة (مش قاعدة Service-Flow) عشان جدول users وغيره مايتعارضش.
+  connectionString: process.env.MAINTENANCE_DATABASE_URL || process.env.DATABASE_URL,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
