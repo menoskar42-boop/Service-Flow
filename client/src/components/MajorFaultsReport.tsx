@@ -36,9 +36,10 @@ export function MajorFaultsReport() {
   const [rows, setRows] = useState<Fault[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // خانات أعلى التقرير: تاريخ رفع الجسيم (أى تاريخ) + نوع الجسيم (اتلاف/صيانة، الافتراضى صيانة).
+  // خانات أعلى التقرير: تاريخ رفع الجسيم + نوع الجسيم (اتلاف/صيانة) + العنصر المرفوع (بكسيات/الكابينة).
   const [raiseDate, setRaiseDate] = useState(todayISO());
   const [reason, setReason] = useState("صيانة");
+  const [element, setElement] = useState("بكسيات");
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -62,7 +63,7 @@ export function MajorFaultsReport() {
     f.phoneShort || "",         // رقم التليفون
     f.centralName || "",        // اسم السنترال
     f.centralCode || "",        // كود السنترال (GHNAT/…)
-    "",                         // رقم العنصر المرفوع جسيم — يُملأ يدوياً (الكابينة/بكسيات…)
+    element,                    // رقم العنصر المرفوع جسيم (من الدروب ليست: بكسيات/الكابينة)
     f.cabinetNo || "",          // رقم الكابينة الحالى
     reason,                     // سبب رفع الجسيم (من الدروب ليست: اتلاف/صيانة)
     dmy(raiseDate),             // تاريخ رفع الجسيم (من خانة التاريخ)
@@ -102,6 +103,13 @@ export function MajorFaultsReport() {
           <select value={reason} onChange={(e) => setReason(e.target.value)} className="h-9 w-40 rounded-md border px-2 text-sm bg-background">
             <option value="صيانة">صيانة</option>
             <option value="اتلاف">اتلاف</option>
+          </select>
+        </div>
+        <div className="grid gap-1">
+          <label className="text-xs text-muted-foreground">العنصر المرفوع جسيم</label>
+          <select value={element} onChange={(e) => setElement(e.target.value)} className="h-9 w-40 rounded-md border px-2 text-sm bg-background">
+            <option value="بكسيات">بكسيات</option>
+            <option value="الكابينة">الكابينة</option>
           </select>
         </div>
         <div className="text-sm text-muted-foreground mr-auto">إجمالى: <strong>{rows.length}</strong> عطل جسيم</div>
