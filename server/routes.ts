@@ -4812,17 +4812,29 @@ export async function registerRoutes(
   app.get("/api/line-subscriber-info/pending", async (req: any, res) => {
     setPortsCors(res);
     if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
-    const limit = Math.min(Number((req.query as any).limit) || 5000, 20000);
-    // نرجّع فقط الأرقام الصحيحة = 88 + رقم مشترك مكوّن من 7 خانات بالظبط (زى 882747150)
-    // نستبعد القيم المشوّهة فى عمود phone_number (أكواد/أرقام 21 خانة) اللى FCC بيرفضها («A value is required»).
+    const q = req.query as any;
+    const limit = Math.min(Number(q.limit) || 5000, 20000);
+    // فلتر اختيارى (سنترال/كابينة/بكس) — كل تاب مراجعة يبعت فلتره فيجيب أرقامه بس (مراجعات متوازية).
+    const params: any[] = [limit];
+    const conds: string[] = [
+      "si.phone_number IS NULL",
+      "regexp_replace(pp.phone_number, '[^0-9]', '', 'g') ~ '^0*88[0-9]{7}$'",
+    ];
+    let plJoin = "";
+    if (q.central || q.cabin || q.box) {
+      plJoin = "LEFT JOIN phone_lines pl ON pl.full_phone = pp.phone_number";
+      if (q.central) { params.push(String(q.central)); conds.push(`pl.central = $${params.length}`); }
+      if (q.cabin) { params.push(String(q.cabin)); conds.push(`pl.cabin_number = $${params.length}`); }
+      if (q.box) { params.push(String(q.box)); conds.push(`pl.box_number = $${params.length}`); }
+    }
     const { rows } = await pool.query(
       `SELECT pp.phone_number FROM phone_ports pp
        LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
-       WHERE si.phone_number IS NULL
-         AND regexp_replace(pp.phone_number, '[^0-9]', '', 'g') ~ '^0*88[0-9]{7}$'
+       ${plJoin}
+       WHERE ${conds.join(" AND ")}
        ORDER BY pp.phone_number
        LIMIT $1`,
-      [limit],
+      params,
     );
     res.json({ phones: rows.map((r: any) => r.phone_number) });
   });
@@ -4949,6 +4961,8 @@ export async function registerRoutes(
       ? `phone_number IN (SELECT full_phone FROM phone_lines pl WHERE ${fconds.join(" AND ")})`
       : "TRUE";
     const scopeClause = scope === "all" ? "TRUE" : "(sub_name IS NULL OR TRIM(sub_name) = '')";
+    // بنمسح بيانات الأرقام المفلترة (حسب النطاق) فتبقى «ناقصة» → سكربت FCC يجيبها. الفلتر بيتبعت
+    // لـ /pending كمان (باراميترات) فكل تاب مراجعة يجيب أرقام فلتره بس — يشتغلوا بالتوازى بلا طابور.
     const r = await pool.query(`DELETE FROM line_subscriber_info WHERE ${filterClause} AND ${scopeClause}`, params);
     res.json({ ok: true, requeued: r.rowCount ?? 0, scope, filtered: fconds.length > 0 });
   });

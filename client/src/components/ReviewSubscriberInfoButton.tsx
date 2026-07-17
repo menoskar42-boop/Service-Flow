@@ -31,8 +31,16 @@ export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: 
         description: `${scope === "all" ? "كل الأرقام" : "الأرقام بدون اسم/عنوان"} — تم تجهيز ${j.requeued} رقم. سيُفتح FCC لجلب البيانات.`,
         duration: 5000,
       });
-      // يفتح FCC (بالاسم الثابت) فيشتغل سكربت الجلب تلقائياً على كل الأرقام المطلوبة
-      window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf#sf_si=auto", "sf_subinfo_auto");
+      // يفتح FCC فيشتغل سكربت الجلب تلقائياً. لو فيه فلتر (سنترال/كابينة/بكس) نبعته فى الهاش (sf_sif)
+      // ونفتح نافذة باسم مستقل لكل فلتر — فتقدر تفتح أكتر من مراجعة بفلاتر مختلفة فى نفس الوقت.
+      const f = filters || {};
+      const hasF = !!(f.central || f.cabin || f.box);
+      const fkey = [f.central || "", f.cabin || "", f.box || ""].join("~");
+      const sif = hasF ? "&sf_sif=" + encodeURIComponent(fkey) : "";
+      const win = hasF
+        ? "sf_si_" + Math.abs(Array.from(fkey).reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0)).toString(36)
+        : "sf_subinfo_auto";
+      window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf#sf_si=auto" + sif, win);
     } catch (e: any) {
       toast({ variant: "destructive", title: "خطأ", description: e.message || "تعذّر البدء", duration: 5000 });
     } finally {
