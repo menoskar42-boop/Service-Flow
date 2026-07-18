@@ -27,8 +27,12 @@ module.exports = function basePath(base) {
     const _send = res.send.bind(res);
     res.send = function (body) {
       try {
+        // مهم: res.render بينده res.send بجسم HTML قبل ما Express يظبط Content-Type (بيتظبط جوّه
+        // send نفسه بعد ما الـ wrapper ده يشتغل) — فلو اشترطنا text/html بس، الصفحات المرندَرة
+        // متتبِّئش روابطها وتطلع 404. فنبِّئ لو الـ ct = html أو **لسه مش متظبط** (جسم نصّى من render).
+        // الـ JSON/الملفات بيتظبط لها ct (application/json / image/…) قبل send فمتتأثرش.
         const ct = res.get("Content-Type") || "";
-        if (typeof body === "string" && /text\/html/i.test(ct)) {
+        if (typeof body === "string" && (!ct || /text\/html/i.test(ct))) {
           body = body
             .replace(hrefRe, "$1=$2" + b + "/")
             .replace(jsRe, "$1($2$3" + b + "/")
