@@ -213,7 +213,7 @@ export const authApi = {
     }),
 
   logout: () =>
-    apiFetch<{ success: boolean }>('/auth/logout', { method: 'POST' }),
+    apiFetch<{ success: boolean; redirect?: string }>('/auth/logout', { method: 'POST' }),
 
   me: () => apiFetch<User>('/auth/me'),
 

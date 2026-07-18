@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useStore } from "@/cfm/lib/store";
+import { authApi } from "@/cfm/lib/api";
 import { translations } from "@/cfm/lib/i18n";
 import { 
   LayoutDashboard, 
@@ -45,8 +46,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const { toast } = useToast();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // لو المستخدم داخل عن طريق Service-Flow (SSO) السيرفر بيرجّع redirect لدخول الطلبات →
+    // نروح هناك بتنقّل صفحة كاملة (خروج كامل). لو كوابل مباشر → دخول الكوابل زى ما هو.
+    let redirect: string | undefined;
+    try { redirect = (await authApi.logout())?.redirect; } catch { /* تجاهل */ }
+    logout(); // امسح الحالة المحلية
+    if (redirect) { window.location.href = redirect; return; }
     setLocation("/login");
     toast({ title: t.logoutSuccess });
   };

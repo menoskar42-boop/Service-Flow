@@ -126,10 +126,19 @@ export function registerCfmRoutes(app: Express) {
   });
 
   // POST /api/auth/logout
-  app.post("/api/cfm/auth/logout", (req, res) => {
-    // الجلسة مشتركة مع Service-Flow — نمسح مستخدم CFM فقط بدل تدمير الجلسة كلها
+  app.post("/api/cfm/auth/logout", (req: any, res) => {
+    // لو المستخدم داخل عن طريق Service-Flow (SSO) → خروج كامل من الطلبات كمان ونوجّهه لدخول الطلبات.
+    // لو مستخدم كوابل مباشر (بدون حساب طلبات) → نمسح جلسة الكوابل فقط ويرجع لدخول الكوابل.
+    const ssoFromSf = typeof req.isAuthenticated === "function" && req.isAuthenticated();
     delete (req.session as any).cfmUser;
-    req.session.save(() => res.json({ success: true }));
+    if (ssoFromSf) {
+      req.logout((err: any) => {
+        if (err) return res.json({ success: true }); // fallback هادئ
+        req.session.destroy(() => { res.clearCookie("connect.sid"); res.json({ success: true, redirect: "/login" }); });
+      });
+    } else {
+      req.session.save(() => res.json({ success: true }));
+    }
   });
 
   // GET /api/auth/me
