@@ -909,7 +909,10 @@ async function cfmFetch(path: string): Promise<Response> {
 }
 
 // ── Maintenance (نظام صيانة البوكسات) live proxy ─────────────────────────────
-const MAINT_BASE  = "https://maintenance-we.replit.app";
+// موقع الصيانة بقى مدمج جوّه Service-Flow تحت /maintenance (نفس السيرفر ونفس القاعدة)، فبنكلّم
+// النسخة المحلّية بدل الـ Repl القديم اللى اتقفل. يمكن override بـ MAINTENANCE_API_BASE لو اتفصل.
+const MAINT_BASE  = process.env.MAINTENANCE_API_BASE
+  || `http://127.0.0.1:${process.env.PORT || 5000}/maintenance`;
 const MAINT_TOKEN = process.env.MAINTENANCE_API_TOKEN || "sf-comprehensive-2026-GHNAT-7Kx9";
 
 async function maintFetch(path: string): Promise<Response> {
@@ -4774,7 +4777,9 @@ export async function registerRoutes(
   // ===== تكامل: تقرير «مسافات التخاطي والتعارض — لم يتم الإصلاح بعد» من نظام صيانة البوكسات =====
   // وسيط server-to-server: بيجيب الـ JSON من المشروع التاني (maintenance-we) ويضيف توكن التكامل
   // (مخبّى فى env؛ القيمة الافتراضية هى المتفق عليها). كده التوكن مايظهرش للمتصفح ومفيش مشكلة CORS.
-  const BOX_OVERLAP_URL = process.env.BOX_MAINT_URL || "https://maintenance-we.replit.app/api/integration/overlap-distance-pending";
+  // موقع الصيانة المدمج (نفس السيرفر تحت /maintenance) بدل الـ Repl القديم المقفول.
+  const BOX_OVERLAP_URL = process.env.BOX_MAINT_URL
+    || `http://127.0.0.1:${process.env.PORT || 5000}/maintenance/api/integration/overlap-distance-pending`;
   const BOX_OVERLAP_TOKEN = process.env.BOX_MAINT_TOKEN || "sf-integration-2026-GHNAT-overlap-Qz7m";
   app.get("/api/reports/box-overlap", requireAuth, async (req: any, res) => {
     try {
