@@ -38,8 +38,10 @@ export function UnifiedUsersManager() {
   const roleLabel = (key: string) => roles.find((r) => r.key === key)?.labelAr || key || "—";
   const sites = (u: PortalUser) => {
     const s: string[] = [];
-    if (u.sfRole) s.push("الطلبات");
+    // فنى الصيانة: حساب الطلبات مجرّد وسيلة دخول (SSO) لموقع الصيانة — مايتحسبش «طلبات».
+    if (u.sfRole && u.unifiedRole !== "maintenance_tech") s.push("الطلبات");
     if (u.cfmRole) s.push("الكوابل");
+    if (roles.find((r) => r.key === u.unifiedRole)?.maint) s.push("الصيانة");
     return s.join(" + ") || "—";
   };
 
@@ -142,7 +144,9 @@ export function UnifiedUsersManager() {
               <SelectContent>
                 {roles.map((r) => (
                   <SelectItem key={r.key} value={r.key} className="text-right">
-                    {r.labelAr} — {[r.sf ? "طلبات" : null, r.cfm ? "كوابل" : null, r.maint ? "صيانة" : null].filter(Boolean).join(" + ") || "—"}
+                    {/* فنى الصيانة: حساب الطلبات مجرّد وسيلة دخول (SSO) — بيفتح برنامج الصيانة فقط،
+                        فمنعرضش «طلبات» فى الليبل عشان ميبقاش مضلِّل. */}
+                    {r.labelAr} — {[r.sf && r.key !== "maintenance_tech" ? "طلبات" : null, r.cfm ? "كوابل" : null, r.maint ? "صيانة" : null].filter(Boolean).join(" + ") || "—"}
                   </SelectItem>
                 ))}
               </SelectContent>
