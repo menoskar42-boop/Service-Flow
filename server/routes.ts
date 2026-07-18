@@ -1217,6 +1217,20 @@ export async function registerRoutes(
     });
   });
 
+  // GET /logout — تسجيل خروج كامل للاستخدام من المواقع المدمجة (الصيانة/الكوابل) عبر تنقّل صفحة
+  // كاملة: يمسح جلسة الطلبات (passport) + جلسة الكوابل ثم يوجّه لصفحة دخول الطلبات. لازم يكون
+  // مُسجَّل قبل الـ SPA catch-all عشان السيرفر يمسكه بدل ما React يرندر صفحة.
+  app.get("/logout", (req: any, res, next) => {
+    delete (req.session as any).cfmUser;
+    req.logout((err: any) => {
+      if (err) return next(err);
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid");
+        res.redirect("/login");
+      });
+    });
+  });
+
   app.get(api.auth.me.path, async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     res.json(await userResponse(req.user));

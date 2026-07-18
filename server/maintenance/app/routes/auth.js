@@ -27,7 +27,17 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
-  req.session.destroy(() => res.redirect('/auth/login'));
+  // لو المستخدم داخل عن طريق Service-Flow (SSO) → نسجّل خروج كامل من Service-Flow كمان ونوّديه
+  // لصفحة دخول الطلبات (مش دخول الصيانة). التنقّل صفحة كاملة على الجذر عبر JS (نتخطى بادئة
+  // /maintenance زى زر العودة). لو مستخدم صيانة مباشر → دخول الصيانة زى ما هو.
+  const wasSSO = req.session.user && req.session.user.sso;
+  req.session.destroy(() => {
+    if (wasSSO) {
+      res.send("<!doctype html><meta charset=utf-8><script>location.replace(location.origin + '/logout')</script>");
+    } else {
+      res.redirect('/auth/login');
+    }
+  });
 });
 
 module.exports = router;
