@@ -21,12 +21,15 @@
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
         <!-- زر العودة إلى Service-Flow: href يتظبط بالـ JS (location.origin + '/') عشان يفوت
-             طبقة البادئة اللى بتحوّل أى /x لـ /maintenance/x — فيرجّع لجذر Service-Flow الحقيقى. -->
+             طبقة البادئة اللى بتحوّل أى /x لـ /maintenance/x — فيرجّع لجذر Service-Flow الحقيقى.
+             مايظهرش لفنى الصيانة (technician) لأنه بيفتح الصيانة فقط وبيترد لها لو رجع. -->
+        <% if (user.role !== 'technician') { %>
         <li class="nav-item">
           <a class="nav-link fw-bold" id="sfHomeLink" href="#" title="العودة إلى Service-Flow">
             <i class="bi bi-box-arrow-in-right"></i> العودة إلى Service-Flow
           </a>
         </li>
+        <% } %>
         <% if (user.role === 'admin' || user.role === 'inspector') { %>
           <li class="nav-item"><a class="nav-link" href="/boxes"><i class="bi bi-box2"></i> البوكسات</a></li>
           <li class="nav-item"><a class="nav-link" href="/boxes/exchanges"><i class="bi bi-diagram-3"></i> السنترالات</a></li>
