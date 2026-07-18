@@ -74,7 +74,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
       { id: "major-faults",        label: "الأعطال الجسيمة" },
-      { id: "closed-port-cabinets", label: "الكباين المغلقة بورتات" },
       { id: "manual-current-faults", label: "الأعطال الحالية خارج الشاشة" },
       { id: "manual-regularized-range", label: "الأعطال المنتظمة خارج الشاشة (فترة)" },
       { id: "repeated-within-month", label: "الأعطال المكررة خلال شهر من تاريخه" },
@@ -136,6 +135,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "box-summary",  label: "ملخص البكسيات" },
+      { id: "closed-port-cabinets", label: "الكباين المغلقة بورتات" },
       { id: "subscriber-info", label: "اسم وعنوان العملاء (البورتات)" },
       { id: "ports-suspend-free", label: "بورتات ALL_SUSPEND / FREE" },
       { id: "cabinet-capacity", label: "سعة الكباين (ابتدائى/ثانوى)" },
