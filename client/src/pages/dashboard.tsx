@@ -313,7 +313,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0 nav-x-scroll [&>*]:shrink-0">
             {/* برنامج الكوابل المدمج (Cable-Fault-Manager) — قسم /cfm.
                 يظهر فقط للأدوار اللى ليها وصول للكوابل (أدمن المبيعات/المبيعات/البيانات مالهمش) */}
             {canAccessCFM(authUser?.role ?? "") && (
@@ -352,12 +352,12 @@ export default function Dashboard() {
         {/* Tab Navigation — Admin, Tech, Data Manager, External & Sales Admin */}
         {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.EXTERNAL || user.role === ROLES.SALES_ADMIN) && (
           <div className="border-t bg-white">
-            <div className="container mx-auto px-4">
-              <div className="flex" dir="rtl">
+            <div className="container mx-auto px-2 sm:px-4">
+              <div className="flex nav-x-scroll" dir="rtl">
                 <button
                   onClick={() => setAdminTab("orders")}
                   data-testid="tab-admin-orders"
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  className={`flex items-center gap-2 shrink-0 whitespace-nowrap px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                     adminTab === "orders"
                       ? "border-primary text-primary"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -370,7 +370,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setAdminTab("reports")}
                     data-testid="tab-admin-reports"
-                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 shrink-0 whitespace-nowrap px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                       adminTab === "reports"
                         ? "border-primary text-primary"
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -384,7 +384,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setAdminTab("phone-lookup")}
                     data-testid="tab-admin-phone-lookup"
-                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 shrink-0 whitespace-nowrap px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                       adminTab === "phone-lookup"
                         ? "border-primary text-primary"
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -398,7 +398,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setAdminTab("data-completion")}
                     data-testid="tab-admin-data-completion"
-                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 shrink-0 whitespace-nowrap px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                       adminTab === "data-completion"
                         ? "border-primary text-primary"
                         : "border-transparent text-muted-foreground hover:text-foreground"
@@ -412,7 +412,7 @@ export default function Dashboard() {
                   <button
                     onClick={() => setAdminTab("file-upload")}
                     data-testid="tab-admin-file-upload"
-                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    className={`flex items-center gap-2 shrink-0 whitespace-nowrap px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                       adminTab === "file-upload"
                         ? "border-primary text-primary"
                         : "border-transparent text-muted-foreground hover:text-foreground"

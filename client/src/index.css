@@ -151,6 +151,18 @@
   scrollbar-color: rgba(100, 116, 139, 0.6) transparent;
 }
 
+/* شريط تنقّل أفقى قابل للتمرير على الموبايل بدون سكرول-بار ظاهر — عشان أيقونات/تبويبات
+   الهيدر تتمرّر باللمس بدل ما تتقص على الشاشات الصغيرة. */
+.nav-x-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+.nav-x-scroll::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
 /* Sidebar vertical scrollbar — slim and always visible when the report
    navigation list is taller than the viewport. */
 .sidebar-scroll::-webkit-scrollbar {
