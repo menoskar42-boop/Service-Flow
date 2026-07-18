@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label";
 import { Loader2, Command } from "lucide-react";
 import { useLocation } from "wouter";
+import { ROLES } from "@shared/schema";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -14,6 +15,11 @@ export default function Login() {
   const [, setLocation] = useLocation();
 
   if (user) {
+    // فنى الصيانة يدخل مباشرة على برنامج الصيانة (تنقّل صفحة كاملة لتفعيل SSO السيرفر).
+    if ((user as any)?.role === ROLES.MAINTENANCE_TECH) {
+      window.location.href = "/maintenance";
+      return null;
+    }
     setLocation("/");
     return null;
   }

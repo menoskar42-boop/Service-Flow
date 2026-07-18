@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type User } from "@shared/routes";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { ROLES } from "@shared/schema";
 import { z } from "zod";
 
 type LoginInput = z.infer<typeof api.auth.login.input>;
@@ -48,6 +49,12 @@ export function useAuth() {
         title: "تم تسجيل الدخول بنجاح",
         description: `أهلاً بك، ${data.username}`,
       });
+      // فنى الصيانة: يدخل مباشرة على برنامج الصيانة (تنقّل صفحة كاملة عشان SSO السيرفر يشتغل)
+      // بدل ما يعدّى على لوحة تحكم الطلبات ثم يتحوّل.
+      if ((data as any)?.role === ROLES.MAINTENANCE_TECH) {
+        window.location.href = "/maintenance";
+        return;
+      }
       setLocation("/");
     },
     onError: (error: Error) => {
