@@ -339,8 +339,11 @@ export function PhoneLookupReport() {
     const d = await r.json().catch(() => ({}));
     if (d?.duplicate) { alert(d.message || "الخط ده فيه عطل مسجّل بالفعل"); return; }
     if (!d?.ok) { alert(d?.message || "تعذّر تسجيل العطل"); return; }
-    alert("تم تسجيل العطل — الخط بقى فى «الأعطال الحالية خارج الشاشة»");
     refetchMf();
+    // قياس أوتوماتيك بعد تسجيل العطل لو الخط ليه رقم أكونت (زى الانتظام). measureDZS بيدّى التنبيه المناسب.
+    const acc = (line?.accountNo ?? "").toString().trim();
+    if (acc) { await measureDZS(); }
+    else { alert("تم تسجيل العطل — الخط بقى فى «الأعطال الحالية خارج الشاشة» (لا يوجد رقم أكونت للقياس)"); }
   };
 
   // انتظام العطل (+ قياس أوتوماتيك لو الخط ليه رقم أكونت)
