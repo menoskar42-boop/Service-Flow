@@ -42,6 +42,7 @@ export function DataCompletionSection() {
   const [phone, setPhone] = useState("");
   const [workOrderType, setWorkOrderType] = useState("تركيب");
   const [cableQuantity, setCableQuantity] = useState("");
+  const [mobile, setMobile] = useState(""); // رقم المحمول — يظهر عند اختيار «صيانة» فقط
   const [search, setSearch] = useState("");
 
   const { data: entries = [], isFetching } = useQuery<CableEntry[]>({
@@ -57,13 +58,17 @@ export function DataCompletionSection() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/cable-entries", { phone, workOrderType, cableQuantity });
+      const res = await apiRequest("POST", "/api/cable-entries", {
+        phone, workOrderType, cableQuantity,
+        mobile: workOrderType === "صيانة" ? mobile : "", // المحمول يُرسل مع «صيانة» فقط
+      });
       return res.json();
     },
     onSuccess: () => {
       toast({ title: "تم الحفظ", description: `كمية السلك للرقم ${phone} (${workOrderType})`, duration: 3500 });
       setPhone("");
       setCableQuantity("");
+      setMobile("");
       setWorkOrderType("تركيب");
       qc.invalidateQueries({ queryKey: ["/api/cable-entries"] });
       qc.invalidateQueries({ queryKey: ["/api/work-orders"] });
@@ -209,6 +214,22 @@ export function DataCompletionSection() {
               className="text-sm text-left"
             />
           </div>
+
+          {/* رقم المحمول — يظهر عند اختيار «صيانة» فقط. يُسجَّل فى أرقام محمول الخطوط
+              فيظهر عند البحث برقم التليفون ويتحدّث لو الخط له رقم سابق. */}
+          {workOrderType === "صيانة" && (
+            <div className="w-full sm:w-44">
+              <Label className="text-xs text-muted-foreground block mb-1">رقم المحمول (اختيارى)</Label>
+              <Input
+                inputMode="tel"
+                value={mobile}
+                onChange={(e) => { const v = e.target.value; if (v === "" || /^\d*$/.test(v)) setMobile(v); }}
+                placeholder="01xxxxxxxxx"
+                dir="ltr"
+                className="text-sm text-left"
+              />
+            </div>
+          )}
 
           <Button type="submit" disabled={!canSubmit || saveMutation.isPending} className="gap-1">
             {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}

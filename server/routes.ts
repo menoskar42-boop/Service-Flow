@@ -3579,12 +3579,15 @@ export async function registerRoutes(
   // POST /api/cable-entries — إضافة كمية السلك لرقم + نوع امر شغل (فنى + أدمن)
   // التكرار (نفس الرقم + نفس النوع) مرفوض برسالة خطأ — لتعديل القيمة يُحذف الإدخال أولاً.
   app.post("/api/cable-entries", requireTechOrAdmin, async (req: any, res) => {
-    const { phone, workOrderType, cableQuantity } = req.body as Record<string, string>;
+    const { phone, workOrderType, cableQuantity, mobile } = req.body as Record<string, string>;
     const { local, full } = normalizePhone(phone);
     if (!local || local.length < 5) return res.status(400).json({ message: "رقم تليفون غير صالح" });
     const type = ["نقل", "صيانة", "تركيب"].includes(workOrderType) ? workOrderType : "تركيب";
     const qty = String(cableQuantity ?? "").trim();
     if (!/^\d+(\.\d+)?$/.test(qty)) return res.status(400).json({ message: "كمية السلك يجب أن تكون رقماً (يقبل العشرى)" });
+    // رقم المحمول (يظهر فى الواجهة عند اختيار «صيانة» فقط) — يُسجَّل فى مخزن أرقام المحمول للخطوط
+    // (line_mobiles) فيظهر عند البحث برقم التليفون. ON CONFLICT بيحدّث الرقم القديم تلقائياً بأحدث رقم.
+    const mobileVal = String(mobile ?? "").trim();
     const userId = req.user.id;
     const userName = req.user.username;
     // رفض التكرار صراحةً: لو الرقم + النوع موجود من قبل
@@ -3603,6 +3606,19 @@ export async function registerRoutes(
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
         [local, full, type, qty, userId, userName],
       );
+      // لو الفنى اختار «صيانة» وكتب رقم محمول → سجّله/حدّثه فى line_mobiles (نفس صيغة full_phone
+      // المستخدمة فى البحث برقم التليفون = 88 + الأرقام بدون شرطة). الأولوية له فى الـ lookup فيظهر
+      // كأحدث رقم مسجّل. لو الخط له رقم قديم يتحدّث (ON CONFLICT).
+      if (type === "صيانة" && mobileVal) {
+        const mobileFull = "88" + local; // بدون شرطة — مطابق لتخزين line_mobiles
+        await pool.query(
+          `INSERT INTO line_mobiles (full_phone, mobile, updated_by_id, updated_by_name, updated_at)
+           VALUES ($1, $2, $3, $4, now())
+           ON CONFLICT (full_phone) DO UPDATE SET mobile = EXCLUDED.mobile,
+             updated_by_id = EXCLUDED.updated_by_id, updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+          [mobileFull, mobileVal, userId, userName],
+        );
+      }
       res.json({ ok: true, id: rows[0]?.id });
     } catch (e: any) {
       // حماية إضافية ضد سباق التزامن على قيد التفرّد
