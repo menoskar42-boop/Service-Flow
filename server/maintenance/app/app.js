@@ -91,7 +91,9 @@ app.use(async (req, res, next) => {
         // فبنعمل upsert لصف حقيقى فى users بتاعت الصيانة ونستخدم الـ id الرقمى فى الجلسة — عشان
         // الكتابة تشتغل. الباسورد ماركر مش صالح للّوجين (الدخول عبر SSO فقط). SF هو مصدر الدور.
         const uname = String(req.user.username);
-        const fullName = req.user.name || req.user.full_name || uname;
+        // الاسم الظاهر: نفس «الاسم فى برنامج الكوابل» المخزّن فى users.full_name (fullName بالـ camelCase
+        // من drizzle) → فيظهر فنى الصيانة باسمه الحقيقى فى برنامج الصيانة. fallback لاسم المستخدم.
+        const fullName = req.user.fullName || req.user.full_name || req.user.name || uname;
         const workerCode = req.user.worker_code || req.user.workerCode || null;
         const row = await db.get(
           `INSERT INTO users (username, password, role, full_name, worker_code, is_active)

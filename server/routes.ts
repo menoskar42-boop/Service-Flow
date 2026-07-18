@@ -1694,8 +1694,8 @@ export async function registerRoutes(
         // نخزّن الدور الفعّال فى الطلبات (acc.sf) — لكل الأدوار = اسم الدور الموحّد نفسه، ما عدا
         // مهندس الكوابل: طلباته «external» فيتعامل معاه موقع الطلبات كشئون خارجية بدون أى تغيير.
         const ins = await pool.query(
-          `INSERT INTO users (username, password, role, worker_code, cfm_user_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-          [uname, hp, acc.sf, workerCode?.trim() || null, cfmId]);
+          `INSERT INTO users (username, password, role, worker_code, full_name, cfm_user_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+          [uname, hp, acc.sf, workerCode?.trim() || null, String(name || "").trim() || null, cfmId]);
         sfId = ins.rows[0].id;
       }
       res.status(201).json({ ok: true, username: uname, role, sfId, cfmId });
@@ -1750,26 +1750,35 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // تغيير الاسم الظاهر فى برنامج الكوابل (cfm_users.name) — اللى بيظهر لما المستخدم يضيف حاجة
+  // تغيير الاسم الظاهر — يُخزَّن فى حساب الطلبات (users.full_name، ويُستخدم أيضاً فى برنامج الصيانة
+  // عبر SSO) وفى حساب الكوابل (cfm_users.name، اللى بيظهر لما المستخدم يضيف حاجة). أى واحد منهم يكفى.
   app.patch("/api/portal/users/:username/name", requireAuth, requireSuperAdmin, async (req: any, res) => {
     try {
       const uname = String(req.params.username || "").trim();
       const name = String(req.body?.name || "").trim();
       if (!name) return res.status(400).json({ message: "الاسم مطلوب" });
+      // دايماً: حدّث الاسم فى حساب الطلبات (لو موجود) — ده اللى بيوصل لبرنامج الصيانة.
+      const sfUpd = await pool.query(`UPDATE users SET full_name = $1 WHERE username = $2`, [name, uname]);
+      // حدّث اسم الكوابل لو للمستخدم حساب كوابل.
       const r = await pool.query(`UPDATE cfm_users SET name = $1 WHERE username = $2`, [name, uname]);
-      if (r.rowCount) return res.json({ ok: true });
-      // مفيش حساب كوابل — لو دور المستخدم بيفتح الكوابل ننشئه دلوقتى بالاسم ده ونربطه (الحسابات القديمة)
-      const sf = (await pool.query(`SELECT * FROM users WHERE username = $1`, [uname])).rows[0];
-      const cfmRole = sf?.role ? cfmRoleOf(sf.role) : null;
-      if (!cfmRole) return res.status(400).json({ message: "المستخدم مالوش حساب كوابل ودوره مايفتحش برنامج الكوابل" });
-      const ph = bcryptjs.hashSync(randomBytes(24).toString("hex"), 10);
-      const ins = await pool.query(
-        `INSERT INTO cfm_users (id, username, password, name, role, is_initial_password, created_at)
-         VALUES (gen_random_uuid()::text, $1, $2, $3, $4, false, now())
-         ON CONFLICT (username) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-        [uname, ph, name, cfmRole]);
-      if (sf && ins.rows[0]) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [ins.rows[0].id, sf.id]);
-      res.json({ ok: true, created: true });
+      let created = false;
+      if (!r.rowCount) {
+        // مفيش حساب كوابل — لو دور المستخدم بيفتح الكوابل ننشئه دلوقتى بالاسم ده ونربطه (الحسابات القديمة).
+        const sf = (await pool.query(`SELECT * FROM users WHERE username = $1`, [uname])).rows[0];
+        const cfmRole = sf?.role ? cfmRoleOf(sf.role) : null;
+        if (cfmRole) {
+          const ph = bcryptjs.hashSync(randomBytes(24).toString("hex"), 10);
+          const ins = await pool.query(
+            `INSERT INTO cfm_users (id, username, password, name, role, is_initial_password, created_at)
+             VALUES (gen_random_uuid()::text, $1, $2, $3, $4, false, now())
+             ON CONFLICT (username) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
+            [uname, ph, name, cfmRole]);
+          if (sf && ins.rows[0]) await pool.query(`UPDATE users SET cfm_user_id = $1 WHERE id = $2`, [ins.rows[0].id, sf.id]);
+          created = true;
+        }
+      }
+      if (!sfUpd.rowCount && !r.rowCount && !created) return res.status(404).json({ message: "المستخدم غير موجود" });
+      res.json({ ok: true, created });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
