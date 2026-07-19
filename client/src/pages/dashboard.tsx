@@ -236,6 +236,13 @@ export default function Dashboard() {
   // منع الكمبيوتر من النوم طالما الموقع مفتوح (مهم للتحديث التلقائى وجهاز التنفيذ)
   useWakeLock(true);
 
+  // زر «معاينة» فى تقارير الأعطال خارج الشاشة → يفتح تاب «بحث برقم التليفون» (يقرأ الرقم من sessionStorage).
+  useEffect(() => {
+    const h = () => setAdminTab("phone-lookup");
+    window.addEventListener("sf-open-phone-lookup", h);
+    return () => window.removeEventListener("sf-open-phone-lookup", h);
+  }, []);
+
   useEffect(() => {
     if (!authLoading && !user) {
       setLocation("/login");

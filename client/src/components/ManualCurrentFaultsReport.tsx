@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertTriangle } from "lucide-react";
+import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertTriangle, Wrench, X, Phone } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useAuth } from "@/hooks/use-auth";
+import { useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { ROLES } from "@shared/schema";
+import { CLOSE_CODE_REASONS } from "@/lib/close-codes";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
 
 // «الأعطال الحالية خارج الشاشة» — الأعطال اليدوية (زر «الخط به عطل») اللى لسه ماانتظمتش.
 interface Row {
@@ -19,6 +25,13 @@ interface Row {
   techName: string | null;
   flaggedAt: string;
   flaggedBy: string | null;
+  // بيانات مُثراة (نفس الأعطال الحالية)
+  frame: string | null; shelf: string | null; slot: string | null; portNumber: string | null;
+  portType: string | null; voiceStatus: string | null; dataStatus: string | null; operator: string | null; onu: string | null;
+  lineCurrentSpeed: string | null; lineMaxSpeed: string | null;
+  lastMeasScore: number | null; lastMeasComplainNo: string | null; lastMeasTime: string | null;
+  curMeasScore: number | null; curMeasCurrentSpeed: string | null; curMeasMaxSpeed: string | null; curMeasTime: string | null;
+  lastPoRaiseAt: string | null; lastPoStopAt: string | null;
 }
 
 const fmt = (iso: string | null) => {
@@ -32,6 +45,22 @@ export function ManualCurrentFaultsReport() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // انتظام العطل — نفس منطق «بحث برقم التليفون» (سبب إغلاق + فنى للسوبر أدمن + قياس أوتوماتيك).
+  const { user } = useAuth();
+  const isSuper = useIsSuperAdmin();
+  const canRegularize = isSuper || user?.role === ROLES.TECH;
+  const { data: techList } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => { const r = await fetch("/api/technician-names", { credentials: "include" }); return r.ok ? r.json() : []; },
+    enabled: isSuper,
+    staleTime: 5 * 60 * 1000,
+  });
+  const techOptions = Array.from(new Set((techList ?? []).map((t) => (t.techName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+  const [regRow, setRegRow] = useState<Row | null>(null);
+  const [regCode, setRegCode] = useState("");
+  const [regTech, setRegTech] = useState("");
+  const [regBusy, setRegBusy] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -43,8 +72,46 @@ export function ManualCurrentFaultsReport() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  const COLUMNS = ["تاريخ العطل", "رقم التليفون", "رقم الأكونت", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "سجّل العطل"];
-  const toRow = (x: Row) => [fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", x.accountNo || "-", x.central || "-", x.cabinNumber || "-", x.boxNumber || "-", x.msanCode || "-", x.techName || "-", x.flaggedBy || "-"];
+  // «معاينة»: يفتح تاب «بحث برقم التليفون» ويحط الرقم ويبحث (عبر sessionStorage + حدث للـ dashboard).
+  const openLookup = (x: Row) => {
+    const phone = (x.fullPhone || x.phoneShort || "").toString().replace(/\D/g, "");
+    if (!phone) return;
+    try { sessionStorage.setItem("sf_lookup_phone", phone); } catch {}
+    window.dispatchEvent(new CustomEvent("sf-open-phone-lookup", { detail: phone }));
+  };
+
+  const submitRegularize = async () => {
+    if (!regRow) return;
+    if (!regCode) { alert("اختر سبب الإغلاق"); return; }
+    if (isSuper && !regTech) { alert("اختر فنى الانتظام"); return; }
+    setRegBusy(true);
+    try {
+      const body: any = { fullPhone: regRow.fullPhone || regRow.phoneShort, phoneShort: regRow.phoneShort || regRow.fullPhone, closeCode: regCode };
+      if (isSuper && regTech) body.techName = regTech;
+      const r = await fetch("/api/manual-faults/regularize", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const d = await r.json().catch(() => ({}));
+      if (!d?.ok) { alert(d?.message || "تعذّر تسجيل الانتظام"); return; }
+      const acc = (regRow.accountNo ?? "").toString().trim();
+      setRegRow(null); setRegCode(""); setRegTech("");
+      await load();
+      // قياس أوتوماتيك لو الخط ليه أكونت (نفس منطق بحث برقم التليفون)
+      if (acc) { await dispatchSpeedTool("measure", [acc], isSuper); }
+      else { alert("تم تسجيل الانتظام"); }
+    } finally { setRegBusy(false); }
+  };
+
+  const COLUMNS = [
+    "تاريخ العطل", "رقم التليفون", "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس",
+    "القياس الحالى", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "Shelf", "Slot",
+    "Port", "Port Type", "voice", "data", "operator", "ONU", "آخر رفع سرعة", "آخر إيقاف PO", "سجّل العطل",
+  ];
+  const dash = (v: any) => (v == null || v === "" ? "-" : String(v));
+  const toRow = (x: Row) => [
+    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed),
+    dash(x.lastMeasScore), fmt(x.lastMeasTime), dash(x.curMeasScore), dash(x.central), dash(x.cabinNumber), dash(x.boxNumber),
+    dash(x.msanCode), dash(x.techName), dash(x.frame), dash(x.shelf), dash(x.slot), dash(x.portNumber), dash(x.portType),
+    dash(x.voiceStatus), dash(x.dataStatus), dash(x.operator), dash(x.onu), fmt(x.lastPoRaiseAt), fmt(x.lastPoStopAt), dash(x.flaggedBy),
+  ];
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.aoa_to_sheet([COLUMNS, ...rows.map(toRow)]);
@@ -77,22 +144,70 @@ export function ManualCurrentFaultsReport() {
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
             ) : rows.length === 0 ? (
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">لا توجد أعطال حالية خارج الشاشة</TableCell></TableRow>
-            ) : rows.map((x) => (
-              <TableRow key={x.id}>
-                <TableCell className="whitespace-nowrap">{fmt(x.flaggedAt)}</TableCell>
-                <TableCell className="whitespace-nowrap font-medium">{x.fullPhone || x.phoneShort || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{x.accountNo || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{x.central || "-"}</TableCell>
-                <TableCell>{x.cabinNumber || "-"}</TableCell>
-                <TableCell>{x.boxNumber || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{x.msanCode || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{x.techName || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{x.flaggedBy || "-"}</TableCell>
-              </TableRow>
-            ))}
+            ) : rows.map((x) => {
+              const cells = toRow(x);
+              return (
+                <TableRow key={x.id}>
+                  {cells.map((val, i) => (
+                    <TableCell key={i} className="whitespace-nowrap">
+                      {i === 1 ? (
+                        <span className="inline-flex items-center gap-2 font-medium">
+                          {val}
+                          <button type="button" onClick={() => openLookup(x)}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">
+                            <Phone className="w-3.5 h-3.5" /> معاينة
+                          </button>
+                          {canRegularize && (
+                            <button type="button" onClick={() => { setRegRow(x); setRegCode(""); setRegTech(""); }}
+                              className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-50">
+                              <Wrench className="w-3.5 h-3.5" /> تسجيل الانتظام
+                            </button>
+                          )}
+                        </span>
+                      ) : (val || "-")}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
+
+      {/* نافذة تسجيل الانتظام — نفس منطق بحث برقم التليفون */}
+      {regRow && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setRegRow(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold">تسجيل الانتظام — {regRow.fullPhone || regRow.phoneShort}</h3>
+              <button onClick={() => setRegRow(null)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">سبب الإغلاق *</label>
+              <select value={regCode} onChange={(e) => setRegCode(e.target.value)} className="border rounded-md px-3 py-2 text-sm" dir="rtl">
+                <option value="">اختر سبب الإغلاق</option>
+                {Object.entries(CLOSE_CODE_REASONS).map(([code, reason]) => <option key={code} value={code}>{code} - {reason}</option>)}
+              </select>
+            </div>
+            {isSuper && (
+              <div className="grid gap-1">
+                <label className="text-sm text-muted-foreground">فنى الانتظام *</label>
+                <select value={regTech} onChange={(e) => setRegTech(e.target.value)} className="border rounded-md px-3 py-2 text-sm" dir="rtl">
+                  <option value="">اختر الفنى</option>
+                  {techOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">بعد التسجيل هيتقاس الخط أوتوماتيك لو ليه رقم أكونت.</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setRegRow(null)}>إلغاء</Button>
+              <Button size="sm" onClick={submitRegularize} disabled={regBusy} className="bg-green-600 hover:bg-green-700 gap-1">
+                {regBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wrench className="w-4 h-4" />} تسجيل الانتظام
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

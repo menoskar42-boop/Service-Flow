@@ -6332,11 +6332,36 @@ export async function registerRoutes(
 
   // الأعطال الحالية خارج الشاشة (المفتوحة)
   app.get("/api/manual-faults/current", requireAuth, async (_req, res) => {
+    // إثراء بنفس بيانات «الأعطال الحالية»: آخر قياس + القياس الحالى (بعد تسجيل العطل) + بيانات
+    // البورت + أحداث PO — بالمطابقة بالتليفون الكامل (mf.full_phone = 88+الرقم).
     const { rows } = await pool.query(
-      `SELECT id, full_phone AS "fullPhone", phone_short AS "phoneShort", account_no AS "accountNo",
-              central, cabin_number AS "cabinNumber", box_number AS "boxNumber", msan_code AS "msanCode",
-              tech_name AS "techName", (flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", flagged_by AS "flaggedBy"
-       FROM manual_faults WHERE status='open' ORDER BY flagged_at DESC`);
+      `SELECT mf.id, mf.full_phone AS "fullPhone", mf.phone_short AS "phoneShort",
+              COALESCE(mf.account_no, c138p.account_no) AS "accountNo",
+              mf.central, mf.cabin_number AS "cabinNumber", mf.box_number AS "boxNumber", mf.msan_code AS "msanCode",
+              mf.tech_name AS "techName", (mf.flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", mf.flagged_by AS "flaggedBy",
+              pp.frame AS "frame", pp.shelf AS "shelf", pp.slot AS "slot", pp.port_number AS "portNumber",
+              pp.port_type AS "portType", pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
+              pp.operator AS "operator", pp.onu AS "onu",
+              c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
+              c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
+              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              c138c.score AS "curMeasScore", c138c.current_speed AS "curMeasCurrentSpeed",
+              c138c.max_speed AS "curMeasMaxSpeed", (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
+              (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
+       FROM manual_faults mf
+       LEFT JOIN phone_ports pp ON pp.phone_number = mf.full_phone
+       LEFT JOIN LATERAL (
+         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at
+         FROM case_138 c WHERE c.full_phone = mf.full_phone ORDER BY c.id DESC LIMIT 1
+       ) c138p ON true
+       LEFT JOIN LATERAL (
+         SELECT c.score, c.current_speed, c.max_speed, c.uploaded_at
+         FROM case_138 c WHERE c.full_phone = mf.full_phone AND c.uploaded_at >= mf.flagged_at
+         ORDER BY c.id DESC LIMIT 1
+       ) c138c ON true
+       LEFT JOIN line_po_events pe ON pe.account_no = COALESCE(mf.account_no, c138p.account_no)
+       WHERE mf.status='open' ORDER BY mf.flagged_at DESC`);
     res.json({ data: rows });
   });
 

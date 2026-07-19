@@ -1,4 +1,4 @@
-import { useState, useRef, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -132,6 +132,23 @@ export function PhoneLookupReport() {
 
   const line = data?.found ? (data.line as LineData) : null;
   const search = () => { setPhone(input.trim()); setSearchSeq((s) => s + 1); };
+
+  // زر «معاينة» من تقرير «الأعطال خارج الشاشة»: يفتح هنا بالرقم ويبحث تلقائياً.
+  useEffect(() => {
+    const doLookup = (p: any) => {
+      const v = String(p || "").replace(/\D/g, "").trim();
+      if (!v) return;
+      setInput(v); setPhone(v); setSearchSeq((s) => s + 1);
+    };
+    try { const p = sessionStorage.getItem("sf_lookup_phone"); if (p) { sessionStorage.removeItem("sf_lookup_phone"); doLookup(p); } } catch {}
+    const handler = (e: any) => {
+      let p = e?.detail;
+      try { if (!p) p = sessionStorage.getItem("sf_lookup_phone"); sessionStorage.removeItem("sf_lookup_phone"); } catch {}
+      doLookup(p);
+    };
+    window.addEventListener("sf-open-phone-lookup", handler);
+    return () => window.removeEventListener("sf-open-phone-lookup", handler);
+  }, []);
 
   // أزرار القياس/رفع السرعة/الإيقاف:
   //  - السوبر أدمن + الأدمن (ومنه مدير السنترال=admin) + الشئون الخارجية (ومنها مهندس الكوابل=external)
