@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
-// @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه تدفّقان مستقلان تماماً بماركرين مختلفين لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يفتح صفحة MSAN Replacement، يملأ Old/New Cabin Code، يولّد ملف CSV بالرقم ويحقنه فى خانة الرفع، ويسيب الـ Submit ليك يدوياً (أأمن لأنه بيغيّر بيانات مشترك). كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.4.1
+// @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يقف (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
+// @version      1.5.0
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -18,6 +18,7 @@
      redirect للّوجين وأى تنقّل داخلى. كل تدفّق ماركره مستقل — فالتدفّقان مايتعارضوش أبداً. */
   const AUTO_KEY = "sf_ports_auto";
   const MSAN_KEY = "sf_msan_replace";
+  const PCHECK_KEY = "sf_pcheck_data";
   try {
     if (/[?&#]sf_ports=1\b/.test(location.href)) sessionStorage.setItem(AUTO_KEY, "1");
   } catch (e) {}
@@ -31,8 +32,16 @@
       sessionStorage.setItem(MSAN_KEY, JSON.stringify(data));
     }
   } catch (e) {}
+  try {
+    if (/[?&]sf_pcheck=1\b/.test(location.href)) {
+      const p = new URL(location.href).searchParams;
+      const data = { phone: p.get("phone") || "", old: p.get("old") || "", new: p.get("new") || "", pt: p.get("pt") || "" };
+      sessionStorage.setItem(PCHECK_KEY, JSON.stringify(data));
+    }
+  } catch (e) {}
   const AUTO = (() => { try { return sessionStorage.getItem(AUTO_KEY) === "1"; } catch (e) { return false; } })();
   const MSAN = (() => { try { return JSON.parse(sessionStorage.getItem(MSAN_KEY) || "null"); } catch (e) { return null; } })();
+  const PCHECK = (() => { try { return JSON.parse(sessionStorage.getItem(PCHECK_KEY) || "null"); } catch (e) { return null; } })();
 
   /* ================== CONFIG ================== */
   const USER = "mena.haleem";
@@ -44,8 +53,6 @@
   const SEARCH_REQ_HASH = "#/search/search-for-my-requests"; // صفحة متابعة الطلبات
   const SEARCH_WAIT_MS = 45000;   // أقصى انتظار لظهور بيانات الأمسان بعد Search
   const BETWEEN_CABINS_MS = 1200; // راحة بسيطة بين كل أمسان والتالى
-  const PC_CHECK_INTERVAL_MS = 30 * 60 * 1000; // متابعة نتيجة تغيير البورت كل نص ساعة طول اليوم
-  const PC_PENDING_KEY = "sf_msan_pending";    // localStorage: طلبات تغيير بورت مستنية النتيجة
 
   /* ================== اعتراض الشبكة (fetch + XHR) لالتقاط صفوف الأمسان ================== */
   const captures = []; // [{ t, rows }]
@@ -151,9 +158,11 @@
     if (bar) return;
     bar = document.createElement("div");
     bar.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:2147483647;padding:8px 12px;font:bold 13px Arial;color:#fff;background:#5b2a86;text-align:center;direction:rtl;box-shadow:0 2px 8px rgba(0,0,0,.4)";
-    bar.textContent = MSAN ? "🔁 غيّر البورت (MSAN Replacement) — جاهز" : "⚙️ تحديث ملف البورتات — جاهز";
-    // زر تشغيل يدوى (للبورتات فقط — MSAN بيشتغل تلقائى ويسيبك تراجع)
-    if (!MSAN) {
+    bar.textContent = MSAN ? "🔁 غيّر البورت (MSAN Replacement) — جاهز"
+      : PCHECK ? "🔎 تحديث البورت (متابعة الطلب) — جاهز"
+      : "⚙️ تحديث ملف البورتات — جاهز";
+    // زر تشغيل يدوى (للبورتات فقط — MSAN/PCHECK بيشتغلوا تلقائى فى نافذتهم)
+    if (!MSAN && !PCHECK) {
       startBtn = document.createElement("button");
       startBtn.textContent = "🔄 ابدأ تحديث ملف البورتات";
       startBtn.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:2147483647;padding:14px 20px;border:0;border-radius:10px;background:#2e7d32;color:#fff;font:bold 15px Arial;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);direction:rtl";
@@ -436,10 +445,8 @@
         // بعد Submit: استنّى — يا إمّا رجعنا للّوجين (bounce → إعادة) يا إمّا فضلنا (نجاح).
         const bounced = await waitFor(() => onLoginPage(), 7000);
         if (!bounced) {
-          banner("✅ تم الإرسال (Submit) — هتتراجع النتيجة تلقائياً كل نص ساعة.", "#2e7d32");
-          logln("✅ مرجعش للّوجين → غالباً نجح.");
-          pcAddPending(data);            // سجّل للمتابعة (نتيجة الطلب + تحديث بيان البورت)
-          startPortCheckScheduler();
+          banner("✅ تم الإرسال (Submit) — لمتابعة النتيجة اضغط «تحديث البورت» من بحث برقم التليفون.", "#2e7d32");
+          logln("✅ مرجعش للّوجين → غالباً نجح. (المتابعة يدوية الآن — من زر «تحديث البورت»)");
           return;
         }
         banner("🔁 رجع للّوجين بعد Submit — إعادة الدخول وتكرار الخطوات…", "#6a1b9a");
@@ -454,23 +461,12 @@
     }
   }
 
-  /* ================== [متابعة] نتيجة تغيير البورت — Search For My Requests ==================
-     بعد Submit نستنّى 30 دقيقة ونفتح Search For My Requests ونلاقى صف طلبنا: رقم التليفون =
-     بتاعنا + Request ID مش متسجّل عندنا (unseen). لو COMPLETED: نفتح التفاصيل ونجيب New Frame +
-     New Msan Code ونحدّث بيان البورت. لو غير COMPLETED: نسجّله فى جدول المتابعة. لو مش لاقيينه:
-     نعيد كل 30 دقيقة طول اليوم. (الصفحة ممكن يكون فيها أرقام تانية أو مفيهاش أرقام — بنطابق بالرقم). */
+  /* ================== [تدفّق 3] تحديث البورت (يدوى) — Search For My Requests ==================
+     يُستدعى يدوياً من زر «تحديث البورت» فى بحث برقم التليفون (بماركر sf_pcheck). يفتح Search For
+     My Requests مرة واحدة، يطابق صف الرقم بتاعنا، ولو COMPLETED يفتح التفاصيل ويجيب New Frame +
+     New Msan Code ويحدّث بيان البورت فى Service-Flow. لو غير COMPLETED يسجّل الحالة فى جدول المتابعة.
+     مفيش متابعة تلقائية كل نص ساعة — العملية تتم مرة واحدة وتقف. (نطابق بالرقم فقط.) */
   const todayISO = () => { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); };
-  function pcGetPending() { try { return JSON.parse(localStorage.getItem(PC_PENDING_KEY) || "[]"); } catch (e) { return []; } }
-  function pcSetPending(arr) { try { localStorage.setItem(PC_PENDING_KEY, JSON.stringify(arr)); } catch (e) {} }
-  function pcAddPending(data) {
-    const arr = pcGetPending();
-    const phone = String(data.phone || "").replace(/\D/g, "");
-    if (!phone) return;
-    if (arr.some((p) => p.phone === phone && p.dateISO === todayISO())) return; // مش نكرره لنفس اليوم
-    arr.push({ phone, dateISO: todayISO(), old: data.old || "", new: data.new || "", pt: data.pt || "", addedAt: Date.now() });
-    pcSetPending(arr);
-    logln("🕒 اتسجّل للمتابعة: " + phone + " (هيتراجع كل نص ساعة اليوم).");
-  }
   async function sfSeen(phone) {
     try {
       const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/port-change/seen?phone=" + encodeURIComponent(phone), { headers: { "X-DZS-Token": SF_TOKEN } });
@@ -538,14 +534,16 @@
     }
     return false;
   }
-  // يعالج بند متابعة واحد. true = خلص (اتحدّث/اتسجّل) فيتشال، false = لسه.
-  async function pcProcessPending(item) {
+  // يعالج بند متابعة واحد. true = خلص (اتحدّث/اتسجّل)، false = لسه مفيش طلب ظاهر.
+  //   ignoreSeen=true (الوضع اليدوى): ياخد أحدث صف مطابق للرقم حتى لو اتسجّل قبل كده — عشان
+  //   إعادة الضغط على «تحديث البورت» تعيد قراءة الحالة الحالية دائماً.
+  async function pcProcessPending(item, ignoreSeen) {
     logln("🔎 متابعة الرقم " + item.phone + " …");
     if (!(await gotoSearchRequests(item.dateISO))) { logln("⛔ تعذّر فتح صفحة المتابعة."); return false; }
-    const seen = await sfSeen(item.phone);
+    const seen = ignoreSeen ? [] : await sfSeen(item.phone);
     const rows = pcReadRequestRows();
-    const mine = rows.find((r) => r.phone === item.phone && r.requestId && seen.indexOf(r.requestId) < 0);
-    if (!mine) { logln("• " + item.phone + " — لسه مفيش طلب جديد ظاهر (هنعيد بعد نص ساعة)."); return false; }
+    const mine = rows.find((r) => r.phone === item.phone && r.requestId && (ignoreSeen || seen.indexOf(r.requestId) < 0));
+    if (!mine) { logln("• " + item.phone + " — مفيش طلب ظاهر للرقم ده فى تاريخ اليوم."); return false; }
     const status = mine.status.toUpperCase();
     if (/COMPLETED/.test(status)) {
       if (mine.linkEl) clickEl(mine.linkEl);
@@ -563,40 +561,40 @@
     await sfIngestResult({ requestId: mine.requestId, phone: item.phone, oldMsan: item.old, newMsan: item.new, portType: item.pt, status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
     return true;
   }
-  let pcVerifying = false;
-  async function verifyPending() {
-    if (pcVerifying || msanRunning) return;
-    const pend = pcGetPending().filter((p) => p.dateISO === todayISO());
-    if (!pend.length) return;
-    pcVerifying = true;
+  // تحديث البورت اليدوى — فحص مرة واحدة للرقم ثم يقف.
+  let pcheckRunning = false;
+  async function runPcheck() {
+    if (pcheckRunning) return; pcheckRunning = true;
     try {
-      for (const item of pend) {
-        const done = await pcProcessPending(item);
-        if (done) pcSetPending(pcGetPending().filter((p) => !(p.phone === item.phone && p.dateISO === item.dateISO)));
-        await sleep(1500);
-      }
-    } catch (e) { logln("verify err: " + (e && e.message || e)); }
-    finally { pcVerifying = false; }
-  }
-  let pcSchedulerOn = false;
-  function startPortCheckScheduler() {
-    if (pcSchedulerOn) return;
-    if (!pcGetPending().filter((p) => p.dateISO === todayISO()).length) return;
-    pcSchedulerOn = true;
-    logln("🗓️ متابعة تغيير البورت مفعّلة — كل نص ساعة اليوم.");
-    const tick = () => verifyPending().finally(() => {
-      if (pcGetPending().filter((p) => p.dateISO === todayISO()).length) setTimeout(tick, PC_CHECK_INTERVAL_MS);
-      else { pcSchedulerOn = false; logln("✅ خلصت متابعة كل طلبات تغيير البورت لليوم."); }
-    });
-    setTimeout(tick, PC_CHECK_INTERVAL_MS); // أول فحص بعد نص ساعة
+      const data = PCHECK || {};
+      const phone = String(data.phone || "").replace(/\D/g, "");
+      if (!phone) { banner("❌ لا يوجد رقم للمتابعة.", "#c62828"); return; }
+      banner("🔎 تحديث البورت — متابعة الرقم " + phone + " …", "#00695c");
+      await ensureLoggedIn();
+      const item = { phone, dateISO: todayISO(), old: data.old || "", new: data.new || "", pt: data.pt || "" };
+      const done = await pcProcessPending(item, true); // ignoreSeen: قراءة الحالة الحالية دائماً
+      if (done) banner("✅ خلصت متابعة الرقم " + phone + " — راجع اللوج بالأسفل للنتيجة.", "#2e7d32");
+      else banner("• لسه مفيش طلب ظاهر للرقم " + phone + " (تاريخ اليوم) — جرّب تانى بعد شوية.", "#ef6c00");
+    } catch (e) { banner("❌ " + (e && e.message || e), "#c62828"); }
+    finally { pcheckRunning = false; try { sessionStorage.removeItem(PCHECK_KEY); } catch (e) {} }
   }
 
   /* ================== إظهار الواجهة + التشغيل التلقائى ================== */
   if (document.body) ui(); else window.addEventListener("DOMContentLoaded", ui);
-  startPortCheckScheduler(); // استئناف المتابعة لو فيه طلبات مستنية (بعد أى reload/فتح تاب)
 
-  // MSAN له الأولوية فى نافذته (نافذة مستقلة فمفيش تصادم). لو مفيش MSAN → تدفّق البورتات.
-  if (MSAN && !window.__sfMsanFired) {
+  // الأولوية: PCHECK (تحديث بورت يدوى) ثم MSAN (غيّر البورت) ثم AUTO (تحديث الملفات) — كل تدفّق فى
+  // نافذته المستقلة فمفيش تصادم، والحارس ده بس احتياط إضافى.
+  if (PCHECK && !window.__sfPcheckFired) {
+    window.__sfPcheckFired = true;
+    const startNow = () => {
+      banner("⚙️ فتح تلقائى — تحديث البورت…", "#00695c");
+      waitFor(() => document.querySelector("input[type='password']") || !/#\/login/i.test(location.hash), 25000)
+        .then(() => sleep(1000))
+        .then(() => runPcheck())
+        .catch((e) => banner("❌ " + (e && e.message || e), "#c62828"));
+    };
+    if (document.body) startNow(); else window.addEventListener("DOMContentLoaded", startNow);
+  } else if (MSAN && !window.__sfMsanFired) {
     window.__sfMsanFired = true;
     const startNow = () => {
       banner("⚙️ فتح تلقائى — غيّر البورت…", "#00695c");
@@ -624,5 +622,6 @@
   // أدوات كونسول
   window.SF_PORTS_run = run;
   window.SF_MSAN_run = runMsan;
+  window.SF_PCHECK_run = runPcheck;
   window.SF_PORTS_captures = () => captures;
 })();

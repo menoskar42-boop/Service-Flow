@@ -357,6 +357,18 @@ export function PhoneLookupReport() {
     setMsanOpen(false);
   };
 
+  // «تحديث البورت» (يدوى) — يفتح Provisioning Portal بماركر sf_pcheck (نافذة مستقلة) فيفتح
+  // Search For My Requests مرة واحدة، يطابق الرقم، ولو COMPLETED يجيب البورت الجديد ويحدّث بيان
+  // البورت فى Service-Flow. بديل المتابعة التلقائية القديمة كل نص ساعة — دلوقتى يدوى بالكامل.
+  const refreshPort = () => {
+    const phoneShort = (line?.telNo ?? "").toString().replace(/\D/g, "").replace(/^88/, "");
+    if (!phoneShort) { alert("لا يوجد رقم تليفون صالح لهذا الخط"); return; }
+    const qs = new URLSearchParams({
+      sf_pcheck: "1", phone: phoneShort, old: (line?.msanCode ?? "").toString().trim(), pt: "SV",
+    });
+    window.open(`https://provisioningportal.te.eg/provisioningPortal/?${qs.toString()}#/login`, "sf_msan_check");
+  };
+
   // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
   const canFlagFault = isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL;
   const canRegularize = isSuper || user?.role === ROLES.TECH;
@@ -721,6 +733,17 @@ export function PhoneLookupReport() {
                 >
                   <ArrowLeftRight className="w-4 h-4" />
                   غيّر البورت (بروفيجن)
+                </Button>
+              )}
+              {isSuper && (
+                <Button
+                  variant="outline"
+                  onClick={refreshPort}
+                  className="bg-white gap-2 text-teal-700 border-teal-300 hover:bg-teal-50"
+                  title="متابعة نتيجة تغيير البورت يدوياً: يفتح Search For My Requests ولو الطلب COMPLETED يحدّث بيان البورت الجديد — للسوبر أدمن"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  تحديث البورت
                 </Button>
               )}
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
