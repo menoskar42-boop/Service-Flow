@@ -887,6 +887,9 @@ export async function ensureSchema() {
       CONSTRAINT regularized_daily_cat_key_uniq UNIQUE (category, item_key)
     )
   `);
+  // 🆕 لو الجدول اتعمل قبل ما نضيف central_name (زى prod القديمة) — CREATE TABLE IF NOT EXISTS
+  // مبيضيفوش، فلازم ALTER صريح عشان الـ daily-snapshot ميقعش بـ «column central_name does not exist».
+  await pool.query(`ALTER TABLE regularized_daily ADD COLUMN IF NOT EXISTS central_name text`);
   await pool.query(`CREATE INDEX IF NOT EXISTS regularized_daily_cat_date_idx ON regularized_daily (category, snapshot_date)`);
 
   // فهارس أداء لتسريع تقرير «محتاجة رفع سرعة» وتقارير الأعطال (كانت بطيئة جداً بعد تراكم الداتا).

@@ -2428,7 +2428,7 @@ export async function registerRoutes(
     // كاست مباشر بيقع بـ error على أى بورت رقمه فاضى/غير رقمى → الجدول يطلع فاضى).
     if (pFrom || pTo) {
       const shortExpr = `regexp_replace(regexp_replace(k.full_phone,'[^0-9]','','g'),'^0*88','')`;
-      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]+$' THEN ${shortExpr}::bigint END)`;
+      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]{1,18}$' THEN ${shortExpr}::bigint END)`;
       if (pFrom) { params.push(pFrom); conds.push(`${numExpr} >= $${params.length}::bigint`); }
       if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
     }
@@ -4892,7 +4892,7 @@ export async function registerRoutes(
     if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
     if (pFrom || pTo) {
       const shortExpr = `regexp_replace(regexp_replace(pp.phone_number,'[^0-9]','','g'),'^0*88','')`;
-      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]+$' THEN ${shortExpr}::bigint END)`;
+      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]{1,18}$' THEN ${shortExpr}::bigint END)`;
       if (pFrom) { params.push(pFrom); conds.push(`${numExpr} >= $${params.length}::bigint`); }
       if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
     }
@@ -5035,7 +5035,7 @@ export async function registerRoutes(
     let pFrom = digitsOnly(b.phoneFrom), pTo = digitsOnly(b.phoneTo);
     if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
     const shortExpr = `regexp_replace(regexp_replace(phone_number,'[^0-9]','','g'),'^0*88','')`;
-    const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]+$' THEN ${shortExpr}::bigint END)`;
+    const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]{1,18}$' THEN ${shortExpr}::bigint END)`;
     let rangeClause = "TRUE";
     if (pFrom || pTo) {
       const rc: string[] = [];
