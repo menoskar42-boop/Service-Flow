@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.2
+// @version      1.5.3
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -199,6 +199,12 @@
   /* ================== تسجيل الدخول ================== */
   const onLoginPage = () => /#\/login/i.test(location.hash) || !!document.querySelector("input[type='password']");
 
+  // Enter على حقل الباسورد (fallback لو زر Login مش بيستجيب للنقر)
+  function pressEnter(el) {
+    for (const type of ["keydown", "keypress", "keyup"]) {
+      el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true }));
+    }
+  }
   async function doLoginOnce() {
     const pass = await waitFor(() => document.querySelector("input[type='password']"), 15000);
     if (!pass) return !onLoginPage();
@@ -207,10 +213,20 @@
     const userInput = inputs.slice(0, pIdx).reverse().find((i) => !/password/i.test(i.type)) || inputs[0];
     if (userInput) { setNgValue(userInput, ""); setNgValue(userInput, USER); }
     setNgValue(pass, PASS);
-    await sleep(400);
-    const btn = findButtonByText(/^login$|تسجيل|دخول/i) || findButtonByText(/login/i);
-    if (btn) btn.click();
-    await waitFor(() => !onLoginPage(), 20000);
+    await sleep(500);
+    const btn = findButtonByText(/^\s*login\s*$|تسجيل|دخول/i) || findButtonByText(/login/i);
+    // نضغط بـ clickEl (Angular بيستجيب له أفضل من .click العادى) + Enter كـ fallback
+    if (btn) { clickEl(btn); } else { logln("⚠️ مالقتش زر Login — هبعت Enter."); }
+    pressEnter(pass);
+    let left = await waitFor(() => !onLoginPage(), 20000);
+    // لسه على اللوجين؟ جرّب مرة تانية (نقرة + Enter) قبل ما نستسلم
+    if (!left) {
+      logln("↻ لسه على اللوجين بعد أول ضغط — إعادة الضغط…");
+      const btn2 = findButtonByText(/^\s*login\s*$|تسجيل|دخول/i) || findButtonByText(/login/i);
+      if (btn2) clickEl(btn2);
+      pressEnter(pass);
+      left = await waitFor(() => !onLoginPage(), 15000);
+    }
     await sleep(1200);
     return !onLoginPage();
   }
