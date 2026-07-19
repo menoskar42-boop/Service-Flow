@@ -2423,11 +2423,14 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
-    // فلتر النطاق «من رقم / إلى رقم» — على الرقم القصير الرقمى فقط.
+    // فلتر النطاق «من رقم / إلى رقم» — على الرقم القصير (شيل غير الأرقام + الأصفار البادئة + 88).
+    // نستخدم CASE عشان التحويل لـ bigint يتم فقط لو القيمة رقمية (WHERE مبيضمنش ترتيب التقييم فـ
+    // كاست مباشر بيقع بـ error على أى بورت رقمه فاضى/غير رقمى → الجدول يطلع فاضى).
     if (pFrom || pTo) {
-      conds.push(`regexp_replace(k.full_phone,'^88','') ~ '^[0-9]+$'`);
-      if (pFrom) { params.push(pFrom); conds.push(`regexp_replace(k.full_phone,'^88','')::bigint >= $${params.length}::bigint`); }
-      if (pTo) { params.push(pTo); conds.push(`regexp_replace(k.full_phone,'^88','')::bigint <= $${params.length}::bigint`); }
+      const shortExpr = `regexp_replace(regexp_replace(k.full_phone,'[^0-9]','','g'),'^0*88','')`;
+      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]+$' THEN ${shortExpr}::bigint END)`;
+      if (pFrom) { params.push(pFrom); conds.push(`${numExpr} >= $${params.length}::bigint`); }
+      if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
     }
     if (q) {
       params.push(`%${q}%`);
@@ -5017,9 +5020,22 @@ export async function registerRoutes(
       ? `phone_number IN (SELECT full_phone FROM phone_lines pl WHERE ${fconds.join(" AND ")})`
       : "TRUE";
     const scopeClause = scope === "all" ? "TRUE" : "(sub_name IS NULL OR TRIM(sub_name) = '')";
+    // نطاق «من رقم / إلى رقم» — على الرقم القصير (بدون أصفار بادئة و88). الترتيب ملوش أهمية.
+    const digitsOnly = (s: any) => String(s || "").replace(/\D/g, "").replace(/^88/, "");
+    let pFrom = digitsOnly(b.phoneFrom), pTo = digitsOnly(b.phoneTo);
+    if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
+    const shortExpr = `regexp_replace(regexp_replace(phone_number,'[^0-9]','','g'),'^0*88','')`;
+    const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]+$' THEN ${shortExpr}::bigint END)`;
+    let rangeClause = "TRUE";
+    if (pFrom || pTo) {
+      const rc: string[] = [];
+      if (pFrom) { params.push(pFrom); rc.push(`${numExpr} >= $${params.length}::bigint`); }
+      if (pTo) { params.push(pTo); rc.push(`${numExpr} <= $${params.length}::bigint`); }
+      rangeClause = rc.join(" AND ");
+    }
     // بنمسح بيانات الأرقام المفلترة (حسب النطاق) فتبقى «ناقصة» → سكربت FCC يجيبها. الفلتر بيتبعت
     // لـ /pending كمان (باراميترات) فكل تاب مراجعة يجيب أرقام فلتره بس — يشتغلوا بالتوازى بلا طابور.
-    const r = await pool.query(`DELETE FROM line_subscriber_info WHERE ${filterClause} AND ${scopeClause}`, params);
+    const r = await pool.query(`DELETE FROM line_subscriber_info WHERE ${filterClause} AND ${scopeClause} AND ${rangeClause}`, params);
     res.json({ ok: true, requeued: r.rowCount ?? 0, scope, filtered: fconds.length > 0 });
   });
 
