@@ -104,7 +104,7 @@ async function createSchema() {
     cabinet_id INTEGER NOT NULL REFERENCES cabinets(id) ON DELETE CASCADE,
     number TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending_inspection'
-      CHECK (status IN ('pending_inspection','inspected','needs_maintenance','in_progress','completed')),
+      CHECK (status IN ('pending_inspection','inspected','needs_maintenance','in_progress','pending_approval','completed')),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     latitude REAL,
@@ -150,7 +150,7 @@ async function createSchema() {
     notes TEXT DEFAULT '',
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','pending_approval','completed')),
     rejection_reason TEXT,
     prelim_confirmed_at TIMESTAMP,
     prelim_confirmed_by INTEGER
@@ -197,6 +197,17 @@ async function migrate() {
   try { await sp(`UPDATE photos SET media_type = 'photo' WHERE media_type IS NULL`); } catch {}
   try { await sp(`ALTER TABLE users ADD COLUMN IF NOT EXISTS worker_code TEXT`); } catch {}
   try { await sp(`UPDATE users SET worker_code = '180769' WHERE full_name ILIKE '%خالد عبد الرحمن%' AND worker_code IS NULL`); } catch {}
+
+  // إضافة حالة 'pending_approval' لـ CHECK constraints (كانت ناقصة → زر «اكتملت المهمة» كان بيفشل
+  // لأن الإكمال بيحوّل الحالة لـ pending_approval بانتظار تأكيد المراقب). idempotent: drop ثم add.
+  try {
+    await sp(`ALTER TABLE boxes DROP CONSTRAINT IF EXISTS boxes_status_check`);
+    await sp(`ALTER TABLE boxes ADD CONSTRAINT boxes_status_check CHECK (status IN ('pending_inspection','inspected','needs_maintenance','in_progress','pending_approval','completed'))`);
+  } catch {}
+  try {
+    await sp(`ALTER TABLE maintenance_tasks DROP CONSTRAINT IF EXISTS maintenance_tasks_status_check`);
+    await sp(`ALTER TABLE maintenance_tasks ADD CONSTRAINT maintenance_tasks_status_check CHECK (status IN ('pending','in_progress','pending_approval','completed'))`);
+  } catch {}
 
   // cabinet_codes lookup table (Exchange + Cabinet → cabinet code + technician info)
   try {
