@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه تدفّقان مستقلان تماماً بماركرين مختلفين لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يفتح صفحة MSAN Replacement، يملأ Old/New Cabin Code، يولّد ملف CSV بالرقم ويحقنه فى خانة الرفع، ويسيب الـ Submit ليك يدوياً (أأمن لأنه بيغيّر بيانات مشترك). كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.3.3
+// @version      1.4.0
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -41,8 +41,11 @@
   const SF_TOKEN = "sf-dzs-138-ingest-2026";                        // = DZS_INGEST_TOKEN فى السيرفر
   const GET_MSAN_HASH = "#/subscriber-management/get-msan-data";
   const MSAN_REPL_HASH = "#/subscriber-management/msan-replacement";
+  const SEARCH_REQ_HASH = "#/search/search-for-my-requests"; // صفحة متابعة الطلبات
   const SEARCH_WAIT_MS = 45000;   // أقصى انتظار لظهور بيانات الأمسان بعد Search
   const BETWEEN_CABINS_MS = 1200; // راحة بسيطة بين كل أمسان والتالى
+  const PC_CHECK_INTERVAL_MS = 30 * 60 * 1000; // متابعة نتيجة تغيير البورت كل نص ساعة طول اليوم
+  const PC_PENDING_KEY = "sf_msan_pending";    // localStorage: طلبات تغيير بورت مستنية النتيجة
 
   /* ================== اعتراض الشبكة (fetch + XHR) لالتقاط صفوف الأمسان ================== */
   const captures = []; // [{ t, rows }]
@@ -433,8 +436,10 @@
         // بعد Submit: استنّى — يا إمّا رجعنا للّوجين (bounce → إعادة) يا إمّا فضلنا (نجاح).
         const bounced = await waitFor(() => onLoginPage(), 7000);
         if (!bounced) {
-          banner("✅ تم الإرسال (Submit) — راجع نتيجة البورتال.", "#2e7d32");
-          logln("✅ مرجعش للّوجين → غالباً نجح. تم.");
+          banner("✅ تم الإرسال (Submit) — هتتراجع النتيجة تلقائياً كل نص ساعة.", "#2e7d32");
+          logln("✅ مرجعش للّوجين → غالباً نجح.");
+          pcAddPending(data);            // سجّل للمتابعة (نتيجة الطلب + تحديث بيان البورت)
+          startPortCheckScheduler();
           return;
         }
         banner("🔁 رجع للّوجين بعد Submit — إعادة الدخول وتكرار الخطوات…", "#6a1b9a");
@@ -449,8 +454,141 @@
     }
   }
 
+  /* ================== [متابعة] نتيجة تغيير البورت — Search For My Requests ==================
+     بعد Submit نستنّى 30 دقيقة ونفتح Search For My Requests ونلاقى صف طلبنا: رقم التليفون =
+     بتاعنا + Request ID مش متسجّل عندنا (unseen). لو COMPLETED: نفتح التفاصيل ونجيب New Frame +
+     New Msan Code ونحدّث بيان البورت. لو غير COMPLETED: نسجّله فى جدول المتابعة. لو مش لاقيينه:
+     نعيد كل 30 دقيقة طول اليوم. (الصفحة ممكن يكون فيها أرقام تانية أو مفيهاش أرقام — بنطابق بالرقم). */
+  const todayISO = () => { const d = new Date(); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); };
+  function pcGetPending() { try { return JSON.parse(localStorage.getItem(PC_PENDING_KEY) || "[]"); } catch (e) { return []; } }
+  function pcSetPending(arr) { try { localStorage.setItem(PC_PENDING_KEY, JSON.stringify(arr)); } catch (e) {} }
+  function pcAddPending(data) {
+    const arr = pcGetPending();
+    const phone = String(data.phone || "").replace(/\D/g, "");
+    if (!phone) return;
+    if (arr.some((p) => p.phone === phone && p.dateISO === todayISO())) return; // مش نكرره لنفس اليوم
+    arr.push({ phone, dateISO: todayISO(), old: data.old || "", new: data.new || "", pt: data.pt || "", addedAt: Date.now() });
+    pcSetPending(arr);
+    logln("🕒 اتسجّل للمتابعة: " + phone + " (هيتراجع كل نص ساعة اليوم).");
+  }
+  async function sfSeen(phone) {
+    try {
+      const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/port-change/seen?phone=" + encodeURIComponent(phone), { headers: { "X-DZS-Token": SF_TOKEN } });
+      const j = await r.json(); return Array.isArray(j.requestIds) ? j.requestIds.map(String) : [];
+    } catch (e) { return []; }
+  }
+  async function sfIngestResult(payload) {
+    try {
+      const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/port-change/ingest", {
+        method: "POST", headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN }, body: JSON.stringify(payload),
+      });
+      return r.json();
+    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  }
+  // قراءة قيمة حقل بعنوان محدد داخل نافذة تفاصيل الطلب (label نصّه == العنوان بالظبط → أقرب input)
+  function readLabeledValue(labelText) {
+    const t = norm(labelText);
+    const lbl = [...document.querySelectorAll("label")].find((l) => norm(l.textContent) === t);
+    if (!lbl) return "";
+    const grp = lbl.closest(".col, .form-group, .mb-3, [class*='col']") || lbl.parentElement || document;
+    const inp = grp.querySelector("input, textarea");
+    return inp ? String(inp.value || "").trim() : "";
+  }
+  // صفوف جدول Search For My Requests
+  function pcReadRequestRows() {
+    for (const tbl of [...document.querySelectorAll("table")]) {
+      const heads = [...tbl.querySelectorAll("thead th")].map((th) => norm(th.textContent));
+      const iReq = heads.findIndex((h) => /requestid/.test(h));
+      const iPhone = heads.findIndex((h) => /phonenumber|phone/.test(h));
+      const iStatus = heads.findIndex((h) => /status/.test(h));
+      if (iReq < 0 || iPhone < 0 || iStatus < 0) continue;
+      const iRes = heads.findIndex((h) => /reservation/.test(h));
+      const iDate = heads.findIndex((h) => /requestdate|date/.test(h));
+      const rows = [];
+      for (const tr of tbl.querySelectorAll("tbody tr")) {
+        const tds = [...tr.querySelectorAll("td")];
+        if (!tds.length || !tds[iReq]) continue;
+        rows.push({
+          requestId: (tds[iReq].textContent || "").trim(),
+          phone: (tds[iPhone] ? tds[iPhone].textContent : "").replace(/\D/g, ""),
+          status: (tds[iStatus] ? tds[iStatus].textContent : "").trim(),
+          reservationCode: iRes >= 0 && tds[iRes] ? tds[iRes].textContent.trim() : "",
+          requestDate: iDate >= 0 && tds[iDate] ? tds[iDate].textContent.trim() : "",
+          linkEl: tds[iReq].querySelector("a") || tds[iReq],
+        });
+      }
+      return rows;
+    }
+    return [];
+  }
+  async function gotoSearchRequests(dateISO) {
+    if (onLoginPage()) { const ok = await ensureLoggedIn(); if (!ok) return false; await sleep(800); }
+    if (!/search-for-my-requests/i.test(location.hash)) location.hash = SEARCH_REQ_HASH;
+    const dateIn = await waitFor(() => { if (onLoginPage()) return null; return document.querySelector("input[formcontrolname='RequestDateFrom']"); }, 20000);
+    if (!dateIn || onLoginPage()) return false;
+    if (String(dateIn.value || "") !== dateISO) setNgValue(dateIn, dateISO); // افتراضيه اليوم — نحطه بس لو مختلف
+    await sleep(400);
+    const btn = findSearchButton(dateIn) || findButtonByText(/^\s*search\s*$/i);
+    if (btn) clickEl(btn);
+    await sleep(2500); // ننتظر تحميل الجدول
+    return true;
+  }
+  // يعالج بند متابعة واحد. true = خلص (اتحدّث/اتسجّل) فيتشال، false = لسه.
+  async function pcProcessPending(item) {
+    logln("🔎 متابعة الرقم " + item.phone + " …");
+    if (!(await gotoSearchRequests(item.dateISO))) { logln("⛔ تعذّر فتح صفحة المتابعة."); return false; }
+    const seen = await sfSeen(item.phone);
+    const rows = pcReadRequestRows();
+    const mine = rows.find((r) => r.phone === item.phone && r.requestId && seen.indexOf(r.requestId) < 0);
+    if (!mine) { logln("• " + item.phone + " — لسه مفيش طلب جديد ظاهر (هنعيد بعد نص ساعة)."); return false; }
+    const status = mine.status.toUpperCase();
+    if (/COMPLETED/.test(status)) {
+      if (mine.linkEl) clickEl(mine.linkEl);
+      await waitFor(() => readLabeledValue("New Msan Code") || readLabeledValue("New Frame") || /request details/i.test(document.body.innerText), 12000);
+      const newFrame = readLabeledValue("New Frame");
+      const newMsan = readLabeledValue("New Msan Code");
+      logln("✅ COMPLETED " + item.phone + " — Frame=" + newFrame + " | Msan=" + newMsan);
+      const res = await sfIngestResult({ requestId: mine.requestId, phone: item.phone, oldMsan: item.old, newMsan: newMsan || item.new, newFrame, portType: item.pt, status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
+      logln(res && res.updatedPort ? "💾 اتحدّث بيان البورت فى Service-Flow." : "ℹ️ الرد: " + JSON.stringify(res));
+      const closeBtn = [...document.querySelectorAll("button, .close, [aria-label='Close']")].find((b) => visible(b) && /×|close/i.test((b.textContent || b.getAttribute("aria-label") || "")));
+      if (closeBtn) clickEl(closeBtn);
+      return true;
+    }
+    logln("⚠️ " + item.phone + " — الحالة: " + mine.status + " → تسجيل فى جدول المتابعة.");
+    await sfIngestResult({ requestId: mine.requestId, phone: item.phone, oldMsan: item.old, newMsan: item.new, portType: item.pt, status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
+    return true;
+  }
+  let pcVerifying = false;
+  async function verifyPending() {
+    if (pcVerifying || msanRunning) return;
+    const pend = pcGetPending().filter((p) => p.dateISO === todayISO());
+    if (!pend.length) return;
+    pcVerifying = true;
+    try {
+      for (const item of pend) {
+        const done = await pcProcessPending(item);
+        if (done) pcSetPending(pcGetPending().filter((p) => !(p.phone === item.phone && p.dateISO === item.dateISO)));
+        await sleep(1500);
+      }
+    } catch (e) { logln("verify err: " + (e && e.message || e)); }
+    finally { pcVerifying = false; }
+  }
+  let pcSchedulerOn = false;
+  function startPortCheckScheduler() {
+    if (pcSchedulerOn) return;
+    if (!pcGetPending().filter((p) => p.dateISO === todayISO()).length) return;
+    pcSchedulerOn = true;
+    logln("🗓️ متابعة تغيير البورت مفعّلة — كل نص ساعة اليوم.");
+    const tick = () => verifyPending().finally(() => {
+      if (pcGetPending().filter((p) => p.dateISO === todayISO()).length) setTimeout(tick, PC_CHECK_INTERVAL_MS);
+      else { pcSchedulerOn = false; logln("✅ خلصت متابعة كل طلبات تغيير البورت لليوم."); }
+    });
+    setTimeout(tick, PC_CHECK_INTERVAL_MS); // أول فحص بعد نص ساعة
+  }
+
   /* ================== إظهار الواجهة + التشغيل التلقائى ================== */
   if (document.body) ui(); else window.addEventListener("DOMContentLoaded", ui);
+  startPortCheckScheduler(); // استئناف المتابعة لو فيه طلبات مستنية (بعد أى reload/فتح تاب)
 
   // MSAN له الأولوية فى نافذته (نافذة مستقلة فمفيش تصادم). لو مفيش MSAN → تدفّق البورتات.
   if (MSAN && !window.__sfMsanFired) {
