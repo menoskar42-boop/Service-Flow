@@ -335,7 +335,7 @@ export default function Dashboard() {
             <DailyAutoRefresh />
             {/* لوحة عائمة تعرض ترتيب طلبات القياس/رفع السرعة/الإيقاف فى الطابور وتحدّثه */}
             <ExecQueueWatcher />
-            {(user.role === ROLES.SALES || user.role === ROLES.ADMIN) && <NotificationBell />}
+            {(user.role === ROLES.SALES || user.role === ROLES.ADMIN || user.role === ROLES.SALES_ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN || user.role === ROLES.EXTERNAL) && (
               <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">
                 <span className="hidden sm:inline">إدارة البيانات الفنية</span>

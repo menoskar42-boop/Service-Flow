@@ -1004,8 +1004,11 @@ export async function registerRoutes(
   const notifyOrderFeasible = async (order: any, source: "tech" | "external") => {
     const sourceLabel = source === "external" ? "الشئون الخارجية" : "القسم الفني";
     const recipientIds = new Set<number>();
-    if (order.salesId) recipientIds.add(order.salesId);
-    const admins = (await storage.getUsers()).filter((u) => u.role === ROLES.ADMIN || u.role === ROLES.SUPER_ADMIN);
+    if (order.salesId) recipientIds.add(order.salesId); // موظف المبيعات اللى نزّل الطلب
+    // الأدمن + السوبر أدمن + أدمن المبيعات (يشوف كل إشعارات الطلبات)
+    const admins = (await storage.getUsers()).filter(
+      (u) => u.role === ROLES.ADMIN || u.role === ROLES.SUPER_ADMIN || u.role === ROLES.SALES_ADMIN,
+    );
     admins.forEach((a) => recipientIds.add(a.id));
 
     await Promise.all(
