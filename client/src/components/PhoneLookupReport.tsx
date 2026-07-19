@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch, AlertTriangle, Wrench, History, X } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch, AlertTriangle, Wrench, History, X, ArrowLeftRight } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
@@ -292,6 +292,37 @@ export function PhoneLookupReport() {
     if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
     // قياس من بحث برقم التليفون → اختار «A recent fix (past 24h)» فى شاشة DZS
     window.open(buildDZSUrl([acc]) + "&sf_fix=recent", "dzs_measure"); // نفس النافذة الثابتة — الجديد يحلّ محل القديم
+  };
+
+  // غيّر البورت فى Provisioning (MSAN Replacement) — سوبر أدمن فقط.
+  // يفتح Provisioning Portal بماركر مستقل تماماً (sf_msan) — مش زر البورتات (sf_ports) ولا تحديث
+  // الملفات ولا التحديث كل نص ساعة. Old Cabin = MSAN الخط تلقائياً؛ New Cabin يُكتب فى نافذة؛
+  // PortType/speed ثابتة (SV/WE30). السكربت المدمج بيملأ الفورم ويسيب الـ Submit ليك يدوياً.
+  const changePortProvisioning = () => {
+    let oldMsan = (line?.msanCode ?? "").toString().trim();
+    if (!oldMsan) {
+      oldMsan = (window.prompt("كود كابينة الأمسان الحالى (Old Cabin Code) — غير مسجّل للخط، اكتبه:", "") ?? "").trim();
+      if (!oldMsan) return;
+    }
+    const phoneShort = (line?.telNo ?? "").toString().replace(/\D/g, "").replace(/^88/, "");
+    if (!phoneShort) { alert("لا يوجد رقم تليفون صالح لهذا الخط"); return; }
+    // نفس الكابينة (بورت جديد فى نفس الأمسان) أم كابينة أخرى؟
+    const sameCab = window.confirm(
+      `تغيير بورت الرقم ${phoneShort}\nالكابينة الحالية: ${oldMsan}\n\n` +
+      `موافق = نفس الكابينة (New = Old)\nإلغاء = كابينة أخرى (تكتب كودها)`,
+    );
+    let newMsan = oldMsan;
+    if (!sameCab) {
+      newMsan = (window.prompt("كود الكابينة الجديدة (New Cabin Code):", "") ?? "").trim();
+      if (!newMsan) return;
+    }
+    // نوع البورت (PortType) — يُكتب هنا؛ speed ثابتة WE30 (زى التمبلت)
+    const pt = (window.prompt("نوع البورت (PortType):", "SV") ?? "").trim();
+    if (!pt) return;
+    const qs = new URLSearchParams({
+      sf_msan: "1", old: oldMsan, new: newMsan, phone: phoneShort, area: "88", pt, sp: "WE30",
+    });
+    window.open(`https://provisioningportal.te.eg/provisioningPortal/?${qs.toString()}#/login`, "sf_msan_replace");
   };
 
   // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
@@ -643,6 +674,17 @@ export function PhoneLookupReport() {
                   جلب الأكونت من Customer360
                 </Button>
               ) : null}
+              {isSuper && (
+                <Button
+                  variant="outline"
+                  onClick={changePortProvisioning}
+                  className="bg-white gap-2 text-cyan-700 border-cyan-300 hover:bg-cyan-50"
+                  title="فتح Provisioning Portal (MSAN Replacement) وملء الفورم لتغيير بورت هذا الرقم — للسوبر أدمن"
+                >
+                  <ArrowLeftRight className="w-4 h-4" />
+                  غيّر البورت (بروفيجن)
+                </Button>
+              )}
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
                 <FileSpreadsheet className="w-4 h-4 text-green-600" />
                 Excel
