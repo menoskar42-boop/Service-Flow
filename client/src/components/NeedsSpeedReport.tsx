@@ -4,6 +4,7 @@ import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageJump } from "@/components/ui/page-jump";
 import { RefreshButton } from "@/components/RefreshButton";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
@@ -396,7 +397,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                   <ChevronRight className="w-4 h-4 ml-1" />
                   السابق
                 </Button>
-                <span className="text-sm text-muted-foreground">صفحة {page} من {totalPages}</span>
+                <PageJump page={page} totalPages={totalPages} onJump={setPage} />
                 <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
                   التالي
                   <ChevronLeft className="w-4 h-4 mr-1" />

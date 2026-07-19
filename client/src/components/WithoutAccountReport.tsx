@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageJump } from "@/components/ui/page-jump";
 import { Input } from "@/components/ui/input";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
@@ -509,29 +510,7 @@ export function WithoutAccountReport() {
                   <ChevronRight className="w-4 h-4 ml-1" />
                   السابق
                 </Button>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <span>صفحة</span>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={totalPages}
-                    key={page}
-                    defaultValue={page}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const v = Math.min(totalPages, Math.max(1, parseInt((e.target as HTMLInputElement).value) || 1));
-                        setPage(v);
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const v = Math.min(totalPages, Math.max(1, parseInt(e.target.value) || 1));
-                      if (v !== page) setPage(v);
-                    }}
-                    className="w-16 h-8 text-center"
-                    title="اكتب رقم الصفحة واضغط Enter للانتقال إليها"
-                  />
-                  <span>من {totalPages}</span>
-                </div>
+                <PageJump page={page} totalPages={totalPages} onJump={setPage} />
                 <Button
                   variant="outline"
                   size="sm"

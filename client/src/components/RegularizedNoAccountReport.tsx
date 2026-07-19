@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageJump } from "@/components/ui/page-jump";
 import { RefreshButton } from "@/components/RefreshButton";
 import { Input } from "@/components/ui/input";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -385,7 +386,7 @@ export function RegularizedNoAccountReport() {
                   <ChevronRight className="w-4 h-4 ml-1" />
                   السابق
                 </Button>
-                <span className="text-sm text-muted-foreground">صفحة {page} من {totalPages}</span>
+                <PageJump page={page} totalPages={totalPages} onJump={setPage} />
                 <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
                   التالي
                   <ChevronLeft className="w-4 h-4 mr-1" />

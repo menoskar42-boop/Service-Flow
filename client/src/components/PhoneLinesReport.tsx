@@ -4,6 +4,7 @@ import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageJump } from "@/components/ui/page-jump";
 import { Input } from "@/components/ui/input";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
@@ -434,9 +435,7 @@ export function PhoneLinesReport() {
                   <ChevronRight className="w-4 h-4 ml-1" />
                   السابق
                 </Button>
-                <span className="text-sm text-muted-foreground">
-                  صفحة {page} من {totalPages}
-                </span>
+                <PageJump page={page} totalPages={totalPages} onJump={setPage} />
                 <Button
                   variant="outline"
                   size="sm"
