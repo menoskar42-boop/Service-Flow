@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يقف (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.0
+// @version      1.5.1
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -445,8 +445,10 @@
         // بعد Submit: استنّى — يا إمّا رجعنا للّوجين (bounce → إعادة) يا إمّا فضلنا (نجاح).
         const bounced = await waitFor(() => onLoginPage(), 7000);
         if (!bounced) {
-          banner("✅ تم الإرسال (Submit) — لمتابعة النتيجة اضغط «تحديث البورت» من بحث برقم التليفون.", "#2e7d32");
-          logln("✅ مرجعش للّوجين → غالباً نجح. (المتابعة يدوية الآن — من زر «تحديث البورت»)");
+          banner("✅ تم الإرسال (Submit) — هيتقفل التاب بعد 15 ثانية. لمتابعة النتيجة اضغط «تحديث البورت» من بحث برقم التليفون.", "#2e7d32");
+          logln("✅ مرجعش للّوجين → غالباً نجح. (المتابعة يدوية — من زر «تحديث البورت») — التاب هيتقفل بعد 15 ثانية.");
+          // نقفل التاب بعد نجاح تغيير البورت بـ 15 ثانية (النافذة اتفتحت بـ window.open فمسموح غلقها بالسكربت)
+          setTimeout(() => { try { window.close(); } catch (e) {} }, 15000);
           return;
         }
         banner("🔁 رجع للّوجين بعد Submit — إعادة الدخول وتكرار الخطوات…", "#6a1b9a");
