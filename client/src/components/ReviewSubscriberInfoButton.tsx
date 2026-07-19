@@ -5,6 +5,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { UserSearch, Loader2 } from "lucide-react";
 
 // زر "مراجعة الاسم والعنوان": يعيد جلب الأسماء/العناوين من FCC لأرقام البورتات.
@@ -14,6 +15,7 @@ export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: 
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
+  const isSuper = useIsSuperAdmin(); // الزر للسوبر أدمن فقط — فى كل أماكن استخدامه
 
   const run = async (scope: "empty" | "all") => {
     setBusy(true);
@@ -48,6 +50,8 @@ export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: 
       setOpen(false);
     }
   };
+
+  if (!isSuper) return null; // مخفى لغير السوبر أدمن
 
   return (
     <>
