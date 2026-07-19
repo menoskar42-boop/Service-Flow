@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه تدفّقان مستقلان تماماً بماركرين مختلفين لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يفتح صفحة MSAN Replacement، يملأ Old/New Cabin Code، يولّد ملف CSV بالرقم ويحقنه فى خانة الرفع، ويسيب الـ Submit ليك يدوياً (أأمن لأنه بيغيّر بيانات مشترك). كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.3.2
+// @version      1.3.3
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -392,46 +392,60 @@
     return !!oldIn && !onLoginPage();
   }
 
+  // يملأ الفورم مرة واحدة ويضغط Submit. يرجّع true لو اتضغط Submit فعلاً.
+  async function fillAndSubmitMsan(data) {
+    const ok = await gotoMsanReplacement();
+    if (!ok) { logln("⛔ تعذّر فتح صفحة MSAN Replacement."); return false; }
+    const oldIn = document.querySelector("input[formcontrolname='oldMsanCode']");
+    const newIn = document.querySelector("input[formcontrolname='newMsanCode']");
+    const fileIn = document.querySelector("input.custom-file-input, input[type='file']");
+    if (!oldIn || !newIn) { logln("⛔ لم أجد حقول Old/New Cabin Code."); return false; }
+    setNgValue(oldIn, data.old);
+    setNgValue(newIn, data.new);
+    logln("✏️ Old=" + data.old + " | New=" + data.new);
+    let fileOk = false;
+    if (fileIn) {
+      fileOk = injectFile(fileIn, buildMsanFile(data));
+      logln(fileOk ? ("📎 اتحقن الملف: " + data.area + "," + data.phone + "," + data.pt + "," + data.sp) : "⚠️ تعذّر حقن الملف.");
+    } else { logln("⚠️ لم أجد خانة رفع الملف."); }
+    await sleep(1200); // Angular يعالج الملف/التحقّق
+    const submitBtn = findButtonByText(/^\s*submit\s*$|إرسال|تنفيذ/i);
+    if (fileOk && submitBtn) { clickEl(submitBtn); logln("🚀 اتضغط Submit."); return true; }
+    logln(submitBtn ? "⚠️ الملف مش متحقن — مضغطتش Submit." : "⚠️ مالقتش زر Submit.");
+    return false;
+  }
+
   let msanRunning = false;
   async function runMsan() {
     if (msanRunning) return; msanRunning = true;
     try {
       const data = MSAN || {};
       if (!data.phone) { banner("❌ لا يوجد رقم للتغيير.", "#c62828"); return; }
-      banner("🔁 غيّر البورت — رقم " + data.phone + " من " + data.old + " إلى " + data.new, "#00695c");
-      await ensureLoggedIn();
-      const ok = await gotoMsanReplacement();
-      if (!ok) { banner("❌ تعذّر فتح صفحة MSAN Replacement.", "#c62828"); return; }
-      const oldIn = document.querySelector("input[formcontrolname='oldMsanCode']");
-      const newIn = document.querySelector("input[formcontrolname='newMsanCode']");
-      const fileIn = document.querySelector("input.custom-file-input, input[type='file']");
-      if (!oldIn || !newIn) { banner("❌ لم أجد حقول Old/New Cabin Code.", "#c62828"); return; }
-      setNgValue(oldIn, data.old);
-      setNgValue(newIn, data.new);
-      logln("✏️ Old=" + data.old + " | New=" + data.new);
-      let fileOk = false;
-      if (fileIn) {
-        fileOk = injectFile(fileIn, buildMsanFile(data));
-        logln(fileOk ? ("📎 اتحقن الملف: " + data.area + "," + data.phone + "," + data.pt + "," + data.sp) : "⚠️ تعذّر حقن الملف — ارفعه يدوياً.");
-      } else {
-        logln("⚠️ لم أجد خانة رفع الملف — اضغط Upload File يدوياً.");
+      // حلقة: املأ + Submit، وبعدها راقب. لو البورتال رجّعنا للّوجين (الجلسة سقطت) → سجّل دخول
+      // وأعِد نفس الخطوات. لو مرجعش للّوجين (نجح غالباً) → قِف. أقصى عدد محاولات لمنع أى تكرار لا نهائى.
+      // ملاحظة: مش دايماً بيرجع للّوجين — فالخروج الطبيعى لما مايرجعش.
+      const MAX = 5;
+      for (let attempt = 1; attempt <= MAX; attempt++) {
+        banner("🔁 غيّر البورت — رقم " + data.phone + " (محاولة " + attempt + ")", "#00695c");
+        await ensureLoggedIn();
+        const submitted = await fillAndSubmitMsan(data);
+        if (!submitted) { banner("✅ اتملأ الفورم — راجع/اضغط Submit بنفسك (مش لاقى الملف/الزر).", "#ef6c00"); return; }
+        // بعد Submit: استنّى — يا إمّا رجعنا للّوجين (bounce → إعادة) يا إمّا فضلنا (نجاح).
+        const bounced = await waitFor(() => onLoginPage(), 7000);
+        if (!bounced) {
+          banner("✅ تم الإرسال (Submit) — راجع نتيجة البورتال.", "#2e7d32");
+          logln("✅ مرجعش للّوجين → غالباً نجح. تم.");
+          return;
+        }
+        banner("🔁 رجع للّوجين بعد Submit — إعادة الدخول وتكرار الخطوات…", "#6a1b9a");
+        logln("↩️ Bounce للّوجين — إعادة المحاولة " + (attempt + 1) + "/" + MAX);
+        await sleep(800);
       }
-      // ضغط Submit تلقائياً بعد ملء الفورم وحقن الملف (نستنّى شوية عشان Angular يعالج الملف/التحقّق).
-      await sleep(1200);
-      const submitBtn = findButtonByText(/^\s*submit\s*$|إرسال|تنفيذ/i);
-      if (fileOk && submitBtn) {
-        clickEl(submitBtn);
-        banner("✅ اتملأ الفورم واتضغط Submit تلقائياً — راجع نتيجة البورتال.", "#2e7d32");
-        logln("🚀 اتضغط Submit.");
-      } else {
-        banner("✅ اتملأ الفورم" + (fileOk ? "" : " (الملف يدوى)") + " — اضغط Submit بنفسك.", "#ef6c00");
-        logln(submitBtn ? "" : "⚠️ مالقتش زر Submit — اضغطه يدوى.");
-      }
+      banner("⚠️ جرّبنا " + MAX + " مرات ولسه بيرجع للّوجين — اعمل العملية يدوى أو أعد المحاولة.", "#c62828");
     } finally {
       msanRunning = false;
-      // ملحوظة: مابنمسحش MSAN_KEY هنا — لو الجلسة سقطت بعد Submit ورجّعتك للّوجين، السكربت بيعيد
-      // تسجيل الدخول ويملأ الفورم تانى أوتوماتيك (مش محتاج تعيد العملية يدوى). البيانات بتتستبدل
-      // تلقائياً أول ما تفتح «غيّر البورت» لرقم جديد من Service-Flow.
+      // مابنمسحش MSAN_KEY — لو حصل reload كامل للّوجين، الـ auto-fire هيعيد runMsan. البيانات
+      // بتتستبدل تلقائياً أول ما تفتح «غيّر البورت» لرقم جديد من Service-Flow.
     }
   }
 
