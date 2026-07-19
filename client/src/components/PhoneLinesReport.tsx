@@ -4,6 +4,7 @@ import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table,
@@ -79,6 +80,8 @@ export function PhoneLinesReport() {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
+  const [phoneFrom, setPhoneFrom] = useState(""); // نطاق: من رقم
+  const [phoneTo, setPhoneTo] = useState("");     // نطاق: إلى رقم
   const [page, setPage] = useState(1);
 
   const { data: filterOptions } = useQuery({
@@ -91,12 +94,14 @@ export function PhoneLinesReport() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines", central, cabin, box, page],
+    queryKey: ["/api/phone-lines", central, cabin, box, phoneFrom, phoneTo, page],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
+      if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
@@ -129,6 +134,8 @@ export function PhoneLinesReport() {
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
+      if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -166,6 +173,8 @@ export function PhoneLinesReport() {
       if (central) params.set("central", central);
       if (cabin) params.set("cabin", cabin);
       if (box) params.set("box", box);
+      if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
+      if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -192,6 +201,8 @@ export function PhoneLinesReport() {
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
+    if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
     const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
@@ -231,6 +242,8 @@ export function PhoneLinesReport() {
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
+    if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
     const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
     const json = await res.json();
     const all = json.data as PhoneLine[];
@@ -287,6 +300,27 @@ export function PhoneLinesReport() {
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
             />
+
+            {/* نطاق أرقام: من رقم … إلى رقم (يُطابَق على الرقم القصير بدون 88) */}
+            <div className="flex items-center gap-1">
+              <Input
+                inputMode="numeric"
+                value={phoneFrom}
+                onChange={(e) => { setPhoneFrom(e.target.value.replace(/\D/g, "")); setPage(1); }}
+                placeholder="من رقم"
+                dir="ltr"
+                className="w-28 sm:w-32 text-sm text-left h-9"
+              />
+              <span className="text-xs text-muted-foreground">إلى</span>
+              <Input
+                inputMode="numeric"
+                value={phoneTo}
+                onChange={(e) => { setPhoneTo(e.target.value.replace(/\D/g, "")); setPage(1); }}
+                placeholder="إلى رقم"
+                dir="ltr"
+                className="w-28 sm:w-32 text-sm text-left h-9"
+              />
+            </div>
 
             {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">

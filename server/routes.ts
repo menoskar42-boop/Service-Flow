@@ -2408,16 +2408,25 @@ export async function registerRoutes(
 
   // GET /api/phone-lines — paginated, with optional central/cabin/box or text search filters
   app.get("/api/phone-lines", requireAuth, async (req, res) => {
-    const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { search = "", central = "", cabin = "", box = "", phoneFrom = "", phoneTo = "", page = "1", limit = "50" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const q = search.trim().toLowerCase();
+    // نطاق أرقام: نطابق على الرقم القصير (بدون بادئة 88) كقيمة رقمية. نشيل أى غير أرقام ونشيل 88 لو اتكتبت.
+    const digitsOnly = (s: string) => String(s || "").replace(/\D/g, "").replace(/^88/, "");
+    const pFrom = digitsOnly(phoneFrom), pTo = digitsOnly(phoneTo);
 
     const conds: string[] = [];
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    // فلتر النطاق «من رقم / إلى رقم» — على الرقم القصير الرقمى فقط.
+    if (pFrom || pTo) {
+      conds.push(`regexp_replace(k.full_phone,'^88','') ~ '^[0-9]+$'`);
+      if (pFrom) { params.push(pFrom); conds.push(`regexp_replace(k.full_phone,'^88','')::bigint >= $${params.length}::bigint`); }
+      if (pTo) { params.push(pTo); conds.push(`regexp_replace(k.full_phone,'^88','')::bigint <= $${params.length}::bigint`); }
+    }
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;
