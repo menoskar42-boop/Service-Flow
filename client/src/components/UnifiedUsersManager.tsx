@@ -13,6 +13,7 @@ interface UnifiedRoleOpt { key: string; labelAr: string; sf: string | null; cfm:
 interface PortalUser {
   sfId: number | null; username: string; sfRole: string | null; workerCode: string | null;
   suspended: boolean; cfmId: string | null; cfmRole: string | null; cfmName: string | null; unifiedRole: string;
+  passwordPlain: string | null; // للسوبر أدمن فقط — يظهر لو الباسورد اتعمل/اتغيّر بعد إضافة الميزة
 }
 
 const api = async (url: string, opts?: RequestInit) => {
@@ -24,6 +25,7 @@ const api = async (url: string, opts?: RequestInit) => {
 
 export function UnifiedUsersManager() {
   const [open, setOpen] = useState(false);
+  const [showPw, setShowPw] = useState(false); // إظهار/إخفاء كلمات السر (سوبر أدمن)
   const qc = useQueryClient();
 
   const { data: roles = [] } = useQuery<UnifiedRoleOpt[]>({
@@ -177,6 +179,11 @@ export function UnifiedUsersManager() {
                   <tr className="border-b bg-muted/50">
                     <th className="p-2">المستخدم</th>
                     <th className="p-2">الاسم (كوابل)</th>
+                    <th className="p-2">
+                      <button type="button" onClick={() => setShowPw((v) => !v)} className="inline-flex items-center gap-1 text-blue-700 hover:underline" title="إظهار/إخفاء كلمات السر">
+                        كلمة السر {showPw ? "🙈" : "👁"}
+                      </button>
+                    </th>
                     <th className="p-2">الدور</th>
                     <th className="p-2">المواقع</th>
                     <th className="p-2">تغيير الدور</th>
@@ -199,6 +206,11 @@ export function UnifiedUsersManager() {
                         ) : (
                           <span className="text-gray-300 text-xs">— (مافيش كوابل)</span>
                         )}
+                      </td>
+                      <td className="p-2 font-mono" dir="ltr">
+                        {u.passwordPlain
+                          ? (showPw ? u.passwordPlain : "••••••")
+                          : <span className="text-gray-300 text-xs" title="اتعمل قبل الميزة أو حساب كوابل فقط — يظهر بعد أول تغيير">—</span>}
                       </td>
                       <td className="p-2">{roleLabel(u.unifiedRole)}</td>
                       <td className="p-2 text-muted-foreground">{sites(u)}</td>
@@ -229,7 +241,7 @@ export function UnifiedUsersManager() {
                       </td>
                     </tr>
                   ))}
-                  {users.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">لا يوجد مستخدمون</td></tr>}
+                  {users.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">لا يوجد مستخدمون</td></tr>}
                 </tbody>
               </table>
             </div>

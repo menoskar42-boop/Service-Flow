@@ -1672,6 +1672,7 @@ export async function registerRoutes(
     try {
       const { rows } = await pool.query(`
         SELECT u.id AS "sfId", u.username, u.role AS "sfRole", u.worker_code AS "workerCode",
+               u.password_plain AS "passwordPlain",
                COALESCE(u.suspended, false) AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole", cu.name AS "cfmName"
         FROM users u
         LEFT JOIN LATERAL (
@@ -1680,6 +1681,7 @@ export async function registerRoutes(
         ) cu ON true
         UNION ALL
         SELECT NULL AS "sfId", cu.username, NULL AS "sfRole", NULL AS "workerCode",
+               NULL AS "passwordPlain",
                COALESCE(cu.suspended, false) AS suspended, cu.id AS "cfmId", cu.role AS "cfmRole", cu.name AS "cfmName"
         FROM cfm_users cu
         WHERE NOT EXISTS (SELECT 1 FROM users u2 WHERE u2.cfm_user_id = cu.id OR u2.username = cu.username)
@@ -1714,8 +1716,8 @@ export async function registerRoutes(
         // نخزّن الدور الفعّال فى الطلبات (acc.sf) — لكل الأدوار = اسم الدور الموحّد نفسه، ما عدا
         // مهندس الكوابل: طلباته «external» فيتعامل معاه موقع الطلبات كشئون خارجية بدون أى تغيير.
         const ins = await pool.query(
-          `INSERT INTO users (username, password, role, worker_code, full_name, cfm_user_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-          [uname, hp, acc.sf, workerCode?.trim() || null, String(name || "").trim() || null, cfmId]);
+          `INSERT INTO users (username, password, role, worker_code, full_name, password_plain, cfm_user_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+          [uname, hp, acc.sf, workerCode?.trim() || null, String(name || "").trim() || null, String(password), cfmId]);
         sfId = ins.rows[0].id;
       }
       res.status(201).json({ ok: true, username: uname, role, sfId, cfmId });
@@ -1808,8 +1810,25 @@ export async function registerRoutes(
       const uname = String(req.params.username || "").trim();
       const newPassword = String(req.body?.newPassword || "");
       if (newPassword.length < 3) return res.status(400).json({ message: "كلمة السر قصيرة جداً" });
-      await pool.query(`UPDATE users SET password = $1 WHERE username = $2`, [await hashPassword(newPassword), uname]);
+      await pool.query(`UPDATE users SET password = $1, password_plain = $2 WHERE username = $3`, [await hashPassword(newPassword), newPassword, uname]);
       await pool.query(`UPDATE cfm_users SET password = $1, is_initial_password = true WHERE username = $2`, [bcryptjs.hashSync(newPassword, 10), uname]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/auth/change-my-password — أى مستخدم مسجّل دخول يغيّر كلمة السر بتاعته
+  // (يتحقق من الحالية). يحدّث الطلبات + الكوابل (لو له حساب) ويخزّن النسخة النصية للسوبر أدمن.
+  app.post("/api/auth/change-my-password", requireAuth, async (req: any, res) => {
+    try {
+      const currentPassword = String(req.body?.currentPassword || "");
+      const newPassword = String(req.body?.newPassword || "");
+      if (newPassword.length < 3) return res.status(400).json({ message: "كلمة السر الجديدة قصيرة جداً (3 أحرف على الأقل)" });
+      const me = await storage.getUser(req.user.id);
+      if (!me) return res.status(404).json({ message: "المستخدم غير موجود" });
+      const ok = await comparePassword(currentPassword, me.password);
+      if (!ok) return res.status(400).json({ message: "كلمة السر الحالية غير صحيحة" });
+      await pool.query(`UPDATE users SET password = $1, password_plain = $2 WHERE id = $3`, [await hashPassword(newPassword), newPassword, me.id]);
+      await pool.query(`UPDATE cfm_users SET password = $1 WHERE username = $2`, [bcryptjs.hashSync(newPassword, 10), me.username]).catch(() => {});
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

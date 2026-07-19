@@ -53,6 +53,7 @@ import { ClosedPortCabinetsReport } from "@/components/ClosedPortCabinetsReport"
 import { ManualRegularizedFaultsRangeReport } from "@/components/ManualRegularizedFaultsRangeReport";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
 import { NotificationBell } from "@/components/NotificationBell";
+import { ChangeMyPasswordButton } from "@/components/ChangeMyPasswordButton";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { canAccessCFM } from "@shared/roles-access";
@@ -342,6 +343,7 @@ export default function Dashboard() {
                 <span className="sm:hidden">البيانات</span>
               </Button>
             )}
+            <ChangeMyPasswordButton />
             <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive h-8 sm:h-9 px-2 sm:px-3">
               <LogOut className="w-4 h-4 sm:ml-2" />
               <span className="hidden sm:inline">تسجيل خروج</span>
