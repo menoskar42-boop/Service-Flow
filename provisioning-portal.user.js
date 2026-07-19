@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه تدفّقان مستقلان تماماً بماركرين مختلفين لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يفتح صفحة MSAN Replacement، يملأ Old/New Cabin Code، يولّد ملف CSV بالرقم ويحقنه فى خانة الرفع، ويسيب الـ Submit ليك يدوياً (أأمن لأنه بيغيّر بيانات مشترك). كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.3.0
+// @version      1.3.1
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -418,7 +418,9 @@
       banner("✅ اتملأ الفورم (Old/New + الملف). راجع واضغط Submit بنفسك.", "#2e7d32");
     } finally {
       msanRunning = false;
-      try { sessionStorage.removeItem(MSAN_KEY); } catch (e) {}
+      // ملحوظة: مابنمسحش MSAN_KEY هنا — لو الجلسة سقطت بعد Submit ورجّعتك للّوجين، السكربت بيعيد
+      // تسجيل الدخول ويملأ الفورم تانى أوتوماتيك (مش محتاج تعيد العملية يدوى). البيانات بتتستبدل
+      // تلقائياً أول ما تفتح «غيّر البورت» لرقم جديد من Service-Flow.
     }
   }
 

@@ -298,31 +298,35 @@ export function PhoneLookupReport() {
   // يفتح Provisioning Portal بماركر مستقل تماماً (sf_msan) — مش زر البورتات (sf_ports) ولا تحديث
   // الملفات ولا التحديث كل نص ساعة. Old Cabin = MSAN الخط تلقائياً؛ New Cabin يُكتب فى نافذة؛
   // PortType/speed ثابتة (SV/WE30). السكربت المدمج بيملأ الفورم ويسيب الـ Submit ليك يدوياً.
-  const changePortProvisioning = () => {
-    let oldMsan = (line?.msanCode ?? "").toString().trim();
-    if (!oldMsan) {
-      oldMsan = (window.prompt("كود كابينة الأمسان الحالى (Old Cabin Code) — غير مسجّل للخط، اكتبه:", "") ?? "").trim();
-      if (!oldMsan) return;
-    }
+  // يفتح نافذة «غيّر البورت» بقيم افتراضية (نفس الكابينة: New = الحالية، Old يُكتب).
+  const openChangePort = () => {
+    const cur = (line?.msanCode ?? "").toString().trim();
+    setMsanMode("same");
+    setMsanNew(cur);   // نفس الكابينة: الوجهة = الحالية
+    setMsanOld("");    // القديم = كابينة مختلفة يكتبها المستخدم
+    setMsanPt("SV");
+    setMsanOpen(true);
+  };
+  // تبديل نوع العملية وملء الحقول: البورتال بيرفض تطابق Old و New.
+  //   نفس الكابينة → New = الحالية، Old = مختلفة (تُكتب).   كابينة أخرى → Old = الحالية، New = الجديدة (تُكتب).
+  const setMsanModeAndFill = (mode: "same" | "other") => {
+    const cur = (line?.msanCode ?? "").toString().trim();
+    setMsanMode(mode);
+    if (mode === "same") { setMsanNew(cur); setMsanOld(""); }
+    else { setMsanOld(cur); setMsanNew(""); }
+  };
+  const submitChangePort = () => {
     const phoneShort = (line?.telNo ?? "").toString().replace(/\D/g, "").replace(/^88/, "");
+    const oldC = msanOld.trim(), newC = msanNew.trim();
     if (!phoneShort) { alert("لا يوجد رقم تليفون صالح لهذا الخط"); return; }
-    // نفس الكابينة (بورت جديد فى نفس الأمسان) أم كابينة أخرى؟
-    const sameCab = window.confirm(
-      `تغيير بورت الرقم ${phoneShort}\nالكابينة الحالية: ${oldMsan}\n\n` +
-      `موافق = نفس الكابينة (New = Old)\nإلغاء = كابينة أخرى (تكتب كودها)`,
-    );
-    let newMsan = oldMsan;
-    if (!sameCab) {
-      newMsan = (window.prompt("كود الكابينة الجديدة (New Cabin Code):", "") ?? "").trim();
-      if (!newMsan) return;
-    }
-    // نوع البورت (PortType) — يُكتب هنا؛ speed ثابتة WE30 (زى التمبلت)
-    const pt = (window.prompt("نوع البورت (PortType):", "SV") ?? "").trim();
-    if (!pt) return;
+    if (!oldC || !newC) { alert("املأ كود الكابينة القديم والجديد"); return; }
+    if (oldC === newC) { alert("الكود القديم لازم يختلف عن الجديد (البورتال بيرفض تطابقهما)"); return; }
+    if (!msanPt) { alert("اختر نوع البورت"); return; }
     const qs = new URLSearchParams({
-      sf_msan: "1", old: oldMsan, new: newMsan, phone: phoneShort, area: "88", pt, sp: "WE30",
+      sf_msan: "1", old: oldC, new: newC, phone: phoneShort, area: "88", pt: msanPt, sp: "WE30",
     });
     window.open(`https://provisioningportal.te.eg/provisioningPortal/?${qs.toString()}#/login`, "sf_msan_replace");
+    setMsanOpen(false);
   };
 
   // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
@@ -357,6 +361,12 @@ export function PhoneLookupReport() {
   const [regBusy, setRegBusy] = useState(false);
   const [histOpen, setHistOpen] = useState(false);
   const [histRows, setHistRows] = useState<any[] | null>(null);
+  // نافذة «غيّر البورت» (MSAN Replacement)
+  const [msanOpen, setMsanOpen] = useState(false);
+  const [msanMode, setMsanMode] = useState<"same" | "other">("same");
+  const [msanOld, setMsanOld] = useState("");
+  const [msanNew, setMsanNew] = useState("");
+  const [msanPt, setMsanPt] = useState("SV");
 
   // تسجيل عطل يدوى (يمنع التكرار)
   const flagFault = async () => {
@@ -677,7 +687,7 @@ export function PhoneLookupReport() {
               {isSuper && (
                 <Button
                   variant="outline"
-                  onClick={changePortProvisioning}
+                  onClick={openChangePort}
                   className="bg-white gap-2 text-cyan-700 border-cyan-300 hover:bg-cyan-50"
                   title="فتح Provisioning Portal (MSAN Replacement) وملء الفورم لتغيير بورت هذا الرقم — للسوبر أدمن"
                 >
@@ -782,6 +792,49 @@ export function PhoneLookupReport() {
               <Button variant="outline" size="sm" onClick={() => setRegOpen(false)}>إلغاء</Button>
               <Button size="sm" onClick={submitRegularize} disabled={regBusy} className="bg-green-600 hover:bg-green-700 gap-1">
                 {regBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wrench className="w-4 h-4" />} OK — تسجيل الانتظام
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* نافذة «غيّر البورت» (MSAN Replacement) — سوبر أدمن */}
+      {msanOpen && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setMsanOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold flex items-center gap-2"><ArrowLeftRight className="w-5 h-5 text-cyan-700" /> غيّر البورت — {line?.telNo || phone}</h3>
+              <button onClick={() => setMsanOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">نوع العملية</label>
+              <div className="flex gap-4 text-sm">
+                <label className="flex items-center gap-1 cursor-pointer"><input type="radio" checked={msanMode === "same"} onChange={() => setMsanModeAndFill("same")} /> نفس الكابينة</label>
+                <label className="flex items-center gap-1 cursor-pointer"><input type="radio" checked={msanMode === "other"} onChange={() => setMsanModeAndFill("other")} /> نقل لكابينة أخرى</label>
+              </div>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">الكود القديم (Old Cabin Code) *</label>
+              <Input value={msanOld} onChange={(e) => setMsanOld(e.target.value)} placeholder="مثال: 11-2-26-05" dir="ltr" className="text-left text-sm" />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">الكود الجديد (New Cabin Code) *</label>
+              <Input value={msanNew} onChange={(e) => setMsanNew(e.target.value)} placeholder="كود الكابينة" dir="ltr" className="text-left text-sm" />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">نوع البورت (PortType) *</label>
+              <select value={msanPt} onChange={(e) => setMsanPt(e.target.value)} className="border rounded-md px-3 py-2 text-sm" dir="ltr">
+                <option value="SV">SV</option>
+                <option value="VDSL">VDSL</option>
+                <option value="ADSL">ADSL</option>
+                <option value="ESL">ESL</option>
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">speed = <b>WE30</b> (ثابت). الكود القديم لازم يختلف عن الجديد (البورتال بيرفض تطابقهما). الملف بيتحقن فى البورتال ويسيبك تراجع وتضغط Submit بنفسك.</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setMsanOpen(false)}>إلغاء</Button>
+              <Button size="sm" onClick={submitChangePort} className="bg-cyan-600 hover:bg-cyan-700 gap-1">
+                <ArrowLeftRight className="w-4 h-4" /> افتح البروفيزيونال
               </Button>
             </div>
           </div>
