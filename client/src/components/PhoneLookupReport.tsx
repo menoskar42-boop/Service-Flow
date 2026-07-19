@@ -298,21 +298,26 @@ export function PhoneLookupReport() {
   // يفتح Provisioning Portal بماركر مستقل تماماً (sf_msan) — مش زر البورتات (sf_ports) ولا تحديث
   // الملفات ولا التحديث كل نص ساعة. Old Cabin = MSAN الخط تلقائياً؛ New Cabin يُكتب فى نافذة؛
   // PortType/speed ثابتة (SV/WE30). السكربت المدمج بيملأ الفورم ويسيب الـ Submit ليك يدوياً.
-  // يفتح نافذة «غيّر البورت» بقيم افتراضية (نفس الكابينة: New = الحالية، Old يُكتب).
+  // على «نفس الكابينة» الكود القديم افتراضى = 11-2-76-01 (كابينة مختلفة عن الحالية).
+  // لو الكابينة الحالية نفسها = 11-2-76-01 (فيحصل تطابق) نبدّل الـ 76 بـ 26 → 11-2-26-01.
+  const SAME_CAB_DEFAULT_OLD = "11-2-76-01";
+  const defaultOldFor = (cur: string) => (cur === SAME_CAB_DEFAULT_OLD ? "11-2-26-01" : SAME_CAB_DEFAULT_OLD);
+
+  // يفتح نافذة «غيّر البورت» بقيم افتراضية (نفس الكابينة: New = الحالية، Old = الافتراضى).
   const openChangePort = () => {
     const cur = (line?.msanCode ?? "").toString().trim();
     setMsanMode("same");
-    setMsanNew(cur);   // نفس الكابينة: الوجهة = الحالية
-    setMsanOld("");    // القديم = كابينة مختلفة يكتبها المستخدم
+    setMsanNew(cur);                  // نفس الكابينة: الوجهة = الحالية
+    setMsanOld(defaultOldFor(cur));   // القديم = افتراضى (كابينة مختلفة)
     setMsanPt("SV");
     setMsanOpen(true);
   };
   // تبديل نوع العملية وملء الحقول: البورتال بيرفض تطابق Old و New.
-  //   نفس الكابينة → New = الحالية، Old = مختلفة (تُكتب).   كابينة أخرى → Old = الحالية، New = الجديدة (تُكتب).
+  //   نفس الكابينة → New = الحالية، Old = افتراضى مختلف.   كابينة أخرى → Old = الحالية، New = الجديدة (تُكتب).
   const setMsanModeAndFill = (mode: "same" | "other") => {
     const cur = (line?.msanCode ?? "").toString().trim();
     setMsanMode(mode);
-    if (mode === "same") { setMsanNew(cur); setMsanOld(""); }
+    if (mode === "same") { setMsanNew(cur); setMsanOld(defaultOldFor(cur)); }
     else { setMsanOld(cur); setMsanNew(""); }
   };
   const submitChangePort = () => {
@@ -830,7 +835,7 @@ export function PhoneLookupReport() {
                 <option value="ESL">ESL</option>
               </select>
             </div>
-            <p className="text-xs text-muted-foreground">speed = <b>WE30</b> (ثابت). الكود القديم لازم يختلف عن الجديد (البورتال بيرفض تطابقهما). الملف بيتحقن فى البورتال ويسيبك تراجع وتضغط Submit بنفسك.</p>
+            <p className="text-xs text-muted-foreground">speed = <b>WE30</b> (ثابت). الكود القديم لازم يختلف عن الجديد (البورتال بيرفض تطابقهما). السكربت بيملأ الفورم ويحقن الملف <b>ويضغط Submit تلقائياً</b> فى البورتال.</p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setMsanOpen(false)}>إلغاء</Button>
               <Button size="sm" onClick={submitChangePort} className="bg-cyan-600 hover:bg-cyan-700 gap-1">

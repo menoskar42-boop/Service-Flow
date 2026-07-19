@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه تدفّقان مستقلان تماماً بماركرين مختلفين لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يفتح صفحة MSAN Replacement، يملأ Old/New Cabin Code، يولّد ملف CSV بالرقم ويحقنه فى خانة الرفع، ويسيب الـ Submit ليك يدوياً (أأمن لأنه بيغيّر بيانات مشترك). كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.3.1
+// @version      1.3.2
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -409,13 +409,24 @@
       setNgValue(oldIn, data.old);
       setNgValue(newIn, data.new);
       logln("✏️ Old=" + data.old + " | New=" + data.new);
+      let fileOk = false;
       if (fileIn) {
-        const okF = injectFile(fileIn, buildMsanFile(data));
-        logln(okF ? ("📎 اتحقن الملف: " + data.area + "," + data.phone + "," + data.pt + "," + data.sp) : "⚠️ تعذّر حقن الملف — ارفعه يدوياً.");
+        fileOk = injectFile(fileIn, buildMsanFile(data));
+        logln(fileOk ? ("📎 اتحقن الملف: " + data.area + "," + data.phone + "," + data.pt + "," + data.sp) : "⚠️ تعذّر حقن الملف — ارفعه يدوياً.");
       } else {
         logln("⚠️ لم أجد خانة رفع الملف — اضغط Upload File يدوياً.");
       }
-      banner("✅ اتملأ الفورم (Old/New + الملف). راجع واضغط Submit بنفسك.", "#2e7d32");
+      // ضغط Submit تلقائياً بعد ملء الفورم وحقن الملف (نستنّى شوية عشان Angular يعالج الملف/التحقّق).
+      await sleep(1200);
+      const submitBtn = findButtonByText(/^\s*submit\s*$|إرسال|تنفيذ/i);
+      if (fileOk && submitBtn) {
+        clickEl(submitBtn);
+        banner("✅ اتملأ الفورم واتضغط Submit تلقائياً — راجع نتيجة البورتال.", "#2e7d32");
+        logln("🚀 اتضغط Submit.");
+      } else {
+        banner("✅ اتملأ الفورم" + (fileOk ? "" : " (الملف يدوى)") + " — اضغط Submit بنفسك.", "#ef6c00");
+        logln(submitBtn ? "" : "⚠️ مالقتش زر Submit — اضغطه يدوى.");
+      }
     } finally {
       msanRunning = false;
       // ملحوظة: مابنمسحش MSAN_KEY هنا — لو الجلسة سقطت بعد Submit ورجّعتك للّوجين، السكربت بيعيد
