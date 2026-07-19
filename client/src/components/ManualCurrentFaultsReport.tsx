@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertTriangle, Wrench, X, Phone } from "lucide-react";
+import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertTriangle, Wrench, X, Eye, User, Phone } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,7 +32,15 @@ interface Row {
   lastMeasScore: number | null; lastMeasComplainNo: string | null; lastMeasTime: string | null;
   curMeasScore: number | null; curMeasCurrentSpeed: string | null; curMeasMaxSpeed: string | null; curMeasTime: string | null;
   lastPoRaiseAt: string | null; lastPoStopAt: string | null;
+  mobile: string | null;
 }
+
+// تطبيع رقم المحمول للاتصال: أرقام فقط + إضافة صفر بادئ لو ناقص (1552… → 01552…)
+const dialMobile = (raw: string | null): string => {
+  const m = String(raw || "").replace(/\D/g, "");
+  if (!m) return "";
+  return m.startsWith("0") ? m : "0" + m;
+};
 
 const fmt = (iso: string | null) => {
   if (!iso) return "-";
@@ -60,6 +68,14 @@ export function ManualCurrentFaultsReport() {
   const [regCode, setRegCode] = useState("");
   const [regTech, setRegTech] = useState("");
   const [regBusy, setRegBusy] = useState(false);
+  // فلتر «أعطالى» — أعطال الفني نفسه (بالاسم فى «اسم الفنى» أو «سجّل العطل»)
+  const [onlyMine, setOnlyMine] = useState(false);
+  const myNames = [(user as any)?.techName, user?.username].map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
+  const isMine = (x: Row) => {
+    const t = String(x.techName || "").trim().toLowerCase();
+    const f = String(x.flaggedBy || "").trim().toLowerCase();
+    return myNames.some((n) => n === t || n === f);
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -113,13 +129,15 @@ export function ManualCurrentFaultsReport() {
     dash(x.voiceStatus), dash(x.dataStatus), dash(x.operator), dash(x.onu), fmt(x.lastPoRaiseAt), fmt(x.lastPoStopAt), dash(x.flaggedBy),
   ];
 
+  const shown = onlyMine ? rows.filter(isMine) : rows;
+
   const handleExportExcel = () => {
-    const ws = XLSX.utils.aoa_to_sheet([COLUMNS, ...rows.map(toRow)]);
+    const ws = XLSX.utils.aoa_to_sheet([COLUMNS, ...shown.map(toRow)]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "أعطال حالية خارج الشاشة");
     XLSX.writeFile(wb, `manual-current-faults.xlsx`);
   };
-  const handleExportPDF = () => printTablePDF({ title: "الأعطال الحالية خارج الشاشة", columns: COLUMNS, rows: rows.map(toRow) });
+  const handleExportPDF = () => printTablePDF({ title: "الأعطال الحالية خارج الشاشة", columns: COLUMNS, rows: shown.map(toRow) });
 
   return (
     <Card className="p-4 space-y-4" dir="rtl">
@@ -130,11 +148,14 @@ export function ManualCurrentFaultsReport() {
         </div>
         <div className="flex gap-2">
           <Button onClick={load} size="sm" className="gap-1" disabled={loading}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
-          <Button onClick={handleExportExcel} variant="outline" size="sm" className="gap-1 text-green-700 border-green-200" disabled={!rows.length}><FileSpreadsheet className="w-4 h-4" /> تصدير Excel</Button>
-          <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1 text-red-700 border-red-200" disabled={!rows.length}><FileText className="w-4 h-4" /> تصدير PDF</Button>
+          <Button onClick={() => setOnlyMine((v) => !v)} size="sm" variant={onlyMine ? "default" : "outline"} className={`gap-1 ${onlyMine ? "bg-blue-600 hover:bg-blue-700" : "text-blue-700 border-blue-200"}`} title="عرض أعطالى فقط">
+            <User className="w-4 h-4" /> {onlyMine ? "الكل" : "أعطالى"}
+          </Button>
+          <Button onClick={handleExportExcel} variant="outline" size="sm" className="gap-1 text-green-700 border-green-200" disabled={!shown.length}><FileSpreadsheet className="w-4 h-4" /> تصدير Excel</Button>
+          <Button onClick={handleExportPDF} variant="outline" size="sm" className="gap-1 text-red-700 border-red-200" disabled={!shown.length}><FileText className="w-4 h-4" /> تصدير PDF</Button>
         </div>
       </div>
-      <div className="text-sm text-muted-foreground">إجمالى: <strong>{rows.length}</strong> عطل مفتوح</div>
+      <div className="text-sm text-muted-foreground">إجمالى: <strong>{shown.length}</strong>{onlyMine && shown.length !== rows.length ? <> من {rows.length}</> : null} عطل مفتوح</div>
       {error && <div className="text-sm text-red-600">{error}</div>}
       <div className="rounded-md border max-h-[65vh] overflow-auto">
         <Table>
@@ -142,9 +163,9 @@ export function ManualCurrentFaultsReport() {
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-            ) : rows.length === 0 ? (
+            ) : shown.length === 0 ? (
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">لا توجد أعطال حالية خارج الشاشة</TableCell></TableRow>
-            ) : rows.map((x) => {
+            ) : shown.map((x) => {
               const cells = toRow(x);
               return (
                 <TableRow key={x.id}>
@@ -155,13 +176,20 @@ export function ManualCurrentFaultsReport() {
                           {val}
                           <button type="button" onClick={() => openLookup(x)}
                             className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">
-                            <Phone className="w-3.5 h-3.5" /> معاينة
+                            <Eye className="w-3.5 h-3.5" /> معاينة
                           </button>
                           {canRegularize && (
                             <button type="button" onClick={() => { setRegRow(x); setRegCode(""); setRegTech(""); }}
                               className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-50">
                               <Wrench className="w-3.5 h-3.5" /> تسجيل الانتظام
                             </button>
+                          )}
+                          {dialMobile(x.mobile) && (
+                            <a href={`tel:${dialMobile(x.mobile)}`}
+                              className="md:hidden inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                              title={`اتصال بالعميل: ${dialMobile(x.mobile)}`}>
+                              <Phone className="w-3.5 h-3.5" /> اتصال
+                            </a>
                           )}
                         </span>
                       ) : (val || "-")}

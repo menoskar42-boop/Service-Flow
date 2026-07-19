@@ -6348,7 +6348,8 @@ export async function registerRoutes(
               c138c.score AS "curMeasScore", c138c.current_speed AS "curMeasCurrentSpeed",
               c138c.max_speed AS "curMeasMaxSpeed", (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
-              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
+              mob.m AS "mobile"
        FROM manual_faults mf
        LEFT JOIN phone_ports pp ON pp.phone_number = mf.full_phone
        LEFT JOIN LATERAL (
@@ -6361,6 +6362,20 @@ export async function registerRoutes(
          ORDER BY c.id DESC LIMIT 1
        ) c138c ON true
        LEFT JOIN line_po_events pe ON pe.account_no = COALESCE(mf.account_no, c138p.account_no)
+       LEFT JOIN LATERAL (
+         -- رقم الموبايل المسجّل: الأولوية للمُدخَل يدوياً (line_mobiles) ثم أوامر الشغل ثم FTTH
+         SELECT m FROM (
+           SELECT lm.mobile AS m, 0 AS pr FROM line_mobiles lm WHERE lm.full_phone = mf.full_phone
+           UNION ALL
+           SELECT mo.mobile AS m, 1 AS pr FROM maintenance_orders mo
+             WHERE mo.phone_number IN (mf.phone_short, mf.full_phone)
+               AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+           UNION ALL
+           SELECT fo.customer_mobile AS m, 2 AS pr FROM ftth_orders_current fo
+             WHERE fo.service_number IN (mf.phone_short, mf.full_phone)
+               AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+         ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
+       ) mob ON true
        WHERE mf.status='open' ORDER BY mf.flagged_at DESC`);
     res.json({ data: rows });
   });

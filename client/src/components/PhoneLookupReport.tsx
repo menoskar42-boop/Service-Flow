@@ -226,6 +226,12 @@ export function PhoneLookupReport() {
       : (
         <span className="inline-flex items-center gap-2">
           <span className="font-semibold" dir="ltr">{line.mobile || "-"}</span>
+          {(() => { const d = String(line.mobile || "").replace(/\D/g, ""); const dial = d ? (d.startsWith("0") ? d : "0" + d) : ""; return dial ? (
+            <a href={`tel:${dial}`} title={`اتصال بالعميل: ${dial}`}
+              className="md:hidden inline-flex items-center gap-1 text-[11px] text-emerald-700 border border-emerald-300 rounded px-1.5 py-0.5 hover:bg-emerald-50">
+              <Phone className="w-3 h-3" /> اتصال
+            </a>
+          ) : null; })()}
           <button onClick={() => { setMobileInput(line.mobile ?? ""); setEditingMobile(true); }}
             className="text-[11px] text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50">
             {line.mobile ? "تعديل" : "＋ إضافة"}
