@@ -2876,10 +2876,13 @@ export async function registerRoutes(
   //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).
   // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
   app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", poStoppedBefore = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
+    // needComplaintAny: لها أى شكوى — داخل الشاشة (ticket_dsl_current المفتوحة) أو خارجها
+    //   (complaint_details المغلقة + remaining_complaints) — بدون قيد آخر شهر.
+    const needComplaintAny = requireComplaintAny === "1" || requireComplaintAny === "true";
     const params: any[] = [];
     const conds: string[] = [];
 
@@ -2921,12 +2924,18 @@ export async function registerRoutes(
           UNION ALL
           SELECT complain_no, complain_time, exchange_name AS central_name, cabinet_no
             FROM remaining_complaints
-            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))${needComplaintAny ? `
+          UNION ALL
+          SELECT ticket_id AS complain_no, complaint_time AS complain_time, central_name, cabinet_no
+            FROM ticket_dsl_current
+            WHERE close_date IS NULL AND phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))` : ""}
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
     if (needComplaint) {
       conds.push(`cpl.complain_time >= now() - interval '1 month'`);
+    } else if (needComplaintAny) {
+      conds.push(`cpl.complain_no IS NOT NULL`);
     }
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }

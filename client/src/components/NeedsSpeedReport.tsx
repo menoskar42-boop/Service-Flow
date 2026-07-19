@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openProfileOptimization } from "@/lib/profile-optimization";
@@ -106,6 +106,9 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [page, setPage] = useState(1);
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
+  // زر «لها شكوى (داخل/خارج الشاشة)» — يفلتر على الأرقام اللى ليها أى شكوى (مفتوحة على الشاشة أو
+  // مغلقة/مؤرشفة خارجها). متاح فقط على تقرير «الكل» (مش على تاب «لها شكوى» اللى أصلاً مفلتر بالشهر).
+  const [complaintAny, setComplaintAny] = useState(false);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -125,11 +128,12 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (box) params.set("box", box);
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
+    if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, page, requireComplaint],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, page, requireComplaint, complaintAny],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -303,6 +307,17 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             </>)}
+            {!requireComplaint && endpoint.includes("needs-speed") && (
+              <Button
+                variant={complaintAny ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setComplaintAny((v) => !v); setPage(1); }}
+                className={`gap-1 ${complaintAny ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-200"}`}
+                title="عرض الأرقام المحتاجة رفع سرعة ولها شكوى (مفتوحة على الشاشة أو مغلقة/مؤرشفة خارجها)"
+              >
+                <AlertTriangle className="w-4 h-4" /> {complaintAny ? "لها شكوى ✓" : "لها شكوى (داخل/خارج الشاشة)"}
+              </Button>
+            )}
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
