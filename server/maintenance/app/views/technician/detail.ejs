@@ -361,24 +361,24 @@ const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
   }
 
   // After photos/videos (main upload area)
-  var upAfterPh = makeUploader('upload-queue', '/technician/<%= task.id %>/photos',       false);
-  var upAfterVd = makeUploader('upload-queue', '/technician/<%= task.id %>/after-videos', true);
+  var upAfterPh = makeUploader('upload-queue', '<%= base %>/technician/<%= task.id %>/photos',       false);
+  var upAfterVd = makeUploader('upload-queue', '<%= base %>/technician/<%= task.id %>/after-videos', true);
   document.getElementById('after-gallery-input').addEventListener('change', function(){ Array.from(this.files).forEach(upAfterPh); this.value=''; });
   document.getElementById('after-camera-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterPh(this.files[0]); this.value=''; });
   document.getElementById('after-vid-gallery').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd(this.files[0]); this.value=''; });
   document.getElementById('after-vid-camera').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd(this.files[0]); this.value=''; });
 
   // Before photos/videos (in card header)
-  var upBeforePh = makeUploader('before-upload-queue', '/technician/<%= task.id %>/before-photos', false);
-  var upBeforeVd = makeUploader('before-upload-queue', '/technician/<%= task.id %>/before-videos', true);
+  var upBeforePh = makeUploader('before-upload-queue', '<%= base %>/technician/<%= task.id %>/before-photos', false);
+  var upBeforeVd = makeUploader('before-upload-queue', '<%= base %>/technician/<%= task.id %>/before-videos', true);
   document.getElementById('before-gallery-input').addEventListener('change', function(){ Array.from(this.files).forEach(upBeforePh); this.value=''; });
   document.getElementById('before-camera-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforePh(this.files[0]); this.value=''; });
   document.getElementById('before-vid-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforeVd(this.files[0]); this.value=''; });
   document.getElementById('before-vid-cam-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforeVd(this.files[0]); this.value=''; });
 
   // After photos/videos (in card header — second set)
-  var upAfterPh2 = makeUploader('after-upload-queue2', '/technician/<%= task.id %>/photos',       false);
-  var upAfterVd2 = makeUploader('after-upload-queue2', '/technician/<%= task.id %>/after-videos', true);
+  var upAfterPh2 = makeUploader('after-upload-queue2', '<%= base %>/technician/<%= task.id %>/photos',       false);
+  var upAfterVd2 = makeUploader('after-upload-queue2', '<%= base %>/technician/<%= task.id %>/after-videos', true);
   document.getElementById('after-gallery-input2').addEventListener('change', function(){ Array.from(this.files).forEach(upAfterPh2); this.value=''; });
   document.getElementById('after-camera-input2').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterPh2(this.files[0]); this.value=''; });
   document.getElementById('after-vid-input2').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVd2(this.files[0]); this.value=''; });

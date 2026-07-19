@@ -293,7 +293,7 @@
 <% if (inspection && (user.role === 'admin' || user.role === 'inspector')) { %>
 <script>
 (function(){
-  var UPLOAD_URL = '/inspector/<%= inspection.id %>/photos';
+  var UPLOAD_URL = '<%= base %>/inspector/<%= inspection.id %>/photos';
   var pending = 0;
   var queueEl = document.getElementById('before-upload-queue');
   var inputEl = document.getElementById('before-photo-input');
@@ -342,7 +342,7 @@
 <% if (task && task.status !== 'completed' && (user.role === 'admin' || user.role === 'technician')) { %>
 <script>
 (function(){
-  var UPLOAD_URL = '/technician/<%= task.id %>/photos';
+  var UPLOAD_URL = '<%= base %>/technician/<%= task.id %>/photos';
   var pending = 0;
   var queueEl = document.getElementById('after-upload-queue');
   var inputEl = document.getElementById('after-photo-input');

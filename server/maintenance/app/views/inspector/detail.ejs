@@ -343,22 +343,22 @@
   }
 
   // Before photos
-  var upBefore = makeUploader('before-upload-queue', '/inspector/<%= inspection.id %>/photos', false);
+  var upBefore = makeUploader('before-upload-queue', '<%= base %>/inspector/<%= inspection.id %>/photos', false);
   document.getElementById('before-gallery-input').addEventListener('change', function(){ Array.from(this.files).forEach(upBefore); this.value=''; });
   document.getElementById('before-camera-input').addEventListener('change', function(){ if(this.files&&this.files[0]) upBefore(this.files[0]); this.value=''; });
 
   // Before videos
-  var upBeforeVid = makeUploader('before-vid-queue', '/inspector/<%= inspection.id %>/videos', true);
+  var upBeforeVid = makeUploader('before-vid-queue', '<%= base %>/inspector/<%= inspection.id %>/videos', true);
   document.getElementById('before-vid-gallery').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforeVid(this.files[0]); this.value=''; });
   document.getElementById('before-vid-camera').addEventListener('change', function(){ if(this.files&&this.files[0]) upBeforeVid(this.files[0]); this.value=''; });
 
   // After photos
-  var upAfter = makeUploader('insp-after-queue', '/inspector/<%= inspection.id %>/after-photos', false);
+  var upAfter = makeUploader('insp-after-queue', '<%= base %>/inspector/<%= inspection.id %>/after-photos', false);
   document.getElementById('insp-after-gallery').addEventListener('change', function(){ Array.from(this.files).forEach(upAfter); this.value=''; });
   document.getElementById('insp-after-camera').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfter(this.files[0]); this.value=''; });
 
   // After videos
-  var upAfterVid = makeUploader('insp-after-queue', '/inspector/<%= inspection.id %>/after-videos', true);
+  var upAfterVid = makeUploader('insp-after-queue', '<%= base %>/inspector/<%= inspection.id %>/after-videos', true);
   document.getElementById('insp-after-vid-gallery').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVid(this.files[0]); this.value=''; });
   document.getElementById('insp-after-vid-camera').addEventListener('change', function(){ if(this.files&&this.files[0]) upAfterVid(this.files[0]); this.value=''; });
 
