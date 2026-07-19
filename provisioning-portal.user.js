@@ -526,6 +526,9 @@
       if (onLoginPage() || dateIn === "LOGIN") { await sleep(600); continue; } // بانت اللوجين → أعِد
       if (!dateIn) return false;
       if (String(dateIn.value || "") !== dateISO) setNgValue(dateIn, dateISO); // افتراضيه اليوم — نحطه بس لو مختلف
+      // نضبط تاريخ «إلى» على اليوم كمان (لو موجود) عشان النتائج تبقى محصورة فى تاريخ اليوم فقط
+      const toIn = document.querySelector("input[formcontrolname='RequestDateTo']");
+      if (toIn && String(toIn.value || "") !== dateISO) setNgValue(toIn, dateISO);
       await sleep(400);
       const btn = findSearchButton(dateIn) || findButtonByText(/^\s*search\s*$/i);
       if (btn) clickEl(btn);
@@ -534,34 +537,28 @@
     }
     return false;
   }
-  // يعالج بند متابعة واحد. true = خلص (اتحدّث/اتسجّل)، false = لسه مفيش طلب ظاهر.
-  //   ignoreSeen=true (الوضع اليدوى): ياخد أحدث صف مطابق للرقم حتى لو اتسجّل قبل كده — عشان
-  //   إعادة الضغط على «تحديث البورت» تعيد قراءة الحالة الحالية دائماً.
-  async function pcProcessPending(item, ignoreSeen) {
-    logln("🔎 متابعة الرقم " + item.phone + " …");
-    if (!(await gotoSearchRequests(item.dateISO))) { logln("⛔ تعذّر فتح صفحة المتابعة."); return false; }
-    const seen = ignoreSeen ? [] : await sfSeen(item.phone);
-    const rows = pcReadRequestRows();
-    const mine = rows.find((r) => r.phone === item.phone && r.requestId && (ignoreSeen || seen.indexOf(r.requestId) < 0));
-    if (!mine) { logln("• " + item.phone + " — مفيش طلب ظاهر للرقم ده فى تاريخ اليوم."); return false; }
-    const status = mine.status.toUpperCase();
-    if (/COMPLETED/.test(status)) {
-      if (mine.linkEl) clickEl(mine.linkEl);
-      await waitFor(() => readLabeledValue("New Msan Code") || readLabeledValue("New Frame") || /request details/i.test(document.body.innerText), 12000);
-      const newFrame = readLabeledValue("New Frame");
-      const newMsan = readLabeledValue("New Msan Code");
-      logln("✅ COMPLETED " + item.phone + " — Frame=" + newFrame + " | Msan=" + newMsan);
-      const res = await sfIngestResult({ requestId: mine.requestId, phone: item.phone, oldMsan: item.old, newMsan: newMsan || item.new, newFrame, portType: item.pt, status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
-      logln(res && res.updatedPort ? "💾 اتحدّث بيان البورت فى Service-Flow." : "ℹ️ الرد: " + JSON.stringify(res));
-      const closeBtn = [...document.querySelectorAll("button, .close, [aria-label='Close']")].find((b) => visible(b) && /×|close/i.test((b.textContent || b.getAttribute("aria-label") || "")));
-      if (closeBtn) clickEl(closeBtn);
-      return true;
-    }
-    logln("⚠️ " + item.phone + " — الحالة: " + mine.status + " → تسجيل فى جدول المتابعة.");
-    await sfIngestResult({ requestId: mine.requestId, phone: item.phone, oldMsan: item.old, newMsan: item.new, portType: item.pt, status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
-    return true;
+  // هل تاريخ الصف = تاريخ اليوم؟ (بجانب فلتر البحث From/To = اليوم، ده تأكيد إضافى فى الكود).
+  //   فاضى/غير مفهوم → نثق فى فلتر البحث (نرجّع true). سنة 4 أرقام مختلفة عن سنة اليوم → false.
+  function pcDateIsToday(str) {
+    if (!str) return true;
+    const s = String(str).trim();
+    const now = new Date(); const Y = now.getFullYear(), M = now.getMonth() + 1, D = now.getDate();
+    const p2 = (n) => String(n).padStart(2, "0");
+    const years = (s.match(/\b\d{4}\b/g) || []).map(Number);
+    if (years.length && years.indexOf(Y) < 0) return false;   // سنة تانية → مش النهارده
+    if (!years.length) return true;                            // مفيش سنة واضحة → نثق فى الفلتر
+    const hasNum = (n) => new RegExp("(^|\\D)" + n + "(\\D|$)").test(s) || new RegExp("(^|\\D)" + p2(n) + "(\\D|$)").test(s);
+    return hasNum(D) && hasNum(M);                             // نفس السنة → لازم اليوم والشهر كمان
   }
-  // تحديث البورت اليدوى — فحص مرة واحدة للرقم ثم يقف.
+  // الأحدث بين طلبات نفس الرقم: الأكبر Request ID رقمياً (WE بيزيده تصاعدياً)، وإلا آخر صف فى الجدول.
+  function pcPickLatest(list) {
+    const num = (r) => { const n = parseInt(String(r.requestId).replace(/\D/g, ""), 10); return isNaN(n) ? -1 : n; };
+    const anyNum = list.some((r) => num(r) >= 0);
+    if (anyNum) return list.slice().sort((a, b) => num(b) - num(a))[0];
+    return list[list.length - 1];
+  }
+
+  // تحديث البورت اليدوى — فحص مرة واحدة للرقم (طلب تغيير بورت بتاريخ اليوم) ثم يقف.
   let pcheckRunning = false;
   async function runPcheck() {
     if (pcheckRunning) return; pcheckRunning = true;
@@ -571,10 +568,60 @@
       if (!phone) { banner("❌ لا يوجد رقم للمتابعة.", "#c62828"); return; }
       banner("🔎 تحديث البورت — متابعة الرقم " + phone + " …", "#00695c");
       await ensureLoggedIn();
-      const item = { phone, dateISO: todayISO(), old: data.old || "", new: data.new || "", pt: data.pt || "" };
-      const done = await pcProcessPending(item, true); // ignoreSeen: قراءة الحالة الحالية دائماً
-      if (done) banner("✅ خلصت متابعة الرقم " + phone + " — راجع اللوج بالأسفل للنتيجة.", "#2e7d32");
-      else banner("• لسه مفيش طلب ظاهر للرقم " + phone + " (تاريخ اليوم) — جرّب تانى بعد شوية.", "#ef6c00");
+      const dateISO = todayISO();
+      if (!(await gotoSearchRequests(dateISO))) { banner("⛔ تعذّر فتح صفحة Search For My Requests.", "#c62828"); return; }
+      const rows = pcReadRequestRows();
+      // طلبات نفس الرقم بتاريخ اليوم فقط (لو تغيير البورت كان بتاريخ سابق → يُعتبر مفيش طلب اليوم)
+      const todayRows = rows.filter((r) => r.phone === phone && r.requestId && pcDateIsToday(r.requestDate));
+      if (!todayRows.length) {
+        banner("• لا يوجد للرقم " + phone + " طلب تغيير بورت بتاريخ اليوم.", "#ef6c00");
+        logln("• " + phone + " — مفيش طلب تغيير بورت بتاريخ اليوم على البروفيجن.");
+        return;
+      }
+      // نستبعد المسجّل عندنا قبل كده (اتحدّث/اتسجّل) — عشان الضغط تانى ميعيدش
+      const seen = await sfSeen(phone);
+      const fresh = todayRows.filter((r) => seen.indexOf(r.requestId) < 0);
+      if (!fresh.length) {
+        banner("✅ طلب تغيير البورت للرقم " + phone + " اتسجّل/اتحدّث قبل كده.", "#2e7d32");
+        logln("ℹ️ " + phone + " — كل طلبات اليوم متسجّلة قبل كده (Request IDs: " + todayRows.map((r) => r.requestId).join(", ") + ").");
+        return;
+      }
+      // لو فيه أكتر من طلب غير محدّث → ناخد الأحدث على البروفيجن
+      const mine = pcPickLatest(fresh);
+      if (fresh.length > 1) logln("ℹ️ " + fresh.length + " طلبات غير محدّثة — اخترنا الأحدث Request " + mine.requestId + ".");
+      const status = (mine.status || "").toUpperCase();
+
+      if (/COMPLETED/.test(status)) {
+        if (mine.linkEl) clickEl(mine.linkEl);
+        await waitFor(() => readLabeledValue("New Msan Code") || readLabeledValue("New Frame") || /request details/i.test(document.body.innerText), 12000);
+        const newFrame = readLabeledValue("New Frame");
+        const newMsan = readLabeledValue("New Msan Code");
+        const closeBtn = [...document.querySelectorAll("button, .close, [aria-label='Close']")].find((b) => visible(b) && /×|close/i.test((b.textContent || b.getAttribute("aria-label") || "")));
+        // تأكيد أنه تم فعلاً: لازم نكون قرأنا البورت الجديد قبل ما نسجّل/نحدّث
+        if (!newFrame && !newMsan) {
+          if (closeBtn) clickEl(closeBtn);
+          banner("⚠️ الطلب COMPLETED بس معرفتش أقرأ البورت الجديد — جرّب «تحديث البورت» تانى.", "#ef6c00");
+          logln("⚠️ " + phone + " — COMPLETED لكن مفيش New Frame/Msan مقروء → مش هنسجّل، جرّب تانى.");
+          return;
+        }
+        logln("✅ COMPLETED " + phone + " — Frame=" + newFrame + " | Msan=" + newMsan);
+        const res = await sfIngestResult({ requestId: mine.requestId, phone, oldMsan: data.old || "", newMsan: newMsan || data.new || "", newFrame, portType: data.pt || "", status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
+        if (closeBtn) clickEl(closeBtn);
+        banner("✅ اتحدّث البورت الجديد للرقم " + phone + " (Frame " + (newFrame || "-") + " / Msan " + (newMsan || "-") + ").", "#2e7d32");
+        logln(res && res.updatedPort ? "💾 اتحدّث بيان البورت فى Service-Flow (Request " + mine.requestId + " اتسجّل)." : "ℹ️ الرد: " + JSON.stringify(res));
+        return;
+      }
+
+      if (/FAIL|REJECT|ERROR|CANCEL/.test(status)) {
+        await sfIngestResult({ requestId: mine.requestId, phone, oldMsan: data.old || "", newMsan: data.new || "", portType: data.pt || "", status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
+        banner("⚠️ الطلب فشل (" + mine.status + ") — اتسجّل فى متابعة تغيير البورت.", "#c62828");
+        logln("⚠️ " + phone + " — الحالة " + mine.status + " → اتسجّل (Request " + mine.requestId + ").");
+        return;
+      }
+
+      // حالة وسيطة (لسه شغالة) — مش نهائية فمش هنسجّلها، هنسيبها للضغط تانى بعدين
+      banner("⏳ الطلب لسه بحالة «" + mine.status + "» للرقم " + phone + " — لسه ماتمّش، جرّب «تحديث البورت» تانى بعدين.", "#ef6c00");
+      logln("⏳ " + phone + " — الحالة " + mine.status + " (لسه ماتمّتش) → مش هنسجّل دلوقتى.");
     } catch (e) { banner("❌ " + (e && e.message || e), "#c62828"); }
     finally { pcheckRunning = false; try { sessionStorage.removeItem(PCHECK_KEY); } catch (e) {} }
   }
