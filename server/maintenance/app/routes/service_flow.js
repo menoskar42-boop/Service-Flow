@@ -146,51 +146,31 @@ module.exports.buildBoxCountMap  = buildBoxCountMap;
 module.exports.fetchPhonePage    = fetchPhonePage;
 module.exports.buildPhoneFirstMap = buildPhoneFirstMap;
 
-// Builds Map<"exchange__cabinet__box", first_phone_number> from all phone-report pages
+// Builds Map<"exchange__cabinet__box", first_phone_number> — يقرأ مباشرة من جدول phone_lines
+// المحلى (نفس القاعدة، سكيما public) بدل مناداة API خارجى بـ token. لكل بكس بنسجّل أول رقم أرضى.
+// بنخزّن مفتاحين لكل صف (الاسم الكامل للسنترال + البادئة قبل الشرطة) عشان يطابق طريقتى البحث فى التقرير.
 async function buildPhoneFirstMap() {
-  const token = process.env.SERVICE_FLOW_API_TOKEN || process.env.SF_API_TOKEN;
-  if (!token) return new Map();
   const map = new Map();
   try {
-    const first = await fetchPhonePage({ page: '1' });
-    if (!first.ok || !Array.isArray(first.data) || !first.data.length) return map;
-
-    const cols = Object.keys(first.data[0]);
-    const exchangeCol = cols.find(c => /exchange|central|سنترال/i.test(c)) || cols[0];
-    const cabinetCol  = cols.find(c => /cabinet|cabin|كابين/i.test(c))     || cols[1] || cols[0];
-    const boxCol      = cols.find(c => /^box|بوكس/i.test(c))               || cols[2] || cols[1];
-    // phone: prefer full/complete phone column, then any phone/تليفون column
-    const phoneCol    = cols.find(c => /full.*phone|phone.*full|تليفون.*كامل|كامل.*تليفون/i.test(c))
-                     || cols.find(c => /phone|تليفون|telephone/i.test(c))
-                     || cols[cols.length - 1];
-
-    console.log('[SF buildPhoneFirstMap] exchange:', exchangeCol, '| cabinet:', cabinetCol, '| box:', boxCol, '| phone:', phoneCol);
-
-    const processPage = (rows) => rows.forEach(row => {
-      const key = [
-        normExchange(row[exchangeCol]),
-        normCab(row[cabinetCol]),
-        String(row[boxCol] || '').trim(),
-      ].join('__').toLowerCase();
-      if (!map.has(key) && row[phoneCol] != null && String(row[phoneCol]).trim()) {
-        map.set(key, String(row[phoneCol]).trim());
+    const db = require('../database');
+    const rows = await db.all(
+      `SELECT central, cabin_number, box_number, tel_no, full_phone
+         FROM phone_lines
+        WHERE box_number IS NOT NULL AND btrim(box_number) <> ''`
+    );
+    rows.forEach(row => {
+      const phone = String(row.tel_no || row.full_phone || '').trim();
+      if (!phone) return;
+      const cab = normCab(row.cabin_number);
+      const box = String(row.box_number || '').trim();
+      const exFull   = String(row.central || '').trim().toLowerCase().replace(/\s*-\s*/g, '-');
+      const exPrefix = normExchange(row.central);
+      for (const ex of new Set([exFull, exPrefix].filter(Boolean))) {
+        const key = `${ex}__${cab}__${box}`.toLowerCase();
+        if (!map.has(key)) map.set(key, phone);
       }
     });
-
-    processPage(first.data);
-
-    if (first.total && first.limit) {
-      const maxPages = Math.min(Math.ceil(first.total / first.limit), 200);
-      if (maxPages > 1) {
-        const rest = await Promise.allSettled(
-          Array.from({ length: maxPages - 1 }, (_, i) => fetchPhonePage({ page: String(i + 2) }))
-        );
-        rest.forEach(r => {
-          if (r.status === 'fulfilled' && r.value.ok && Array.isArray(r.value.data))
-            processPage(r.value.data);
-        });
-      }
-    }
-  } catch (e) { console.error('[SF buildPhoneFirstMap] error:', e.message); }
+    console.log(`[buildPhoneFirstMap] built ${map.size} keys from ${rows.length} phone_lines rows`);
+  } catch (e) { console.error('[buildPhoneFirstMap local] error:', e.message); }
   return map;
 }
