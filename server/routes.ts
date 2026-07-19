@@ -2414,7 +2414,9 @@ export async function registerRoutes(
     const q = search.trim().toLowerCase();
     // نطاق أرقام: نطابق على الرقم القصير (بدون بادئة 88) كقيمة رقمية. نشيل أى غير أرقام ونشيل 88 لو اتكتبت.
     const digitsOnly = (s: string) => String(s || "").replace(/\D/g, "").replace(/^88/, "");
-    const pFrom = digitsOnly(phoneFrom), pTo = digitsOnly(phoneTo);
+    let pFrom = digitsOnly(phoneFrom), pTo = digitsOnly(phoneTo);
+    // الترتيب ملوش أهمية: لو «من» أكبر من «إلى» نبدّلهم عشان المدى ميطلعش فاضى.
+    if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
 
     const conds: string[] = [];
     const params: any[] = [];
