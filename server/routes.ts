@@ -4886,6 +4886,16 @@ export async function registerRoutes(
       if (q.cabin) { params.push(String(q.cabin)); conds.push(`pl.cabin_number = $${params.length}`); }
       if (q.box) { params.push(String(q.box)); conds.push(`pl.box_number = $${params.length}`); }
     }
+    // نطاق «من رقم / إلى رقم» — على الرقم القصير الرقمى (CASE عشان الكاست ميقعش بـ error).
+    const digitsOnly = (s: any) => String(s || "").replace(/\D/g, "").replace(/^88/, "");
+    let pFrom = digitsOnly(q.phoneFrom), pTo = digitsOnly(q.phoneTo);
+    if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
+    if (pFrom || pTo) {
+      const shortExpr = `regexp_replace(regexp_replace(pp.phone_number,'[^0-9]','','g'),'^0*88','')`;
+      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]+$' THEN ${shortExpr}::bigint END)`;
+      if (pFrom) { params.push(pFrom); conds.push(`${numExpr} >= $${params.length}::bigint`); }
+      if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
+    }
     const { rows } = await pool.query(
       `SELECT pp.phone_number FROM phone_ports pp
        LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number

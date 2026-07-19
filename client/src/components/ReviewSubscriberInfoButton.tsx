@@ -10,7 +10,7 @@ import { UserSearch, Loader2 } from "lucide-react";
 // زر "مراجعة الاسم والعنوان": يعيد جلب الأسماء/العناوين من FCC لأرقام البورتات.
 // نعم = الأرقام بدون اسم/عنوان فقط. الكل = كل الأرقام. ثم يفتح FCC ويشغّل السكربت تلقائياً.
 // filters: لو اتمرّرت (من بيان التليفونات) → المراجعة بتقتصر على الأرقام المفلترة بس.
-export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: string; cabin?: string; box?: string } }) {
+export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: string; cabin?: string; box?: string; phoneFrom?: string; phoneTo?: string } }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const { toast } = useToast();
@@ -34,8 +34,8 @@ export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: 
       // يفتح FCC فيشتغل سكربت الجلب تلقائياً. لو فيه فلتر (سنترال/كابينة/بكس) نبعته فى الهاش (sf_sif)
       // ونفتح نافذة باسم مستقل لكل فلتر — فتقدر تفتح أكتر من مراجعة بفلاتر مختلفة فى نفس الوقت.
       const f = filters || {};
-      const hasF = !!(f.central || f.cabin || f.box);
-      const fkey = [f.central || "", f.cabin || "", f.box || ""].join("~");
+      const hasF = !!(f.central || f.cabin || f.box || f.phoneFrom || f.phoneTo);
+      const fkey = [f.central || "", f.cabin || "", f.box || "", f.phoneFrom || "", f.phoneTo || ""].join("~");
       const sif = hasF ? "&sf_sif=" + encodeURIComponent(fkey) : "";
       const win = hasF
         ? "sf_si_" + Math.abs(Array.from(fkey).reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0)).toString(36)
