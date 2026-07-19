@@ -509,9 +509,29 @@ export function WithoutAccountReport() {
                   <ChevronRight className="w-4 h-4 ml-1" />
                   السابق
                 </Button>
-                <span className="text-sm text-muted-foreground">
-                  صفحة {page} من {totalPages}
-                </span>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>صفحة</span>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    key={page}
+                    defaultValue={page}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const v = Math.min(totalPages, Math.max(1, parseInt((e.target as HTMLInputElement).value) || 1));
+                        setPage(v);
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const v = Math.min(totalPages, Math.max(1, parseInt(e.target.value) || 1));
+                      if (v !== page) setPage(v);
+                    }}
+                    className="w-16 h-8 text-center"
+                    title="اكتب رقم الصفحة واضغط Enter للانتقال إليها"
+                  />
+                  <span>من {totalPages}</span>
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
