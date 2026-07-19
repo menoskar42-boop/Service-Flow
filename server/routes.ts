@@ -2444,7 +2444,11 @@ export async function registerRoutes(
     // المرساة = اتحاد أرقام البيانات الفنية (phone_lines) وأرقام المنافذ (phone_ports)،
     // عشان بيان التليفونات يشمل أى رقم ليه بورت حتى لو مالوش بيانات فنية.
     // نضيف line_subscriber_info لعرض اسم/عنوان العميل (phone_number مفتاح أساسى فمفيش تكرار صفوف)
-    const joinClause = `FROM (SELECT full_phone FROM phone_lines UNION SELECT phone_number AS full_phone FROM phone_ports) k
+    const joinClause = `FROM (SELECT full_phone FROM phone_lines
+            UNION
+            -- أرقام البورتات: بس اللى 88 + 7 خانات بالظبط (الأطول من كده مش تخصنا فتُستبعد)
+            SELECT phone_number AS full_phone FROM phone_ports
+             WHERE regexp_replace(phone_number,'[^0-9]','','g') ~ '^0*88[0-9]{7}$') k
       LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
       LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone`;
@@ -2664,7 +2668,11 @@ export async function registerRoutes(
     const where = `WHERE ${conds.join(" AND ")}`;
     // المرساة = اتحاد أرقام البيانات الفنية (phone_lines) وأرقام المنافذ (phone_ports)،
     // عشان التقرير يجيب أى رقم ملوش أكونت سواء ليه بيانات فنية أو ليه بورت.
-    const joinClause = `FROM (SELECT full_phone FROM phone_lines UNION SELECT phone_number AS full_phone FROM phone_ports) k
+    const joinClause = `FROM (SELECT full_phone FROM phone_lines
+            UNION
+            -- أرقام البورتات: بس اللى 88 + 7 خانات بالظبط (الأطول من كده مش تخصنا فتُستبعد)
+            SELECT phone_number AS full_phone FROM phone_ports
+             WHERE regexp_replace(phone_number,'[^0-9]','','g') ~ '^0*88[0-9]{7}$') k
       LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
       LEFT JOIN line_accounts la ON la.full_phone = k.full_phone`;
