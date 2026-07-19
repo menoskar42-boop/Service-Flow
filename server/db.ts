@@ -708,6 +708,26 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS row_no text`);
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS column_no text`);
 
+  // port_change_requests — متابعة طلبات تغيير البورت من Provisioning Portal.
+  // كل Request ID يُسجَّل مرة واحدة (PRIMARY KEY). completed=true → اتحدّث بيان البورت من النتيجة؛
+  // false → طلب لسه/فشل (زى FAIL_TO_RESERVE) يتعرض فى تقرير المتابعة.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS port_change_requests (
+      request_id text PRIMARY KEY,
+      phone_number text,
+      old_msan text,
+      new_msan text,
+      new_frame text,
+      port_type text,
+      status text,
+      reservation_code text,
+      request_date text,
+      completed boolean NOT NULL DEFAULT false,
+      recorded_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS port_change_requests_phone_idx ON port_change_requests (phone_number)`);
+
   // line_mobiles — أرقام موبايل مُدخَلة يدوياً لكل خط
   await pool.query(`
     CREATE TABLE IF NOT EXISTS line_mobiles (

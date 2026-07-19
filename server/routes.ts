@@ -4687,6 +4687,73 @@ export async function registerRoutes(
     res.json({ cabins: rows.map((r: any) => r.msanCode) });
   });
   // استقبال صفوف البورتات من Get MSAN Data → upsert على phone_number (يستبدل الموجود ويضيف الجديد)
+  // ===== متابعة طلبات تغيير البورت (Provisioning Portal) =====
+  const pcNormFull = (p: any) => { const d = String(p || "").replace(/\D/g, ""); return d ? (d.startsWith("88") ? d : ("88" + d)) : ""; };
+
+  // GET /api/port-change/seen?phone=... — Request IDs المسجّلة قبل كده لهذا الرقم (للـ dedup فى السكربت)
+  app.options("/api/port-change/seen", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.get("/api/port-change/seen", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const phone = pcNormFull((req.query as any).phone);
+    const { rows } = await pool.query(`SELECT request_id FROM port_change_requests WHERE phone_number = $1`, [phone]);
+    res.json({ requestIds: rows.map((r: any) => r.request_id) });
+  });
+
+  // POST /api/port-change/ingest — يسجّل نتيجة طلب تغيير بورت (مرة واحدة لكل Request ID)؛
+  // ولو COMPLETED يحدّث بيان البورت (frame/msan/port_type) للرقم.
+  app.options("/api/port-change/ingest", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.post("/api/port-change/ingest", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const b = req.body || {};
+    const requestId = String(b.requestId || "").trim();
+    if (!requestId) return res.status(400).json({ message: "requestId مطلوب" });
+    const phone = pcNormFull(b.phone);
+    const status = String(b.status || "").trim().toUpperCase();
+    const completed = status === "COMPLETED";
+    const newFrame = String(b.newFrame || "").trim();
+    const newMsan = String(b.newMsan || "").trim();
+    const oldMsan = String(b.oldMsan || "").trim();
+    const portType = String(b.portType || "").trim();
+    const reservationCode = String(b.reservationCode || "").trim();
+    const requestDate = String(b.requestDate || "").trim();
+
+    const ins = await pool.query(
+      `INSERT INTO port_change_requests (request_id, phone_number, old_msan, new_msan, new_frame, port_type, status, reservation_code, request_date, completed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (request_id) DO NOTHING RETURNING request_id`,
+      [requestId, phone, oldMsan, newMsan, newFrame, portType, status, reservationCode, requestDate, completed]);
+    const wasNew = (ins.rowCount ?? 0) > 0;
+
+    let updatedPort = false;
+    if (completed && phone) {
+      // حدّث بيان البورت للرقم من نتيجة الطلب (frame + msan + port_type). لو مش موجود يُضاف.
+      await pool.query(
+        `INSERT INTO phone_ports (phone_number, frame, msan_code, port_type, uploaded_at)
+         VALUES ($1, NULLIF($2,''), NULLIF($3,''), NULLIF($4,''), now())
+         ON CONFLICT (phone_number) DO UPDATE SET
+           frame = COALESCE(NULLIF(EXCLUDED.frame,''), phone_ports.frame),
+           msan_code = COALESCE(NULLIF(EXCLUDED.msan_code,''), phone_ports.msan_code),
+           port_type = COALESCE(NULLIF(EXCLUDED.port_type,''), phone_ports.port_type),
+           uploaded_at = now()`,
+        [phone, newFrame, newMsan, portType]);
+      updatedPort = true;
+    }
+    res.json({ ok: true, recorded: wasNew, alreadyExisted: !wasNew, completed, updatedPort });
+  });
+
+  // GET /api/port-change/list — تقرير متابعة طلبات تغيير البورت (كل المستخدمين المصرّح لهم)
+  app.get("/api/port-change/list", requireAuth, async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT request_id AS "requestId", phone_number AS "phoneNumber", old_msan AS "oldMsan",
+              new_msan AS "newMsan", new_frame AS "newFrame", port_type AS "portType", status,
+              reservation_code AS "reservationCode", request_date AS "requestDate", completed,
+              (recorded_at AT TIME ZONE 'Africa/Cairo') AS "recordedAt"
+       FROM port_change_requests ORDER BY recorded_at DESC LIMIT 5000`);
+    res.json(rows);
+  });
+
   app.options("/api/phone-ports/ingest", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
   app.post("/api/phone-ports/ingest", async (req: any, res) => {
     setPortsCors(res);
