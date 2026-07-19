@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
-// @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يقف (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.1
+// @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
+// @version      1.5.2
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -442,13 +442,15 @@
         await ensureLoggedIn();
         const submitted = await fillAndSubmitMsan(data);
         if (!submitted) { banner("✅ اتملأ الفورم — راجع/اضغط Submit بنفسك (مش لاقى الملف/الزر).", "#ef6c00"); return; }
-        // بعد Submit: استنّى — يا إمّا رجعنا للّوجين (bounce → إعادة) يا إمّا فضلنا (نجاح).
-        const bounced = await waitFor(() => onLoginPage(), 7000);
+        // بعد Submit: نراقب 30 ثانية — waitFor بيرجع فوراً أول ما تظهر صفحة اللوجين (bounce → إعادة)،
+        // أو بعد الـ 30 ثانية كاملة لو مظهرتش (يبقى اتأكدنا إن الـ Submit نجح فعلاً → نقفل التاب).
+        banner("⏳ اتعمل Submit — بنتأكد 30 ثانية إنه مرجعش للّوجين…", "#00695c");
+        const bounced = await waitFor(() => onLoginPage(), 30000);
         if (!bounced) {
-          banner("✅ تم الإرسال (Submit) — هيتقفل التاب بعد 15 ثانية. لمتابعة النتيجة اضغط «تحديث البورت» من بحث برقم التليفون.", "#2e7d32");
-          logln("✅ مرجعش للّوجين → غالباً نجح. (المتابعة يدوية — من زر «تحديث البورت») — التاب هيتقفل بعد 15 ثانية.");
-          // نقفل التاب بعد نجاح تغيير البورت بـ 15 ثانية (النافذة اتفتحت بـ window.open فمسموح غلقها بالسكربت)
-          setTimeout(() => { try { window.close(); } catch (e) {} }, 15000);
+          banner("✅ تم الإرسال (Submit) ونجح (مفيش رجوع للّوجين خلال 30 ثانية) — بيتقفل التاب. لمتابعة النتيجة اضغط «تحديث البورت».", "#2e7d32");
+          logln("✅ اتأكدنا 30 ثانية إنه مرجعش للّوجين → نجح. التاب بيتقفل دلوقتى.");
+          // اتأكدنا إن الـ Submit نجح → نقفل التاب (النافذة اتفتحت بـ window.open فمسموح غلقها بالسكربت)
+          try { window.close(); } catch (e) {}
           return;
         }
         banner("🔁 رجع للّوجين بعد Submit — إعادة الدخول وتكرار الخطوات…", "#6a1b9a");
