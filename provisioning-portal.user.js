@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه تدفّقان مستقلان تماماً بماركرين مختلفين لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يفتح صفحة MSAN Replacement، يملأ Old/New Cabin Code، يولّد ملف CSV بالرقم ويحقنه فى خانة الرفع، ويسيب الـ Submit ليك يدوياً (أأمن لأنه بيغيّر بيانات مشترك). كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.4.0
+// @version      1.4.1
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -522,16 +522,21 @@
     return [];
   }
   async function gotoSearchRequests(dateISO) {
-    if (onLoginPage()) { const ok = await ensureLoggedIn(); if (!ok) return false; await sleep(800); }
-    if (!/search-for-my-requests/i.test(location.hash)) location.hash = SEARCH_REQ_HASH;
-    const dateIn = await waitFor(() => { if (onLoginPage()) return null; return document.querySelector("input[formcontrolname='RequestDateFrom']"); }, 20000);
-    if (!dateIn || onLoginPage()) return false;
-    if (String(dateIn.value || "") !== dateISO) setNgValue(dateIn, dateISO); // افتراضيه اليوم — نحطه بس لو مختلف
-    await sleep(400);
-    const btn = findSearchButton(dateIn) || findButtonByText(/^\s*search\s*$/i);
-    if (btn) clickEl(btn);
-    await sleep(2500); // ننتظر تحميل الجدول
-    return true;
+    // ممكن صفحة المتابعة ترجع للّوجين — فنعيد الدخول والمحاولة (مش نستنى نص ساعة).
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (onLoginPage()) { logln("🔁 المتابعة لقت لوجين — إعادة الدخول…"); const ok = await ensureLoggedIn(); if (!ok) return false; await sleep(800); }
+      if (!/search-for-my-requests/i.test(location.hash)) location.hash = SEARCH_REQ_HASH;
+      const dateIn = await waitFor(() => document.querySelector("input[formcontrolname='RequestDateFrom']") || (onLoginPage() ? "LOGIN" : null), 18000);
+      if (onLoginPage() || dateIn === "LOGIN") { await sleep(600); continue; } // بانت اللوجين → أعِد
+      if (!dateIn) return false;
+      if (String(dateIn.value || "") !== dateISO) setNgValue(dateIn, dateISO); // افتراضيه اليوم — نحطه بس لو مختلف
+      await sleep(400);
+      const btn = findSearchButton(dateIn) || findButtonByText(/^\s*search\s*$/i);
+      if (btn) clickEl(btn);
+      await sleep(2500); // ننتظر تحميل الجدول
+      return true;
+    }
+    return false;
   }
   // يعالج بند متابعة واحد. true = خلص (اتحدّث/اتسجّل) فيتشال، false = لسه.
   async function pcProcessPending(item) {
