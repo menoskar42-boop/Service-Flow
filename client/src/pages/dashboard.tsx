@@ -48,6 +48,7 @@ import { DailyAutoRefresh } from "@/components/DailyAutoRefresh";
 import { ExecQueueWatcher } from "@/components/ExecQueueWatcher";
 import { ExecJobsReport } from "@/components/ExecJobsReport";
 import { ManualCurrentFaultsReport } from "@/components/ManualCurrentFaultsReport";
+import { EngineeringInspectionReport } from "@/components/EngineeringInspectionReport";
 import { MajorFaultsReport } from "@/components/MajorFaultsReport";
 import { ClosedPortCabinetsReport } from "@/components/ClosedPortCabinetsReport";
 import { PortChangeReport } from "@/components/PortChangeReport";
@@ -64,7 +65,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -78,6 +79,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "major-faults",        label: "الأعطال الجسيمة" },
       { id: "manual-current-faults", label: "الأعطال الحالية خارج الشاشة" },
       { id: "manual-regularized-range", label: "الأعطال المنتظمة خارج الشاشة (فترة)" },
+      { id: "engineering-inspection", label: "أعطال التفتيش الهندسى" },
       { id: "repeated-within-month", label: "الأعطال المكررة خلال شهر من تاريخه" },
       { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
@@ -600,6 +602,7 @@ export default function Dashboard() {
               {reportTab === "account-edits"       && <AccountEditsReport />}
               {reportTab === "cfm-tickets"         && <CfmTicketsReport />}
               {reportTab === "manual-current-faults"   && <ManualCurrentFaultsReport />}
+              {reportTab === "engineering-inspection"  && <EngineeringInspectionReport />}
               {reportTab === "manual-regularized-range" && <ManualRegularizedFaultsRangeReport />}
               {reportTab === "exec-jobs"           && isSuperAdmin && <ExecJobsReport />}
             </div>

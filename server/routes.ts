@@ -6426,6 +6426,55 @@ export async function registerRoutes(
     res.json({ data: rows });
   });
 
+  // GET /api/reports/engineering-inspection?phones=... — بيانات إيميل «اغلاق تفتيش هندسى»:
+  // لكل رقم يرجّع اسم السنترال + كوده + رقم الكابينة الحالى (MSAN) + تاريخ آخر شكوى للمشترك.
+  app.get("/api/reports/engineering-inspection", requireAuth, async (req, res) => {
+    const raw = String((req.query as any).phones || "");
+    const list = raw.split(/[\s,;]+/).map((s) => s.replace(/\D/g, "")).filter(Boolean);
+    if (!list.length) return res.json({ data: [] });
+    const uniq = Array.from(new Set(list));
+    const { rows } = await pool.query(
+      `WITH n AS (
+         SELECT d AS digits, regexp_replace(d, '^88', '') AS short,
+                CASE WHEN d LIKE '88%' THEN d ELSE '88'||d END AS full
+         FROM unnest($1::text[]) AS d
+       )
+       SELECT n.short AS "phoneShort",
+              COALESCE(pl.central, cplc.central_name) AS central,
+              CASE COALESCE(pl.central, cplc.central_name)
+                WHEN 'الغنايم'              THEN 'GHNAT'
+                WHEN 'الغنايم-العزايزة'     THEN 'AMZAT'
+                WHEN 'الغنايم-دير الجنادله' THEN 'DRGAT'
+                WHEN 'الغنايم-نجع العمدة'   THEN 'NGOAT'
+                ELSE NULL END AS "centralCode",
+              COALESCE(NULLIF(pp.msan_code, ''), ctc.cabin_code) AS "currentCabin",
+              (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt"
+       FROM n
+       LEFT JOIN LATERAL (
+         SELECT central, cabin_number FROM phone_lines WHERE full_phone = n.full OR tel_no = n.short LIMIT 1
+       ) pl ON true
+       LEFT JOIN phone_ports pp ON pp.phone_number = n.full
+       LEFT JOIN LATERAL (
+         SELECT ct.cabin_code FROM cabinet_technicians ct
+         WHERE ct.central_name = COALESCE(pl.central, '') AND ct.cabin_number = COALESCE(pl.cabin_number, '')
+         ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC LIMIT 1
+       ) ctc ON true
+       LEFT JOIN LATERAL (
+         SELECT complain_time FROM (
+           SELECT complain_time FROM complaint_details WHERE phone_number = n.short
+           UNION ALL
+           SELECT complain_time FROM remaining_complaints WHERE phone_number = n.short
+         ) u ORDER BY complain_time DESC NULLS LAST LIMIT 1
+       ) cpl ON true
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(NULLIF(central_name,''), exchange_name) AS central_name
+         FROM complaint_details WHERE phone_number = n.short ORDER BY complain_time DESC NULLS LAST LIMIT 1
+       ) cplc ON true
+       ORDER BY n.short`,
+      [uniq]);
+    res.json({ data: rows });
+  });
+
   // الأعطال المنتظمة خارج الشاشة لفترة
   app.get("/api/manual-faults/regularized", requireAuth, async (req, res) => {
     const { from = "", to = "" } = req.query as Record<string, string>;
