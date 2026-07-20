@@ -6368,7 +6368,12 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `SELECT mf.id, mf.full_phone AS "fullPhone", mf.phone_short AS "phoneShort",
               COALESCE(mf.account_no, c138p.account_no) AS "accountNo",
-              mf.central, mf.cabin_number AS "cabinNumber", mf.box_number AS "boxNumber", mf.msan_code AS "msanCode",
+              -- بيانات الكابينة/البكس/MSAN: نفضّل البيان الحالى (بعد تغيير البورت) من phone_lines
+              -- و phone_ports.msan_code و cabinet_technicians، ونرجع للمخزّن وقت العطل لو مفيش حالى.
+              COALESCE(pl.central, mf.central) AS central,
+              COALESCE(pl.cabin_number, mf.cabin_number) AS "cabinNumber",
+              COALESCE(pl.box_number, mf.box_number) AS "boxNumber",
+              COALESCE(NULLIF(pp.msan_code, ''), ctc.cabin_code, mf.msan_code) AS "msanCode",
               mf.tech_name AS "techName", (mf.flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", mf.flagged_by AS "flaggedBy",
               pp.frame AS "frame", pp.shelf AS "shelf", pp.slot AS "slot", pp.port_number AS "portNumber",
               pp.port_type AS "portType", pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
@@ -6383,6 +6388,16 @@ export async function registerRoutes(
               mob.m AS "mobile"
        FROM manual_faults mf
        LEFT JOIN phone_ports pp ON pp.phone_number = mf.full_phone
+       LEFT JOIN LATERAL (
+         SELECT central, cabin_number, box_number, port
+         FROM phone_lines WHERE full_phone = mf.full_phone OR tel_no = mf.phone_short LIMIT 1
+       ) pl ON true
+       LEFT JOIN LATERAL (
+         SELECT ct.cabin_code FROM cabinet_technicians ct
+         WHERE ct.central_name = COALESCE(pl.central, mf.central)
+           AND ct.cabin_number = COALESCE(pl.cabin_number, mf.cabin_number)
+         ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC LIMIT 1
+       ) ctc ON true
        LEFT JOIN LATERAL (
          SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at
          FROM case_138 c WHERE c.full_phone = mf.full_phone ORDER BY c.id DESC LIMIT 1
