@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, FileSpreadsheet, ArrowLeftRight } from "lucide-react";
+import { Loader2, RefreshCw, FileSpreadsheet, ArrowLeftRight, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 
 // «متابعة تغيير البورت» — نتائج طلبات تغيير البورت من Provisioning Portal (اللى السكربت بيتابعها).
@@ -43,6 +43,14 @@ export function PortChangeReport() {
     } catch { setRows([]); } finally { setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // «مراجعة»: يفتح تاب «بحث برقم التليفون» ويحط الرقم ويبحث (مايحدّثش البورت — للمراجعة فقط).
+  const openLookup = (phone: string | null) => {
+    const p = (phone || "").toString().replace(/\D/g, "");
+    if (!p) return;
+    try { sessionStorage.setItem("sf_lookup_phone", p); } catch {}
+    window.dispatchEvent(new CustomEvent("sf-open-phone-lookup", { detail: p }));
+  };
 
   const shown = onlyFailed ? rows.filter((r) => !r.completed) : rows;
   const COLUMNS = ["Request ID", "رقم التليفون", "الحالة", "MSAN القديم", "MSAN الجديد", "Frame الجديد", "نوع البورت", "Reservation Code", "تاريخ الطلب", "وقت التسجيل"];
@@ -88,7 +96,19 @@ export function PortChangeReport() {
             ) : shown.map((r, i) => (
               <TableRow key={i} className={r.completed ? "" : "bg-red-50"}>
                 {toRow(r).map((cell, j) => (
-                  <TableCell key={j} className={`whitespace-nowrap ${j === 2 ? (r.completed ? "text-green-700 font-semibold" : "text-red-700 font-semibold") : ""}`}>{cell}</TableCell>
+                  <TableCell key={j} className={`whitespace-nowrap ${j === 2 ? (r.completed ? "text-green-700 font-semibold" : "text-red-700 font-semibold") : ""}`}>
+                    {j === 1 ? (
+                      <span className="inline-flex items-center gap-2 font-medium">
+                        {cell}
+                        {r.phoneNumber && (
+                          <button type="button" onClick={() => openLookup(r.phoneNumber)}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-blue-300 text-blue-700 hover:bg-blue-50">
+                            <Search className="w-3.5 h-3.5" /> مراجعة
+                          </button>
+                        )}
+                      </span>
+                    ) : cell}
+                  </TableCell>
                 ))}
               </TableRow>
             ))}
