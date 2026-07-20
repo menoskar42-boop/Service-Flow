@@ -643,7 +643,7 @@ export function PhoneLookupReport() {
             </Button>
           )}
           {line && (
-            <div className="flex items-center gap-2 sm:mr-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:mr-auto">
               {line.accountNo ? (
                 canUseTools ? (
                 <>
