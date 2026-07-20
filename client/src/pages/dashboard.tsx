@@ -76,15 +76,22 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "current-faults",      label: "الأعطال الحالية" },
       { id: "regularized-faults",  label: "الأعطال المنتظمة اليوم" },
       { id: "regularized-faults-range", label: "الأعطال المنتظمة (فترة من/إلى)" },
-      { id: "major-faults",        label: "الأعطال الجسيمة" },
       { id: "manual-current-faults", label: "الأعطال الحالية خارج الشاشة" },
       { id: "manual-regularized-range", label: "الأعطال المنتظمة خارج الشاشة (فترة)" },
-      { id: "engineering-inspection", label: "أعطال التفتيش الهندسى" },
       { id: "repeated-within-month", label: "الأعطال المكررة خلال شهر من تاريخه" },
       { id: "cabinet-adsl-faults", label: "عدد الأعطال فى الألف" },
       { id: "removal-stats",       label: "إحصائيات الإزالة" },
       { id: "repetition-stats",    label: "إحصائيات التكرار" },
       { id: "tech-performance",    label: "تقرير أداء الفنيين" },
+    ],
+  },
+  {
+    // مجموعة إنشاء الجداول — مخفية عن الفنيين وأدمن المبيعات وموظفى المبيعات (إدارة فقط)
+    label: "إنشاء جداول",
+    icon: FileText,
+    items: [
+      { id: "major-faults",           label: "الأعطال الجسيمة" },
+      { id: "engineering-inspection", label: "أعطال التفتيش الهندسى" },
     ],
   },
   {
