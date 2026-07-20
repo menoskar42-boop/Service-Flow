@@ -46,11 +46,13 @@ interface RegularizedFault extends Measurement138 {
   effectiveFaultHours: number | null;
 }
 
-// تصنيف العطل صوت/داتا حسب نوع الشكوى: أى شكوى بيانات/DSL = داتا، وغيرها = صوت.
-// (voice + data = الإجمالى دائماً)
-const isDataFault = (f: { complainTypeName: string | null }) => {
+// تصنيف العطل صوت/داتا: داتا لو نوع الشكوى أو الـ Status Code فيه إشارة بيانات
+// (بيانات/DSL/ADSL/data) أو خط فايبر (FO)، وغيرها = صوت. (voice + data = الإجمالى دائماً)
+const isDataFault = (f: { complainTypeName: string | null; statusCode: string | null }) => {
   const t = (f.complainTypeName || "").toLowerCase();
-  return t.includes("بيانات") || t.includes("dsl") || t.includes("data") || t.includes("adsl");
+  const s = (f.statusCode || "").toLowerCase();
+  const dataRe = /بيانات|dsl|adsl|data|فايبر|fiber|_fo|fo_|-fo|\bfo\b/;
+  return dataRe.test(t) || dataRe.test(s);
 };
 
 // مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
