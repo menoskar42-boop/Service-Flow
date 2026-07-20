@@ -4763,6 +4763,28 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // ===== إعدادات عامة مشتركة (app_settings) — تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر =====
+  // GET قيمة إعداد بمفتاحه (أى مستخدم مسجّل)
+  app.get("/api/settings/:key", requireAuth, async (req, res) => {
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ message: "key مطلوب" });
+    const { rows } = await pool.query(`SELECT value, (updated_at AT TIME ZONE 'Africa/Cairo') AS "updatedAt", updated_by AS "updatedBy" FROM app_settings WHERE key = $1`, [key]);
+    res.json(rows[0] || { value: null });
+  });
+  // PUT حفظ/تحديث قيمة إعداد (غير مسموح لموظفى المبيعات)
+  app.put("/api/settings/:key", requireAuth, async (req: any, res) => {
+    if (req.user?.role === ROLES.SALES) return res.status(403).json({ message: "غير مسموح" });
+    const key = String(req.params.key || "").trim();
+    if (!key) return res.status(400).json({ message: "key مطلوب" });
+    const value = req.body?.value == null ? "" : String(req.body.value);
+    const by = (req.user?.fullName || req.user?.username || "").toString();
+    await pool.query(
+      `INSERT INTO app_settings (key, value, updated_at, updated_by) VALUES ($1, $2, now(), $3)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+      [key, value, by]);
+    res.json({ ok: true });
+  });
+
   app.options("/api/phone-ports/ingest", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
   app.post("/api/phone-ports/ingest", async (req: any, res) => {
     setPortsCors(res);

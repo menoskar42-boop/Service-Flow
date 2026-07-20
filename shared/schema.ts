@@ -681,6 +681,15 @@ export const lineMobiles = pgTable("line_mobiles", {
 });
 export type LineMobile = typeof lineMobiles.$inferSelect;
 
+// app_settings — إعدادات عامة مشتركة (key/value) تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر.
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedBy: text("updated_by"),
+});
+export type AppSetting = typeof appSettings.$inferSelect;
+
 // app_state — key/value عام للحالة (مثلاً وقت اكتمال آخر تشغيل كامل لتحديث البورتات)
 export const appState = pgTable("app_state", {
   key: text("key").primaryKey(),

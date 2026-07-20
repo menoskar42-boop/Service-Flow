@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,7 +21,8 @@ interface Fault {
   statusCode: string | null;
 }
 
-const LS_KEY = "closedPortCabinets"; // قائمة الكباين المغلقة بتتحفظ على الجهاز فمتكتبهاش كل مرة
+const LS_KEY = "closedPortCabinets";              // كاش محلى فورى (يظهر بسرعة قبل رد السيرفر)
+const SETTING_KEY = "closed_port_cabinets";       // مفتاح الإعداد المشترك على السيرفر (يثبت للكل)
 
 // تطبيع مفتاح المطابقة: إزالة المسافات والمحارف غير الأرقام/الحروف للمقارنة المرنة.
 const norm = (s: string | null | undefined) =>
@@ -43,10 +44,38 @@ export function ClosedPortCabinetsReport() {
   const [closedText, setClosedText] = useState<string>(() => {
     try { return localStorage.getItem(LS_KEY) || ""; } catch { return ""; }
   });
+  const serverLoaded = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // حفظ القائمة تلقائياً على الجهاز عند أى تعديل.
+  // تحميل القائمة المشتركة من السيرفر عند الفتح — تثبت لكل المستخدمين لحد ما حد يغيّرها.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`/api/settings/${SETTING_KEY}`, { credentials: "include" });
+        if (r.ok) {
+          const d = await r.json();
+          if (d && typeof d.value === "string") {
+            setClosedText(d.value);
+            try { localStorage.setItem(LS_KEY, d.value); } catch {}
+          }
+        }
+      } catch {}
+      serverLoaded.current = true;
+    })();
+  }, []);
+
+  // حفظ محلى فورى + حفظ على السيرفر (debounced) بعد أول تحميل من السيرفر (عشان مايكتبش قيمة قديمة).
   useEffect(() => {
     try { localStorage.setItem(LS_KEY, closedText); } catch {}
+    if (!serverLoaded.current) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      fetch(`/api/settings/${SETTING_KEY}`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: closedText }),
+      }).catch(() => {});
+    }, 800);
   }, [closedText]);
 
   const load = useCallback(async () => {

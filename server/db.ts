@@ -728,6 +728,17 @@ export async function ensureSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS port_change_requests_phone_idx ON port_change_requests (phone_number)`);
 
+  // app_settings — إعدادات عامة مشتركة (key/value) تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر.
+  // تُستخدم مثلاً لقائمة «الكباين المغلقة بورتات» عشان اللى يدخلها يثبت للجميع (مش localStorage محلى).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key text PRIMARY KEY,
+      value text,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      updated_by text
+    )
+  `);
+
   // line_mobiles — أرقام موبايل مُدخَلة يدوياً لكل خط
   await pool.query(`
     CREATE TABLE IF NOT EXISTS line_mobiles (
