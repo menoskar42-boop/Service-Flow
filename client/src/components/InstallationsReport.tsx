@@ -72,8 +72,10 @@ export function InstallationsReport({
 }) {
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // الافتراضى لتقارير الفترة: من أول يوم فى الشهر الحالى لحد النهاردة (والمستخدم يقدر يغيّرها عادى)
+  const _now = new Date();
+  const [dateFrom, setDateFrom] = useState(showDates ? format(new Date(_now.getFullYear(), _now.getMonth(), 1), "yyyy-MM-dd") : "");
+  const [dateTo, setDateTo] = useState(showDates ? format(_now, "yyyy-MM-dd") : "");
 
   const { data: items = [], isFetching } = useQuery<Installation[]>({
     queryKey: [queryKey, central, q, dateFrom, dateTo],
