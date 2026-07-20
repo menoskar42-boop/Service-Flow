@@ -51,7 +51,7 @@ function fmt(iso: string | null): string {
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export function ExecJobsReport() {
-  const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 7); return ymd(d); });
+  const [from, setFrom] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 1); return ymd(d); }); // الافتراضى: من تاريخ البارحة
   const [to, setTo] = useState(() => ymd(new Date()));
   const [jobs, setJobs] = useState<ExecJobRow[]>([]);
   const [expanded, setExpanded] = useState<Set<number>>(new Set()); // صفوف الفحوصات القديمة (متعددة الأرقام) المفتوحة
