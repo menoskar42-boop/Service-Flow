@@ -283,6 +283,19 @@
           </form>
           <% } %>
         <% } %>
+
+        <!-- التأكيد النهائى: بعد ما الفنى يخلّص (pending_approval) يعتمد الأدمن/المراقب الإكمال -->
+        <% if ((user.role === 'admin' || user.role === 'inspector') && task.status === 'pending_approval') { %>
+          <div class="alert alert-warning small mb-2 mt-2 py-2">
+            <i class="bi bi-hourglass-split me-1"></i> الفنى خلّص المهمة — بانتظار الاعتماد النهائى.
+          </div>
+          <form method="post" action="/inspector/tasks/<%= task.id %>/approve" class="mt-1">
+            <input type="hidden" name="redirect" value="/boxes/<%= box.id %>">
+            <button class="btn btn-success btn-sm w-100">
+              <i class="bi bi-check-circle-fill me-1"></i> تأكيد نهائى (اعتماد إكمال المهمة)
+            </button>
+          </form>
+        <% } %>
       </div>
     </div>
     <% } %>

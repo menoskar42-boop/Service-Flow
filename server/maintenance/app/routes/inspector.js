@@ -346,7 +346,9 @@ router.post('/tasks/:taskId/approve', inspectorOrAdmin, adminOrOwner, async (req
     await q(`UPDATE boxes SET status='completed', updated_at=NOW() WHERE id=(SELECT box_id FROM inspections WHERE id=$1)`, [task.inspection_id]);
   });
   req.session.flash = { type: 'success', msg: 'تم تأكيد إكمال المهمة.' };
-  res.redirect(`/inspector/${task.inspection_id}`);
+  // نرجع لصفحة البوكس لو اتبعت redirect (من زر البوكس)، وإلا لصفحة الفحص كالمعتاد.
+  const back = String(req.body.redirect || '');
+  res.redirect(/^\/[A-Za-z0-9/_-]/.test(back) ? back : `/inspector/${task.inspection_id}`);
 });
 
 // Preliminary confirmation: external affairs confirm the non-excluded notes are fixed,
