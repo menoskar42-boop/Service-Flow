@@ -6374,7 +6374,7 @@ export async function registerRoutes(
               COALESCE(pl.cabin_number, mf.cabin_number) AS "cabinNumber",
               COALESCE(pl.box_number, mf.box_number) AS "boxNumber",
               COALESCE(NULLIF(pp.msan_code, ''), ctc.cabin_code, mf.msan_code) AS "msanCode",
-              mf.tech_name AS "techName", (mf.flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", mf.flagged_by AS "flaggedBy",
+              COALESCE(NULLIF(ctc.tech_name, ''), mf.tech_name) AS "techName", (mf.flagged_at AT TIME ZONE 'Africa/Cairo') AS "flaggedAt", mf.flagged_by AS "flaggedBy",
               pp.frame AS "frame", pp.shelf AS "shelf", pp.slot AS "slot", pp.port_number AS "portNumber",
               pp.port_type AS "portType", pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
               pp.operator AS "operator", pp.onu AS "onu",
@@ -6393,10 +6393,11 @@ export async function registerRoutes(
          FROM phone_lines WHERE full_phone = mf.full_phone OR tel_no = mf.phone_short LIMIT 1
        ) pl ON true
        LEFT JOIN LATERAL (
-         SELECT ct.cabin_code FROM cabinet_technicians ct
+         SELECT ct.cabin_code, tn.tech_name FROM cabinet_technicians ct
+         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
          WHERE ct.central_name = COALESCE(pl.central, mf.central)
            AND ct.cabin_number = COALESCE(pl.cabin_number, mf.cabin_number)
-         ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC LIMIT 1
+         ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, tn.tech_name NULLS LAST LIMIT 1
        ) ctc ON true
        LEFT JOIN LATERAL (
          SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at
