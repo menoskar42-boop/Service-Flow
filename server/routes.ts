@@ -1104,51 +1104,57 @@ export async function registerRoutes(
   // الواجهة تقدر تفلتر تقارير الفني على بياناته. fallback: اسم المستخدم لو مفيش رقم عامل/تطابق.
   async function userResponse(user: any) {
     if (!user) return user;
-    let techName: string | null = null;
-    let coveredTechNames: string[] = [];
     if (user.role === ROLES.TECH) {
-      if (user.workerCode) {
-        try {
-          const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [String(user.workerCode).trim()]);
-          techName = r.rows[0]?.tech_name ?? null;
-        } catch (e) {}
-      }
-      if (!techName) techName = user.username; // fallback: لو اسم المستخدم = اسم الفني
-      // أسماء الزملاء اللى الفنى ده له تغطية عليهم (منح دائمة)
-      if (techName) {
-        try {
-          const g = await pool.query(`SELECT covered_tech_name FROM tech_coverage_grants WHERE grantee_tech_name = $1`, [String(techName).trim()]);
-          coveredTechNames = g.rows.map((r: any) => r.covered_tech_name).filter(Boolean);
-        } catch (e) {}
-      }
+      const c = await coverageCodes(user);
+      return { ...user, techName: c.techName ?? user.username, coveredTechNames: c.coveredNames };
     }
-    return { ...user, techName, coveredTechNames };
+    return { ...user, techName: null, coveredTechNames: [] };
   }
 
-  // أكواد العمّال: own = كود الفنى نفسه (كل خطوطه) ؛ covered = أكواد الزملاء المشمولين بمنح التغطية
-  // (خطوطهم متاحة **فقط** لو عليها عطل حالى أو عطل خارج الشاشة مفتوح — يُتحقّق فى الاستعلام).
-  async function coverageCodes(user: any): Promise<{ own: string[]; covered: string[] }> {
+  // تغطية الفنى: own = كوده (كل خطوطه) ؛ covered = أكواد الزملاء المشمولين (منح دائمة + تغطية اليوم
+  // من جدول الورديات: زميل «راحه/إجازة» اليوم والمستخدم هو «القائم بالعمل»). خطوط الزملاء متاحة
+  // **فقط** لو عليها عطل حالى أو عطل خارج الشاشة مفتوح — يُتحقّق فى استعلام البحث. coveredNames للعرض.
+  async function coverageCodes(user: any): Promise<{ techName: string | null; own: string[]; covered: string[]; coveredNames: string[] }> {
     const own = new Set<string>();
     const covered = new Set<string>();
+    const coveredNames = new Set<string>();
     const ownCode = String(user?.workerCode || "").trim();
     if (ownCode) own.add(ownCode);
+    let techName: string | null = null;
     if (user?.role === ROLES.TECH) {
-      let techName: string | null = null;
       if (ownCode) {
         try { const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [ownCode]); techName = r.rows[0]?.tech_name ?? null; } catch (e) {}
       }
       if (!techName) techName = user?.username ?? null;
       if (techName) {
+        const tn = String(techName).trim();
+        // (1) منح التغطية الدائمة
         try {
           const { rows } = await pool.query(
-            `SELECT DISTINCT tn.worker_code FROM tech_coverage_grants g
-             JOIN technician_names tn ON btrim(tn.tech_name) = btrim(g.covered_tech_name)
-             WHERE btrim(g.grantee_tech_name) = btrim($1)`, [String(techName).trim()]);
-          for (const r of rows) if (r.worker_code) covered.add(String(r.worker_code).trim());
+            `SELECT DISTINCT g.covered_tech_name AS name, tnm.worker_code AS code
+             FROM tech_coverage_grants g
+             LEFT JOIN technician_names tnm ON btrim(tnm.tech_name) = btrim(g.covered_tech_name)
+             WHERE btrim(g.grantee_tech_name) = btrim($1)`, [tn]);
+          for (const r of rows) { if (r.name) coveredNames.add(String(r.name).trim()); if (r.code) covered.add(String(r.code).trim()); }
+        } catch (e) {}
+        // (2) تغطية اليوم من جدول الورديات: زميل «راحه/إجازة» النهارده والمستخدم هو القائم بالعمل
+        try {
+          const { rows } = await pool.query(
+            `SELECT DISTINCT s.tech_name AS name, tnm.worker_code AS code
+             FROM shift_schedules s
+             LEFT JOIN technician_names tnm ON btrim(tnm.tech_name) = btrim(s.tech_name)
+             CROSS JOIN LATERAL (
+               SELECT (now() AT TIME ZONE 'Africa/Cairo')::date AS today,
+                      ((EXTRACT(DOW FROM (now() AT TIME ZONE 'Africa/Cairo'))::int - 5 + 7) % 7) AS di
+             ) d
+             WHERE s.week_start = d.today - d.di
+               AND btrim(COALESCE(s.covers->>d.di, '')) = btrim($1)
+               AND COALESCE(s.days->>d.di, '') IN ('راحه','إجازة')`, [tn]);
+          for (const r of rows) { if (r.name) coveredNames.add(String(r.name).trim()); if (r.code) covered.add(String(r.code).trim()); }
         } catch (e) {}
       }
     }
-    return { own: [...own], covered: [...covered] };
+    return { techName, own: [...own], covered: [...covered], coveredNames: [...coveredNames] };
   }
 
   // يجهّز جلسة الكوابل تلقائياً بعد الدخول على الطلبات لو دور المستخدم يفتح الكوابل
