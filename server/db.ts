@@ -759,6 +759,18 @@ export async function ensureSchema() {
     )
   `);
 
+  // tech_coverage_grants — منح تغطية دائمة (grantee له حق التصرف فى خطوط covered)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tech_coverage_grants (
+      id serial PRIMARY KEY,
+      grantee_tech_name text NOT NULL,
+      covered_tech_name text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      created_by text,
+      UNIQUE (grantee_tech_name, covered_tech_name)
+    )
+  `);
+
   // shift_schedules — جدول ورديات الفنيين الأسبوعى (صف لكل أسبوع/فنى، days = 7 قيم jsonb)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shift_schedules (

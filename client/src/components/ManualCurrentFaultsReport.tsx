@@ -70,7 +70,9 @@ export function ManualCurrentFaultsReport() {
   const [regBusy, setRegBusy] = useState(false);
   // فلتر «أعطالى» — أعطال الفني نفسه (بالاسم فى «اسم الفنى» أو «سجّل العطل»)
   const [onlyMine, setOnlyMine] = useState(false);
-  const myNames = [(user as any)?.techName, user?.username].map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
+  // أسمائى + أسماء الزملاء اللى لى تغطية عليهم (منح دائمة) — كلهم يظهروا فى «أعطالى»
+  const myNames = [(user as any)?.techName, user?.username, ...(((user as any)?.coveredTechNames as string[]) ?? [])]
+    .map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
   const isMine = (x: Row) => {
     const t = String(x.techName || "").trim().toLowerCase();
     const f = String(x.flaggedBy || "").trim().toLowerCase();

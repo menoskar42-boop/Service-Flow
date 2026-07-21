@@ -716,6 +716,17 @@ export const dpInventory = pgTable("dp_inventory", {
 }, (t) => ({ uq: unique().on(t.central, t.cabinetNo, t.dpNo) }));
 export type DpInventory = typeof dpInventory.$inferSelect;
 
+// tech_coverage_grants — منح تغطية دائمة: الفنى «القائم بالعمل» (grantee) له حق التصرف فى خطوط
+// زميله (covered) — قياس/رفع سرعة/إيقاف من بحث برقم التليفون + رؤيتها فى أعطاله — حتى لو الزميل «عمل».
+export const techCoverageGrants = pgTable("tech_coverage_grants", {
+  id: serial("id").primaryKey(),
+  granteeTechName: text("grantee_tech_name").notNull(),
+  coveredTechName: text("covered_tech_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdBy: text("created_by"),
+}, (t) => ({ uq: unique().on(t.granteeTechName, t.coveredTechName) }));
+export type TechCoverageGrant = typeof techCoverageGrants.$inferSelect;
+
 // shift_schedules — جدول ورديات الفنيين الأسبوعى. صف لكل (أسبوع، فنى):
 // week_start = الجمعة (بداية الأسبوع)، days = 7 قيم (جمعة→خميس): عمل/راحه/إجازة/بدل راحه.
 export const shiftSchedules = pgTable("shift_schedules", {

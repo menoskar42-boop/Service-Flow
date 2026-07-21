@@ -4,6 +4,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2, CalendarDays, Eye } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
+import { CoverageGrantsPanel } from "@/components/CoverageGrantsPanel";
 
 // «جدول الورديات» — جدول أسبوعى لورديات الفنيين. تنقّل بين الأسابيع بالأسهم،
 // وكل خلية دروب ليست (عمل / راحه / إجازة / بدل راحه). الفنى يشوف بدون تعديل؛
@@ -35,6 +38,8 @@ type Row = { days: string[]; covers: string[]; notes: string };
 const emptyRow = (): Row => ({ days: ["", "", "", "", "", "", ""], covers: ["", "", "", "", "", "", ""], notes: "" });
 
 export function ShiftScheduleReport() {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
   const [weekStart, setWeekStart] = useState(() => fridayOf(new Date()));
   const weekISO = isoLocal(weekStart);
   const isCurrentWeek = weekISO === isoLocal(fridayOf(new Date()));
@@ -121,6 +126,7 @@ export function ShiftScheduleReport() {
   const thisWeek = () => setWeekStart(fridayOf(new Date()));
 
   return (
+    <div className="space-y-4">
     <Card className="p-4 space-y-4" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -219,5 +225,7 @@ export function ShiftScheduleReport() {
         </Table>
       </div>
     </Card>
+    {isSuperAdmin && <CoverageGrantsPanel />}
+    </div>
   );
 }

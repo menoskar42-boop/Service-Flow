@@ -1105,6 +1105,7 @@ export async function registerRoutes(
   async function userResponse(user: any) {
     if (!user) return user;
     let techName: string | null = null;
+    let coveredTechNames: string[] = [];
     if (user.role === ROLES.TECH) {
       if (user.workerCode) {
         try {
@@ -1113,8 +1114,39 @@ export async function registerRoutes(
         } catch (e) {}
       }
       if (!techName) techName = user.username; // fallback: لو اسم المستخدم = اسم الفني
+      // أسماء الزملاء اللى الفنى ده له تغطية عليهم (منح دائمة)
+      if (techName) {
+        try {
+          const g = await pool.query(`SELECT covered_tech_name FROM tech_coverage_grants WHERE grantee_tech_name = $1`, [String(techName).trim()]);
+          coveredTechNames = g.rows.map((r: any) => r.covered_tech_name).filter(Boolean);
+        } catch (e) {}
+      }
     }
-    return { ...user, techName };
+    return { ...user, techName, coveredTechNames };
+  }
+
+  // أرقام العمّال (worker_code) اللى المستخدم الحالى يقدر يتصرف فى خطوطهم: كوده + المشمولين بمنح التغطية.
+  async function coverageWorkerCodes(user: any): Promise<string[]> {
+    const codes = new Set<string>();
+    const own = String(user?.workerCode || "").trim();
+    if (own) codes.add(own);
+    if (user?.role === ROLES.TECH) {
+      let techName: string | null = null;
+      if (own) {
+        try { const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [own]); techName = r.rows[0]?.tech_name ?? null; } catch (e) {}
+      }
+      if (!techName) techName = user?.username ?? null;
+      if (techName) {
+        try {
+          const { rows } = await pool.query(
+            `SELECT DISTINCT tn.worker_code FROM tech_coverage_grants g
+             JOIN technician_names tn ON btrim(tn.tech_name) = btrim(g.covered_tech_name)
+             WHERE btrim(g.grantee_tech_name) = btrim($1)`, [String(techName).trim()]);
+          for (const r of rows) if (r.worker_code) codes.add(String(r.worker_code).trim());
+        } catch (e) {}
+      }
+    }
+    return [...codes];
   }
 
   // يجهّز جلسة الكوابل تلقائياً بعد الدخول على الطلبات لو دور المستخدم يفتح الكوابل
@@ -3145,11 +3177,12 @@ export async function registerRoutes(
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt", pe.last_raise_by AS "raisedBy",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt", pe.last_stop_by AS "stoppedBy",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt",
-              -- هل الخط تابع لمنطقة الفنى الحالى؟ الاعتماد على كود كابينة المسان: لازم يكون فيه
-              -- صف فى cabinet_technicians بنفس الـ cabin_code وبرقم العامل بتاع المستخدم الحالى.
-              (ctc.cabin_code IS NOT NULL AND btrim(ctc.cabin_code) <> '' AND $4::text IS NOT NULL AND EXISTS (
+              -- هل الخط تابع لمنطقة الفنى الحالى (أو زميل له تغطية عليه)؟ الاعتماد على كود كابينة
+              -- المسان: لازم يكون فيه صف فى cabinet_technicians بنفس الـ cabin_code وبرقم عامل ضمن
+              -- أرقام العمّال المسموح بها ($4 = كود الفنى + أكواد الزملاء المشمولين بمنح التغطية).
+              (ctc.cabin_code IS NOT NULL AND btrim(ctc.cabin_code) <> '' AND array_length($4::text[], 1) > 0 AND EXISTS (
                  SELECT 1 FROM cabinet_technicians ctx
-                 WHERE btrim(ctx.cabin_code) = btrim(ctc.cabin_code) AND btrim(ctx.worker_code) = btrim($4::text)
+                 WHERE btrim(ctx.cabin_code) = btrim(ctc.cabin_code) AND btrim(ctx.worker_code) = ANY($4::text[])
               )) AS "ownedByMe",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"
        FROM t
@@ -3196,7 +3229,7 @@ export async function registerRoutes(
          ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
        ) mob ON true
        LIMIT 1`,
-      [phone, short, full, req.user?.workerCode ?? null],
+      [phone, short, full, await coverageWorkerCodes(req.user)],
     );
     const line = rows[0];
     if (!line || !line.hasData) return res.json({ found: false });
@@ -7610,6 +7643,36 @@ export async function registerRoutes(
          DO UPDATE SET days = $3::jsonb, covers = $4::jsonb, notes = $5, updated_at = now(), updated_by = $6`,
         [weekStart, techName, JSON.stringify(dArr), JSON.stringify(cArr), notes ?? null, String(req.user.username || "")],
       );
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // === منح التغطية الدائمة (tech_coverage_grants) — السوبر أدمن فقط ===
+  app.get("/api/coverage-grants", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, grantee_tech_name AS "granteeTechName", covered_tech_name AS "coveredTechName",
+                created_by AS "createdBy", created_at AS "createdAt"
+         FROM tech_coverage_grants ORDER BY grantee_tech_name, covered_tech_name`);
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/coverage-grants", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const grantee = String((req.body || {}).granteeTechName || "").trim();
+      const covered = String((req.body || {}).coveredTechName || "").trim();
+      if (!grantee || !covered) return res.status(400).json({ message: "اختر الفنى القائم بالعمل والفنى صاحب الخطوط" });
+      if (grantee === covered) return res.status(400).json({ message: "لا يمكن منح الفنى تغطية نفسه" });
+      await pool.query(
+        `INSERT INTO tech_coverage_grants (grantee_tech_name, covered_tech_name, created_by)
+         VALUES ($1,$2,$3) ON CONFLICT (grantee_tech_name, covered_tech_name) DO NOTHING`,
+        [grantee, covered, String(req.user.username || "")]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.delete("/api/coverage-grants/:id", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      await pool.query(`DELETE FROM tech_coverage_grants WHERE id = $1`, [parseInt(req.params.id)]);
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
