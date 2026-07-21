@@ -98,7 +98,8 @@ interface WithAccountReportProps {
 export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title, initialCentral = "", initialCabin = "", initialBox = "" }: WithAccountReportProps = {}) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
-  useSpeedToolSource("خطوط لها أكونت");
+  // المصدر يعكس التقرير الفعلى (خطوط لها أكونت / ولم تُقس / أسكور>100) عشان يظهر صح فى معاملات التنفيذ
+  useSpeedToolSource(neverMeasured ? "خطوط لها أكونت ولم تُقس" : scoreGt != null ? "خطوط أسكورها أعلى من 100" : "خطوط لها أكونت");
   const [central, setCentral] = useState(initialCentral);
   const [cabin, setCabin] = useState(initialCabin);
   const [box, setBox] = useState(initialBox);
