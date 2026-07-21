@@ -481,7 +481,7 @@ export function TechPerformanceReport() {
             <TableHeader>
               <TableRow className="bg-blue-900 hover:bg-blue-900">
                 <TableHead className="text-white font-bold text-center w-8">#</TableHead>
-                <TableHead className="text-white font-bold">اسم الفنى</TableHead>
+                <TableHead className="text-white font-bold text-center">اسم الفنى</TableHead>
                 <TableHead className="text-white font-bold text-center">نسبة تحقيق<br/>المتعذرات %</TableHead>
                 <TableHead className="text-white font-bold text-center">درجة<br/>المتعذرات<br/>/{MAX_OM}</TableHead>
                 <TableHead className="text-white font-bold text-center">نسبة<br/>التكرار %</TableHead>
@@ -505,7 +505,7 @@ export function TechPerformanceReport() {
                   {visRows.map((r, idx) => (
                     <TableRow key={r.techName} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="text-center text-muted-foreground">{techView ? myIdx + 1 : idx + 1}</TableCell>
-                      <TableCell className="font-semibold whitespace-nowrap">{r.techName}</TableCell>
+                      <TableCell className="font-semibold whitespace-nowrap text-center">{r.techName}</TableCell>
                       <TableCell className="text-center">{r.omPct != null ? fmt1(r.omPct) : "—"}</TableCell>
                       {cellScore(r.omScore, MAX_OM)}
                       <TableCell className="text-center">{r.repRatio != null ? fmt1(r.repRatio) : "—"}</TableCell>
