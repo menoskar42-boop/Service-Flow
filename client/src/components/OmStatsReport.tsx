@@ -51,7 +51,8 @@ export function OmStatsReport({ yearFilter, title }: { yearFilter?: "current" | 
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
+  // فلتر/إسناد الفنى: للسوبر أدمن + الأدمن (ومنه مدير السنترال) + الشئون الخارجية (ومنها مهندس الكوابل)
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN || user?.role === ROLES.EXTERNAL;
   const qs = yearFilter ? `?yearFilter=${yearFilter}` : "";
   const reportTitle = title ?? "إحصائية متعذرات OM";
 
