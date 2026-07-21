@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -86,7 +86,23 @@ export function RemovalStatsReport() {
   const [activeTab, setActiveTab] = useState<"combined" | "details" | "remaining">("combined");
   const [beyond24Open, setBeyond24Open]     = useState(false);
   const [beyond24Data, setBeyond24Data]     = useState<Beyond24Row[] | null>(null);
+  const [beyond24Tech, setBeyond24Tech]     = useState("");   // فلتر اسم الفنى داخل النافذة
   const [beyond24Loading, setBeyond24Loading] = useState(false);
+  // خيارات فلتر الفنى (فنى الإغلاق + فنى المنطقة) + الصفوف بعد الفلترة
+  const beyond24TechOptions = useMemo(() => {
+    if (!beyond24Data) return [];
+    const s = new Set<string>();
+    for (const r of beyond24Data) {
+      if (r.closeByName && r.closeByName !== "غير معروف") s.add(r.closeByName);
+      if (r.areaTechName && r.areaTechName !== "غير معروف") s.add(r.areaTechName);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, "ar"));
+  }, [beyond24Data]);
+  const beyond24Filtered = useMemo(() => {
+    if (!beyond24Data) return [];
+    if (!beyond24Tech) return beyond24Data;
+    return beyond24Data.filter((r) => r.closeByName === beyond24Tech || r.areaTechName === beyond24Tech);
+  }, [beyond24Data, beyond24Tech]);
   const [assigningNo, setAssigningNo]       = useState<string | null>(null);
 
   const { user } = useAuth();
@@ -334,7 +350,7 @@ export function RemovalStatsReport() {
 
   const exportBeyond24Excel = () => {
     if (!beyond24Data) return;
-    const ws = XLSX.utils.json_to_sheet(beyond24Data.map((r, i) => ({
+    const ws = XLSX.utils.json_to_sheet(beyond24Filtered.map((r, i) => ({
       "#": i + 1,
       "رقم الشكوى": r.complainNo,
       "اسم العميل": r.subName ?? "",
@@ -597,22 +613,29 @@ export function RemovalStatsReport() {
               تفصيل الأعطال التى تجاوزت ٢٤ ساعة — {activeTab === "combined" ? "إجمالية" : activeTab === "details" ? "مغلقة" : "مفتوحة"} — {dateFrom} إلى {dateTo}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
             <span className="text-xs text-muted-foreground">
-              {beyond24Loading ? "جارى التحميل..." : `${beyond24Data?.length ?? 0} عطل تجاوز ٢٤ ساعة`}
+              {beyond24Loading ? "جارى التحميل..." : `${beyond24Filtered.length} عطل تجاوز ٢٤ ساعة`}
             </span>
-            <Button variant="outline" size="sm" onClick={exportBeyond24Excel}
-              disabled={!beyond24Data || beyond24Data.length === 0}
-              className="text-green-700 border-green-200 gap-1 text-xs">
-              <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
-            </Button>
+            <div className="flex items-center gap-2">
+              <select value={beyond24Tech} onChange={(e) => setBeyond24Tech(e.target.value)}
+                className="border rounded-md px-2 py-1 text-xs bg-background" dir="rtl">
+                <option value="">كل الفنيين</option>
+                {beyond24TechOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <Button variant="outline" size="sm" onClick={exportBeyond24Excel}
+                disabled={beyond24Filtered.length === 0}
+                className="text-green-700 border-green-200 gap-1 text-xs">
+                <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
+              </Button>
+            </div>
           </div>
           {beyond24Loading && (
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
           )}
           {!beyond24Loading && beyond24Data && (
-            <div className="flex-1 min-h-0 overflow-auto">
-              <Table className="text-right text-xs" dir="rtl">
+            <div className="flex-1 min-h-0 overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+              <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader className="bg-amber-900 sticky top-0">
                   <TableRow>
                     <TableHead className="text-white font-bold text-right">#</TableHead>
@@ -634,7 +657,7 @@ export function RemovalStatsReport() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {beyond24Data.map((r, i) => (
+                  {beyond24Filtered.map((r, i) => (
                     <TableRow key={r.complainNo} className="hover:bg-amber-50">
                       <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>

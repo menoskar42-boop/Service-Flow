@@ -371,8 +371,26 @@ export function TechPerformanceReport() {
   const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString("ar-EG") : "");
   // الفلترة بتتم على مستوى الـ server (الفني يرى أرقامه فقط — فنى الإغلاق أو فنى المنطقة؛
   // الأدمن يرى الكل)، فهنا بنعرض اللى رجع من الـ API مباشرة.
-  const repFiltered = repDetailData ?? [];
-  const b24Filtered = b24Data ?? [];
+  // فلتر اسم الفنى داخل النوافذ (يطابق فنى الإغلاق أو فنى المنطقة)
+  const [detailTech, setDetailTech] = useState("");
+  const techOptsFrom = (arr: any[] | null) => {
+    const s = new Set<string>();
+    for (const r of (arr ?? [])) {
+      if (r.closeByName && r.closeByName !== "غير معروف") s.add(r.closeByName);
+      if (r.areaTechName && r.areaTechName !== "غير معروف") s.add(r.areaTechName);
+    }
+    return [...s].sort((a, b) => a.localeCompare(b, "ar"));
+  };
+  const repTechOptions = useMemo(() => techOptsFrom(repDetailData), [repDetailData]);
+  const b24TechOptions = useMemo(() => techOptsFrom(b24Data), [b24Data]);
+  const repFiltered = useMemo(() => {
+    const d = repDetailData ?? [];
+    return detailTech ? d.filter((r: any) => r.closeByName === detailTech || r.areaTechName === detailTech) : d;
+  }, [repDetailData, detailTech]);
+  const b24Filtered = useMemo(() => {
+    const d = b24Data ?? [];
+    return detailTech ? d.filter((r: any) => r.closeByName === detailTech || r.areaTechName === detailTech) : d;
+  }, [b24Data, detailTech]);
 
   const loadDetail = async (
     endpoint: string,
@@ -547,18 +565,22 @@ export function TechPerformanceReport() {
               {techView && <span className="text-xs font-normal text-muted-foreground">— أرقامك فقط</span>}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            <select value={detailTech} onChange={(e) => setDetailTech(e.target.value)} className="border rounded-md px-2 py-1 text-xs bg-background" dir="rtl">
+              <option value="">كل الفنيين</option>
+              {repTechOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
             <Button variant="outline" size="sm" onClick={exportRep} disabled={!repFiltered.length} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
           </div>
-          <div className="overflow-auto">
+          <div className="overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {repLoading ? (
               <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
             ) : !repFiltered.length ? (
               <div className="py-14 text-center text-muted-foreground">لا توجد أرقام مكررة</div>
             ) : (
-              <Table className="text-right text-xs" dir="rtl">
+              <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-purple-800 hover:bg-purple-800">
                     {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
@@ -599,18 +621,22 @@ export function TechPerformanceReport() {
               {techView && <span className="text-xs font-normal text-muted-foreground">— أرقامك فقط</span>}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-2">
+            <select value={detailTech} onChange={(e) => setDetailTech(e.target.value)} className="border rounded-md px-2 py-1 text-xs bg-background" dir="rtl">
+              <option value="">كل الفنيين</option>
+              {b24TechOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
             <Button variant="outline" size="sm" onClick={exportB24} disabled={!b24Filtered.length} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
           </div>
-          <div className="overflow-auto">
+          <div className="overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {b24Loading ? (
               <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
             ) : !b24Filtered.length ? (
               <div className="py-14 text-center text-muted-foreground">لا توجد أعطال تجاوزت 24 ساعة</div>
             ) : (
-              <Table className="text-right text-xs" dir="rtl">
+              <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-orange-700 hover:bg-orange-700">
                     {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "رقم الشكوى", "وقت الشكوى", "ساعات", "فنى الإغلاق", "فنى المنطقة"].map((h) => (

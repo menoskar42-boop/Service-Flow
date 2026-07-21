@@ -578,8 +578,8 @@ export function RepetitionStatsReport() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-600" /></div>
           )}
           {!repDetailLoading && repDetailData && (
-            <div className="flex-1 min-h-0 overflow-auto">
-              <Table className="text-right text-xs" dir="rtl">
+            <div className="flex-1 min-h-0 overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+              <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader className="bg-purple-900 sticky top-0">
                   <TableRow>
                     <TableHead className="text-white font-bold text-right">#</TableHead>
