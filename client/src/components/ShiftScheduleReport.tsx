@@ -9,14 +9,13 @@ import { ChevronRight, ChevronLeft, Loader2, CalendarDays, Eye } from "lucide-re
 // وكل خلية دروب ليست (عمل / راحه / إجازة / بدل راحه). الفنى يشوف بدون تعديل؛
 // الأدمن/السوبر أدمن/الشئون الخارجية يعدّلون. الحفظ تلقائى لكل صف فنى.
 
-const OPTIONS = ["عمل", "راحه", "إجازة", "بدل راحه"];   // الافتراضى: عمل
+const OPTIONS = ["عمل", "راحه", "إجازة"];   // الافتراضى: عمل
 // الحالات التى تتطلب إدخال «الفنى القائم بالعمل» بدلاً من صاحبها
-const COVER_STATES = ["راحه", "إجازة", "بدل راحه"];
+const COVER_STATES = ["راحه", "إجازة"];
 const OPT_STYLE: Record<string, string> = {
   "عمل": "text-green-700 bg-green-50",
   "راحه": "text-amber-700 bg-amber-50",
   "إجازة": "text-red-700 bg-red-50",
-  "بدل راحه": "text-blue-700 bg-blue-50",
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
