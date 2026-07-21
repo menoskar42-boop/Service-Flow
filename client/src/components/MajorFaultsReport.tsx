@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertOctagon, ClipboardCopy } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { copyHtmlTable } from "@/lib/copy-table";
 
 // «الأعطال الجسيمة» — الخطوط اللى حالتها «9999 / أعطال تنتظر الحل» (تُعرض 99-DSL).
 // نعيد استخدام بيانات «الأعطال الحالية» ونفلتر الحالة دى، ونعرضها بشكل جدول إيميل «اغلاق جسيم».
@@ -79,24 +80,10 @@ export function MajorFaultsReport() {
   };
   const handleExportPDF = () => printTablePDF({ title: "الأعطال الجسيمة (اغلاق جسيم)", columns: COLUMNS, rows: rows.map(toRow) });
 
-  // نسخ الجدول كـ HTML بحدود → يتلصق فى الإيميل (Outlook) بالبوردر مباشرة (بدل Excel اللى بيتلصق بلا حدود).
+  // نسخ الجدول كـ HTML بحدود (RTL + أرقام لاتينية) → يتلصق فى الإيميل (Outlook) مباشرة.
   const handleCopyTable = async () => {
-    const cell = (t: any, head = false) =>
-      `<${head ? "th" : "td"} style="border:1px solid #000;padding:4px 8px;${head ? "background:#f2f2f2;" : ""}white-space:nowrap">${t ?? ""}</${head ? "th" : "td"}>`;
-    const head = `<tr>${COLUMNS.map((c) => cell(c, true)).join("")}</tr>`;
-    const body = rows.map((f) => `<tr>${toRow(f).map((c) => cell(c || "")).join("")}</tr>`).join("");
-    const html = `<table dir="rtl" border="1" style="border-collapse:collapse;font-family:Arial;font-size:13px">${head}${body}</table>`;
-    const text = [COLUMNS, ...rows.map(toRow)].map((r) => r.join("\t")).join("\n");
-    try {
-      await navigator.clipboard.write([new ClipboardItem({
-        "text/html": new Blob([html], { type: "text/html" }),
-        "text/plain": new Blob([text], { type: "text/plain" }),
-      })]);
-      alert("تم نسخ الجدول (بحدود) — الصقه فى الإيميل مباشرة (Ctrl+V)");
-    } catch (e) {
-      try { await navigator.clipboard.writeText(text); alert("تم نسخ الجدول كنص (المتصفح لا يدعم نسخ الجدول المنسّق)"); }
-      catch { alert("تعذّر النسخ"); }
-    }
+    const ok = await copyHtmlTable(COLUMNS, rows.map(toRow));
+    alert(ok ? "تم نسخ الجدول (بحدود) — الصقه فى الإيميل مباشرة (Ctrl+V)" : "تعذّر النسخ");
   };
 
   return (

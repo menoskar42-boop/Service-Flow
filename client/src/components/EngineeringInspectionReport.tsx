@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, HardHat, FileSpreadsheet, ClipboardCopy, Wrench } from "lucide-react";
 import * as XLSX from "xlsx";
+import { copyHtmlTable } from "@/lib/copy-table";
 
 // «أعطال التفتيش الهندسى» — تكتب الأرقام والنظام يبني جدول إيميل «اغلاق تفتيش هندسى» بنفس الأعمدة،
 // مع زر «نسخ الجدول» للصقه فى الإيميل مباشرة (بحدود). البيانات تُجلب من بحث برقم التليفون/الشكاوى.
@@ -63,24 +64,10 @@ export function EngineeringInspectionReport() {
     XLSX.writeFile(wb, `engineering-inspection-${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
-  // نسخ الجدول كـ HTML بحدود → يتلصق فى الإيميل مباشرة بالبوردر.
+  // نسخ الجدول كـ HTML بحدود (RTL + أرقام لاتينية) → يتلصق فى الإيميل مباشرة.
   const handleCopyTable = async () => {
-    const cell = (t: any, head = false) =>
-      `<${head ? "th" : "td"} style="border:1px solid #000;padding:4px 8px;${head ? "background:#f2f2f2;" : ""}white-space:nowrap">${t ?? ""}</${head ? "th" : "td"}>`;
-    const head = `<tr>${COLUMNS.map((c) => cell(c, true)).join("")}</tr>`;
-    const body = rows.map((x) => `<tr>${toRow(x).map((c) => cell(c || "")).join("")}</tr>`).join("");
-    const html = `<table dir="rtl" border="1" style="border-collapse:collapse;font-family:Arial;font-size:13px">${head}${body}</table>`;
-    const text = [COLUMNS, ...rows.map(toRow)].map((r) => r.join("\t")).join("\n");
-    try {
-      await navigator.clipboard.write([new ClipboardItem({
-        "text/html": new Blob([html], { type: "text/html" }),
-        "text/plain": new Blob([text], { type: "text/plain" }),
-      })]);
-      alert("تم نسخ الجدول (بحدود) — الصقه فى الإيميل مباشرة (Ctrl+V)");
-    } catch {
-      try { await navigator.clipboard.writeText(text); alert("تم نسخ الجدول كنص (المتصفح لا يدعم النسخ المنسّق)"); }
-      catch { alert("تعذّر النسخ"); }
-    }
+    const ok = await copyHtmlTable(COLUMNS, rows.map(toRow));
+    alert(ok ? "تم نسخ الجدول (بحدود) — الصقه فى الإيميل مباشرة (Ctrl+V)" : "تعذّر النسخ");
   };
 
   const count = phonesText.split(/[\s,;]+/).map((s) => s.replace(/\D/g, "")).filter(Boolean).length;
