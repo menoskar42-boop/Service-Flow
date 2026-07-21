@@ -7587,8 +7587,9 @@ export async function registerRoutes(
 
       const key = (cab: any, box: any) => `${String(cab).trim()}||${String(box).trim()}`;
       const digits = (s: any) => { const n = Number(String(s).replace(/[^0-9]/g, "")); return isNaN(n) ? 0 : n; };
-      // نستبعد البكسيات اللى رقمها مش رقم صافى (مالهاش رقم مشط/ربط) — زى «٢٥مكرر» / «٦مناول»
-      const invUsable = inv.filter((b: any) => digits(b.boxNumber) > 0);
+      // الأرقام الصريحة فقط: رقم البكس لازم يكون رقم صافى (أرقام فقط) — نستبعد أى لاحقة نصية زى
+      // «٢٥مكرر» / «٦مناول» / «3مكرر» (بكس بلاحقة بياخد نفس الربط بتاع بكس رقمه صريح → تعارض).
+      const invUsable = inv.filter((b: any) => /^\d+$/.test(String(b.boxNumber).trim()));
       const invSet = new Set(invUsable.map((r: any) => key(r.cabinNumber, r.boxNumber)));
       // خطوط داخل الـ inventory فقط (نستبعد اللى بكسها مش فى الـ inventory) + قيم مشتقة لكل خط:
       //   block (رقم البلوك) = ceil(رقم البكس / 10) — كل 10 أمشاط بلوك.
