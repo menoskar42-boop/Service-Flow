@@ -217,6 +217,49 @@ export function CfmTicketsReport() {
     }
   };
 
+  // --- تنفيذ مجمّع (قياس / رفع سرعة / إيقاف) لكل خطوط التذاكر الظاهرة حسب الفلتر — سوبر أدمن فقط ---
+  const [batchBusy, setBatchBusy] = useState<null | "measure" | "raise" | "stop">(null);
+  const handleBatch = async (kind: "measure" | "raise" | "stop") => {
+    if (!filteredData.length || batchBusy) return;
+    const label = kind === "measure" ? "قياس" : kind === "raise" ? "رفع سرعة" : "إيقاف PO";
+    if (!confirm(`تنفيذ «${label}» لكل خطوط ${filteredData.length} تذكرة حسب الفلتر الحالى؟`)) return;
+    setBatchBusy(kind);
+    try {
+      const seen = new Set<string>();
+      const accounts: string[] = [];
+      for (const t of filteredData) {
+        const boxes = parseTicketBoxesClient(t.box);
+        if (!boxes.length) continue;
+        const central = t.central?.name ?? t.centralDepartment ?? "";
+        const cabin = t.cable?.number ?? "";
+        const fetchAccounts = async (useCentral: boolean) => {
+          const out: string[] = [];
+          for (const bx of boxes) {
+            const params = new URLSearchParams({ limit: "20000", box: bx });
+            if (useCentral && central) params.set("central", central);
+            if (cabin) params.set("cabin", cabin);
+            const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
+            const json = await res.json();
+            for (const r of ((json.data as any[]) ?? [])) {
+              const account = (r.accountNo ?? "").toString().trim();
+              if (account) out.push(account);
+            }
+          }
+          return out;
+        };
+        let accs = await fetchAccounts(true);
+        if (accs.length === 0 && central && cabin) accs = await fetchAccounts(false);
+        for (const a of accs) if (!seen.has(a)) { seen.add(a); accounts.push(a); }
+      }
+      if (!accounts.length) { alert("لا توجد خطوط لها أكونت فى نتائج الفلتر"); return; }
+      const ok = await dispatchSpeedTool(kind, accounts, isSuper);
+      if (ok) { alert(`تم إضافة ${accounts.length} خط لطابور «${label}» — هيتنفّذوا على جهاز التنفيذ`); return; }
+      if (kind === "measure") { alert("جهاز التنفيذ غير مفعّل — شغّله من زر «جهاز التنفيذ»"); return; }
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : {});
+    } catch { alert("تعذّر تنفيذ العملية المجمّعة"); }
+    finally { setBatchBusy(null); }
+  };
+
   // --- derived ---
   const centrals = useMemo(() => {
     if (!data) return [];
@@ -448,6 +491,23 @@ export function CfmTicketsReport() {
               <span className="text-sm text-muted-foreground">
                 {filteredData.length !== data.length ? `${filteredData.length} من ` : ""}{data.length} تذكرة
               </span>
+            )}
+            {/* تنفيذ مجمّع حسب الفلتر — سوبر أدمن فقط */}
+            {isSuper && (
+              <div className="flex items-center gap-1 border-l pl-2 mr-1">
+                <Button variant="outline" size="sm" onClick={() => handleBatch("measure")} disabled={!filteredData.length || !!batchBusy}
+                  title="قياس كل خطوط التذاكر الظاهرة حسب الفلتر" className="gap-1 text-blue-700 border-blue-300 hover:bg-blue-50">
+                  {batchBusy === "measure" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس الكل
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleBatch("raise")} disabled={!filteredData.length || !!batchBusy}
+                  title="رفع سرعة كل خطوط التذاكر الظاهرة حسب الفلتر" className="gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50">
+                  {batchBusy === "raise" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gauge className="w-4 h-4" />} رفع سرعة الكل
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleBatch("stop")} disabled={!filteredData.length || !!batchBusy}
+                  title="إيقاف PO لكل خطوط التذاكر الظاهرة حسب الفلتر" className="gap-1 text-orange-700 border-orange-300 hover:bg-orange-50">
+                  {batchBusy === "stop" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Gauge className="w-4 h-4" />} إيقاف الكل
+                </Button>
+              </div>
             )}
             <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!filteredData.length}
               className="gap-1 text-green-700 border-green-300 hover:bg-green-50">
