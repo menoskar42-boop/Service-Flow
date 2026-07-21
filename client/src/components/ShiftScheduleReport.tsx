@@ -37,6 +37,7 @@ const emptyRow = (): Row => ({ days: ["", "", "", "", "", "", ""], covers: ["", 
 export function ShiftScheduleReport() {
   const [weekStart, setWeekStart] = useState(() => fridayOf(new Date()));
   const weekISO = isoLocal(weekStart);
+  const isCurrentWeek = weekISO === isoLocal(fridayOf(new Date()));
 
   const { data, isFetching } = useQuery<WeekData>({
     queryKey: ["/api/shift-schedule", weekISO],
@@ -132,9 +133,11 @@ export function ShiftScheduleReport() {
         {/* التنقّل بين الأسابيع */}
         <div className="flex items-center gap-2">
           <Button onClick={prevWeek} variant="outline" size="sm" className="gap-1" title="الأسبوع السابق"><ChevronRight className="w-4 h-4" /></Button>
-          <div className="text-center min-w-[190px]">
+          <div className="text-center min-w-[210px]">
             <div className="text-sm font-bold">{arDate.format(days[0])} — {arDate.format(days[6])}</div>
-            <button onClick={thisWeek} className="text-[11px] text-indigo-600 hover:underline">الأسبوع الحالى</button>
+            {isCurrentWeek
+              ? <span className="text-[11px] text-muted-foreground">الأسبوع الحالى</span>
+              : <button onClick={thisWeek} className="text-[11px] text-indigo-600 hover:underline">↩ الرجوع للأسبوع الحالى</button>}
           </div>
           <Button onClick={nextWeek} variant="outline" size="sm" className="gap-1" title="الأسبوع التالى"><ChevronLeft className="w-4 h-4" /></Button>
           {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
