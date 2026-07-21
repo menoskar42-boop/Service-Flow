@@ -37,7 +37,7 @@ export function DataCompletionSection() {
   const { toast } = useToast();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const isAdmin = user?.role === ROLES.ADMIN;
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
   const [phone, setPhone] = useState("");
   const [workOrderType, setWorkOrderType] = useState("تركيب");

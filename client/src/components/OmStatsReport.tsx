@@ -51,7 +51,7 @@ export function OmStatsReport({ yearFilter, title }: { yearFilter?: "current" | 
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const isAdmin = user?.role === ROLES.ADMIN;
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
   const qs = yearFilter ? `?yearFilter=${yearFilter}` : "";
   const reportTitle = title ?? "إحصائية متعذرات OM";
 

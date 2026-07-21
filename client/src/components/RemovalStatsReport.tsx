@@ -90,7 +90,7 @@ export function RemovalStatsReport() {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const isAdmin = user?.role === ROLES.ADMIN;
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
   // قائمة أسماء الفنيين لاختيار فنى الإغلاق يدوياً (تُحمَّل عند فتح حوار التجاوزات)
   const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({

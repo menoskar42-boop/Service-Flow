@@ -209,7 +209,7 @@ export function WorkOrdersReport() {
           </Button>
 
           {/* Upload — admin only */}
-          {user?.role === ROLES.ADMIN && (
+          {(user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN) && (
             <>
               <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
               <Button

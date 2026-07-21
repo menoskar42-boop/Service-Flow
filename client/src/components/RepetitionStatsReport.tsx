@@ -80,7 +80,7 @@ export function RepetitionStatsReport() {
   const [editTechDraft, setEditTechDraft]     = useState("");
   const [savingTech, setSavingTech]           = useState(false);
   const { user } = useAuth();
-  const canEditTech = user?.role === ROLES.ADMIN;
+  const canEditTech = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
   // قائمة أسماء الفنيين لاختيار فنى الإغلاق من دروب ليست (بدل الكتابة اليدوية)
   const { data: techNamesList } = useQuery<{ workerCode: string; techName: string }[]>({

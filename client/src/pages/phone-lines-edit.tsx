@@ -73,8 +73,9 @@ export default function PhoneLinesEditPage() {
 
   // الشئون الخارجية تشوف وتعمل زى الفنى بالظبط فى صفحة البيانات الفنية
   const isTechLike = user?.role === ROLES.TECH || user?.role === ROLES.EXTERNAL;
-  const canEdit = isTechLike || user?.role === ROLES.ADMIN;
-  const canRollback = isTechLike || user?.role === ROLES.ADMIN;
+  const isAdminLike = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
+  const canEdit = isTechLike || isAdminLike;
+  const canRollback = isTechLike || isAdminLike;
   const canConfirm = user?.role === ROLES.DATA_MANAGER;
 
   // --- Phone lines search ---
@@ -532,7 +533,7 @@ export default function PhoneLinesEditPage() {
                     <span>{format(new Date(edit.editedAt), "yyyy-MM-dd HH:mm")}</span>
                   </div>
                   <div className="flex gap-2 pt-1">
-                    {canRollback && edit.status === "pending" && (user?.role === ROLES.ADMIN || edit.editedById === user?.id) && (
+                    {canRollback && edit.status === "pending" && (isAdminLike || edit.editedById === user?.id) && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -606,7 +607,7 @@ export default function PhoneLinesEditPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          {canRollback && edit.status === "pending" && (user?.role === ROLES.ADMIN || edit.editedById === user?.id) && (
+                          {canRollback && edit.status === "pending" && (isAdminLike || edit.editedById === user?.id) && (
                             <Button
                               variant="outline"
                               size="sm"
