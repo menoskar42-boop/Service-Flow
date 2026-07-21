@@ -621,8 +621,9 @@ export const execJobs = pgTable("exec_jobs", {
   claimedAt: timestamp("claimed_at"),
   doneAt: timestamp("done_at"),
   result: text("result"), // نتيجة التنفيذ للقياس: done | tab_closed | timeout (خلص / اتقفل قبل ما يخلص / علّق)
-  priority: integer("priority").notNull().default(0), // 1 = طلب عاجل صغير (يقطع الباتش الكبير) | 0 = باتش عادى
+  priority: integer("priority").notNull().default(0), // 2 = ≤3 خطوط (أعلى) | 1 = تقرير محتاجة رفع سرعة | 0 = باتش كبير عادى
   batchId: text("batch_id"), // معرّف الباتش: كل مهام الباتش الواحد (المقسّم لخطوط) ليها نفس القيمة — لتتبّع «تم X من N»
+  queueOrder: bigint("queue_order", { mode: "number" }).notNull().default(0), // ترتيب يدوى داخل نفس الأولوية (السوبر أدمن)
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

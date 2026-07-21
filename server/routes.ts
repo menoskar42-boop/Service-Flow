@@ -1334,7 +1334,12 @@ export async function registerRoutes(
       // يتخطّى مهام الباتش؛ باتش كبير (>3) = عادى (0). المنفّذ يبعت رقم-رقم حسب الأولوية، ويخلّص كل
       // خط كامل قبل اللى بعده (مفيش تداخل)، وكل خط فى نفس النافذة (DZS بيقيس خط واحد مفيش chaining).
       // batchId يجمّع كل مهام الطلب الواحد → لتتبّع «تم X من N».
-      const priority = uniqAccs.length <= 3 ? 1 : 0;
+      // أولوية بثلاث درجات:
+      //   2 = طلب صغير (≤3 خطوط) من أى تقرير → أعلى أولوية دايماً.
+      //   1 = خطوط من تقرير «محتاجة رفع سرعة» (قياس/رفع/إيقاف) حتى لو أكثر من 3.
+      //   0 = باتش كبير (>3) من أى تقرير آخر → أقل أولوية، والسوبر أدمن يتحكم فى ترتيبه (queue_order).
+      const isNeedsSpeed = /محتاجة رفع سرعة/.test(String(note || ""));
+      const priority = uniqAccs.length <= 3 ? 2 : (isNeedsSpeed ? 1 : 0);
       const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       const params: any[] = [type, user, note || null, priority, batchId];
       const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4, $5)`; }).join(",");
@@ -1349,7 +1354,11 @@ export async function registerRoutes(
     try {
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
-         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' ORDER BY priority DESC, created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED)
+         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending'
+                     ORDER BY priority DESC,
+                              CASE WHEN queue_order > 0 THEN queue_order ELSE 9223372036854775807 END ASC,
+                              created_at, id
+                     LIMIT 1 FOR UPDATE SKIP LOCKED)
          RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority`);
       res.json(rows[0] || null);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -1422,6 +1431,36 @@ export async function registerRoutes(
       const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM exec_jobs WHERE status IN ('pending','claimed')`);
       res.json({ pending: rows[0]?.n ?? 0 });
     } catch { res.json({ pending: 0 }); }
+  });
+
+  // باتشات الأولوية المتأخرة (>3 خطوط من غير تقرير محتاجة رفع سرعة) المنتظرة — للسوبر أدمن يرتّبها.
+  // بترجع بترتيب التنفيذ الفعلى (queue_order اليدوى أولاً ثم الأقدم) مع تقدّم كل باتش.
+  app.get("/api/exec-queue/reorderable", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      await expireOrphanedExecJobs();
+      const { rows } = await pool.query(
+        `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
+                COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
+                (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt", MAX(queue_order) AS "queueOrder"
+         FROM exec_jobs
+         WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority = 0 AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
+         GROUP BY batch_id
+         ORDER BY CASE WHEN MAX(queue_order) > 0 THEN MAX(queue_order) ELSE 9223372036854775807 END ASC, MIN(created_at) ASC, batch_id`);
+      res.json({ data: rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // إعادة ترتيب باتشات الأولوية المتأخرة: السوبر أدمن يبعت قائمة batchIds بالترتيب المطلوب.
+  // بنسند queue_order = 1..N للباتشات المرتّبة (لا يؤثر على أولوية ≤3 خطوط أو محتاجة رفع سرعة).
+  app.post("/api/exec-queue/reorder", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const ids = Array.isArray(req.body?.batchIds) ? req.body.batchIds.map((x: any) => String(x)).filter(Boolean) : [];
+      if (!ids.length) return res.status(400).json({ message: "لا توجد باتشات" });
+      for (let i = 0; i < ids.length; i++) {
+        await pool.query(`UPDATE exec_jobs SET queue_order = $1 WHERE batch_id = $2 AND status IN ('pending','claimed') AND priority = 0`, [i + 1, ids[i]]);
+      }
+      res.json({ ok: true, count: ids.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // إعادة ضبط المهام اليتيمة: يُستدعى عند تفعيل جهاز التنفيذ — أى مهمة claimed كانت شغّالة لحظة

@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, RefreshCw, FileSpreadsheet, FileText, ListChecks } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { QueueReorderPanel } from "@/components/QueueReorderPanel";
 
 interface ExecJobRow {
   id: number;
@@ -147,7 +148,9 @@ export function ExecJobsReport() {
   };
 
   return (
-    <Card className="p-4 space-y-4" dir="rtl">
+    <div className="space-y-4">
+      <QueueReorderPanel />
+      <Card className="p-4 space-y-4" dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold flex items-center gap-2"><ListChecks className="w-5 h-5 text-indigo-600" /> تقرير معاملات التنفيذ (القياس/رفع السرعة/الإيقاف)</h2>
@@ -306,6 +309,7 @@ export function ExecJobsReport() {
           </TableBody>
         </Table>
       </div>
-    </Card>
+      </Card>
+    </div>
   );
 }

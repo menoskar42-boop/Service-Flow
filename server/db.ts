@@ -888,6 +888,8 @@ export async function ensureSchema() {
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS result text;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS priority integer NOT NULL DEFAULT 0;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS batch_id text;
+    -- ترتيب يدوى داخل نفس الأولوية (السوبر أدمن يرتّب باتشات الأولوية المتأخرة). 0 = افتراضى (الأقدم).
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS queue_order bigint NOT NULL DEFAULT 0;
   `);
 
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
