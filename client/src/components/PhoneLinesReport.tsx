@@ -83,6 +83,7 @@ export function PhoneLinesReport() {
   const [box, setBox] = useState("");
   const [phoneFrom, setPhoneFrom] = useState(""); // نطاق: من رقم
   const [phoneTo, setPhoneTo] = useState("");     // نطاق: إلى رقم
+  const [search, setSearch] = useState("");        // بحث نصّى فى كل الأعمدة
   const [page, setPage] = useState(1);
 
   const { data: filterOptions } = useQuery({
@@ -95,7 +96,7 @@ export function PhoneLinesReport() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines", central, cabin, box, phoneFrom, phoneTo, page],
+    queryKey: ["/api/phone-lines", central, cabin, box, phoneFrom, phoneTo, search, page],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
@@ -103,6 +104,7 @@ export function PhoneLinesReport() {
       if (box) params.set("box", box);
       if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
       if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
+      if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
@@ -137,6 +139,7 @@ export function PhoneLinesReport() {
       if (box) params.set("box", box);
       if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
       if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
+      if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -176,6 +179,7 @@ export function PhoneLinesReport() {
       if (box) params.set("box", box);
       if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
       if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
+      if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
@@ -204,6 +208,7 @@ export function PhoneLinesReport() {
     if (box) params.set("box", box);
     if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
     if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
+      if (search.trim()) params.set("search", search.trim());
     const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
@@ -245,6 +250,7 @@ export function PhoneLinesReport() {
     if (box) params.set("box", box);
     if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
     if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
+      if (search.trim()) params.set("search", search.trim());
     const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
     const json = await res.json();
     const all = json.data as PhoneLine[];
@@ -300,6 +306,15 @@ export function PhoneLinesReport() {
               searchPlaceholder="ابحث في البكسيات..."
               disabled={!cabin}
               className="w-full sm:w-36 text-sm"
+            />
+
+            {/* بحث نصّى فى كل الأعمدة (تليفون/أكونت/اسم/عنوان/سنترال/كابينة/بكس/الحقول الفنية) */}
+            <Input
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              placeholder="بحث فى كل الأعمدة…"
+              className="w-full sm:w-56 text-sm h-9"
+              dir="rtl"
             />
 
             {/* نطاق أرقام: من رقم … إلى رقم (يُطابَق على الرقم القصير بدون 88) */}

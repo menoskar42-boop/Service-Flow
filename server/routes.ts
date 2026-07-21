@@ -2496,7 +2496,23 @@ export async function registerRoutes(
     if (q) {
       params.push(`%${q}%`);
       const p = `$${params.length}`;
-      conds.push(`(LOWER(k.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
+      // بحث نصّى فى كل الأعمدة الظاهرة: التليفون/الأكونت/الاسم/العنوان/السنترال/الكابينة/البكس
+      // + كل الحقول الفنية (IDU/ODU/DP/البلوكات/الفايبر/البورت...). الأكونت عبر EXISTS (مش join
+      // فى الـ count). كله ::text عشان أى عمود رقمى مايكسّرش LOWER.
+      conds.push(`(
+        LOWER(COALESCE(k.full_phone::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.tel_no::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.central::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabin_number::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.box_number::text,'')) LIKE ${p} OR LOWER(COALESCE(si2.sub_name::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(si2.sub_add::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.dp_terminal::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.idu_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.odu_no::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.primary_block_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabinet_in::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.sec_block_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabinet_out::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.fiber_block::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.fiber_out::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pl.port::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.len::text,'')) LIKE ${p} OR
+        LOWER(COALESCE(pp.frame::text,'')) LIKE ${p} OR
+        EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = k.full_phone AND LOWER(COALESCE(c.account_no::text,'')) LIKE ${p}) OR
+        EXISTS (SELECT 1 FROM line_accounts la WHERE la.full_phone = k.full_phone AND LOWER(COALESCE(la.account_no::text,'')) LIKE ${p})
+      )`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // المرساة = اتحاد أرقام البيانات الفنية (phone_lines) وأرقام المنافذ (phone_ports)،
