@@ -7467,6 +7467,8 @@ export async function registerRoutes(
           msanCode: first.msanCode || "",
           secBlockNo: mode(ls.map((x) => x.secBlockNo)),
           dpTerminal: mode(ls.map((x) => x.dpTerminal)),
+          // رقم المشط = ceil(الخارج بتاع الكابينة / 10) — كل مشط 10 خطوط (SEC 345 → مشط 35)
+          comb: mode(ls.map((x) => { const n = Number(String(x.cabinetOut).replace(/[^0-9]/g, "")); return n > 0 ? String(Math.ceil(n / 10)) : ""; })),
           capacity: BOX_CAPACITY,
           occupancy: occ,
           linkFrom: link.min,

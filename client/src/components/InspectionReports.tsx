@@ -4,7 +4,8 @@ import ExcelJS from "exceljs";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, ClipboardList, Search } from "lucide-react";
+import { Loader2, FileSpreadsheet, ClipboardList, Search, FileText } from "lucide-react";
+import { printVisualInspection, printTechnicalData, printCentralManagerLetter } from "@/lib/inspection-print";
 
 // «تقارير التفتيش» — فلتر واحد (سنترال + كابينة/كباين) يغذّى كل التقارير:
 //   • تصدير Excel (شيت القياسات + البيانات + الفحص الظاهرى) — كل الخانات ما عدا خانات العزل.
@@ -18,7 +19,7 @@ interface LineRow {
 }
 interface BoxRow {
   central: string; cabinNumber: string; boxNumber: string; msanCode: string;
-  secBlockNo: string; dpTerminal: string; capacity: number; occupancy: number;
+  secBlockNo: string; dpTerminal: string; comb: string; capacity: number; occupancy: number;
   linkFrom: string; linkTo: string;
 }
 interface CabinetRow {
@@ -194,6 +195,15 @@ export function InspectionReports() {
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleExportExcel} variant="outline" size="sm" disabled={!central || (!lines.length && !boxes.length)} className="gap-1 text-green-700 border-green-200">
           <FileSpreadsheet className="w-4 h-4" /> تصدير Excel (القياسات + البيانات + الظاهرى)
+        </Button>
+        <Button onClick={() => printVisualInspection(central, boxes)} variant="outline" size="sm" disabled={!boxes.length} className="gap-1 text-red-700 border-red-200">
+          <FileText className="w-4 h-4" /> محضر الفحص الظاهرى (PDF)
+        </Button>
+        <Button onClick={() => printTechnicalData(central, boxes)} variant="outline" size="sm" disabled={!boxes.length} className="gap-1 text-red-700 border-red-200">
+          <FileText className="w-4 h-4" /> محضر البيانات الفنية (PDF)
+        </Button>
+        <Button onClick={() => printCentralManagerLetter(central, data?.cabinets ?? [])} variant="outline" size="sm" disabled={!(data?.cabinets?.length)} className="gap-1 text-red-700 border-red-200">
+          <FileText className="w-4 h-4" /> خطاب مدير السنترال (PDF)
         </Button>
         {isFetching && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" /> جارِ التحميل...</span>}
       </div>
