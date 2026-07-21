@@ -9,7 +9,9 @@ import { ChevronRight, ChevronLeft, Loader2, CalendarDays, Eye } from "lucide-re
 // وكل خلية دروب ليست (عمل / راحه / إجازة / بدل راحه). الفنى يشوف بدون تعديل؛
 // الأدمن/السوبر أدمن/الشئون الخارجية يعدّلون. الحفظ تلقائى لكل صف فنى.
 
-const OPTIONS = ["", "عمل", "راحه", "إجازة", "بدل راحه"];
+const OPTIONS = ["عمل", "راحه", "إجازة", "بدل راحه"];   // الافتراضى: عمل
+// الحالات التى تتطلب إدخال «الفنى القائم بالعمل» بدلاً من صاحبها
+const COVER_STATES = ["راحه", "إجازة", "بدل راحه"];
 const OPT_STYLE: Record<string, string> = {
   "عمل": "text-green-700 bg-green-50",
   "راحه": "text-amber-700 bg-amber-50",
@@ -90,7 +92,7 @@ export function ShiftScheduleReport() {
       const row = { ...(prev[tech] || emptyRow()) };
       const dd = [...row.days]; dd[i] = val;
       const cc = [...row.covers];
-      if (val !== "راحه") cc[i] = "";      // القائم بالعمل مرتبط بالراحة فقط
+      if (!COVER_STATES.includes(val)) cc[i] = "";   // رجوعه لـ«عمل» يحذف الفنى القائم بالعمل
       const nr = { ...row, days: dd, covers: cc };
       save(tech, nr);
       return { ...prev, [tech]: nr };
@@ -166,18 +168,18 @@ export function ShiftScheduleReport() {
                     <TableCell key={i} className="text-center p-1 align-top">
                       {canEdit ? (
                         <select
-                          value={val || ""}
+                          value={val || "عمل"}
                           onChange={(e) => setDay(t, i, e.target.value)}
-                          className={`w-full text-xs rounded border px-1 py-1.5 text-center cursor-pointer ${OPT_STYLE[val] || "bg-background"}`}
+                          className={`w-full text-xs rounded border px-1 py-1.5 text-center cursor-pointer ${OPT_STYLE[val || "عمل"] || "bg-background"}`}
                           dir="rtl"
                         >
-                          {OPTIONS.map((o) => <option key={o} value={o}>{o || "—"}</option>)}
+                          {OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       ) : (
-                        <span className={`inline-block w-full text-xs rounded px-1 py-1.5 ${OPT_STYLE[val] || ""}`}>{val || "—"}</span>
+                        <span className={`inline-block w-full text-xs rounded px-1 py-1.5 ${OPT_STYLE[val || "عمل"] || ""}`}>{val || "عمل"}</span>
                       )}
-                      {/* عند «راحه»: الفنى القائم بالعمل بدلاً منه */}
-                      {val === "راحه" && (
+                      {/* عند راحه/إجازة/بدل راحه: الفنى القائم بالعمل بدلاً منه */}
+                      {COVER_STATES.includes(val) && (
                         canEdit ? (
                           <select
                             value={row.covers[i] || ""}
