@@ -54,6 +54,8 @@ interface Beyond24Row {
   lineBox: string | null;
   msanCode: string | null;
   frame: string | null;
+  subName: string | null;
+  subAdd: string | null;
 }
 
 interface StatsData {
@@ -335,6 +337,8 @@ export function RemovalStatsReport() {
     const ws = XLSX.utils.json_to_sheet(beyond24Data.map((r, i) => ({
       "#": i + 1,
       "رقم الشكوى": r.complainNo,
+      "اسم العميل": r.subName ?? "",
+      "العنوان": r.subAdd ?? "",
       "رقم التليفون": r.phoneNumber,
       "السنترال": r.centralName,
       "الكابينه (430D)": r.cabinetNo,
@@ -614,6 +618,8 @@ export function RemovalStatsReport() {
                     <TableHead className="text-white font-bold text-right">#</TableHead>
                     <TableHead className="text-white font-bold text-right">رقم الشكوى</TableHead>
                     <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
+                    <TableHead className="text-white font-bold text-right">اسم العميل</TableHead>
+                    <TableHead className="text-white font-bold text-right">العنوان</TableHead>
                     <TableHead className="text-white font-bold text-right">السنترال</TableHead>
                     <TableHead className="text-white font-bold text-right">الكابينه</TableHead>
                     <TableHead className="text-white font-bold text-right">البكس</TableHead>
@@ -633,6 +639,8 @@ export function RemovalStatsReport() {
                       <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="font-mono text-xs">{r.complainNo}</TableCell>
                       <TableCell className="font-bold">{r.phoneNumber}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.subName ?? "—"}</TableCell>
+                      <TableCell className="max-w-[220px] truncate" title={r.subAdd ?? ""}>{r.subAdd ?? "—"}</TableCell>
                       <TableCell>{r.centralName}</TableCell>
                       <TableCell>{r.lineCabin ?? r.cabinetNo}</TableCell>
                       <TableCell>{r.lineBox ?? "—"}</TableCell>
