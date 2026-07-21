@@ -8458,7 +8458,16 @@ export async function registerRoutes(
              WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "msanCode",
           (SELECT pp.frame     FROM phone_lines pl
              JOIN phone_ports pp ON pp.phone_number = pl.full_phone
-             WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "frame"
+             WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "frame",
+          -- اسم وعنوان العميل من بيانات المشتركين (أحدث بيان)
+          (SELECT si.sub_name FROM line_subscriber_info si
+             WHERE si.phone_number = r.phone_number
+                OR regexp_replace(COALESCE(si.phone_number,''), '^88', '') = r.phone_number
+             LIMIT 1)                                                                   AS "subName",
+          (SELECT si.sub_add FROM line_subscriber_info si
+             WHERE si.phone_number = r.phone_number
+                OR regexp_replace(COALESCE(si.phone_number,''), '^88', '') = r.phone_number
+             LIMIT 1)                                                                   AS "subAdd"
         FROM repeated r
         ) d
         ) e
