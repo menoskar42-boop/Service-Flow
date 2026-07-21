@@ -7496,6 +7496,54 @@ export async function registerRoutes(
     }
   });
 
+  // === جدول ورديات الفنيين الأسبوعى (shift_schedules) ===
+  // المحرّرون: الأدمن/السوبر أدمن/الشئون الخارجية. الفنى يشوف فقط بدون تعديل.
+  const canEditShifts = (role: string) => hasAdminAccess(role) || role === ROLES.EXTERNAL;
+
+  // GET /api/shift-schedule?weekStart=YYYY-MM-DD → قائمة الفنيين + قيم الأسبوع
+  app.get("/api/shift-schedule", requireAuth, async (req: any, res) => {
+    try {
+      const weekStart = String((req.query.weekStart as string) || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return res.status(400).json({ message: "weekStart غير صحيح" });
+      const { rows: tnRows } = await pool.query(
+        `SELECT DISTINCT tech_name FROM technician_names WHERE COALESCE(tech_name,'') <> ''`);
+      const { rows: schedRows } = await pool.query(
+        `SELECT tech_name, days, covers, notes FROM shift_schedules WHERE week_start = $1`, [weekStart]);
+      const nameSet = new Set<string>();
+      for (const r of tnRows) nameSet.add(r.tech_name);
+      for (const r of schedRows) nameSet.add(r.tech_name);
+      const techs = Array.from(nameSet).sort((a, b) => a.localeCompare(b, "ar"));
+      const map: Record<string, { days: string[]; covers: string[]; notes: string }> = {};
+      for (const r of schedRows) map[r.tech_name] = {
+        days: Array.isArray(r.days) ? r.days : [],
+        covers: Array.isArray(r.covers) ? r.covers : [],
+        notes: r.notes || "",
+      };
+      res.json({ weekStart, techs, rows: map, canEdit: canEditShifts(req.user.role) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PUT /api/shift-schedule → حفظ صف فنى كامل (7 أيام + ملاحظات) — للمحرّرين فقط
+  app.put("/api/shift-schedule", requireAuth, async (req: any, res) => {
+    if (!canEditShifts(req.user.role)) return res.status(403).json({ message: "غير مسموح بالتعديل" });
+    try {
+      const { weekStart, techName, days, covers, notes } = req.body || {};
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(weekStart || "")) || !techName)
+        return res.status(400).json({ message: "بيانات ناقصة" });
+      const to7 = (a: any) => { const arr = Array.isArray(a) ? a.slice(0, 7).map((v: any) => String(v ?? "")) : []; while (arr.length < 7) arr.push(""); return arr; };
+      const dArr = to7(days);
+      const cArr = to7(covers);
+      await pool.query(
+        `INSERT INTO shift_schedules (week_start, tech_name, days, covers, notes, updated_by)
+         VALUES ($1,$2,$3::jsonb,$4::jsonb,$5,$6)
+         ON CONFLICT (week_start, tech_name)
+         DO UPDATE SET days = $3::jsonb, covers = $4::jsonb, notes = $5, updated_at = now(), updated_by = $6`,
+        [weekStart, techName, JSON.stringify(dArr), JSON.stringify(cArr), notes ?? null, String(req.user.username || "")],
+      );
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — يستخدم queryWfmReport.
   const wfmReportHandler = (typesLc: string[], regularized: boolean) =>
     async (req: any, res: any) => {

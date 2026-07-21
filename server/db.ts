@@ -743,6 +743,22 @@ export async function ensureSchema() {
     )
   `);
 
+  // shift_schedules — جدول ورديات الفنيين الأسبوعى (صف لكل أسبوع/فنى، days = 7 قيم jsonb)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS shift_schedules (
+      id serial PRIMARY KEY,
+      week_start date NOT NULL,
+      tech_name text NOT NULL,
+      days jsonb NOT NULL DEFAULT '[]'::jsonb,
+      covers jsonb NOT NULL DEFAULT '[]'::jsonb,
+      notes text,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      updated_by text,
+      UNIQUE (week_start, tech_name)
+    )
+  `);
+  await pool.query(`ALTER TABLE shift_schedules ADD COLUMN IF NOT EXISTS covers jsonb NOT NULL DEFAULT '[]'::jsonb`);
+
   // line_mobiles — أرقام موبايل مُدخَلة يدوياً لكل خط
   await pool.query(`
     CREATE TABLE IF NOT EXISTS line_mobiles (

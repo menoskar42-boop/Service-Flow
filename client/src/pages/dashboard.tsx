@@ -54,6 +54,7 @@ import { EngineeringInspectionReport } from "@/components/EngineeringInspectionR
 import { MajorFaultsReport } from "@/components/MajorFaultsReport";
 import { ClosedPortCabinetsReport } from "@/components/ClosedPortCabinetsReport";
 import { InspectionReports } from "@/components/InspectionReports";
+import { ShiftScheduleReport } from "@/components/ShiftScheduleReport";
 import { PortChangeReport } from "@/components/PortChangeReport";
 import { ManualRegularizedFaultsRangeReport } from "@/components/ManualRegularizedFaultsRangeReport";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
@@ -63,12 +64,12 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { canAccessCFM } from "@shared/roles-access";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable, Server } from "lucide-react";
+import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable, Server, CalendarDays } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -183,6 +184,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
+    // جدول الورديات — للكل ما عدا المبيعات وأدمن المبيعات ومسئول البيانات؛ الفنى يشوف بدون تعديل
+    label: "جدول الورديات",
+    icon: CalendarDays,
+    items: [
+      { id: "shift-schedule", label: "جدول الورديات" },
+    ],
+  },
+  {
     label: "أوامر الشغل",
     icon: FileText,
     items: [
@@ -231,8 +240,8 @@ export default function Dashboard() {
   const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech"];
-  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "أوامر الشغل"];
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech", "shift-schedule"];
+  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "أوامر الشغل", "جدول الورديات"];
   // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
   const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];
   const SALES_ADMIN_ALLOWED_GROUPS = ["متعذرات OM"];
@@ -532,6 +541,7 @@ export default function Dashboard() {
               {reportTab === "major-faults"      && <MajorFaultsReport />}
               {reportTab === "closed-port-cabinets" && <ClosedPortCabinetsReport />}
               {reportTab === "inspection-reports" && <InspectionReports />}
+              {reportTab === "shift-schedule" && <ShiftScheduleReport />}
               {reportTab === "port-change"       && <PortChangeReport />}
               {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
               {reportTab === "regularized-faults-range" && <RegularizedFaultsRangeReport />}

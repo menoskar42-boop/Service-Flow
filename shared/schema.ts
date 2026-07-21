@@ -701,6 +701,21 @@ export const appState = pgTable("app_state", {
 });
 export type AppState = typeof appState.$inferSelect;
 
+// shift_schedules — جدول ورديات الفنيين الأسبوعى. صف لكل (أسبوع، فنى):
+// week_start = الجمعة (بداية الأسبوع)، days = 7 قيم (جمعة→خميس): عمل/راحه/إجازة/بدل راحه.
+export const shiftSchedules = pgTable("shift_schedules", {
+  id: serial("id").primaryKey(),
+  weekStart: date("week_start").notNull(),
+  techName: text("tech_name").notNull(),
+  days: jsonb("days").notNull().default([]),
+  // اسم الفنى القائم بالعمل بدلاً من صاحب الراحة (7 قيم — تُملأ فى أيام «راحه» فقط)
+  covers: jsonb("covers").notNull().default([]),
+  notes: text("notes"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedBy: text("updated_by"),
+}, (t) => ({ uq: unique().on(t.weekStart, t.techName) }));
+export type ShiftSchedule = typeof shiftSchedules.$inferSelect;
+
 // ─── Ticket snapshot tables (mirror ticket_queue + onu) ─────────────────────
 // Defined here so drizzle-kit treats them as managed and never drops them on
 // publish. Column types mirror the raw SQL in server/db.ts (timestamptz).
