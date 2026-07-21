@@ -1,52 +1,77 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import ExcelJS from "exceljs";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, ClipboardList, Search, FileText } from "lucide-react";
+import { Loader2, FileSpreadsheet, ClipboardList, Search, FileText, Upload } from "lucide-react";
 import { printVisualInspection, printTechnicalData, printCentralManagerLetter } from "@/lib/inspection-print";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 
-// «تقارير التفتيش» — فلتر واحد (سنترال + كابينة/كباين) يغذّى كل التقارير:
-//   • تصدير Excel (شيت القياسات + البيانات + الفحص الظاهرى) — كل الخانات ما عدا خانات العزل.
-//   • محاضر PDF مطابقة للنماذج الرسمية (تُضاف لاحقاً).
-// مصدر البيانات: /api/reports/inspection (phone_lines + cabinet_technicians).
+// «تقارير التفتيش» — فلتر واحد (سنترال + كابينة/كباين) يغذّى كل التقارير.
+// مصدر البكسيات: dp_inventory (Network Inventory) — كل DP = بكس (حتى الفاضى)؛ المشغولية من phone_lines.
 
 interface LineRow {
   central: string; cabinNumber: string; boxNumber: string; dpTerminal: string;
   secBlockNo: string; cabinetOut: string; cabinetIn: string; primaryBlockNo: string;
-  telNo: string; msanCode: string | null;
+  telNo: string; msanCode: string | null; block: string; terminal: string;
 }
 interface BoxRow {
   central: string; cabinNumber: string; boxNumber: string; msanCode: string;
-  secBlockNo: string; dpTerminal: string; comb: string; capacity: number; occupancy: number;
+  block: string; comb: string; combAbs: string; capacity: number; occupancy: number;
   linkFrom: string; linkTo: string;
 }
 interface CabinetRow {
-  central: string; cabinNumber: string; msanCode: string; boxCount: number; closedBoxes: number;
+  central: string; cabinNumber: string; msanCode: string; boxCount: number; closedBoxes: number; emptyBoxes: number;
 }
 interface InspectionData { lines: LineRow[]; boxes: BoxRow[]; cabinets: CabinetRow[]; }
-interface Options { centrals: string[]; copperCabins: Record<string, string[]>; }
+interface Options { centrals: string[]; cabinsByCentral: Record<string, string[]> }
 
 export function InspectionReports() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
+  const qc = useQueryClient();
   const [central, setCentral] = useState("");
   const [cabins, setCabins] = useState<string[]>([]);
   const [cabinSearch, setCabinSearch] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const { data: opts } = useQuery<Options>({
-    queryKey: ["/api/reports/cabinet-score-avg/options"],
+    queryKey: ["/api/reports/inspection/options"],
     queryFn: async () => {
-      const r = await fetch("/api/reports/cabinet-score-avg/options", { credentials: "include" });
+      const r = await fetch("/api/reports/inspection/options", { credentials: "include" });
       if (!r.ok) throw new Error("فشل تحميل الفلاتر");
       return r.json();
     },
   });
 
   const cabinOptions = useMemo(() => {
-    const list = (central && opts?.copperCabins?.[central]) || [];
+    const list = (central && opts?.cabinsByCentral?.[central]) || [];
     const q = cabinSearch.trim();
     return q ? list.filter((c) => c.includes(q)) : list;
   }, [opts, central, cabinSearch]);
+
+  // استيراد قائمة البكسيات (DP) باللصق من Network Inventory (أدمن)
+  const handleImport = async () => {
+    setImporting(true);
+    try {
+      const r = await fetch("/api/dp-inventory/import", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: importText }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || "فشل الاستيراد");
+      const per = Object.entries(d.perCentral || {}).map(([c, n]) => `${c}: ${n}`).join("\n");
+      alert(`تم استيراد ${d.total} بكس:\n${per}`);
+      setImportText(""); setImportOpen(false);
+      qc.invalidateQueries({ queryKey: ["/api/reports/inspection/options"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/inspection"] });
+    } catch (e: any) { alert(e.message || "تعذّر الاستيراد"); } finally { setImporting(false); }
+  };
 
   const { data, isFetching } = useQuery<InspectionData>({
     queryKey: ["/api/reports/inspection", central, cabins.join(",")],
@@ -101,20 +126,20 @@ export function InspectionReports() {
       ws.columns.forEach((col, i) => { col.width = headers[i]?.[1] ?? 14; });
     };
 
-    // شيت القياسات (لكل خط) — عمودا العزل يُتركان فارغين
+    // شيت القياسات (لكل خط) — عمودا العزل يُتركان فارغين. Sec Block No = رقم البلوك المشتق.
     addSheet("القياسات",
       [["Cabinet No", 14], ["DP No", 12], ["Sec Block No", 14], ["Cabinet Out", 14], ["قياس العزل B", 14], ["قياس العزل A", 14]],
-      lines.map((l) => [l.cabinNumber, l.boxNumber, l.secBlockNo, l.cabinetOut, "", ""]),
+      lines.map((l) => [l.cabinNumber, l.boxNumber, l.block, l.cabinetOut, "", ""]),
     );
-    // شيت البيانات (لكل خط)
+    // شيت البيانات (لكل خط) — Dp Terminal = الترمنال داخل المشط المشتق.
     addSheet("البيانات",
       [["Cabinet No", 14], ["Dp No", 12], ["Dp Terminal", 14], ["Sec Block No", 14], ["Cabinet Out", 14], ["Tel No", 16], ["دقة البيانات", 14]],
-      lines.map((l) => [l.cabinNumber, l.boxNumber, l.dpTerminal, l.secBlockNo, l.cabinetOut, l.telNo, ""]),
+      lines.map((l) => [l.cabinNumber, l.boxNumber, l.terminal, l.block, l.cabinetOut, l.telNo, ""]),
     );
-    // شيت الفحص الظاهرى (لكل بكس)
+    // شيت الفحص الظاهرى (لكل بكس) — رقم البلوك المشتق + الربط المشتق من رقم البكس والسعة.
     addSheet("ظاهري",
       [["رقم الكابينة", 14], ["رقم البكس", 12], ["السعة", 10], ["المشغولية", 12], ["رقم البلوك", 14], ["الربط في الكابينة (من)", 16], ["الربط في الكابينة (الي)", 16], ["عنوان البكس", 18]],
-      boxes.map((b) => [b.cabinNumber, b.boxNumber, b.capacity, b.occupancy, b.secBlockNo, b.linkFrom, b.linkTo, ""]),
+      boxes.map((b) => [b.cabinNumber, b.boxNumber, b.capacity, b.occupancy, b.block, b.linkFrom, b.linkTo, ""]),
     );
 
     const buf = await wb.xlsx.writeBuffer();
@@ -131,8 +156,35 @@ export function InspectionReports() {
         <h2 className="text-lg font-bold flex items-center gap-2">
           <ClipboardList className="w-5 h-5 text-amber-600" /> تقارير التفتيش
         </h2>
-        <p className="text-xs text-muted-foreground">اختر السنترال والكابينة/الكباين، ثم صدّر النماذج المطلوبة.</p>
+        <p className="text-xs text-muted-foreground">اختر السنترال والكابينة/الكباين، ثم صدّر النماذج المطلوبة. البكسيات مصدرها Network Inventory.</p>
       </div>
+
+      {/* استيراد قائمة البكسيات (DP) باللصق من Network Inventory — أدمن فقط */}
+      {isAdmin && (
+        <div className="rounded-md border border-dashed p-2 bg-muted/10">
+          <button type="button" onClick={() => setImportOpen((v) => !v)} className="text-xs text-indigo-700 hover:underline flex items-center gap-1">
+            <Upload className="w-3.5 h-3.5" /> استيراد بكسيات (Network Inventory) باللصق
+          </button>
+          {importOpen && (
+            <div className="mt-2 grid gap-2">
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                rows={5}
+                dir="ltr"
+                placeholder={"الصق جدول DP من Network Inventory هنا (Mdf Code / Cabinet No / DP No / … لكل السنترالات المطلوبة)"}
+                className="w-full rounded-md border px-3 py-2 text-xs bg-background font-mono resize-y"
+              />
+              <div className="flex items-center gap-2">
+                <Button onClick={handleImport} size="sm" disabled={importing || !importText.trim()} className="gap-1">
+                  {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} استيراد
+                </Button>
+                <span className="text-[11px] text-muted-foreground">يستبدل بكسيات كل سنترال موجود فى اللصق. GHN=الغنايم · NGO=نجع العمدة · DRG=دير الجنادله · AMZ=العزايزة</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* الفلتر: سنترال + كباين متعددة */}
       <div className="grid gap-3 md:grid-cols-[220px_1fr] items-start">
@@ -213,7 +265,7 @@ export function InspectionReports() {
         <Table>
           <TableHeader>
             <TableRow>
-              {["رقم الكابينة", "رقم البكس", "كود MSAN", "رقم البلوك", "السعة", "المشغولية", "الربط من", "الربط الي"].map((h) => (
+              {["رقم الكابينة", "رقم البكس", "كود MSAN", "رقم المشط", "السعة", "المشغولية", "الربط من", "الربط الي"].map((h) => (
                 <TableHead key={h} className="text-right whitespace-nowrap">{h}</TableHead>
               ))}
             </TableRow>
@@ -228,7 +280,7 @@ export function InspectionReports() {
                 <TableCell className="whitespace-nowrap">{b.cabinNumber || "-"}</TableCell>
                 <TableCell className="whitespace-nowrap">{b.boxNumber || "-"}</TableCell>
                 <TableCell className="whitespace-nowrap font-mono text-xs">{b.msanCode || "-"}</TableCell>
-                <TableCell className="whitespace-nowrap">{b.secBlockNo || "-"}</TableCell>
+                <TableCell className="whitespace-nowrap">{b.combAbs || "-"}</TableCell>
                 <TableCell className="text-center">{b.capacity}</TableCell>
                 <TableCell className="text-center font-semibold">{b.occupancy}</TableCell>
                 <TableCell className="text-center">{b.linkFrom || "-"}</TableCell>

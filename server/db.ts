@@ -743,6 +743,22 @@ export async function ensureSchema() {
     )
   `);
 
+  // dp_inventory — قائمة البكسيات (DP) من Network Inventory (المصدر الرسمى لبكسيات تقارير التفتيش)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS dp_inventory (
+      id serial PRIMARY KEY,
+      central text NOT NULL,
+      mdf_code text,
+      cabinet_no text NOT NULL,
+      dp_no text NOT NULL,
+      dp_type text,
+      capacity integer,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id),
+      UNIQUE (central, cabinet_no, dp_no)
+    )
+  `);
+
   // shift_schedules — جدول ورديات الفنيين الأسبوعى (صف لكل أسبوع/فنى، days = 7 قيم jsonb)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS shift_schedules (

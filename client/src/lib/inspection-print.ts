@@ -65,12 +65,13 @@ export function printVisualInspection(central: string, boxes: { cabinNumber: str
 // ── محضر مطابقة البيانات الفنية ── (كل الخانات ما عدا «عدد المطابق»)
 export function printTechnicalData(
   central: string,
-  boxes: { cabinNumber: string; boxNumber: string; msanCode: string; comb: string; capacity: number; occupancy: number }[],
+  boxes: { cabinNumber: string; boxNumber: string; msanCode: string; combAbs: string; capacity: number; occupancy: number }[],
 ) {
+  // المحضر ده مفيهوش عمود «رقم البلوك» → رقم المشط مطلق (الخرج 345 → مشط 35).
   const cols = ["م", "رقم الـ MSAN", "رقم النحاسى", "رقم البكس", "رقم المشط", "السعة", "عدد الشغال", "عدد المطابق", "ملاحظات"];
   const head = cols.map((c) => `<th>${esc(c)}</th>`).join("");
   const body = boxes.map((b, i) =>
-    `<tr><td>${i + 1}</td><td>${esc(b.msanCode)}</td><td>${esc(b.cabinNumber)}</td><td>${esc(b.boxNumber)}</td><td>${esc(b.comb)}</td><td>${esc(b.capacity)}</td><td>${esc(b.occupancy)}</td><td></td><td></td></tr>`,
+    `<tr><td>${i + 1}</td><td>${esc(b.msanCode)}</td><td>${esc(b.cabinNumber)}</td><td>${esc(b.boxNumber)}</td><td>${esc(b.combAbs)}</td><td>${esc(b.capacity)}</td><td>${esc(b.occupancy)}</td><td></td><td></td></tr>`,
   ).join("");
   const inner = `
     <h2>محضر مطابقة البيانات الفنية لخطوط العملاء بسنترال</h2>
@@ -84,13 +85,13 @@ export function printTechnicalData(
 // ── خطاب مدير السنترال (خطة صيانة بكسيات) ── (كل الخانات؛ «الخالية 0%» تُملأ يدوياً)
 export function printCentralManagerLetter(
   central: string,
-  cabinets: { cabinNumber: string; msanCode: string; boxCount: number; closedBoxes: number }[],
+  cabinets: { cabinNumber: string; msanCode: string; boxCount: number; closedBoxes: number; emptyBoxes: number }[],
 ) {
   const totalBoxes = cabinets.reduce((s, c) => s + (c.boxCount || 0), 0);
   const cols = ["م", "رقم MSAN", "نحاس رقم", "عدد البكسيات", "عدد البكسيات المغلقة (نسبة الاشغال 100%)", "عدد البكسيات الخالية (نسبة الاشغال 0%)"];
   const head = cols.map((c) => `<th>${esc(c)}</th>`).join("");
   const rows = cabinets.map((c, i) =>
-    `<tr><td>${i + 1}</td><td>${esc(c.msanCode)}</td><td>${esc(c.cabinNumber)}</td><td>${esc(c.boxCount)}</td><td>${esc(c.closedBoxes)}</td><td></td></tr>`,
+    `<tr><td>${i + 1}</td><td>${esc(c.msanCode)}</td><td>${esc(c.cabinNumber)}</td><td>${esc(c.boxCount)}</td><td>${esc(c.closedBoxes)}</td><td>${esc(c.emptyBoxes)}</td></tr>`,
   ).join("");
   // إكمال الجدول لـ 15 صف (زى النموذج) حتى لو الكباين أقل
   const pad = Array.from({ length: Math.max(0, 15 - cabinets.length) }, (_, k) =>

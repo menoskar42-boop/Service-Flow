@@ -701,6 +701,21 @@ export const appState = pgTable("app_state", {
 });
 export type AppState = typeof appState.$inferSelect;
 
+// dp_inventory — قائمة البكسيات (DP) من Network Inventory. المصدر الرسمى للبكسيات فى تقارير التفتيش:
+// أى DP هنا = بكس موجود (حتى لو مفيش عليه خطوط → فاضى)؛ وأى بكس مش هنا يُستبعد حتى لو عليه خطوط.
+export const dpInventory = pgTable("dp_inventory", {
+  id: serial("id").primaryKey(),
+  central: text("central").notNull(),        // اسم السنترال (مشتق من Mdf Code)
+  mdfCode: text("mdf_code"),                  // GHN / NGO / DRG / AMZ
+  cabinetNo: text("cabinet_no").notNull(),    // Cabinet No (رقم الكابينة النحاسية)
+  dpNo: text("dp_no").notNull(),              // DP No (رقم البكس)
+  dpType: text("dp_type"),                    // weather proof ...
+  capacity: integer("capacity"),              // السعة (10/20)
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+}, (t) => ({ uq: unique().on(t.central, t.cabinetNo, t.dpNo) }));
+export type DpInventory = typeof dpInventory.$inferSelect;
+
 // shift_schedules — جدول ورديات الفنيين الأسبوعى. صف لكل (أسبوع، فنى):
 // week_start = الجمعة (بداية الأسبوع)، days = 7 قيم (جمعة→خميس): عمل/راحه/إجازة/بدل راحه.
 export const shiftSchedules = pgTable("shift_schedules", {

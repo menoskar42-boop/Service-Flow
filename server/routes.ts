@@ -7400,96 +7400,164 @@ export async function registerRoutes(
   // مصدر البيانات: phone_lines (لكل خط) + cabinet_technicians (كود MSAN لكل كابينة).
   // يرجّع 3 مستويات: lines (لكل خط) / boxes (تجميع لكل بكس) / cabinets (تجميع لكل كابينة).
   //   ?central=<اسم السنترال>  &  cabins=<أرقام كباين نحاسية مفصولة بفاصلة> (اختيارى → كل كباين السنترال)
+  // خريطة Mdf Code → اسم السنترال (من Network Inventory)
+  const MDF_TO_CENTRAL: Record<string, string> = {
+    GHN: "الغنايم",
+    NGO: "الغنايم-نجع العمدة",
+    DRG: "الغنايم-دير الجنادله",
+    AMZ: "الغنايم-العزايزة",
+  };
+
+  // parser للّصق Network Inventory (DP): يرجّع صفوف {mdf, central, cabinetNo, dpNo, capacity}
+  const parseDpInventory = (text: string) => {
+    const out: { mdf: string; central: string; cabinetNo: string; dpNo: string; capacity: number | null }[] = [];
+    const lines = String(text || "").split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const parts = lines[i].split("\t").map((s) => s.trim());
+      // صف الهوية: [Mdf(حروف كبيرة 2-4), CabinetNo, DpNo, ...]
+      if (parts.length >= 3 && /^[A-Z]{2,4}$/.test(parts[0]) && parts[1] && parts[2]) {
+        const mdf = parts[0];
+        let capacity: number | null = null;
+        for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+          const f0 = (lines[j].split("\t")[0] || "").trim();
+          if (/^\d+$/.test(f0)) { capacity = parseInt(f0, 10); break; }
+        }
+        out.push({ mdf, central: MDF_TO_CENTRAL[mdf] || mdf, cabinetNo: parts[1], dpNo: parts[2], capacity });
+      }
+    }
+    return out;
+  };
+
+  // POST /api/dp-inventory/import — استيراد قائمة البكسيات (DP) باللصق من Network Inventory (أدمن).
+  // full-replace لكل سنترال موجود فى اللصق.
+  app.post("/api/dp-inventory/import", requireAuth, requireAdmin, async (req: any, res) => {
+    try {
+      const rows = parseDpInventory(String((req.body || {}).text || ""));
+      if (!rows.length) return res.status(400).json({ message: "لم يتم التعرّف على أى بكسيات فى النص الملصوق" });
+      const centrals = [...new Set(rows.map((r) => r.central))];
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(`DELETE FROM dp_inventory WHERE central = ANY($1::text[])`, [centrals]);
+        for (const r of rows) {
+          await client.query(
+            `INSERT INTO dp_inventory (central, mdf_code, cabinet_no, dp_no, dp_type, capacity, uploaded_by_id)
+             VALUES ($1,$2,$3,$4,'weather proof',$5,$6)
+             ON CONFLICT (central, cabinet_no, dp_no)
+             DO UPDATE SET capacity = EXCLUDED.capacity, mdf_code = EXCLUDED.mdf_code, uploaded_at = now()`,
+            [r.central, r.mdf, r.cabinetNo, r.dpNo, r.capacity, req.user.id],
+          );
+        }
+        await client.query("COMMIT");
+      } catch (e) { await client.query("ROLLBACK"); throw e; } finally { client.release(); }
+      const perCentral: Record<string, number> = {};
+      for (const r of rows) perCentral[r.central] = (perCentral[r.central] || 0) + 1;
+      res.json({ ok: true, total: rows.length, perCentral });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/reports/inspection/options — السنترالات + الكباين من dp_inventory
+  app.get("/api/reports/inspection/options", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(`SELECT DISTINCT central, cabinet_no FROM dp_inventory`);
+      const centralSet = new Set<string>();
+      const cabMap = new Map<string, Set<string>>();
+      for (const r of rows) {
+        if (r.central) centralSet.add(r.central);
+        if (r.central && r.cabinet_no) { if (!cabMap.has(r.central)) cabMap.set(r.central, new Set()); cabMap.get(r.central)!.add(r.cabinet_no); }
+      }
+      const arSort = (a: string, b: string) => a.localeCompare(b, "ar", { numeric: true });
+      const centrals = Array.from(centralSet).sort(arSort);
+      const cabinsByCentral: Record<string, string[]> = {};
+      for (const [c, set] of cabMap) cabinsByCentral[c] = Array.from(set).sort(arSort);
+      res.json({ centrals, cabinsByCentral });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/reports/inspection — البكسيات مصدرها dp_inventory (Network Inventory): كل DP = بكس
+  // (حتى الفاضى)؛ المشغولية من phone_lines؛ وأى بكس مش فى الـ inventory يُستبعد حتى لو عليه خطوط.
   app.get("/api/reports/inspection", requireAuth, async (req, res) => {
     try {
       const { central = "", cabins = "" } = req.query as Record<string, string>;
       if (!central) return res.json({ lines: [], boxes: [], cabinets: [] });
       const cabinList = String(cabins).split(",").map((s) => s.trim()).filter(Boolean);
-      const params: any[] = [central];
-      let cabinWhere = "";
-      if (cabinList.length) { params.push(cabinList); cabinWhere = ` AND pl.cabin_number = ANY($${params.length}::text[])`; }
-      const { rows: lines } = await pool.query(
-        `SELECT
-           pl.central                       AS "central",
-           COALESCE(pl.cabin_number, '')    AS "cabinNumber",
-           COALESCE(pl.box_number, '')      AS "boxNumber",
-           COALESCE(pl.dp_terminal, '')     AS "dpTerminal",
-           COALESCE(pl.sec_block_no, '')    AS "secBlockNo",
-           COALESCE(pl.cabinet_out, '')     AS "cabinetOut",
-           COALESCE(pl.cabinet_in, '')      AS "cabinetIn",
-           COALESCE(pl.primary_block_no,'') AS "primaryBlockNo",
-           COALESCE(pl.tel_no, '')          AS "telNo",
-           ctm.cabin_code                   AS "msanCode"
+
+      // 1) بكسيات الـ inventory للسنترال (+ فلتر الكباين)
+      const invParams: any[] = [central];
+      let invWhere = "";
+      if (cabinList.length) { invParams.push(cabinList); invWhere = ` AND cabinet_no = ANY($${invParams.length}::text[])`; }
+      const { rows: inv } = await pool.query(
+        `SELECT cabinet_no AS "cabinNumber", dp_no AS "boxNumber", capacity
+         FROM dp_inventory WHERE central = $1${invWhere}`, invParams);
+
+      // 2) خطوط السنترال (+ فلتر الكباين) — تُفلتر بعدين على بكسيات الـ inventory
+      const plParams: any[] = [central];
+      let plWhere = "";
+      if (cabinList.length) { plParams.push(cabinList); plWhere = ` AND pl.cabin_number = ANY($${plParams.length}::text[])`; }
+      const { rows: allLines } = await pool.query(
+        `SELECT pl.central AS "central", COALESCE(pl.cabin_number,'') AS "cabinNumber",
+                COALESCE(pl.box_number,'') AS "boxNumber", COALESCE(pl.dp_terminal,'') AS "dpTerminal",
+                COALESCE(pl.sec_block_no,'') AS "secBlockNo", COALESCE(pl.cabinet_out,'') AS "cabinetOut",
+                COALESCE(pl.cabinet_in,'') AS "cabinetIn", COALESCE(pl.primary_block_no,'') AS "primaryBlockNo",
+                COALESCE(pl.tel_no,'') AS "telNo", ctm.cabin_code AS "msanCode"
          FROM phone_lines pl
-         LEFT JOIN LATERAL (
-           SELECT ct.cabin_code FROM cabinet_technicians ct
-           WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
-           LIMIT 1
-         ) ctm ON true
-         WHERE pl.central = $1${cabinWhere}
-         ORDER BY LPAD(COALESCE(pl.cabin_number,''), 8, '0'),
-                  LPAD(COALESCE(pl.box_number,''), 8, '0'),
-                  pl.tel_no`,
-        params,
-      );
+         LEFT JOIN LATERAL (SELECT ct.cabin_code FROM cabinet_technicians ct
+            WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number LIMIT 1) ctm ON true
+         WHERE pl.central = $1${plWhere}`, plParams);
 
-      const BOX_CAPACITY = 10;              // السعة القياسية للبكس (DP) = 10
-      // أكثر قيمة تكراراً (للأعمدة اللى بتتجمّع على مستوى البكس زى المشط/البلوك)
-      const mode = (arr: string[]) => {
-        const m = new Map<string, number>();
-        for (const v of arr) if (v) m.set(v, (m.get(v) || 0) + 1);
-        let best = "", bestN = 0;
-        for (const [v, n] of m) if (n > bestN) { best = v; bestN = n; }
-        return best;
-      };
-      const numMinMax = (arr: string[]) => {
-        const nums = arr.map((v) => Number(String(v).replace(/[^0-9]/g, ""))).filter((n) => !isNaN(n) && n > 0);
-        if (!nums.length) return { min: "", max: "" };
-        return { min: String(Math.min(...nums)), max: String(Math.max(...nums)) };
-      };
+      const key = (cab: any, box: any) => `${String(cab).trim()}||${String(box).trim()}`;
+      const digits = (s: any) => { const n = Number(String(s).replace(/[^0-9]/g, "")); return isNaN(n) ? 0 : n; };
+      const invSet = new Set(inv.map((r: any) => key(r.cabinNumber, r.boxNumber)));
+      // خطوط داخل الـ inventory فقط (نستبعد اللى بكسها مش فى الـ inventory) + قيم مشتقة لكل خط:
+      //   block (رقم البلوك) = ceil(رقم البكس / 10) — كل 10 أمشاط بلوك.
+      //   terminal (الترمنال داخل المشط) = ((الخارج - 1) % 10) + 1.
+      const lines = allLines
+        .filter((l: any) => invSet.has(key(l.cabinNumber, l.boxNumber)))
+        .sort((a: any, b: any) =>
+          String(a.cabinNumber).localeCompare(String(b.cabinNumber), "ar", { numeric: true }) ||
+          (digits(a.boxNumber) - digits(b.boxNumber)) ||
+          String(a.telNo).localeCompare(String(b.telNo)))
+        .map((l: any) => {
+          const dp = digits(l.boxNumber), outN = digits(l.cabinetOut);
+          return { ...l, block: dp > 0 ? String(Math.ceil(dp / 10)) : "", terminal: outN > 0 ? String(((outN - 1) % 10) + 1) : "" };
+        });
 
-      // تجميع لكل بكس
-      const boxMap = new Map<string, any[]>();
-      for (const l of lines) {
-        if (!l.boxNumber) continue;
-        const k = `${l.cabinNumber}||${l.boxNumber}`;
-        if (!boxMap.has(k)) boxMap.set(k, []);
-        boxMap.get(k)!.push(l);
-      }
-      const boxes = Array.from(boxMap.values()).map((ls) => {
-        const first = ls[0];
-        const link = numMinMax(ls.map((x) => x.cabinetOut));
+      const byBox = new Map<string, any[]>();
+      for (const l of lines) { const k = key(l.cabinNumber, l.boxNumber); if (!byBox.has(k)) byBox.set(k, []); byBox.get(k)!.push(l); }
+      const msanByCab = new Map<string, string>();
+      for (const l of lines) { const c = String(l.cabinNumber).trim(); if (l.msanCode && !msanByCab.has(c)) msanByCab.set(c, l.msanCode); }
+
+      // boxes = بكسيات الـ inventory. الربط/البلوك/المشط مشتقة من رقم البكس + السعة (مش من بيانات الخطوط):
+      //   الربط: من = (رقم البكس - 1)*10 + 1 ، الي = من + السعة - 1  (بكس 35 سعة 10 → 341-350 ؛ سعة 20 → +20).
+      //   رقم البلوك = ceil(رقم البكس / 10) ؛ رقم المشط (نسبى داخل البلوك) = ((رقم البكس - 1) % 10) + 1.
+      const boxes = inv.map((b: any) => {
+        const ls = byBox.get(key(b.cabinNumber, b.boxNumber)) || [];
         const occ = new Set(ls.map((x) => x.telNo).filter(Boolean)).size;
+        const dp = digits(b.boxNumber), cap = b.capacity || 10;
+        const from = dp > 0 ? (dp - 1) * 10 + 1 : 0;
+        const to = dp > 0 ? from + cap - 1 : 0;
         return {
-          central: first.central,
-          cabinNumber: first.cabinNumber,
-          boxNumber: first.boxNumber,
-          msanCode: first.msanCode || "",
-          secBlockNo: mode(ls.map((x) => x.secBlockNo)),
-          dpTerminal: mode(ls.map((x) => x.dpTerminal)),
-          // رقم المشط = ceil(الخارج بتاع الكابينة / 10) — كل مشط 10 خطوط (SEC 345 → مشط 35)
-          comb: mode(ls.map((x) => { const n = Number(String(x.cabinetOut).replace(/[^0-9]/g, "")); return n > 0 ? String(Math.ceil(n / 10)) : ""; })),
-          capacity: BOX_CAPACITY,
+          central, cabinNumber: b.cabinNumber, boxNumber: b.boxNumber,
+          msanCode: msanByCab.get(String(b.cabinNumber).trim()) || "",
+          block: dp > 0 ? String(Math.ceil(dp / 10)) : "",           // رقم البلوك = ceil(البكس/10)
+          comb: dp > 0 ? String(((dp - 1) % 10) + 1) : "",           // رقم المشط النسبى (مع وجود عمود البلوك)
+          combAbs: dp > 0 ? String(dp) : "",                          // رقم المشط المطلق (بدون عمود البلوك)
+          capacity: cap,
           occupancy: occ,
-          linkFrom: link.min,
-          linkTo: link.max,
+          linkFrom: from ? String(from) : "", linkTo: to ? String(to) : "",
         };
-      });
+      }).sort((a: any, b: any) =>
+        String(a.cabinNumber).localeCompare(String(b.cabinNumber), "ar", { numeric: true }) ||
+        (digits(a.boxNumber) - digits(b.boxNumber)));
 
-      // تجميع لكل كابينة (لخطاب مدير السنترال)
+      // cabinets = تجميع لكل كابينة (المغلق ≥ السعة، الفاضى = 0 مشغولية)
       const cabMap = new Map<string, any[]>();
-      for (const b of boxes) {
-        if (!cabMap.has(b.cabinNumber)) cabMap.set(b.cabinNumber, []);
-        cabMap.get(b.cabinNumber)!.push(b);
-      }
+      for (const b of boxes) { const c = String(b.cabinNumber).trim(); if (!cabMap.has(c)) cabMap.set(c, []); cabMap.get(c)!.push(b); }
       const cabinets = Array.from(cabMap.values()).map((bs) => ({
-        central: bs[0].central,
-        cabinNumber: bs[0].cabinNumber,
-        msanCode: bs[0].msanCode || "",
+        central, cabinNumber: bs[0].cabinNumber, msanCode: bs[0].msanCode || "",
         boxCount: bs.length,
-        // البكسيات المغلقة 100% = المشغولية ≥ السعة (10). البكسيات الخالية 0% لا يمكن استنتاجها
-        // من phone_lines (البكس الفاضى ملوش خطوط أصلاً) → تُترك فارغة لتُملأ يدوياً.
         closedBoxes: bs.filter((b) => b.occupancy >= b.capacity).length,
+        emptyBoxes: bs.filter((b) => b.occupancy === 0).length,
       }));
 
       res.json({ lines, boxes, cabinets });
