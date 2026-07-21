@@ -3679,6 +3679,49 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // GET /api/reports/installations-by-tech — نسبة إنجاز التركيبات خلال 24 ساعة لكل فنى (Success فقط).
+  // الرؤية: السوبر أدمن/الأدمن/الشئون الخارجية = كل الفنيين؛ الفنى = أرقامه فقط؛ الباقى ممنوع.
+  // lines=1 → يرجّع خطوط التركيبات المتجاوزة 24 ساعة (بنفس فلترة الدور) لزر «تجاوزات 24 ساعة».
+  app.get("/api/reports/installations-by-tech", requireAuth, async (req: any, res) => {
+    const role = req.user.role;
+    const seeAll = [ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.EXTERNAL].includes(role);
+    if (!seeAll && role !== ROLES.TECH) return res.status(403).json({ message: "غير مسموح" });
+    const { dateFrom = "", dateTo = "", lines = "" } = req.query as Record<string, string>;
+    const params: any[] = [];
+    const conds: string[] = ["(w.close_category IS NULL OR w.close_category = 'Success')"];
+    if (dateFrom) { params.push(dateFrom); conds.push(`w.close_date >= $${params.length}::date`); }
+    if (dateTo) { params.push(dateTo); conds.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }
+    if (!seeAll) {
+      // الفنى: أرقامه فقط — اسمه من worker_code عبر technician_names (وإلا techName/fullName).
+      let myName = String(req.user.techName || req.user.fullName || "").trim();
+      if (req.user.workerCode) {
+        const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [String(req.user.workerCode).trim()]);
+        if (r.rows[0]?.tech_name) myName = String(r.rows[0].tech_name).trim();
+      }
+      params.push(myName || "___none___"); conds.push(`btrim(w.tech_name) = btrim($${params.length})`);
+    }
+    const where = `WHERE ${conds.join(" AND ")}`;
+    const over24 = `(w.creation_date IS NOT NULL AND EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) / 3600 > 24)`;
+    if (lines === "1") {
+      const { rows } = await pool.query(
+        `SELECT w.tech_name AS "techName", w.central_name AS "centralName", w.work_order_id AS "workOrderId",
+                w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
+                (w.creation_date AT TIME ZONE 'Africa/Cairo') AS "creationDate",
+                (w.close_date AT TIME ZONE 'Africa/Cairo') AS "closeDate",
+                ROUND((EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) / 3600)::numeric, 1) AS "hours"
+         FROM work_orders w ${where} AND ${over24}
+         ORDER BY EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) DESC`, params);
+      return res.json({ lines: rows });
+    }
+    const { rows } = await pool.query(
+      `SELECT w.tech_name AS "techName", COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE w.creation_date IS NOT NULL AND EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) / 3600 <= 24)::int AS "within24",
+              COUNT(*) FILTER (WHERE ${over24})::int AS "over24"
+       FROM work_orders w ${where}
+       GROUP BY w.tech_name ORDER BY COUNT(*) DESC`, params);
+    res.json({ data: rows, scope: seeAll ? "all" : "own" });
+  });
+
   // === استكمال بيانات: كمية السلك (cable_entries) ===
 
   // يحوّل رقم التليفون الذى يدخله الفنى إلى صيغة محلية موحّدة (أرقام فقط، بدون 88-)

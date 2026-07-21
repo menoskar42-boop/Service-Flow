@@ -15,6 +15,7 @@ import { BoxLinesSummaryReport } from "@/components/BoxLinesSummaryReport";
 import { BoxFullRejectionsReport } from "@/components/BoxFullRejectionsReport";
 import { BoxBrokenRejectionsReport } from "@/components/BoxBrokenRejectionsReport";
 import { WorkOrdersReport } from "@/components/WorkOrdersReport";
+import { InstallationsByTechReport } from "@/components/InstallationsByTechReport";
 import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { WithAccountReport } from "@/components/WithAccountReport";
 import { NoAccountTab } from "@/components/NoAccountTab";
@@ -178,6 +179,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "work-orders", label: "أوامر الشغل" },
       { id: "work-orders-fail", label: "أوامر الشغل الفاشلة (Fail)" },
+      { id: "installations-by-tech", label: "نسبة التركيبات لكل فنى" },
     ],
   },
   {
@@ -220,8 +222,8 @@ export default function Dashboard() {
   const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
   const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account"];
-  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM"];
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech"];
+  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "أوامر الشغل"];
   // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
   const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];
   const SALES_ADMIN_ALLOWED_GROUPS = ["متعذرات OM"];
@@ -513,6 +515,7 @@ export default function Dashboard() {
               {reportTab === "box-broken"        && <BoxBrokenRejectionsReport orders={orders || []} />}
               {reportTab === "work-orders"       && <WorkOrdersReport />}
               {reportTab === "work-orders-fail"  && <WorkOrdersReport category="fail" showUpload={false} title="أوامر الشغل الفاشلة (Fail)" />}
+              {reportTab === "installations-by-tech" && <InstallationsByTechReport />}
               {reportTab === "box-overlap"       && <BoxOverlapReport />}
               {reportTab === "maintenance-plan-h2" && <MaintenancePlanH2Report />}
               {reportTab === "cabinet-capacity"  && <CabinetCapacityReport />}
