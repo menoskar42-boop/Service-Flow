@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, ClipboardList, Search, FileText, Upload } from "lucide-react";
+import { Loader2, FileSpreadsheet, ClipboardList, FileText, Upload } from "lucide-react";
 import { printVisualInspection, printTechnicalData, printCentralManagerLetter } from "@/lib/inspection-print";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -34,7 +34,6 @@ export function InspectionReports() {
   const qc = useQueryClient();
   const [central, setCentral] = useState("");
   const [cabins, setCabins] = useState<string[]>([]);
-  const [cabinSearch, setCabinSearch] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
@@ -48,11 +47,7 @@ export function InspectionReports() {
     },
   });
 
-  const cabinOptions = useMemo(() => {
-    const list = (central && opts?.cabinsByCentral?.[central]) || [];
-    const q = cabinSearch.trim();
-    return q ? list.filter((c) => c.includes(q)) : list;
-  }, [opts, central, cabinSearch]);
+  const cabinOptions = useMemo(() => (central && opts?.cabinsByCentral?.[central]) || [], [opts, central]);
 
   // استيراد قائمة البكسيات (DP) باللصق من Network Inventory (أدمن)
   const handleImport = async () => {
@@ -210,17 +205,6 @@ export function InspectionReports() {
               <button type="button" onClick={selectAllCabins} disabled={!central} className="text-xs text-indigo-700 hover:underline disabled:opacity-40">تحديد الكل</button>
               <button type="button" onClick={clearCabins} disabled={!cabins.length} className="text-xs text-red-600 hover:underline disabled:opacity-40">مسح</button>
             </div>
-          </div>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute right-2 top-2.5 text-muted-foreground" />
-            <input
-              value={cabinSearch}
-              onChange={(e) => setCabinSearch(e.target.value)}
-              placeholder="بحث عن كابينة..."
-              disabled={!central}
-              className="w-full border rounded-md pr-8 pl-3 py-2 text-sm bg-background disabled:opacity-50"
-              dir="rtl"
-            />
           </div>
           <div className="flex flex-wrap gap-1.5 max-h-40 overflow-auto rounded-md border p-2 bg-muted/20">
             {!central ? (
