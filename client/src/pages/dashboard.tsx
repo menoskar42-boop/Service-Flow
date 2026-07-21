@@ -53,6 +53,7 @@ import { ManualCurrentFaultsReport } from "@/components/ManualCurrentFaultsRepor
 import { EngineeringInspectionReport } from "@/components/EngineeringInspectionReport";
 import { MajorFaultsReport } from "@/components/MajorFaultsReport";
 import { ClosedPortCabinetsReport } from "@/components/ClosedPortCabinetsReport";
+import { InspectionReports } from "@/components/InspectionReports";
 import { PortChangeReport } from "@/components/PortChangeReport";
 import { ManualRegularizedFaultsRangeReport } from "@/components/ManualRegularizedFaultsRangeReport";
 import { PortsSuspendFreeReport } from "@/components/PortsSuspendFreeReport";
@@ -67,7 +68,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -171,6 +172,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "maintenance-comprehensive", label: "تقرير الصيانة الشامل" },
       { id: "box-overlap", label: "مسافات التخاطي والتعارض" },
       { id: "maintenance-plan-h2", label: "خطة الصيانة (النصف الثانى)" },
+    ],
+  },
+  {
+    // تقارير التفتيش — تظهر للكل ما عدا الفنيين والمبيعات وأدمن المبيعات ومسئول البيانات
+    label: "تقارير التفتيش",
+    icon: ClipboardList,
+    items: [
+      { id: "inspection-reports", label: "تقارير التفتيش (سنترال + كابينة)" },
     ],
   },
   {
@@ -522,6 +531,7 @@ export default function Dashboard() {
               {reportTab === "current-faults"    && <CurrentFaultsReport />}
               {reportTab === "major-faults"      && <MajorFaultsReport />}
               {reportTab === "closed-port-cabinets" && <ClosedPortCabinetsReport />}
+              {reportTab === "inspection-reports" && <InspectionReports />}
               {reportTab === "port-change"       && <PortChangeReport />}
               {reportTab === "regularized-faults" && <RegularizedFaultsReport />}
               {reportTab === "regularized-faults-range" && <RegularizedFaultsRangeReport />}

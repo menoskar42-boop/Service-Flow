@@ -7396,6 +7396,106 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/inspection — بيانات تقارير التفتيش (سنترال + كابينة/كباين مختارة).
+  // مصدر البيانات: phone_lines (لكل خط) + cabinet_technicians (كود MSAN لكل كابينة).
+  // يرجّع 3 مستويات: lines (لكل خط) / boxes (تجميع لكل بكس) / cabinets (تجميع لكل كابينة).
+  //   ?central=<اسم السنترال>  &  cabins=<أرقام كباين نحاسية مفصولة بفاصلة> (اختيارى → كل كباين السنترال)
+  app.get("/api/reports/inspection", requireAuth, async (req, res) => {
+    try {
+      const { central = "", cabins = "" } = req.query as Record<string, string>;
+      if (!central) return res.json({ lines: [], boxes: [], cabinets: [] });
+      const cabinList = String(cabins).split(",").map((s) => s.trim()).filter(Boolean);
+      const params: any[] = [central];
+      let cabinWhere = "";
+      if (cabinList.length) { params.push(cabinList); cabinWhere = ` AND pl.cabin_number = ANY($${params.length}::text[])`; }
+      const { rows: lines } = await pool.query(
+        `SELECT
+           pl.central                       AS "central",
+           COALESCE(pl.cabin_number, '')    AS "cabinNumber",
+           COALESCE(pl.box_number, '')      AS "boxNumber",
+           COALESCE(pl.dp_terminal, '')     AS "dpTerminal",
+           COALESCE(pl.sec_block_no, '')    AS "secBlockNo",
+           COALESCE(pl.cabinet_out, '')     AS "cabinetOut",
+           COALESCE(pl.cabinet_in, '')      AS "cabinetIn",
+           COALESCE(pl.primary_block_no,'') AS "primaryBlockNo",
+           COALESCE(pl.tel_no, '')          AS "telNo",
+           ctm.cabin_code                   AS "msanCode"
+         FROM phone_lines pl
+         LEFT JOIN LATERAL (
+           SELECT ct.cabin_code FROM cabinet_technicians ct
+           WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+           LIMIT 1
+         ) ctm ON true
+         WHERE pl.central = $1${cabinWhere}
+         ORDER BY LPAD(COALESCE(pl.cabin_number,''), 8, '0'),
+                  LPAD(COALESCE(pl.box_number,''), 8, '0'),
+                  pl.tel_no`,
+        params,
+      );
+
+      const BOX_CAPACITY = 10;              // السعة القياسية للبكس (DP) = 10
+      // أكثر قيمة تكراراً (للأعمدة اللى بتتجمّع على مستوى البكس زى المشط/البلوك)
+      const mode = (arr: string[]) => {
+        const m = new Map<string, number>();
+        for (const v of arr) if (v) m.set(v, (m.get(v) || 0) + 1);
+        let best = "", bestN = 0;
+        for (const [v, n] of m) if (n > bestN) { best = v; bestN = n; }
+        return best;
+      };
+      const numMinMax = (arr: string[]) => {
+        const nums = arr.map((v) => Number(String(v).replace(/[^0-9]/g, ""))).filter((n) => !isNaN(n) && n > 0);
+        if (!nums.length) return { min: "", max: "" };
+        return { min: String(Math.min(...nums)), max: String(Math.max(...nums)) };
+      };
+
+      // تجميع لكل بكس
+      const boxMap = new Map<string, any[]>();
+      for (const l of lines) {
+        if (!l.boxNumber) continue;
+        const k = `${l.cabinNumber}||${l.boxNumber}`;
+        if (!boxMap.has(k)) boxMap.set(k, []);
+        boxMap.get(k)!.push(l);
+      }
+      const boxes = Array.from(boxMap.values()).map((ls) => {
+        const first = ls[0];
+        const link = numMinMax(ls.map((x) => x.cabinetOut));
+        const occ = new Set(ls.map((x) => x.telNo).filter(Boolean)).size;
+        return {
+          central: first.central,
+          cabinNumber: first.cabinNumber,
+          boxNumber: first.boxNumber,
+          msanCode: first.msanCode || "",
+          secBlockNo: mode(ls.map((x) => x.secBlockNo)),
+          dpTerminal: mode(ls.map((x) => x.dpTerminal)),
+          capacity: BOX_CAPACITY,
+          occupancy: occ,
+          linkFrom: link.min,
+          linkTo: link.max,
+        };
+      });
+
+      // تجميع لكل كابينة (لخطاب مدير السنترال)
+      const cabMap = new Map<string, any[]>();
+      for (const b of boxes) {
+        if (!cabMap.has(b.cabinNumber)) cabMap.set(b.cabinNumber, []);
+        cabMap.get(b.cabinNumber)!.push(b);
+      }
+      const cabinets = Array.from(cabMap.values()).map((bs) => ({
+        central: bs[0].central,
+        cabinNumber: bs[0].cabinNumber,
+        msanCode: bs[0].msanCode || "",
+        boxCount: bs.length,
+        // البكسيات المغلقة 100% = المشغولية ≥ السعة (10). البكسيات الخالية 0% لا يمكن استنتاجها
+        // من phone_lines (البكس الفاضى ملوش خطوط أصلاً) → تُترك فارغة لتُملأ يدوياً.
+        closedBoxes: bs.filter((b) => b.occupancy >= b.capacity).length,
+      }));
+
+      res.json({ lines, boxes, cabinets });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // مولّد موحّد لتقارير أوامر الشغل (تركيبات / معاينات) — يستخدم queryWfmReport.
   const wfmReportHandler = (typesLc: string[], regularized: boolean) =>
     async (req: any, res: any) => {
