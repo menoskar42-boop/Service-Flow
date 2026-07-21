@@ -46,6 +46,7 @@ interface RepDetailRow {
   appearances: number;
   closeByName: string;
   areaTechName: string;
+  chargedTech: string;   // الفنى المحمَّل عليه الرقم (صاحب إغلاق أول شكوى، أو فنى المنطقة لو الإغلاق غير معروف)
   lineCabin: string | null;
   lineBox: string | null;
   msanCode: string | null;
@@ -301,22 +302,21 @@ export function RepetitionStatsReport() {
     setRepDetailLoading(false);
   };
 
-  // قائمة أسماء الفنيين الظاهرين فى التفصيلة (فنى الإغلاق + فنى المنطقة) للفلتر
+  // قائمة أسماء الفنيين المحمَّلين عليهم الأرقام (الفنى المحمَّل) للفلتر
   const repDetailTechOptions = useMemo(() => {
     if (!repDetailData) return [];
     const s = new Set<string>();
     for (const r of repDetailData) {
-      if (r.closeByName && r.closeByName !== "غير معروف") s.add(r.closeByName);
-      if (r.areaTechName && r.areaTechName !== "غير معروف") s.add(r.areaTechName);
+      if (r.chargedTech && r.chargedTech !== "غير معروف") s.add(r.chargedTech);
     }
     return [...s].sort((a, b) => a.localeCompare(b, "ar"));
   }, [repDetailData]);
 
-  // الصفوف بعد تطبيق فلتر اسم الفنى (يطابق فنى الإغلاق أو فنى المنطقة)
+  // الصفوف بعد تطبيق فلتر اسم الفنى (يطابق الفنى المحمَّل عليه الرقم)
   const repDetailFiltered = useMemo(() => {
     if (!repDetailData) return [];
     if (!repDetailTech) return repDetailData;
-    return repDetailData.filter((r) => r.closeByName === repDetailTech || r.areaTechName === repDetailTech);
+    return repDetailData.filter((r) => r.chargedTech === repDetailTech);
   }, [repDetailData, repDetailTech]);
 
   const exportRepDetailExcel = () => {

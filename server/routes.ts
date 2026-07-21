@@ -8361,7 +8361,8 @@ export async function registerRoutes(
       if (dateFrom) { params.push(dateFrom); dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
 
-      // الفنى: يرى أرقامه المكررة فقط — سواء هو فنى الإغلاق أو فنى المنطقة (على الأسماء المحسوبة)
+      // الفنى: يرى الأرقام المحسوبة عليه فقط — أى اللى هو «الفنى المحمَّل» عليها (صاحب إغلاق
+      // أول شكوى، أو فنى المنطقة لو فنى الإغلاق غير معروف).
       let techClause = "";
       if (req.user?.role === ROLES.TECH) {
         const wc = String((req.user as any).workerCode || "").trim();
@@ -8371,7 +8372,7 @@ export async function registerRoutes(
           myTech = tr.rows[0]?.tech_name || "";
         }
         params.push(myTech);
-        techClause = ` AND (d."closeByName" = $${params.length} OR d."areaTechName" = $${params.length})`;
+        techClause = ` AND e."chargedTech" = $${params.length}`;
       }
 
       let srcCTE: string;
@@ -8423,6 +8424,11 @@ export async function registerRoutes(
           SELECT * FROM phone_occ WHERE appearances > 1
         )
         SELECT * FROM (
+        SELECT d.*,
+          -- الفنى المحمَّل على الرقم = فنى إغلاق أول شكوى (الأقدم)، أو فنى المنطقة لو الإغلاق غير معروف
+          FIRST_VALUE(CASE WHEN d."closeByName" <> 'غير معروف' THEN d."closeByName" ELSE d."areaTechName" END)
+            OVER (PARTITION BY d."phoneNumber" ORDER BY d."complainTime" ASC NULLS LAST, d."closeTime" ASC NULLS LAST) AS "chargedTech"
+        FROM (
         SELECT
           r.complain_no                                                                AS "complainNo",
           r.phone_number                                                               AS "phoneNumber",
@@ -8455,8 +8461,9 @@ export async function registerRoutes(
              WHERE pl.tel_no = r.phone_number LIMIT 1)                                 AS "frame"
         FROM repeated r
         ) d
+        ) e
         WHERE TRUE ${techClause}
-        ORDER BY d."phoneNumber", d."complainTime"
+        ORDER BY e."phoneNumber", e."complainTime"
         LIMIT 5000
       `, params);
 
