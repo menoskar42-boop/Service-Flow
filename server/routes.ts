@@ -7510,13 +7510,32 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // GET /api/reports/inspection/options — السنترالات + الكباين من dp_inventory
+  // بكسيات بيان الصيانة (maintenance.boxes) — كل البكسيات مهما كانت حالتها (اتفحصت و لا لأ).
+  // مصدر إضافى لبكسيات تقارير التفتيش بجانب dp_inventory. آمن لو سكيما الصيانة غير موجودة.
+  const maintenanceBoxRows = async (central?: string, cabinList?: string[]): Promise<any[]> => {
+    try {
+      const p: any[] = [];
+      const conds: string[] = [];
+      if (central) { p.push(central); conds.push(`e.name = $${p.length}`); }
+      if (cabinList && cabinList.length) { p.push(cabinList); conds.push(`c.number = ANY($${p.length}::text[])`); }
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+      const r = await pool.query(
+        `SELECT e.name AS central, c.number AS "cabinNumber", b.number AS "boxNumber"
+         FROM maintenance.boxes b
+         JOIN maintenance.cabinets c ON c.id = b.cabinet_id
+         JOIN maintenance.exchanges e ON e.id = c.exchange_id ${where}`, p);
+      return r.rows;
+    } catch (e) { return []; }
+  };
+
+  // GET /api/reports/inspection/options — السنترالات + الكباين من dp_inventory + بيان الصيانة
   app.get("/api/reports/inspection/options", requireAuth, async (_req, res) => {
     try {
-      const { rows } = await pool.query(`SELECT DISTINCT central, cabinet_no FROM dp_inventory`);
+      const { rows: dpRows } = await pool.query(`SELECT DISTINCT central, cabinet_no FROM dp_inventory`);
+      const maintRows = (await maintenanceBoxRows()).map((r) => ({ central: r.central, cabinet_no: r.cabinNumber }));
       const centralSet = new Set<string>();
       const cabMap = new Map<string, Set<string>>();
-      for (const r of rows) {
+      for (const r of [...dpRows, ...maintRows]) {
         if (r.central) centralSet.add(r.central);
         if (r.central && r.cabinet_no) { if (!cabMap.has(r.central)) cabMap.set(r.central, new Set()); cabMap.get(r.central)!.add(r.cabinet_no); }
       }
@@ -7536,13 +7555,20 @@ export async function registerRoutes(
       if (!central) return res.json({ lines: [], boxes: [], cabinets: [] });
       const cabinList = String(cabins).split(",").map((s) => s.trim()).filter(Boolean);
 
-      // 1) بكسيات الـ inventory للسنترال (+ فلتر الكباين)
+      // 1) بكسيات المصدرين معاً (dedup): dp_inventory (Network Inventory) + بيان/موقع الصيانة
+      //    (maintenance.boxes مهما كانت الحالة). السعة من dp_inventory إن وُجدت وإلا 10.
       const invParams: any[] = [central];
       let invWhere = "";
       if (cabinList.length) { invParams.push(cabinList); invWhere = ` AND cabinet_no = ANY($${invParams.length}::text[])`; }
-      const { rows: inv } = await pool.query(
+      const { rows: dpRows } = await pool.query(
         `SELECT cabinet_no AS "cabinNumber", dp_no AS "boxNumber", capacity
          FROM dp_inventory WHERE central = $1${invWhere}`, invParams);
+      const maintRows = await maintenanceBoxRows(central, cabinList);
+      const invMap = new Map<string, any>();
+      const invKey = (cab: any, box: any) => `${String(cab).trim()}||${String(box).trim()}`;
+      for (const r of dpRows) invMap.set(invKey(r.cabinNumber, r.boxNumber), { cabinNumber: r.cabinNumber, boxNumber: r.boxNumber, capacity: r.capacity });
+      for (const r of maintRows) { const k = invKey(r.cabinNumber, r.boxNumber); if (!invMap.has(k)) invMap.set(k, { cabinNumber: r.cabinNumber, boxNumber: r.boxNumber, capacity: null }); }
+      const inv = Array.from(invMap.values());
 
       // 2) خطوط السنترال (+ فلتر الكباين) — تُفلتر بعدين على بكسيات الـ inventory
       const plParams: any[] = [central];
