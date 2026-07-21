@@ -1125,15 +1125,17 @@ export async function registerRoutes(
     return { ...user, techName, coveredTechNames };
   }
 
-  // أرقام العمّال (worker_code) اللى المستخدم الحالى يقدر يتصرف فى خطوطهم: كوده + المشمولين بمنح التغطية.
-  async function coverageWorkerCodes(user: any): Promise<string[]> {
-    const codes = new Set<string>();
-    const own = String(user?.workerCode || "").trim();
-    if (own) codes.add(own);
+  // أكواد العمّال: own = كود الفنى نفسه (كل خطوطه) ؛ covered = أكواد الزملاء المشمولين بمنح التغطية
+  // (خطوطهم متاحة **فقط** لو عليها عطل حالى أو عطل خارج الشاشة مفتوح — يُتحقّق فى الاستعلام).
+  async function coverageCodes(user: any): Promise<{ own: string[]; covered: string[] }> {
+    const own = new Set<string>();
+    const covered = new Set<string>();
+    const ownCode = String(user?.workerCode || "").trim();
+    if (ownCode) own.add(ownCode);
     if (user?.role === ROLES.TECH) {
       let techName: string | null = null;
-      if (own) {
-        try { const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [own]); techName = r.rows[0]?.tech_name ?? null; } catch (e) {}
+      if (ownCode) {
+        try { const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [ownCode]); techName = r.rows[0]?.tech_name ?? null; } catch (e) {}
       }
       if (!techName) techName = user?.username ?? null;
       if (techName) {
@@ -1142,11 +1144,11 @@ export async function registerRoutes(
             `SELECT DISTINCT tn.worker_code FROM tech_coverage_grants g
              JOIN technician_names tn ON btrim(tn.tech_name) = btrim(g.covered_tech_name)
              WHERE btrim(g.grantee_tech_name) = btrim($1)`, [String(techName).trim()]);
-          for (const r of rows) if (r.worker_code) codes.add(String(r.worker_code).trim());
+          for (const r of rows) if (r.worker_code) covered.add(String(r.worker_code).trim());
         } catch (e) {}
       }
     }
-    return [...codes];
+    return { own: [...own], covered: [...covered] };
   }
 
   // يجهّز جلسة الكوابل تلقائياً بعد الدخول على الطلبات لو دور المستخدم يفتح الكوابل
@@ -3148,6 +3150,7 @@ export async function registerRoutes(
     // مطابقة الرقم الكامل أو القصير (مع/بدون بادئة 88)
     const short = phone.replace(/^88/, "");
     const full = phone.startsWith("88") ? phone : "88" + phone;
+    const codes = await coverageCodes(req.user);   // {own, covered} لحساب ownedByMe
     // نبحث فى phone_lines (بيانات فنية) وإلا نرجّع البيانات من line_accounts / case_138 /
     // الشكاوى — علشان يظهر أى رقم له أكونت أو قياس أو شكوى حتى لو مالوش بيانات فنية.
     const { rows } = await pool.query(
@@ -3177,12 +3180,24 @@ export async function registerRoutes(
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt", pe.last_raise_by AS "raisedBy",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt", pe.last_stop_by AS "stoppedBy",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "lastComplaintAt",
-              -- هل الخط تابع لمنطقة الفنى الحالى (أو زميل له تغطية عليه)؟ الاعتماد على كود كابينة
-              -- المسان: لازم يكون فيه صف فى cabinet_technicians بنفس الـ cabin_code وبرقم عامل ضمن
-              -- أرقام العمّال المسموح بها ($4 = كود الفنى + أكواد الزملاء المشمولين بمنح التغطية).
-              (ctc.cabin_code IS NOT NULL AND btrim(ctc.cabin_code) <> '' AND array_length($4::text[], 1) > 0 AND EXISTS (
-                 SELECT 1 FROM cabinet_technicians ctx
-                 WHERE btrim(ctx.cabin_code) = btrim(ctc.cabin_code) AND btrim(ctx.worker_code) = ANY($4::text[])
+              -- ownedByMe: خطوطى أنا ($4 = كودى) → أى خط فى كباينى.
+              -- خطوط زميل مشمول بالتغطية ($5 = أكواد الزملاء) → **فقط** لو عليها عطل حالى
+              -- (ticket_dsl_current مفتوح) أو عطل خارج الشاشة مفتوح (manual_faults status='open').
+              (ctc.cabin_code IS NOT NULL AND btrim(ctc.cabin_code) <> '' AND (
+                 (array_length($4::text[], 1) > 0 AND EXISTS (
+                    SELECT 1 FROM cabinet_technicians ctx
+                    WHERE btrim(ctx.cabin_code) = btrim(ctc.cabin_code) AND btrim(ctx.worker_code) = ANY($4::text[])))
+                 OR
+                 (array_length($5::text[], 1) > 0
+                  AND EXISTS (SELECT 1 FROM cabinet_technicians ctx
+                              WHERE btrim(ctx.cabin_code) = btrim(ctc.cabin_code) AND btrim(ctx.worker_code) = ANY($5::text[]))
+                  AND (
+                    EXISTS (SELECT 1 FROM ticket_dsl_current tc
+                            WHERE tc.phone_number = t.short AND tc.close_date IS NULL
+                              AND (tc.status_code ~ '^(160|173|122|73|72|60|81)' OR tc.complain_type_name ~ '^(160|173|122|73|72|60|81)'))
+                    OR EXISTS (SELECT 1 FROM manual_faults mf
+                               WHERE mf.status = 'open' AND (mf.phone_short = t.short OR mf.full_phone = t.full))
+                  ))
               )) AS "ownedByMe",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"
        FROM t
@@ -3229,7 +3244,7 @@ export async function registerRoutes(
          ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
        ) mob ON true
        LIMIT 1`,
-      [phone, short, full, await coverageWorkerCodes(req.user)],
+      [phone, short, full, codes.own, codes.covered],
     );
     const line = rows[0];
     if (!line || !line.hasData) return res.json({ found: false });
