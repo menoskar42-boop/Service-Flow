@@ -56,7 +56,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const isAdmin = user?.role === ROLES.ADMIN;
+  const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
   // إدخال رقم محمول يدوى للمتعذرات الحالية (للأرقام المشفّرة بنجوم): سوبر أدمن + أدمن (ومدير
   // السنترال) + الشئون الخارجية (ومهندس الكوابل) + أدمن المبيعات.
   const canEditMobile = bucket === "current" &&
