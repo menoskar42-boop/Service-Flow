@@ -26,7 +26,17 @@ interface WorkOrder {
   techName: string;
 }
 
-export function WorkOrdersReport() {
+interface WorkOrdersReportProps {
+  /** التصنيف: success (افتراضى) | fail | all */
+  category?: "success" | "fail" | "all";
+  /** true = التركيبات المتخطية زمن الإغلاق 24 ساعة (Success) */
+  over24?: boolean;
+  title?: string;
+  /** إظهار زر رفع الملف (افتراضى للتقرير الرئيسى فقط) */
+  showUpload?: boolean;
+}
+
+export function WorkOrdersReport({ category = "success", over24 = false, title, showUpload = true }: WorkOrdersReportProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -36,11 +46,13 @@ export function WorkOrdersReport() {
   const [dateTo, setDateTo] = useState("");
 
   const { data: orders = [], isFetching } = useQuery<WorkOrder[]>({
-    queryKey: ["/api/work-orders", dateFrom, dateTo],
+    queryKey: ["/api/work-orders", dateFrom, dateTo, category, over24],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
+      if (category) p.set("category", category);
+      if (over24) p.set("over24", "1");
       const res = await fetch(`/api/work-orders?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("failed");
       return res.json();
@@ -176,6 +188,7 @@ export function WorkOrdersReport() {
 
   return (
     <div className="space-y-5" dir="rtl">
+      {title && <h2 className="text-lg font-bold">{title}</h2>}
       {/* Controls */}
       <Card className="p-4 bg-white border-0 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
@@ -208,8 +221,8 @@ export function WorkOrdersReport() {
             PDF
           </Button>
 
-          {/* Upload — admin only */}
-          {(user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN) && (
+          {/* Upload — admin only, and only on the main report */}
+          {showUpload && (user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN) && (
             <>
               <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
               <Button

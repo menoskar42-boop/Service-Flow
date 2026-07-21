@@ -191,6 +191,8 @@ export const workOrders = pgTable("work_orders", {
   itemName: text("item_name"),
   cableQuantity: text("cable_quantity"),
   techName: text("tech_name").notNull(),
+  closeCategory: text("close_category"),               // Success | Fail
+  creationDate: timestamp("creation_date", { withTimezone: true }), // لحساب زمن الإغلاق (>24 ساعة)
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
 }, (table) => ({

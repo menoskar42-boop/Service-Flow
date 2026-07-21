@@ -3548,6 +3548,7 @@ export async function registerRoutes(
       const iPhone     = findCol("service no", "التليفون", "تليفون", "هاتف", "phone");
       const iService   = findCol("work order type", "نوع الخدمه", "نوع الخدمة", "service type");
       const iDate      = findCol("close date", "تاريخ الاغلاق", "تاريخ الإغلاق", "الاغلاق");
+      const iCreation  = findCol("creation date", "تاريخ الانشاء", "تاريخ الإنشاء", "initiate date");
       const iItem      = findCol("اسم الصنف", "الصنف", "item name");
       const iCable     = findCol("consumed cables", "كميه السلك", "كمية السلك", "السلك", "cable");
       const iTech      = findCol("tech name", "اسم الفنى", "اسم الفني", "الفنى");
@@ -3568,9 +3569,10 @@ export async function registerRoutes(
       let skipped = 0;
 
       for (const r of dataRows) {
-        // لا تُحمَّل إلا أوامر الشغل المغلقة بنجاح (Close Category = Success).
-        const closeCategory = String(g(r, iCloseCat, 10)).trim().toLowerCase();
-        if (closeCategory !== "success") { skipped++; continue; }
+        // نقبل Success و Fail (كل واحد يظهر فى تقريره الخاص)؛ نتخطّى بس لو التصنيف غير واضح.
+        const closeCatLower = String(g(r, iCloseCat, 10)).trim().toLowerCase();
+        if (closeCatLower !== "success" && !closeCatLower.startsWith("fail")) { skipped++; continue; }
+        const closeCategory = closeCatLower === "success" ? "Success" : "Fail";
         // اسم السنترال يُستخرج من كود Organization ويُقارن بأكواد الملف المرفق.
         // أي كود غير موجود ضمن السنترالات المسموحة (الغنايم وفروعها) يُتخطّى.
         const orgCode = String(g(r, iOrg, 4)).trim().toUpperCase();
@@ -3582,28 +3584,31 @@ export async function registerRoutes(
         const rawServiceType = String(g(r, iService, 5)).trim();
         const serviceType  = rawServiceType === "Fixed Voice Installation MSAN" ? "تركيب جديد" : "نقل";
         const rawDate      = g(r, iDate, 12);
+        const rawCreation  = opt(r, iCreation);
         const itemName     = "سلك واحد جوز"; // اسم الصنف ثابت دائماً
         const cableQuantity = ""; // كميه السلك تُترك فارغة عمداً (لا تؤخذ من الملف)
         const techName     = String(g(r, iTech, 15)).trim();
 
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
 
-        let closeDate: Date;
-        if (rawDate instanceof Date) {
-          closeDate = rawDate;
-        } else if (typeof rawDate === "number") {
-          closeDate = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
-        } else {
-          closeDate = new Date(rawDate);
-        }
-        if (isNaN(closeDate.getTime())) { skipped++; continue; }
+        const toDate = (v: any): Date | null => {
+          if (v instanceof Date) return v;
+          if (typeof v === "number") return new Date(Math.round((v - 25569) * 86400 * 1000));
+          if (v === "" || v == null) return null;
+          const d = new Date(v); return isNaN(d.getTime()) ? null : d;
+        };
+        const closeDate = toDate(rawDate);
+        if (!closeDate || isNaN(closeDate.getTime())) { skipped++; continue; }
+        const creationDate = toDate(rawCreation); // اختيارى — لحساب زمن الإغلاق
 
-        // المقارنة على (اسم السنترال + رقم امر الشغل): لو موجود يُتخطّى، لو جديد يُضاف.
+        // المقارنة على (اسم السنترال + رقم امر الشغل): لو موجود يُحدَّث تصنيفه/تواريخه، لو جديد يُضاف.
         const ins = await pool.query(
-          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, uploaded_by_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-           ON CONFLICT (central_name, work_order_id) DO NOTHING`,
-          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, (req.user as any).id],
+          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, uploaded_by_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           ON CONFLICT (central_name, work_order_id) DO UPDATE SET
+             close_category = EXCLUDED.close_category,
+             creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date)`,
+          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, (req.user as any).id],
         );
         if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
       }
@@ -3635,12 +3640,19 @@ export async function registerRoutes(
 
   // GET /api/work-orders — list with date range filter
   app.get("/api/work-orders", requireAuth, async (req, res) => {
-    const { dateFrom, dateTo } = req.query as Record<string, string>;
+    const { dateFrom, dateTo, category = "success", over24 = "" } = req.query as Record<string, string>;
     const params: any[] = [];
     const conds: string[] = [];
 
-    if (dateFrom) { params.push(dateFrom); conds.push(`close_date >= $${params.length}::date`); }
-    if (dateTo) { params.push(dateTo); conds.push(`close_date < ($${params.length}::date + interval '1 day')`); }
+    if (dateFrom) { params.push(dateFrom); conds.push(`w.close_date >= $${params.length}::date`); }
+    if (dateTo) { params.push(dateTo); conds.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }
+    // التصنيف: success (الافتراضى — يشمل القديمة NULL) | fail | all
+    if (category === "fail") conds.push(`w.close_category = 'Fail'`);
+    else if (category !== "all") conds.push(`(w.close_category IS NULL OR w.close_category = 'Success')`);
+    // تركيبات متخطية زمن الإغلاق 24 ساعة (close_date − creation_date > 24 ساعة)
+    if (over24 === "1" || over24 === "true") {
+      conds.push(`w.creation_date IS NOT NULL AND EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) / 3600 > 24`);
+    }
 
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // كمية السلك: تؤخذ من work_orders لو موجودة، وإلا من cable_entries (إدخال الفنى يدوياً)

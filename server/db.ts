@@ -144,6 +144,10 @@ export async function ensureSchema() {
       CONSTRAINT work_orders_central_wo_uniq UNIQUE (central_name, work_order_id)
     )
   `);
+  // close_category (Success/Fail) — لفصل الأوامر الفاشلة فى تقرير منفصل.
+  // creation_date — لحساب «التركيبات المتخطية 24 ساعة» (زمن الإغلاق = close_date − creation_date).
+  await pool.query(`ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS close_category text`);
+  await pool.query(`ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS creation_date timestamptz`);
 
   // Migrate uniqueness from work_order_id alone → (central_name, work_order_id).
   // The legacy global-unique constraint means we haven't migrated yet: wipe the
