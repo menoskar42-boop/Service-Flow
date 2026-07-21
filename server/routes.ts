@@ -7587,7 +7587,9 @@ export async function registerRoutes(
 
       const key = (cab: any, box: any) => `${String(cab).trim()}||${String(box).trim()}`;
       const digits = (s: any) => { const n = Number(String(s).replace(/[^0-9]/g, "")); return isNaN(n) ? 0 : n; };
-      const invSet = new Set(inv.map((r: any) => key(r.cabinNumber, r.boxNumber)));
+      // نستبعد البكسيات اللى رقمها مش رقم صافى (مالهاش رقم مشط/ربط) — زى «٢٥مكرر» / «٦مناول»
+      const invUsable = inv.filter((b: any) => digits(b.boxNumber) > 0);
+      const invSet = new Set(invUsable.map((r: any) => key(r.cabinNumber, r.boxNumber)));
       // خطوط داخل الـ inventory فقط (نستبعد اللى بكسها مش فى الـ inventory) + قيم مشتقة لكل خط:
       //   block (رقم البلوك) = ceil(رقم البكس / 10) — كل 10 أمشاط بلوك.
       //   terminal (الترمنال داخل المشط) = ((الخارج - 1) % 10) + 1.
@@ -7610,7 +7612,7 @@ export async function registerRoutes(
       // boxes = بكسيات الـ inventory. الربط/البلوك/المشط مشتقة من رقم البكس + السعة (مش من بيانات الخطوط):
       //   الربط: من = (رقم البكس - 1)*10 + 1 ، الي = من + السعة - 1  (بكس 35 سعة 10 → 341-350 ؛ سعة 20 → +20).
       //   رقم البلوك = ceil(رقم البكس / 10) ؛ رقم المشط (نسبى داخل البلوك) = ((رقم البكس - 1) % 10) + 1.
-      const boxes = inv.map((b: any) => {
+      const boxes = invUsable.map((b: any) => {
         const ls = byBox.get(key(b.cabinNumber, b.boxNumber)) || [];
         const occ = new Set(ls.map((x) => x.telNo).filter(Boolean)).size;
         const dp = digits(b.boxNumber), cap = b.capacity || 10;
