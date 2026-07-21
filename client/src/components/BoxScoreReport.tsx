@@ -9,11 +9,12 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, Wrench } from "lucide-react";
+import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, Wrench, List, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { MaintBoxDetail, maintStatusBadge, type MaintRow } from "@/components/MaintenanceComprehensiveReport";
+import { WithAccountReport } from "@/components/WithAccountReport";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -309,6 +310,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
     return m;
   }, [maintData]);
   const [maintDetail, setMaintDetail] = useState<MaintRow | null>(null);
+  const [linesBox, setLinesBox] = useState<BoxAvgRow | null>(null); // نافذة خطوط البكس (خطوط لها أكونت)
 
   const [dzsBox, setDzsBox] = useState<string | null>(null);
   const measureBox = async (r: BoxAvgRow) => {
@@ -476,17 +478,27 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.oldestMeasTime)}</TableCell>
                   <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{fmtDt(r.newestMeasTime)}</TableCell>
                   <TableCell>
-                    {showSpeedTools && (
-                    <button
-                      type="button"
-                      onClick={() => measureBox(r)}
-                      disabled={r.withAccountCount === 0}
-                      title={r.withAccountCount > 0 ? "قياس DZS لكل خطوط البكس اللى لها أكونت" : "لا توجد خطوط لها أكونت"}
-                      className="text-blue-600 hover:text-blue-800 disabled:opacity-30"
-                    >
-                      {dzsBox === `${r.cabinNumber}/${r.boxNumber}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />}
-                    </button>
-                    )}
+                    <span className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setLinesBox(r)}
+                        title="عرض خطوط هذا البكس اللى لها أكونت (نفس أعمدة تقرير خطوط لها أكونت)"
+                        className="text-purple-600 hover:text-purple-800"
+                      >
+                        <List className="w-4 h-4" />
+                      </button>
+                      {showSpeedTools && (
+                      <button
+                        type="button"
+                        onClick={() => measureBox(r)}
+                        disabled={r.withAccountCount === 0}
+                        title={r.withAccountCount > 0 ? "قياس DZS لكل خطوط البكس اللى لها أكونت" : "لا توجد خطوط لها أكونت"}
+                        className="text-blue-600 hover:text-blue-800 disabled:opacity-30"
+                      >
+                        {dzsBox === `${r.cabinNumber}/${r.boxNumber}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />}
+                      </button>
+                      )}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}
@@ -498,6 +510,19 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
         </div>
       )}
       {maintDetail && <MaintBoxDetail row={maintDetail} onClose={() => setMaintDetail(null)} />}
+      {linesBox && (
+        <div className="fixed inset-0 z-[9998] bg-black/50 flex items-start justify-center p-3 overflow-auto" onClick={() => setLinesBox(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-[1400px] my-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-2 border-b bg-purple-50">
+              <h3 className="font-bold text-sm">خطوط لها أكونت — {linesBox.centralName} / كابينة {linesBox.cabinNumber} / بكس {linesBox.boxNumber}</h3>
+              <button onClick={() => setLinesBox(null)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-2">
+              <WithAccountReport initialCentral={linesBox.centralName} initialCabin={linesBox.cabinNumber} initialBox={linesBox.boxNumber} />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

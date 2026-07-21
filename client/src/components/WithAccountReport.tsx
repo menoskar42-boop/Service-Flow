@@ -89,15 +89,19 @@ interface WithAccountReportProps {
   /** القيمة الافتراضية لعدد أيام فلتر «أقدم من N يوم» (الفلتر نفسه يظل مطفياً حتى تفعيله) */
   defaultStaleDays?: string;
   title?: string;
+  /** قيم مبدئية للفلتر (تُستخدم عند فتح التقرير لبكس محدد فى نافذة منبثقة) */
+  initialCentral?: string;
+  initialCabin?: string;
+  initialBox?: string;
 }
 
-export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title }: WithAccountReportProps = {}) {
+export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title, initialCentral = "", initialCabin = "", initialBox = "" }: WithAccountReportProps = {}) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
   useSpeedToolSource("خطوط لها أكونت");
-  const [central, setCentral] = useState("");
-  const [cabin, setCabin] = useState("");
-  const [box, setBox] = useState("");
+  const [central, setCentral] = useState(initialCentral);
+  const [cabin, setCabin] = useState(initialCabin);
+  const [box, setBox] = useState(initialBox);
   const [boxFrom, setBoxFrom] = useState("");
   const [boxTo, setBoxTo] = useState("");
   const [page, setPage] = useState(1);
