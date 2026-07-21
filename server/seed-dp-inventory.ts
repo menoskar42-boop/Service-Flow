@@ -35,7 +35,10 @@ const DATA: Row[] = [
   ...dps(DRG, "3-1", ["1","4","9","11","34","35","36","39","42","45"]),
   ...dps(DRG, "tb", ["5","6","15","16"]),
   // ── AMZ — العزايزة (كابينة sheltr، سعة 10) ──
-  ...dps(AMZ, "sheltr", ["1","3","4","6","7","9","10","11","13","14","15","17","19","20","22","23","25","26","28","31","32","33","35","36","40","43","45","48","49","53","56","58","61","62"]),
+  ...dps(AMZ, "sheltr", [
+    "1","3","4","6","7","9","10","11","13","14","15","17","19","20","22","23","25","26","28","31","32","33","35","36","40","43","45","48","49","53","56","58","61","62",
+    "34","38","41","47","5","50","51","52","54","55","59","60","63","64","65","69","70","72","75","76","79","8","80","81","84","85","86","88","89","91","93","94","95","99",
+  ]),
 ];
 
 export async function seedDpInventory(): Promise<number> {
@@ -52,15 +55,14 @@ export async function seedDpInventory(): Promise<number> {
   return inserted;
 }
 
-// يشغّل الـ seed تلقائياً عند الإقلاع لو الجدول فاضى فقط.
+// يشغّل الـ seed عند كل إقلاع بشكل **إضافى** (ON CONFLICT DO NOTHING) — يضيف الصفوف الناقصة
+// فقط ولا يحذف أى شىء، فيتوسّع مع إضافة سنترالات/بكسيات جديدة للـ seed. (الاستيراد باللصق
+// يظل يعمل full-replace للسنترال لحظته؛ الـ seed لا يمسح، بس ممكن يرجّع صفوف seed محذوفة عند الإقلاع.)
 export async function seedDpInventoryIfEmpty(): Promise<void> {
   try {
-    const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM dp_inventory");
-    if ((rows[0]?.n ?? 0) === 0) {
-      const inserted = await seedDpInventory();
-      console.log(`[seedDpInventory] auto-seeded ${inserted} DPs (table was empty)`);
-    }
+    const inserted = await seedDpInventory();
+    if (inserted > 0) console.log(`[seedDpInventory] added ${inserted} missing DPs`);
   } catch (e) {
-    console.error("[seedDpInventory] auto-seed skipped:", (e as Error).message);
+    console.error("[seedDpInventory] seed skipped:", (e as Error).message);
   }
 }
