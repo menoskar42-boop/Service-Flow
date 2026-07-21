@@ -8023,6 +8023,7 @@ export async function registerRoutes(
             cd.exchange_name AS central_name,
             cd.phone_number,
             cd.close_time,
+            cd.complain_time,
             COALESCE(
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
               (SELECT tn.tech_name FROM cabinet_technicians ct
@@ -8039,7 +8040,8 @@ export async function registerRoutes(
           SELECT
             central_name, phone_number, tech_name,
             COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
-            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY close_time ASC NULLS LAST) AS rk
+            -- rk=1 = صاحب إغلاق أول شكوى (الأقدم بتاريخ الشكوى) — عليه يُحسب التكرار
+            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
           FROM phone_occ
         )
         SELECT
@@ -8049,9 +8051,10 @@ export async function registerRoutes(
           COUNT(DISTINCT phone_number)::int                                                 AS "distinctPhones",
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)::int                  AS "nonRepeated",
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
-          SUM(CASE WHEN rk > 1 THEN 1 ELSE 0 END)::int                                       AS "repCharges",
+          -- التكرار يُحسب على صاحب إغلاق أول شكوى (صف rk=1) بكل مرات التكرار (appearances - 1)
+          SUM(CASE WHEN rk = 1 THEN appearances - 1 ELSE 0 END)::int                          AS "repCharges",
           ROUND(
-            100.0 * SUM(CASE WHEN rk > 1 THEN 1 ELSE 0 END)
+            100.0 * SUM(CASE WHEN rk = 1 THEN appearances - 1 ELSE 0 END)
             / NULLIF(COUNT(DISTINCT phone_number), 0),
           1)                                                                                AS "repRatio"
         FROM ranked
@@ -8090,6 +8093,7 @@ export async function registerRoutes(
             rc.exchange_name AS central_name,
             rc.phone_number,
             rc.close_time,
+            rc.complain_time,
             COALESCE(
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = rc.close_by LIMIT 1),
               (SELECT tn.tech_name FROM cabinet_technicians ct
@@ -8107,7 +8111,8 @@ export async function registerRoutes(
           SELECT
             central_name, phone_number, tech_name,
             COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
-            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY close_time ASC NULLS LAST) AS rk
+            -- rk=1 = صاحب إغلاق أول شكوى (الأقدم بتاريخ الشكوى) — عليه يُحسب التكرار
+            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
           FROM phone_occ
         )
         SELECT
@@ -8117,9 +8122,10 @@ export async function registerRoutes(
           COUNT(DISTINCT phone_number)::int                                                 AS "distinctPhones",
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)::int                  AS "nonRepeated",
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
-          SUM(CASE WHEN rk > 1 THEN 1 ELSE 0 END)::int                                       AS "repCharges",
+          -- التكرار يُحسب على صاحب إغلاق أول شكوى (صف rk=1) بكل مرات التكرار (appearances - 1)
+          SUM(CASE WHEN rk = 1 THEN appearances - 1 ELSE 0 END)::int                          AS "repCharges",
           ROUND(
-            100.0 * SUM(CASE WHEN rk > 1 THEN 1 ELSE 0 END)
+            100.0 * SUM(CASE WHEN rk = 1 THEN appearances - 1 ELSE 0 END)
             / NULLIF(COUNT(DISTINCT phone_number), 0),
           1)                                                                                AS "repRatio"
         FROM ranked
@@ -8178,6 +8184,7 @@ export async function registerRoutes(
             po.exchange_name AS central_name,
             po.phone_number,
             po.close_time,
+            po.complain_time,
             COALESCE(
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = po.close_by LIMIT 1),
               (SELECT tn.tech_name FROM cabinet_technicians ct
@@ -8192,7 +8199,8 @@ export async function registerRoutes(
           SELECT
             central_name, phone_number, tech_name,
             COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
-            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY close_time ASC NULLS LAST) AS rk
+            -- rk=1 = صاحب إغلاق أول شكوى (الأقدم بتاريخ الشكوى) — عليه يُحسب التكرار
+            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
           FROM phone_occ
         )
         SELECT
@@ -8202,9 +8210,10 @@ export async function registerRoutes(
           COUNT(DISTINCT phone_number)::int                                                 AS "distinctPhones",
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances = 1)::int                  AS "nonRepeated",
           COUNT(DISTINCT phone_number) FILTER (WHERE appearances > 1)::int                  AS "repeatedPhones",
-          SUM(CASE WHEN rk > 1 THEN 1 ELSE 0 END)::int                                       AS "repCharges",
+          -- التكرار يُحسب على صاحب إغلاق أول شكوى (صف rk=1) بكل مرات التكرار (appearances - 1)
+          SUM(CASE WHEN rk = 1 THEN appearances - 1 ELSE 0 END)::int                          AS "repCharges",
           ROUND(
-            100.0 * SUM(CASE WHEN rk > 1 THEN 1 ELSE 0 END)
+            100.0 * SUM(CASE WHEN rk = 1 THEN appearances - 1 ELSE 0 END)
             / NULLIF(COUNT(DISTINCT phone_number), 0),
           1)                                                                                AS "repRatio"
         FROM ranked
