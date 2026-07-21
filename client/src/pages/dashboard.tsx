@@ -93,6 +93,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "major-faults",           label: "الأعطال الجسيمة" },
       { id: "engineering-inspection", label: "أعطال التفتيش الهندسى" },
+      { id: "closed-port-cabinets",   label: "الكباين المغلقة بورتات" },
     ],
   },
   {
@@ -147,7 +148,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "box-summary",  label: "ملخص البكسيات" },
-      { id: "closed-port-cabinets", label: "الكباين المغلقة بورتات" },
       { id: "port-change", label: "متابعة تغيير البورت" },
       { id: "subscriber-info", label: "اسم وعنوان العملاء (البورتات)" },
       { id: "ports-suspend-free", label: "بورتات ALL_SUSPEND / FREE" },
