@@ -6353,9 +6353,32 @@ export async function registerRoutes(
     const closeCode = String(b.closeCode || "").trim();
     if (!closeCode) return res.status(400).json({ message: "اختر سبب الإغلاق" });
     const techName = (req.user.role === ROLES.SUPER_ADMIN && b.techName) ? String(b.techName).trim() : String(req.user.username || "");
+    // عند الانتظام نسجّل snapshot للبيان الفنى الحالى (زى بحث برقم التليفون وقت الانتظام):
+    // السنترال/الكابينة/البكس من phone_lines، وكود MSAN من phone_ports ثم cabinet_technicians،
+    // واسم فنى الكابينة الحالى — فالأرشيف يعكس حالة الخط وقت الانتظام مش وقت تسجيل العطل.
     const { rows } = await pool.query(
-      `UPDATE manual_faults SET status='regularized', regularized_at=now(), regularized_by=$3, close_code=$4
-       WHERE status='open' AND (phone_short=$1 OR full_phone=$2) RETURNING id`,
+      `UPDATE manual_faults mf SET
+         status='regularized', regularized_at=now(), regularized_by=$3, close_code=$4,
+         central      = COALESCE(cur.central, mf.central),
+         cabin_number = COALESCE(cur.cabin_number, mf.cabin_number),
+         box_number   = COALESCE(cur.box_number, mf.box_number),
+         msan_code    = COALESCE(cur.msan_code, mf.msan_code),
+         tech_name    = COALESCE(cur.tech_name, mf.tech_name)
+       FROM (
+         SELECT pl.central, pl.cabin_number, pl.box_number,
+                COALESCE(NULLIF(pp.msan_code,''), ctc.cabin_code) AS msan_code,
+                ctc.tech_name
+         FROM (SELECT 1) o
+         LEFT JOIN LATERAL (SELECT central, cabin_number, box_number FROM phone_lines WHERE full_phone=$2 OR tel_no=$1 LIMIT 1) pl ON true
+         LEFT JOIN phone_ports pp ON pp.phone_number=$2
+         LEFT JOIN LATERAL (
+           SELECT ct.cabin_code, tn.tech_name FROM cabinet_technicians ct
+           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+           WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+           ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, tn.tech_name NULLS LAST LIMIT 1
+         ) ctc ON true
+       ) cur
+       WHERE mf.status='open' AND (mf.phone_short=$1 OR mf.full_phone=$2) RETURNING mf.id`,
       [phoneShort, fullPhone, techName || null, closeCode]);
     if (!rows.length) return res.json({ ok: false, message: "لا يوجد عطل مفتوح لهذا الخط" });
     res.json({ ok: true, count: rows.length });
