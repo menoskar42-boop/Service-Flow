@@ -67,6 +67,9 @@ app.use((req, res, next) => {
   // إدخال سعة الكباين تلقائياً لو الجدول فاضى (يشتغل مع النشر بدون كونسول)
   const { seedCabinetCapacityIfEmpty } = await import("./seed-cabinet-capacity");
   await seedCabinetCapacityIfEmpty();
+  // إدخال بكسيات DP تلقائياً لو الجدول فاضى (من صور Network Inventory — للاختبار/التشغيل الأولى)
+  const { seedDpInventoryIfEmpty } = await import("./seed-dp-inventory");
+  await seedDpInventoryIfEmpty();
   await registerRoutes(httpServer, app);
 
   // ركّب تطبيق الصيانة (Express+EJS) تحت /maintenance — بيتحمّل كـ CommonJS **غير مبنْدَل** عشان
