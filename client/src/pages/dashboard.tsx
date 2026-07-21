@@ -100,6 +100,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
+    // جدول الورديات — للكل ما عدا المبيعات وأدمن المبيعات ومسئول البيانات؛ الفنى يشوف بدون تعديل
+    label: "جدول الورديات",
+    icon: CalendarDays,
+    items: [
+      { id: "shift-schedule", label: "جدول الورديات" },
+    ],
+  },
+  {
     label: "القياسات",
     icon: Cable,
     items: [
@@ -181,14 +189,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     icon: ClipboardList,
     items: [
       { id: "inspection-reports", label: "تقارير التفتيش (سنترال + كابينة)" },
-    ],
-  },
-  {
-    // جدول الورديات — للكل ما عدا المبيعات وأدمن المبيعات ومسئول البيانات؛ الفنى يشوف بدون تعديل
-    label: "جدول الورديات",
-    icon: CalendarDays,
-    items: [
-      { id: "shift-schedule", label: "جدول الورديات" },
     ],
   },
   {
