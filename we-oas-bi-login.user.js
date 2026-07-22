@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.8.2
+// @version      1.8.3
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -439,21 +439,16 @@
     }
     return called;
   }
-  // يملأ التواريخ (بمحاولات) ثم يضغط Apply (اللى بيولّد التقرير وينزّل الـ Excel)
+  // يملأ التواريخ ثم يضغط Apply — نفس طريقة v1.7 اللى كانت بتكتب التواريخ صح
+  // (كتابة مرة واحدة؛ من غير closeDatePopup متكرر بعد الكتابة اللى كان بيمسح القيمة)
   async function fillDatesAndApply() {
-    for (let t = 0; t < 4; t++) {
-      closeDatePopup();
-      const fromI = findDateInput(/from_?date/i);
-      const toI = findDateInput(/to_?date/i);
-      if (fromI) setValue(fromI, FROM_STR);
-      if (toI) setValue(toI, TO_STR);
-      closeDatePopup();
-      const okFrom = fromI && String(fromI.value || "").trim();
-      const okTo = toI && String(toI.value || "").trim();
-      if (okFrom && okTo) break;
-      await sleep(500);
-    }
-    await sleep(500);
+    closeDatePopup();
+    const fromI = findDateInput(/from_?date/i);
+    const toI = findDateInput(/to_?date/i);
+    if (fromI) setValue(fromI, FROM_STR);
+    if (toI) setValue(toI, TO_STR);
+    closeDatePopup();
+    await sleep(700);
     const clicked = clickApply();
     console.log("[430D] Apply", clicked ? "مضغوط" : "مش لاقيه");
     return clicked;
