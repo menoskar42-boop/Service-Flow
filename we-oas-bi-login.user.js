@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
-// @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date/to_date، Apply، يسحب «التفاصيل» ثم يفتح تبويب «تفاصيل المتبقى» (بانتظار قوى بدون Apply تانى)، ويرفع الشيتين لموقع Service-Flow تلقائياً (+ نسخة على الجهاز).
-// @version      1.3.3
+// @description  يسجّل الدخول على we-oas.te.eg BI، يجلب تقرير «430D Trial - Details متابعة اعطال» كملفات Excel كاملة (كل الأعمدة) مباشرةً من xmlpserver للتفاصيل والمتبقى، ينزّلهم على الجهاز للمراجعة، وبعد تأكيدك يرفعهم لموقع Service-Flow.
+// @version      1.4.0
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
 // @connect      replit.app
+// @connect      we-oas.te.eg
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -30,6 +31,22 @@
           headers: { "X-Upload-Token": SF_TOKEN },
           data: fd, timeout: 90000,
           onload: (r) => { console.log("[430D] SF", r.status, (r.responseText || "").slice(0, 200)); resolve(r.status >= 200 && r.status < 300); },
+          onerror: (r) => { console.warn("[430D] SF error", r && r.status); resolve(false); },
+          ontimeout: () => { console.warn("[430D] SF timeout"); resolve(false); },
+        });
+      } catch (e) { console.warn("[430D] upload exception", e); resolve(false); }
+    });
+  }
+  // يرفع Blob (ملف xlsx كامل من الخادم) مباشرةً لمسار الاستيراد الذكى. يرجّع Promise<boolean>.
+  function uploadBlobToSF(blob, filename) {
+    return new Promise((resolve) => {
+      try {
+        const fd = new FormData(); fd.append("file", blob, filename);
+        GM_xmlhttpRequest({
+          method: "POST", url: SF_URL + "/api/complaint-details/import",
+          headers: { "X-Upload-Token": SF_TOKEN },
+          data: fd, timeout: 120000,
+          onload: (r) => { console.log("[430D] SF upload", filename, r.status, (r.responseText || "").slice(0, 220)); resolve(r.status >= 200 && r.status < 300); },
           onerror: (r) => { console.warn("[430D] SF error", r && r.status); resolve(false); },
           ontimeout: () => { console.warn("[430D] SF timeout"); resolve(false); },
         });
@@ -115,8 +132,9 @@
     return true;
   }
 
-  // لينك التقرير الدائم (مسار الكتالوج — لا يحتوى توكن جلسة)
-  const REPORT_URL = "https://we-oas.te.eg/analytics/saw.dll?bipublisherEntry&action=open&bippath=%2FFCC%20Prod%2F430D%20%D8%A7%D9%84%D9%82%D8%B7%D8%A7%D8%B9-TEDATA%20-%20Details%20%D9%85%D8%AA%D8%A7%D8%A8%D8%B9%D8%A9%20%D8%A7%D8%B9%D8%B7%D8%A7%D9%84.xdo&itemtype=.xdo";
+  // مسار تقرير الـ Trial (Excel كامل بكل الأعمدة) + لينك فتحه من الكتالوج
+  const XDO_PATH = "/FCC Prod/430D Trial القطاع-TEDATA - Details متابعة اعطال.xdo";
+  const REPORT_URL = "https://we-oas.te.eg/analytics/saw.dll?bipublisherEntry&action=open&bippath=" + encodeURIComponent(XDO_PATH) + "&itemtype=.xdo";
 
   /* ================== التواريخ (MM-DD-YYYY زى الموقع) ================== */
   const pad = (n) => String(n).padStart(2, "0");
@@ -129,6 +147,41 @@
       ? new Date(NOW.getFullYear(), NOW.getMonth() - 1, 25)
       : new Date(NOW.getFullYear(), NOW.getMonth(), 1)
   );
+
+  /* ================== جلب Excel مباشرة من xmlpserver (كل الأعمدة) ================== */
+  // رابط تصدير تبويب من التقرير: _xpt = رقم التبويب (0=التفاصيل، 1=تفاصيل المتبقى) — من الـ Network.
+  function exportUrl(tab) {
+    const base = "https://we-oas.te.eg/xmlpserver" + XDO_PATH.split("/").map(encodeURIComponent).join("/");
+    return base + "?_xpf=&_xpt=" + tab + "&_xmode=2&_xdo=" + encodeURIComponent(XDO_PATH) +
+      "&from_date=" + encodeURIComponent(FROM_STR) + "&to_date=" + encodeURIComponent(TO_STR);
+  }
+  // يجلب الملف كـ arraybuffer ويتحقق إنه xlsx فعلاً (يبدأ بـ PK). يرجّع Blob أو null.
+  function fetchXlsx(url) {
+    return new Promise((resolve) => {
+      GM_xmlhttpRequest({
+        method: "GET", url, responseType: "arraybuffer", timeout: 120000,
+        onload: (r) => {
+          const buf = r.response; const u8 = buf ? new Uint8Array(buf) : new Uint8Array();
+          const isXlsx = u8[0] === 0x50 && u8[1] === 0x4B;   // PK = بداية ملف xlsx (zip)
+          console.log("[430D] fetch", r.status, "bytes", u8.length, "xlsx?", isXlsx, "head", [...u8.slice(0, 4)]);
+          if (isXlsx) return resolve(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+          try { console.log("[430D] رد مش xlsx:", new TextDecoder().decode(u8.slice(0, 400))); } catch (e) {}
+          resolve(null);
+        },
+        onerror: () => resolve(null),
+        ontimeout: () => resolve(null),
+      });
+    });
+  }
+  // ينزّل Blob على الجهاز (للمراجعة قبل الرفع)
+  function saveBlob(blob, name) {
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = name;
+      (document.body || document.documentElement).appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 8000);
+    } catch (e) { console.warn("save err", e); }
+  }
 
   /* ================== علامة التشغيل التلقائى عبر الصفحات ================== */
   const FLAG = "WEOAS_AUTO_430D";
@@ -306,76 +359,37 @@
     }
     return false;
   }
+  // يجلب الملفين (التفاصيل _xpt=0 + المتبقى _xpt=1) كاملين من xmlpserver، ينزّلهم للمراجعة،
+  // وبعد تأكيدك يرفعهم للموقع. لا يعتمد على سحب الجريد إطلاقاً — كل الأعمدة موجودة.
   async function reportFlow() {
-    banner("📅 ضبط التواريخ (" + FROM_STR + " → " + TO_STR + ")…");
-    const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
-    if (!apply) { banner("❌ لم تُحمّل صفحة التقرير (لا يوجد Apply)", "#c62828"); return; }
-    closeDatePopup();
-    const fromI = findLabeledInput(/from_?date/i);
-    const toI = findLabeledInput(/to_?date/i);
-    // حاجز صارم: ده مش تقرير 430D (مفيش from/to date) → لا تعمل حاجة ولا تنزّل أى ملف
-    if (!fromI || !toI) { banner("⏹️ مش تقرير 430D (مفيش from/to date) — تجاهل.", "#607d8b"); clearFlag(); return; }
-    setValue(fromI, FROM_STR);
-    setValue(toI, TO_STR);
-    closeDatePopup();
-    await sleep(500);
-    // ===== 1) تبويب التفاصيل =====
-    banner("▶️ Apply (التفاصيل) — استنى النتائج…");
-    clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-    const detailsTable = await waitFor(() => { const tb = visibleReportTable(); return tb && tb.querySelectorAll("tr").length > 2 ? tb : null; }, 35000);
-    await sleep(1500);
-    const detailsRows = scrapeRows(detailsTable || visibleReportTable());
-    const detailsKey = complainSet(detailsRows);   // مجموعة أرقام شكاوى التفاصيل — للتمييز الثابت
-    banner("✔️ التفاصيل: " + Math.max(0, detailsRows.length - 1) + " صف — للمتبقى…", "#2e7d32");
-    // ===== 2) تبويب «تفاصيل المتبقى» =====
-    // كل تبويب iframe مستقل (docframe1=تفاصيل، docframe2=متبقى…). المتبقى بيتحمّل لما نضغط Apply
-    // وهو مفتوح، والـ Apply بيرجّع التبويب النشط للتفاصيل بس بيانات المتبقى بتفضل متحمّلة فى
-    // iframe بتاعه. فبنعمل Apply **مرة واحدة** بعد فتح المتبقى، وبعدين نستنّى بطول (بدون Apply
-    // متكرر) لحد ما يظهر جدول مجموعة شكاواه مختلفة عن التفاصيل — وده هو جدول المتبقى.
-    const MOT_RE = /تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/;
-    const grabMot = (ms) => waitFor(() => {
-      for (const tb of allReportTables()) {
-        const r = scrapeRows(tb);
-        const key = complainSet(r);
-        if (key && key !== detailsKey) return tb;   // مجموعة شكاوى مختلفة عن التفاصيل = المتبقى
+    banner("⬇️ تحميل ملفات Excel كاملة (" + FROM_STR + " → " + TO_STR + ")…");
+    const jobs = [{ tab: 0, label: "التفاصيل" }, { tab: 1, label: "المتبقى" }];
+    const got = [];
+    for (const j of jobs) {
+      banner("⬇️ " + j.label + "…");
+      const blob = await fetchXlsx(exportUrl(j.tab));
+      if (blob) {
+        const name = "430D_" + (j.tab === 0 ? "details" : "remaining") + "_" + FROM_STR + "_" + TO_STR + ".xlsx";
+        saveBlob(blob, name);                 // نزّله على الجهاز للمراجعة
+        got.push({ ...j, blob, name, kb: Math.round(blob.size / 1024) });
+      } else {
+        banner("⚠️ فشل تحميل " + j.label + " — راجع الكونسول [430D]", "#ef6c00");
       }
-      return null;
-    }, ms);
-    let motTable = null;
-    // دورتان بحد أقصى؛ كل دورة: افتح المتبقى → Apply مرة → أعد فتح المتبقى → استنى طويلاً بدون Apply
-    for (let attempt = 0; attempt < 2 && !motTable; attempt++) {
-      banner("📑 «تفاصيل المتبقى» — تحميل (محاولة " + (attempt + 1) + ")…");
-      await clickTabByText(MOT_RE);                     // افتح تبويب المتبقى
-      await sleep(1500);
-      clickEl(findBtn(/^\s*apply\s*$/i) || apply);      // Apply مرة واحدة (المتبقى مفتوح)
-      await sleep(3000);                                // استنى إعادة التوليد
-      await clickTabByText(MOT_RE);                     // Apply رجّع للتفاصيل → افتح المتبقى تانى
-      motTable = await grabMot(45000);                  // استنى طويلاً بدون Apply إضافى
     }
-    // تشخيص لو لسه فاضى: اطبع كل الجداول الظاهرة (عددها/صفوفها/أول صف)
-    if (!motTable) {
-      try {
-        const diag = allReportTables().map((t, i) => { const r = scrapeRows(t); return "#" + i + " صفوف=" + r.length + " عناوين=" + JSON.stringify((r[0] || []).slice(0, 5)) + " أول=" + JSON.stringify((r[1] || []).slice(0, 5)); });
-        console.log("[430D] الجداول الظاهرة عند فشل المتبقى:\n" + diag.join("\n"));
-      } catch (e) {}
+    if (!got.length) { banner("❌ لم يتم تحميل أى ملف — شوف الكونسول", "#c62828"); clearFlag(); return; }
+    // مراجعة قبل الرفع
+    const summary = got.map((g) => g.label + " (" + g.kb + "KB)").join(" + ");
+    banner("📥 اتحمّل: " + summary + " — راجع الملفات", "#2e7d32");
+    const proceed = confirm("اتحمّل على جهازك:\n" + got.map((g) => "• " + g.name + " (" + g.kb + " KB)").join("\n") + "\n\nراجع البيانات. أرفعهم للموقع دلوقتى؟");
+    if (!proceed) { banner("⏸️ اتلغى الرفع — الملفات اتحمّلت للمراجعة بس.", "#607d8b"); clearFlag(); return; }
+    // الرفع للموقع
+    let okAll = true;
+    for (const g of got) {
+      banner("📤 رفع " + g.label + "…");
+      const ok = await uploadBlobToSF(g.blob, g.name);
+      if (!ok) okAll = false;
     }
-    await sleep(1000);
-    const motRows = motTable ? scrapeRows(motTable) : [];
-
-    // ===== 3) بناء ملف بشيتين ثم الرفع للموقع (+ نسخة على الجهاز) =====
-    const sheets = [];
-    if (detailsRows.length) sheets.push({ name: "التفاصيل", rows: detailsRows });
-    if (motRows.length) sheets.push({ name: "تفاصيل متبقى", rows: motRows });
-    if (!sheets.length) { banner("⚠️ لم تظهر نتائج لتصديرها", "#ef6c00"); clearFlag(); return; }
-    const fileName = "430D_" + FROM_STR + "_" + TO_STR + ".xls";
-    const xml = buildXls(sheets);
-    downloadFile(xml, fileName, "application/vnd.ms-excel");   // نسخة احتياطية على الجهاز
-    const nD = Math.max(0, detailsRows.length - 1), nM = Math.max(0, motRows.length - 1);
-    banner("📤 رفع للموقع… التفاصيل (" + nD + ") + المتبقى (" + nM + ")");
-    const ok = await uploadToSF(xml, fileName);
-    if (ok) banner("✅ اتحدّث الموقع: تفاصيل " + nD + " + متبقى " + nM + ".", "#2e7d32");
-    else banner("⚠️ الملف اتحمّل بس الرفع للموقع فشل — راجع الكونسول.", "#ef6c00");
-    if (detailsRows.length && !motRows.length) banner("ℹ️ التفاصيل فقط — المتبقى لسه فاضى/مش محمّل.", "#ef6c00");
+    banner(okAll ? "✅ اتحدّث الموقع بالملفات كاملة (" + summary + ")." : "⚠️ رفع بعض الملفات فشل — راجع الكونسول.", okAll ? "#2e7d32" : "#ef6c00");
     clearFlag();
   }
 
