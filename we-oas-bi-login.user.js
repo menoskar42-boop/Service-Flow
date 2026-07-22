@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
-// @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويعمل Apply، ثم يجلب ملفات Excel كاملة (كل الأعمدة) مباشرةً من xmlpserver للتفاصيل والمتبقى، ينزّلهم للمراجعة، وبعد تأكيدك يرفعهم لموقع Service-Flow.
-// @version      1.4.2
+// @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه (عبر اعتراض XHR/fetch/objectURL + فحص سجلّ الأداء)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
+// @version      1.5.0
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -140,26 +140,94 @@
 
   /* ================== جلب Excel مباشرة من xmlpserver (كل الأعمدة) ================== */
   // _xpt = رقم التبويب (0=التفاصيل، 1=تفاصيل المتبقى) — من الـ Network
-  function exportUrl(tab) {
-    const base = "https://we-oas.te.eg/xmlpserver" + XDO_PATH.split("/").map(encodeURIComponent).join("/");
-    return base + "?_xpf=&_xpt=" + tab + "&_xmode=2&_xdo=" + encodeURIComponent(XDO_PATH) +
-      "&from_date=" + encodeURIComponent(FROM_STR) + "&to_date=" + encodeURIComponent(TO_STR);
+  /* ===== التقاط ملف Excel الذى يولّده التقرير نفسه (كل الآليات الممكنة) ===== */
+  // مخزن مشترك على أعلى إطار حتى تصبّ فيه نسخ السكربت داخل الـ iframes
+  function caps() {
+    try { const w = window.top; if (!w.__430D_caps) w.__430D_caps = []; return w.__430D_caps; }
+    catch (e) { if (!window.__430D_caps) window.__430D_caps = []; return window.__430D_caps; }
   }
-  function fetchXlsx(url) {
-    return new Promise((resolve) => {
+  function looksExcelUrl(u) {
+    return /\.xlsx($|\?)|_xf=(xlsx|excel|analyze)|_xmode=[34]|export|deliver|servlet\/xdo/i.test(u || "");
+  }
+  async function stashBuf(buf, src) {
+    try {
+      const u8 = new Uint8Array(buf);
+      if (u8.length > 200 && u8[0] === 0x50 && u8[1] === 0x4B) {          // PK => xlsx/zip
+        const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        if (!caps().some((c) => c.size === blob.size)) {                  // منع التكرار بالحجم
+          caps().push({ blob, size: blob.size, src: src || "" });
+          console.log("[430D] ✔ التقطنا ملف xlsx", blob.size, "بايت —", (src || "").slice(0, 90));
+        }
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function refetch(url) {
+    try {
       GM_xmlhttpRequest({
         method: "GET", url, responseType: "arraybuffer", timeout: 120000,
-        onload: (r) => {
-          const buf = r.response; const u8 = buf ? new Uint8Array(buf) : new Uint8Array();
-          const isXlsx = u8[0] === 0x50 && u8[1] === 0x4B;   // PK = بداية ملف xlsx
-          console.log("[430D] fetch", r.status, "bytes", u8.length, "xlsx?", isXlsx, "head", [...u8.slice(0, 4)]);
-          if (isXlsx) return resolve(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-          try { console.log("[430D] رد مش xlsx:", new TextDecoder().decode(u8.slice(0, 400))); } catch (e) {}
-          resolve(null);
-        },
-        onerror: () => resolve(null), ontimeout: () => resolve(null),
+        onload: (r) => { if (r.response) stashBuf(r.response, "refetch:" + url.slice(0, 80)); },
+        onerror: () => {}, ontimeout: () => {},
       });
-    });
+    } catch (e) {}
+  }
+  function installCapture() {
+    if (window.__430D_hooked) return; window.__430D_hooked = true;
+    try {
+      const XO = XMLHttpRequest.prototype.open, XS = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__u = u; return XO.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () {
+        this.addEventListener("load", () => {
+          try {
+            const r = this.response;
+            if (r instanceof Blob) r.arrayBuffer().then((b) => stashBuf(b, "xhr:" + (this.__u || "")));
+            else if (r instanceof ArrayBuffer) stashBuf(r, "xhr:" + (this.__u || ""));
+          } catch (e) {}
+        });
+        return XS.apply(this, arguments);
+      };
+    } catch (e) {}
+    try {
+      const F = window.fetch;
+      if (F) window.fetch = function (i) {
+        const u = (typeof i === "string" ? i : (i && i.url)) || "";
+        return F.apply(this, arguments).then((resp) => {
+          try { resp.clone().arrayBuffer().then((b) => stashBuf(b, "fetch:" + u)); } catch (e) {}
+          return resp;
+        });
+      };
+    } catch (e) {}
+    try {
+      const CO = URL.createObjectURL;
+      URL.createObjectURL = function (o) { try { if (o instanceof Blob) o.arrayBuffer().then((b) => stashBuf(b, "objurl")); } catch (e) {} return CO.apply(this, arguments); };
+    } catch (e) {}
+    try {
+      const AC = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () { try { if (/^https?:/i.test(this.href) && (this.download || looksExcelUrl(this.href))) refetch(this.href); } catch (e) {} return AC.apply(this, arguments); };
+    } catch (e) {}
+    try { const OP = window.open; window.open = function (u) { try { if (u && looksExcelUrl(u)) refetch(u); } catch (e) {} return OP.apply(this, arguments); }; } catch (e) {}
+    console.log("[430D] ✅ interceptors مركّبة @", location.href.slice(0, 60));
+  }
+  // فحص سجلّ الأداء (كل الإطارات) لأى رابط تنزيل Excel ثم إعادة جلبه بالكوكيز
+  function scanPerfAndRefetch() {
+    const seen = caps().__seen || (caps().__seen = new Set());
+    const wins = []; try { wins.push(window.top); } catch (e) { wins.push(window); }
+    for (const d of docsList()) { try { if (d.defaultView) wins.push(d.defaultView); } catch (e) {} }
+    let n = 0;
+    for (const w of wins) {
+      for (const type of ["resource", "navigation"]) {
+        let ents = []; try { ents = w.performance.getEntriesByType(type); } catch (e) {}
+        for (const en of ents) {
+          const u = en.name || "";
+          if (looksExcelUrl(u) && !seen.has(u)) { seen.add(u); console.log("[430D] perf-url", u.slice(0, 120)); refetch(u); n++; }
+        }
+      }
+    }
+    return n;
+  }
+  async function waitNewCap(before, ms) {
+    return await waitFor(() => { scanPerfAndRefetch(); return caps().length > before ? caps()[caps().length - 1] : null; }, ms);
   }
   function saveBlob(blob, name) {
     try {
@@ -211,42 +279,60 @@
 
   async function homeFlow() { banner("📂 فتح التقرير باللينك المباشر…"); location.href = REPORT_URL; }
 
-  /* ================== 2) صفحة التقرير: تواريخ + Apply ثم جلب الملفين ================== */
+  // يملأ التواريخ ثم يضغط Apply (اللى بيولّد التقرير وينزّل الـ Excel تلقائياً)
+  async function fillDatesAndApply() {
+    closeDatePopup();
+    const fromI = findLabeledInput(/from_?date/i);
+    const toI = findLabeledInput(/to_?date/i);
+    if (fromI) setValue(fromI, FROM_STR);
+    if (toI) setValue(toI, TO_STR);
+    closeDatePopup();
+    await sleep(700);
+    const btn = findBtn(/^\s*apply\s*$/i);
+    if (btn) clickEl(btn);
+    return !!btn;
+  }
+  function findTab(re) {
+    return qAll("a, span, div, td, li, button").find((e) => visible(e) && re.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 40) || null;
+  }
+
+  /* ============ 2) صفحة التقرير: تواريخ + Apply لكل تبويب مع التقاط الملف ============ */
   async function reportFlow() {
-    // (1) املأ from_date/to_date واعمل Apply — يظبط بارامترات الجلسة قبل التحميل المباشر
-    banner("📅 ضبط التواريخ (" + FROM_STR + " → " + TO_STR + ")…");
+    installCapture();
+    caps().length = 0; if (caps().__seen) caps().__seen.clear();   // ابدأ نظيف
+
     const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
-    if (apply) {
-      closeDatePopup();
-      const fromI = findLabeledInput(/from_?date/i);
-      const toI = findLabeledInput(/to_?date/i);
-      if (fromI) setValue(fromI, FROM_STR);
-      if (toI) setValue(toI, TO_STR);
-      closeDatePopup();
-      await sleep(700);
-      banner("▶️ Apply — استنى التقرير يتولّد…");
-      clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-      await sleep(6000);
-    } else {
-      banner("⚠️ مفيش Apply — هجرّب التحميل المباشر بالتواريخ فى الرابط", "#ef6c00");
-    }
-    // (2) اجلب الملفين كاملين من xmlpserver
-    banner("⬇️ تحميل ملفات Excel كاملة (" + FROM_STR + " → " + TO_STR + ")…");
-    const jobs = [{ tab: 0, label: "التفاصيل" }, { tab: 1, label: "المتبقى" }];
-    const got = [];
-    for (const j of jobs) {
-      banner("⬇️ " + j.label + "…");
-      const blob = await fetchXlsx(exportUrl(j.tab));
-      if (blob) {
-        const name = "430D_" + (j.tab === 0 ? "details" : "remaining") + "_" + FROM_STR + "_" + TO_STR + ".xlsx";
-        saveBlob(blob, name);                 // نزّله على الجهاز للمراجعة
-        got.push({ ...j, blob, name, kb: Math.round(blob.size / 1024) });
-      } else {
-        banner("⚠️ فشل تحميل " + j.label + " — راجع الكونسول [430D]", "#ef6c00");
-      }
-    }
-    if (!got.length) { banner("❌ لم يتم تحميل أى ملف — شوف الكونسول", "#c62828"); clearFlag(); return; }
-    // (3) مراجعة قبل الرفع
+    if (!apply) { banner("⚠️ مفيش زر Apply — الصفحة مش صح؟", "#ef6c00"); clearFlag(); return; }
+
+    // (أ) تبويب التفاصيل — Apply ثم انتظر التقاط الملف
+    banner("📅 التفاصيل: تواريخ + Apply (" + FROM_STR + " → " + TO_STR + ")…");
+    await fillDatesAndApply();
+    banner("⏳ انتظار تنزيل ملف التفاصيل…");
+    await waitNewCap(caps().length, 45000);
+
+    // (ب) تبويب المتبقى — افتحه ثم Apply
+    banner("🔀 فتح تبويب «المتبقى»…");
+    const remTab = findTab(/متبقى|متبقي|remaining/i);
+    if (remTab) { clickEl(remTab); await sleep(1800); }
+    banner("📅 المتبقى: تواريخ + Apply…");
+    await fillDatesAndApply();
+    banner("⏳ انتظار تنزيل ملف المتبقى…");
+    await waitNewCap(caps().length, 45000);
+
+    // (ج) فحص أخير للأداء (يلتقط أى تنزيل متأخر)
+    for (let i = 0; i < 6; i++) { scanPerfAndRefetch(); await sleep(1200); }
+
+    // (د) جهّز الملفات الملتقطة (مرتّبة: أول ملف = التفاصيل، تانى = المتبقى)
+    const uniq = caps();
+    const got = uniq.map((c, idx) => {
+      const label = idx === 0 ? "التفاصيل" : "المتبقى";
+      const name = "430D_" + (idx === 0 ? "details" : "remaining") + "_" + FROM_STR + "_" + TO_STR + ".xlsx";
+      return { label, blob: c.blob, name, kb: Math.round(c.blob.size / 1024) };
+    });
+    if (!got.length) { banner("❌ لم يُلتقط أى ملف — افتح Console وابعتلى سطور [430D] perf-url", "#c62828"); clearFlag(); return; }
+
+    // (هـ) نزّلهم للمراجعة على الجهاز
+    for (const g of got) saveBlob(g.blob, g.name);
     const summary = got.map((g) => g.label + " (" + g.kb + "KB)").join(" + ");
     banner("📥 اتحمّل: " + summary + " — راجع الملفات", "#2e7d32");
     const proceed = confirm("اتحمّل على جهازك:\n" + got.map((g) => "• " + g.name + " (" + g.kb + " KB)").join("\n") + "\n\nراجع البيانات. أرفعهم للموقع دلوقتى؟");
@@ -263,6 +349,7 @@
   }
 
   /* ================== الراوتر ================== */
+  installCapture();   // ركّب الالتقاط فى كل إطار (بما فيها iframe التقرير) قبل أى تحميل
   const path = location.pathname + location.search;
   const isLogin  = /bi-security-login/i.test(path);
   const isReport = /saw\.dll|\/analytics\//i.test(path);
