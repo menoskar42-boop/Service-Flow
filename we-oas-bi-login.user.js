@@ -314,33 +314,29 @@
     const detailsRows = scrapeRows(visibleReportTable());
     const detailsSig = rowsSig(detailsRows);
     banner("✔️ التفاصيل: " + Math.max(0, detailsRows.length - 1) + " صف — للمتبقى…", "#2e7d32");
-    // ===== 2) تبويب «تفاصيل المتبقى» — بدون Apply تانى =====
-    // تبويبات نفس التقرير بتتحمّل كلها مع أول Apply؛ الـ Apply التانى كان بيعيد تشغيل التقرير
-    // ويرجّع التبويب النشط للتفاصيل → فالمتبقى كان بيطلع «فاضى». دلوقتى بنبدّل التبويب ونستنّى
-    // بقوة لحد ما يظهر جدول مختلف عن التفاصيل (عنصر مختلف + بصمة صفوف مختلفة)، مع إعادة الضغط.
+    // ===== 2) تبويب «تفاصيل المتبقى» =====
+    // تبويب المتبقى بيفضل فاضى لحد ما نضغط Apply وهو مفتوح. المشكلة إن Apply بيعيد توليد
+    // التقرير ويرجّع التبويب النشط لـ«التفاصيل» → فلازم بعد الـ Apply نفتح تبويب المتبقى **تانى**
+    // ثم نستنّى لحد ما يظهر جدول بياناته مختلفة عن التفاصيل. بنكرّر المحاولة لو مالحقش يحمّل.
+    const MOT_RE = /تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/;
     const grabMot = (ms) => waitFor(() => {
       const tb = visibleReportTable();
-      if (!tb || tb === detailsTable) return null;             // لسه على تبويب التفاصيل
-      if (tb.querySelectorAll("tr").length <= 2) return null;   // لسه بيحمّل
+      if (!tb || tb.querySelectorAll("tr").length <= 2) return null;   // لسه بيحمّل/فاضى
       const r = scrapeRows(tb);
-      return rowsSig(r) !== detailsSig ? tb : null;             // بيانات مختلفة = المتبقى فعلاً
+      return rowsSig(r) !== detailsSig ? tb : null;                    // بيانات مختلفة = المتبقى فعلاً
     }, ms);
     let motTable = null;
-    for (let attempt = 0; attempt < 5 && !motTable; attempt++) {
-      banner("📑 فتح «تفاصيل المتبقى» (محاولة " + (attempt + 1) + ")…");
-      await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
-      await sleep(2500);
-      motTable = await grabMot(12000);
+    for (let attempt = 0; attempt < 3 && !motTable; attempt++) {
+      banner("📑 «تفاصيل المتبقى» — محاولة " + (attempt + 1) + "…");
+      await clickTabByText(MOT_RE);                     // ① افتح تبويب المتبقى
+      await sleep(1500);
+      clickEl(findBtn(/^\s*apply\s*$/i) || apply);      // ② Apply عشان بيانات المتبقى تحمّل
+      await sleep(4500);                                // ③ استنى إعادة التوليد
+      await clickTabByText(MOT_RE);                     // ④ Apply رجّع التبويب للتفاصيل → افتح المتبقى تانى
+      await sleep(1500);
+      motTable = await grabMot(15000);                  // ⑤ استنى جدول مختلف عن التفاصيل
     }
-    // ملاذ أخير: لو مافتحش، جرّب Apply مرة واحدة وأعد المحاولة
-    if (!motTable) {
-      banner("↻ آخر محاولة: Apply للمتبقى…");
-      clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-      await sleep(2500);
-      await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
-      motTable = await grabMot(30000);
-    }
-    await sleep(1200);
+    await sleep(1000);
     const motRows = motTable ? scrapeRows(motTable) : [];
 
     // ===== 3) بناء ملف بشيتين ثم الرفع للموقع (+ نسخة على الجهاز) =====
