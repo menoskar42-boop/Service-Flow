@@ -4161,14 +4161,22 @@ export async function registerRoutes(
   //  • شيت "التفاصيل"    → hist: complaint_details | sod: complaint_details_sod | cur: complaint_details_current
   //  • شيت "تفاصيل متبقى" → hist: remaining_complaints | sod: remaining_complaints_sod | cur: remaining_complaints_current
   app.options("/api/complaint-details/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
-  app.post("/api/complaint-details/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
+  app.post("/api/complaint-details/import", requireAdminOrToken, upload.any(), async (req: any, res) => {
     try {
-      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
-      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      const files: any[] = (req.files && req.files.length) ? req.files : (req.file ? [req.file] : []);
+      if (!files.length) return res.status(400).json({ message: "لا يوجد ملف" });
       const userId: number = (req as any).user.id;
 
       let detailsInserted = 0, detailsTotal = 0;
       let remainingInserted = 0, remainingTotal = 0;
+      const allSheetNames: string[] = [];
+      const detailsSheets: string[] = [];
+
+      // ندعم رفع أكثر من ملف مرة واحدة (كل ملف يُكتشف نوعه تلقائياً: تفاصيل/متبقى)،
+      // أو ملف واحد فيه شيت واحد لأى نوع، أو ملف واحد يحوى الشيتين معاً.
+      for (const file of files) {
+        const wb = XLSX.read(file.buffer, { type: "buffer", cellDates: false });
+        allSheetNames.push(...wb.SheetNames);
 
       // ── Sheet: التفاصيل / تفاصيل الأعطال (accumulating, dedup by complain_no) ──
       let ws1 = wb.Sheets["التفاصيل"] || wb.Sheets["تفاصيل الأعطال"];
@@ -4242,7 +4250,7 @@ export async function registerRoutes(
             timeTillNowFull1,
           ]);
         }
-        detailsTotal = inserts.length;
+        detailsTotal += inserts.length;
         // cols that may have been null in older uploads — backfill them on re-upload
         const detailsUpdateCols = ["close_by", "time_till_now", "time_till_now_full", "complain_side_name", "complain_type_name", "cabinet_no", "msan_id", "status_code"];
         // All 3 destinations accumulate — no full replace — so uploading multiple
@@ -4252,7 +4260,7 @@ export async function registerRoutes(
         const firstToday1 = await isFirstUploadToday("complaint_details_sod");
         if (firstToday1) await pool.query("DELETE FROM complaint_details_sod");
         await accumulateTable("complaint_details_sod", COMPLAINT_DETAILS_COLS, "complain_no", inserts, userId, detailsUpdateCols);
-        detailsInserted = r1hist;
+        detailsInserted += r1hist;
       }
 
       // ── Sheet: تفاصيل متبقى (full replace) ──
@@ -4325,7 +4333,7 @@ export async function registerRoutes(
             timeTillNowFull2,
           ]);
         }
-        remainingTotal = inserts.length;
+        remainingTotal += inserts.length;
         // المتبقى snapshot: current is fully replaced each upload (fresh open-faults
         // snapshot), while the historical table keeps accumulating. The historical
         // table OVERWRITES the volatile state fields (status_code/close_time/...) with
@@ -4345,16 +4353,20 @@ export async function registerRoutes(
                           "close_by", "time_till_now", "time_till_now_full", "cabinet_no", "dispatch_time",
                           "dispatch_user", "complain_type", "msan_id"],
         });
-        remainingInserted = r2.hist;
+        remainingInserted += r2.hist;
       }
+
+        if (detailsSheetName) detailsSheets.push(detailsSheetName);
+      } // ← نهاية الحلقة على كل ملف مرفوع
 
       res.json({
         inserted: detailsInserted + remainingInserted,
         details: { inserted: detailsInserted, total: detailsTotal },
         remaining: { inserted: remainingInserted, total: remainingTotal },
-        // تشخيص: أسماء الشيتات فى الملف + الشيت اللى اتقرأ منه التفاصيل
-        sheetNames: wb.SheetNames,
-        detailsSheet: detailsSheetName,
+        filesProcessed: files.length,
+        // تشخيص: أسماء الشيتات فى كل الملفات + الشيتات اللى اتقرأ منها التفاصيل
+        sheetNames: allSheetNames,
+        detailsSheet: detailsSheets.join(", ") || null,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });

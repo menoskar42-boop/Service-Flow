@@ -295,7 +295,7 @@ function fmtUploadTime(iso: string | null | undefined): string {
 }
 
 function UploadCard({
-  label, icon: Icon, endpoint, queryKey, color, extraKeys = [], staged, lastUpload,
+  label, icon: Icon, endpoint, queryKey, color, extraKeys = [], staged, lastUpload, multiple = false,
 }: {
   label: string;
   icon: any;
@@ -305,16 +305,19 @@ function UploadCard({
   extraKeys?: string[];
   staged?: "ftth";
   lastUpload?: string | null;
+  multiple?: boolean;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const mut = useMutation({
-    mutationFn: async (file: File) => {
-      if (staged === "ftth") return importFtthStaged(file);
+    mutationFn: async (input: File | File[]) => {
+      const list = Array.isArray(input) ? input : [input];
+      if (staged === "ftth") return importFtthStaged(list[0]);
       const fd = new FormData();
-      fd.append("file", file);
+      // نرفع كل الملفات المختارة تحت نفس الحقل "file" — الخادم يمرّ عليها ويكتشف نوع كل واحد
+      for (const f of list) fd.append("file", f);
       const res = await fetch(endpoint, { method: "POST", body: fd, credentials: "include" });
       // read as text first so a non-JSON (HTML) response gives a clear message
       const text = await res.text();
@@ -367,10 +370,11 @@ function UploadCard({
         ref={fileRef}
         type="file"
         accept=".xlsx,.xls"
+        multiple={multiple}
         className="hidden"
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) mut.mutate(f);
+          const fs = Array.from(e.target.files || []);
+          if (fs.length) mut.mutate(multiple ? fs : fs[0]);
           e.target.value = "";
         }}
       />
@@ -718,13 +722,14 @@ export function FileUploadSection() {
           lastUpload={ut("/api/ticket-queue-ftth/import")}
         />
         <UploadCard
-          label="تفاصيل الأعطال (430D_Trial) — التفاصيل تتراكم / المتبقى يُستبدل (مع تسجيل تاريخي)"
+          label="تفاصيل الأعطال (430D_Trial) — ملف واحد أو الاتنين معاً (التفاصيل + المتبقى) والنوع يُكتشف تلقائياً"
           icon={FileSearch}
           endpoint="/api/complaint-details/import"
           queryKey="/api/complaint-details"
           extraKeys={["/api/remaining-complaints"]}
           color="border-teal-200 bg-teal-50/50"
           lastUpload={ut("/api/complaint-details/import")}
+          multiple
         />
         <UploadCard
           label="طلبات متعذرات OM — تاريخي + حالي + أرشيف سنوي"
