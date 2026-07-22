@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date/to_date، Apply، يسحب «التفاصيل» ثم يفتح تبويب «تفاصيل المتبقى» (بانتظار قوى بدون Apply تانى)، ويرفع الشيتين لموقع Service-Flow تلقائياً (+ نسخة على الجهاز).
-// @version      1.3.0
+// @version      1.3.2
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -222,11 +222,14 @@
       }
     }
   }
-  // جدول النتائج الظاهر فقط (تبويب النشط) — مش الجداول المخفية للتبويبات التانية
-  function visibleReportTable() {
-    const tables = qAll("table").filter((t) => visible(t) && /التليفون|tel\s*no|complain\s*no/i.test(t.textContent || ""));
-    return tables.sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length)[0] || null;
+  // كل جداول النتائج الظاهرة (فيها أعمدة التليفون/الشكوى) مرتبة تنازلياً حسب عدد الصفوف
+  function allReportTables() {
+    return qAll("table")
+      .filter((t) => visible(t) && /التليفون|tel\s*no|complain\s*no/i.test(t.textContent || "") && t.querySelectorAll("tr").length > 1)
+      .sort((a, b) => b.querySelectorAll("tr").length - a.querySelectorAll("tr").length);
   }
+  // أكبر جدول ظاهر (للتفاصيل — أول Apply مفيش غيره)
+  function visibleReportTable() { return allReportTables()[0] || null; }
   // يقرأ صفوف الجدول الظاهر → Array من Arrays (أول صف = العناوين)
   function scrapeRows(table) {
     if (!table) return [];
@@ -235,6 +238,8 @@
       .filter((r) => r.length > 1 && r.some((c) => c));
   }
   const rowsSig = (rows) => rows.length + "|" + ((rows[1] || []).join("~"));
+  // بصمة محتوى كامل (كل الخلايا) — للتمييز الأكيد بين جدول التفاصيل وجدول المتبقى
+  const contentSig = (rows) => rows.length + "::" + rows.map((r) => r.join("~")).join("||");
   // بناء ملف Excel (SpreadsheetML 2003 XML) بعدة شيتات — بدون مكتبات خارجية
   const xmlEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   function buildXls(sheets) {
@@ -311,19 +316,22 @@
     clickEl(findBtn(/^\s*apply\s*$/i) || apply);
     const detailsTable = await waitFor(() => { const tb = visibleReportTable(); return tb && tb.querySelectorAll("tr").length > 2 ? tb : null; }, 35000);
     await sleep(1500);
-    const detailsRows = scrapeRows(visibleReportTable());
-    const detailsSig = rowsSig(detailsRows);
+    const detailsRows = scrapeRows(detailsTable || visibleReportTable());
+    const detailsFull = contentSig(detailsRows);   // بصمة كل خلايا التفاصيل — للاستبعاد الأكيد
     banner("✔️ التفاصيل: " + Math.max(0, detailsRows.length - 1) + " صف — للمتبقى…", "#2e7d32");
     // ===== 2) تبويب «تفاصيل المتبقى» =====
     // تبويب المتبقى بيفضل فاضى لحد ما نضغط Apply وهو مفتوح. المشكلة إن Apply بيعيد توليد
     // التقرير ويرجّع التبويب النشط لـ«التفاصيل» → فلازم بعد الـ Apply نفتح تبويب المتبقى **تانى**
     // ثم نستنّى لحد ما يظهر جدول بياناته مختلفة عن التفاصيل. بنكرّر المحاولة لو مالحقش يحمّل.
     const MOT_RE = /تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/;
+    // يدوّر على أول جدول ظاهر محتواه **مختلف تماماً** عن التفاصيل (مش أكبر جدول) = جدول المتبقى.
     const grabMot = (ms) => waitFor(() => {
-      const tb = visibleReportTable();
-      if (!tb || tb.querySelectorAll("tr").length <= 2) return null;   // لسه بيحمّل/فاضى
-      const r = scrapeRows(tb);
-      return rowsSig(r) !== detailsSig ? tb : null;                    // بيانات مختلفة = المتبقى فعلاً
+      for (const tb of allReportTables()) {
+        if (tb.querySelectorAll("tr").length <= 2) continue;
+        const r = scrapeRows(tb);
+        if (contentSig(r) !== detailsFull) return tb;   // جدول مش هو التفاصيل → المتبقى
+      }
+      return null;
     }, ms);
     let motTable = null;
     for (let attempt = 0; attempt < 3 && !motTable; attempt++) {
@@ -335,6 +343,13 @@
       await clickTabByText(MOT_RE);                     // ④ Apply رجّع التبويب للتفاصيل → افتح المتبقى تانى
       await sleep(1500);
       motTable = await grabMot(15000);                  // ⑤ استنى جدول مختلف عن التفاصيل
+    }
+    // تشخيص لو لسه فاضى: اطبع كل الجداول الظاهرة (عددها/صفوفها/أول صف)
+    if (!motTable) {
+      try {
+        const diag = allReportTables().map((t, i) => { const r = scrapeRows(t); return "#" + i + " صفوف=" + r.length + " عناوين=" + JSON.stringify((r[0] || []).slice(0, 5)) + " أول=" + JSON.stringify((r[1] || []).slice(0, 5)); });
+        console.log("[430D] الجداول الظاهرة عند فشل المتبقى:\n" + diag.join("\n"));
+      } catch (e) {}
     }
     await sleep(1000);
     const motRows = motTable ? scrapeRows(motTable) : [];
