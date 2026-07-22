@@ -4160,7 +4160,8 @@ export async function registerRoutes(
   // POST /api/complaint-details/import — smart import of 430D file
   //  • شيت "التفاصيل"    → hist: complaint_details | sod: complaint_details_sod | cur: complaint_details_current
   //  • شيت "تفاصيل متبقى" → hist: remaining_complaints | sod: remaining_complaints_sod | cur: remaining_complaints_current
-  app.post("/api/complaint-details/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+  app.options("/api/complaint-details/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.post("/api/complaint-details/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });

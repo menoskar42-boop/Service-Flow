@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
-// @description  يسجّل الدخول على we-oas.te.eg BI، ثم على Oracle Analytics: يبحث 430d، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date=يوم 25 من الشهر السابق و to_date=اليوم، Apply، ثم تبويب «تفاصيل المتبقى» ثم Apply. لا يرفع أى بيانات للموقع.
-// @version      1.2.5
+// @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «القطاع-TEDATA - Details متابعة اعطال»، يضبط from_date/to_date، Apply، يسحب «التفاصيل» ثم يفتح تبويب «تفاصيل المتبقى» (بانتظار قوى بدون Apply تانى)، ويرفع الشيتين لموقع Service-Flow تلقائياً (+ نسخة على الجهاز).
+// @version      1.3.0
 // @match        *://we-oas.te.eg/*
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      service-flow-menoskar42.replit.app
+// @connect      replit.app
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -14,6 +16,26 @@
   /* ================== CONFIG ================== */
   const USER = "mena.haleem@te.eg";
   const PASS = "Mon_oskar364";
+  // رفع البيانات لموقع Service-Flow (نفس توكن الرفع التلقائى المستخدم فى باقى السكربتات)
+  const SF_URL   = "https://service-flow-menoskar42.replit.app";
+  const SF_TOKEN = "sf-auto-upload-2026";
+  // يرفع ملف XLS (بشيتين: التفاصيل + تفاصيل متبقى) لمسار الاستيراد الذكى. يرجّع Promise<boolean>.
+  function uploadToSF(xmlContent, filename) {
+    return new Promise((resolve) => {
+      try {
+        const blob = new Blob(["﻿" + xmlContent], { type: "application/vnd.ms-excel" });
+        const fd = new FormData(); fd.append("file", blob, filename);
+        GM_xmlhttpRequest({
+          method: "POST", url: SF_URL + "/api/complaint-details/import",
+          headers: { "X-Upload-Token": SF_TOKEN },
+          data: fd, timeout: 90000,
+          onload: (r) => { console.log("[430D] SF", r.status, (r.responseText || "").slice(0, 200)); resolve(r.status >= 200 && r.status < 300); },
+          onerror: (r) => { console.warn("[430D] SF error", r && r.status); resolve(false); },
+          ontimeout: () => { console.warn("[430D] SF timeout"); resolve(false); },
+        });
+      } catch (e) { console.warn("[430D] upload exception", e); resolve(false); }
+    });
+  }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (el) => { try { return !!el && el.getClientRects().length > 0; } catch (e) { return false; } };
@@ -292,30 +314,49 @@
     const detailsRows = scrapeRows(visibleReportTable());
     const detailsSig = rowsSig(detailsRows);
     banner("✔️ التفاصيل: " + Math.max(0, detailsRows.length - 1) + " صف — للمتبقى…", "#2e7d32");
-    // ===== 2) تبويب تفاصيل المتبقى =====
-    const okTab = await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
-    if (!okTab) banner("⚠️ لم أجد تبويب «تفاصيل المتبقى»", "#ef6c00");
-    await sleep(4000); // انتظار إعادة رسم صفحة المتبقى
-    banner("▶️ Apply (المتبقى) — استنى النتائج…");
-    clickEl(findBtn(/^\s*apply\s*$/i) || apply);
-    // استنى جدول تختلف بياناته عن التفاصيل (= تبويب المتبقى فعلاً حمّل)
-    const motTable = await waitFor(() => {
+    // ===== 2) تبويب «تفاصيل المتبقى» — بدون Apply تانى =====
+    // تبويبات نفس التقرير بتتحمّل كلها مع أول Apply؛ الـ Apply التانى كان بيعيد تشغيل التقرير
+    // ويرجّع التبويب النشط للتفاصيل → فالمتبقى كان بيطلع «فاضى». دلوقتى بنبدّل التبويب ونستنّى
+    // بقوة لحد ما يظهر جدول مختلف عن التفاصيل (عنصر مختلف + بصمة صفوف مختلفة)، مع إعادة الضغط.
+    const grabMot = (ms) => waitFor(() => {
       const tb = visibleReportTable();
-      if (!tb || tb.querySelectorAll("tr").length <= 2) return null;
+      if (!tb || tb === detailsTable) return null;             // لسه على تبويب التفاصيل
+      if (tb.querySelectorAll("tr").length <= 2) return null;   // لسه بيحمّل
       const r = scrapeRows(tb);
-      return rowsSig(r) !== detailsSig ? tb : null;
-    }, 40000);
-    await sleep(1500);
+      return rowsSig(r) !== detailsSig ? tb : null;             // بيانات مختلفة = المتبقى فعلاً
+    }, ms);
+    let motTable = null;
+    for (let attempt = 0; attempt < 5 && !motTable; attempt++) {
+      banner("📑 فتح «تفاصيل المتبقى» (محاولة " + (attempt + 1) + ")…");
+      await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
+      await sleep(2500);
+      motTable = await grabMot(12000);
+    }
+    // ملاذ أخير: لو مافتحش، جرّب Apply مرة واحدة وأعد المحاولة
+    if (!motTable) {
+      banner("↻ آخر محاولة: Apply للمتبقى…");
+      clickEl(findBtn(/^\s*apply\s*$/i) || apply);
+      await sleep(2500);
+      await clickTabByText(/تفاصيل\s*(ال)?م[بت]?قى|متبقى|مبقى/);
+      motTable = await grabMot(30000);
+    }
+    await sleep(1200);
     const motRows = motTable ? scrapeRows(motTable) : [];
-    // ===== 3) ملف Excel واحد بشيتين =====
+
+    // ===== 3) بناء ملف بشيتين ثم الرفع للموقع (+ نسخة على الجهاز) =====
     const sheets = [];
     if (detailsRows.length) sheets.push({ name: "التفاصيل", rows: detailsRows });
-    if (motRows.length) sheets.push({ name: "تفاصيل المتبقى", rows: motRows });
-    if (sheets.length) {
-      downloadFile(buildXls(sheets), "430D_" + FROM_STR + "_" + TO_STR + ".xls", "application/vnd.ms-excel");
-      banner("📥 اتحمّل ملف Excel: التفاصيل (" + Math.max(0, detailsRows.length - 1) + ") + المتبقى (" + Math.max(0, motRows.length - 1) + ").", "#2e7d32");
-    } else banner("⚠️ لم تظهر نتائج لتصديرها", "#ef6c00");
-    if (detailsRows.length && !motRows.length) banner("ℹ️ التفاصيل فقط اتصدّرت — المتبقى لم يحمّل/فاضى.", "#ef6c00");
+    if (motRows.length) sheets.push({ name: "تفاصيل متبقى", rows: motRows });
+    if (!sheets.length) { banner("⚠️ لم تظهر نتائج لتصديرها", "#ef6c00"); clearFlag(); return; }
+    const fileName = "430D_" + FROM_STR + "_" + TO_STR + ".xls";
+    const xml = buildXls(sheets);
+    downloadFile(xml, fileName, "application/vnd.ms-excel");   // نسخة احتياطية على الجهاز
+    const nD = Math.max(0, detailsRows.length - 1), nM = Math.max(0, motRows.length - 1);
+    banner("📤 رفع للموقع… التفاصيل (" + nD + ") + المتبقى (" + nM + ")");
+    const ok = await uploadToSF(xml, fileName);
+    if (ok) banner("✅ اتحدّث الموقع: تفاصيل " + nD + " + متبقى " + nM + ".", "#2e7d32");
+    else banner("⚠️ الملف اتحمّل بس الرفع للموقع فشل — راجع الكونسول.", "#ef6c00");
+    if (detailsRows.length && !motRows.length) banner("ℹ️ التفاصيل فقط — المتبقى لسه فاضى/مش محمّل.", "#ef6c00");
     clearFlag();
   }
 
