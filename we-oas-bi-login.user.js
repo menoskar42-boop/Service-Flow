@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.6.0
+// @version      1.7.0
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -156,6 +156,10 @@
   function looksExcelUrl(u) {
     return /\.xlsx($|\?)|_xf=(xlsx|excel|analyze)|_xmode=[34]|export|deliver|servlet\/xdo/i.test(u || "");
   }
+  // أى رابط تقرير BIP (مش شرط يكون فيه كلمة excel) — نجرّب نجلبه ونشوف إذا كان ملف
+  function looksReportUrl(u) {
+    return /xmlpserver|servlet\/xdo|_xdo=|_xpt=|_xmode=|bipublisher|deliver|\.xdo/i.test(u || "");
+  }
   function u8ToB64(u8) {
     let s = "", CH = 0x8000;
     for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
@@ -219,11 +223,13 @@
       });
     } catch (e) { console.warn("[430D] replayForm err", e); }
   }
-  // كل الهوكات على كائنات الصفحة الحقيقية (PAGE) — مش نسخ الـ sandbox
-  function installCapture() {
-    try { if (PAGE.__430D_hooked) return; PAGE.__430D_hooked = true; } catch (e) { return; }
+  // تركيب الهوكات على نافذة معيّنة w (الإطار الأعلى أو أى iframe same-origin).
+  // ده الأهم: التحميل بيحصل جوّه iframe التقرير (xmlpserver) اللى Tampermonkey
+  // ساعات مابيحقنش فيه، فبنوصله من الإطار الأعلى ونركّب الهوكات على نافذته.
+  function hookWin(w) {
+    try { if (!w || w.__430D_hooked) return; w.__430D_hooked = true; } catch (e) { return; }
     try {
-      const XHR = PAGE.XMLHttpRequest, XO = XHR.prototype.open, XS = XHR.prototype.send;
+      const XHR = w.XMLHttpRequest, XO = XHR.prototype.open, XS = XHR.prototype.send;
       XHR.prototype.open = function (m, u) { this.__u = u; return XO.apply(this, arguments); };
       XHR.prototype.send = function () {
         this.addEventListener("load", () => { try { const r = this.response; if (r) stashBuf(r, "xhr:" + (this.__u || "")); } catch (e) {} });
@@ -231,32 +237,47 @@
       };
     } catch (e) {}
     try {
-      const F = PAGE.fetch;
-      if (F) PAGE.fetch = function (i) {
+      const F = w.fetch;
+      if (F) w.fetch = function (i) {
         const u = (typeof i === "string" ? i : (i && i.url)) || "";
         return F.apply(this, arguments).then((resp) => { try { resp.clone().arrayBuffer().then((b) => stashBuf(b, "fetch:" + u)); } catch (e) {} return resp; });
       };
     } catch (e) {}
+    try { const CO = w.URL.createObjectURL; w.URL.createObjectURL = function (o) { try { if (o && typeof o.arrayBuffer === "function") stashBuf(o, "objurl"); } catch (e) {} return CO.apply(this, arguments); }; } catch (e) {}
+    try { const OP = w.open; w.open = function (u) { try { if (u && looksReportUrl(u)) refetch(u); } catch (e) {} return OP.apply(this, arguments); }; } catch (e) {}
+    try { w.document.addEventListener("submit", (ev) => { replayForm(ev.target); }, true); } catch (e) {}
+    try { const FE = w.HTMLFormElement; const FS = FE.prototype.submit; FE.prototype.submit = function () { try { replayForm(this); } catch (e) {} return FS.apply(this, arguments); }; } catch (e) {}
+    try { const FE = w.HTMLFormElement; const RS = FE.prototype.requestSubmit; if (RS) FE.prototype.requestSubmit = function () { try { replayForm(this); } catch (e) {} return RS.apply(this, arguments); }; } catch (e) {}
     try {
-      const CO = PAGE.URL.createObjectURL;
-      PAGE.URL.createObjectURL = function (o) { try { if (o && typeof o.arrayBuffer === "function") stashBuf(o, "objurl"); } catch (e) {} return CO.apply(this, arguments); };
-    } catch (e) {}
-    try { const OP = PAGE.open; PAGE.open = function (u) { try { if (u && looksExcelUrl(u)) refetch(u); } catch (e) {} return OP.apply(this, arguments); }; } catch (e) {}
-    // فورم التقرير: BIP بيرسل فورم لـ iframe مخفى والسيرفر يرجّع الملف كـ attachment
-    try { PAGE.document.addEventListener("submit", (ev) => { replayForm(ev.target); }, true); } catch (e) {}
-    try { const FE = PAGE.HTMLFormElement; const FS = FE.prototype.submit; FE.prototype.submit = function () { try { replayForm(this); } catch (e) {} return FS.apply(this, arguments); }; } catch (e) {}
-    try { const FE = PAGE.HTMLFormElement; const RS = FE.prototype.requestSubmit; if (RS) FE.prototype.requestSubmit = function () { try { replayForm(this); } catch (e) {} return RS.apply(this, arguments); }; } catch (e) {}
-    // توجيه iframe لرابط تنزيل مباشر
-    try {
-      const IE = PAGE.HTMLIFrameElement;
+      const IE = w.HTMLIFrameElement;
       const dsc = Object.getOwnPropertyDescriptor(IE.prototype, "src");
       if (dsc && dsc.set) Object.defineProperty(IE.prototype, "src", {
         configurable: true, enumerable: dsc.enumerable,
         get() { return dsc.get.call(this); },
-        set(v) { try { if (looksExcelUrl(v)) refetch(v); } catch (e) {} return dsc.set.call(this, v); },
+        set(v) { try { if (looksReportUrl(v)) { console.log("[430D] iframe→", String(v).slice(0, 110)); refetch(v); } } catch (e) {} return dsc.set.call(this, v); },
       });
     } catch (e) {}
-    console.log("[430D] ✅ interceptors (page-context) مركّبة @", location.href.slice(0, 60));
+    // اعتراض تغيير location داخل الإطار (التصدير أحياناً location.assign/replace)
+    try { const LA = w.location.assign.bind(w.location); w.location.assign = function (u) { try { if (looksReportUrl(u)) refetch(u); } catch (e) {} return LA(u); }; } catch (e) {}
+    try { const LR = w.location.replace.bind(w.location); w.location.replace = function (u) { try { if (looksReportUrl(u)) refetch(u); } catch (e) {} return LR(u); }; } catch (e) {}
+    console.log("[430D] ✅ hooked window @", (function () { try { return (w.location.href || "").slice(0, 60); } catch (e) { return "?"; } })());
+  }
+  // اهوك كل الإطارات same-origin (الحالية) — بننده عليها دورياً لالتقاط إطارات جديدة
+  function hookAllFrames(w) {
+    w = w || PAGE;
+    try { hookWin(w); } catch (e) {}
+    let frames = [];
+    try { frames = w.frames; } catch (e) {}
+    try {
+      for (let i = 0; i < (frames ? frames.length : 0); i++) {
+        let cw = null; try { cw = frames[i]; } catch (e) {}
+        if (cw) { try { hookWin(cw); } catch (e) {} try { hookAllFrames(cw); } catch (e) {} }
+      }
+    } catch (e) {}
+  }
+  function installCapture() {
+    hookAllFrames(PAGE);
+    try { if (!PAGE.__430D_poll) { PAGE.__430D_poll = setInterval(() => { try { hookAllFrames(PAGE); } catch (e) {} }, 1000); } } catch (e) {}
   }
   // تشخيص: اطبع كل روابط الشبكة (لمعرفة رابط تنزيل الملف لو فشل الالتقاط)
   function dumpPerfUrls() {
@@ -278,7 +299,8 @@
         let ents = []; try { ents = w.performance.getEntriesByType(type); } catch (e) {}
         for (const en of ents) {
           const u = en.name || "";
-          if (looksExcelUrl(u) && !seen.has(u)) { seen.add(u); console.log("[430D] perf-url", u.slice(0, 120)); refetch(u); n++; }
+          // نعيد جلب أى رابط تقرير BIP حقيقى (مش بس اللى فيه excel) — غير-الملف يترفض بفحص PK
+          if (looksReportUrl(u) && !/\.(gif|png|jpg|css|js|woff)/i.test(u) && !seen.has(u)) { seen.add(u); console.log("[430D] perf-url", u.slice(0, 120)); refetch(u); n++; }
         }
       }
     }
