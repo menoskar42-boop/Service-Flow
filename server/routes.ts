@@ -3707,6 +3707,9 @@ export async function registerRoutes(
     if (over24 === "1" || over24 === "true") {
       conds.push(`w.creation_date IS NOT NULL AND EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) / 3600 > 24`);
     }
+    // خانة التليفون: أرقام تليفونات صحيحة فقط (7 خانات، أو 88+7). نستبعد أى صف اتحفظ فيه
+    // رقم خدمة/دائرة طويل (مسلسل) بالغلط بدل التليفون — الفلترة على مستوى التقرير.
+    conds.push(`length(regexp_replace(coalesce(w.phone_number,''), '\\D', '', 'g')) BETWEEN 6 AND 11`);
 
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // كمية السلك: تؤخذ من work_orders لو موجودة، وإلا من cable_entries (إدخال الفنى يدوياً)
