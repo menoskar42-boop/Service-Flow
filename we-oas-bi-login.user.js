@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.9.0
+// @version      1.9.1
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -546,12 +546,9 @@
 
   /* ================== الراوتر ================== */
   installCapture();   // ركّب الالتقاط (سياق الصفحة) فى كل إطار قبل أى تحميل — document-start
-  // علامة الفلو اليومى من Service-Flow (#sf-run-430d): شغّل 430D تلقائياً + اقفل التاب فى الآخر
+  // علامة الفلو اليومى من Service-Flow (#sf-run-430d): شغّل 430D تلقائياً
   try {
-    if (/sf-run-430d/i.test((location.hash || "") + " " + (location.search || ""))) {
-      setFlag();
-      localStorage.setItem("WEOAS_430D_CLOSE", "1");
-    }
+    if (/sf-run-430d/i.test((location.hash || "") + " " + (location.search || ""))) setFlag();
   } catch (e) {}
   const path = location.pathname + location.search;
   const isLogin  = /bi-security-login/i.test(path);
@@ -567,15 +564,15 @@
       return null;
     }, 20000);
   }
-  // اقفل التاب بعد 15 ثانية لو كان التشغيل من الفلو اليومى (علامة #sf-run-430d)
+  // فى الآخر: استنى 15 ثانية واقفل التاب دايماً. window.close بيشتغل أكيد لو التاب
+  // اتفتح بـ script (الفلو اليومى)، ونجرّب حيلة _self للتابات العادية كمان.
   async function maybeAutoClose() {
-    let doClose = false;
-    try { doClose = localStorage.getItem("WEOAS_430D_CLOSE") === "1"; } catch (e) {}
-    if (!doClose) return;
     try { localStorage.removeItem("WEOAS_430D_CLOSE"); } catch (e) {}
     banner("✅ خلص — التاب هيقفل خلال 15 ثانية…", "#2e7d32");
     await sleep(15000);
     try { window.close(); } catch (e) {}
+    try { window.open("", "_self"); window.close(); } catch (e) {}
+    try { PAGE.close && PAGE.close(); } catch (e) {}
   }
   let started = false;
   async function kickoff(manual) {
