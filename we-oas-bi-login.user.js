@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.8.1
+// @version      1.8.2
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -421,11 +421,11 @@
 
   async function homeFlow() { banner("📂 فتح التقرير باللينك المباشر…"); location.href = REPORT_URL; }
 
-  // خانة التاريخ: بالـ name/id أولاً (from_date/to_date) ثم باللابل المجاور
+  // خانة التاريخ: باللابل المجاور أولاً (الطريقة اللى كانت بتكتب صح) ثم name/id احتياطياً
   function findDateInput(re) {
-    const byNameId = qAll("input").find((i) => visible(i) && i.type !== "hidden" && re.test((i.name || "") + " " + (i.id || "")));
-    if (byNameId) return byNameId;
-    return findLabeledInput(re);
+    const byLabel = findLabeledInput(re);
+    if (byLabel) return byLabel;
+    return qAll("input").find((i) => visible(i) && i.type !== "hidden" && re.test((i.name || "") + " " + (i.id || "")));
   }
   // يضغط Apply: بالنص، أو بالـ id (reportViewApply)، أو ينادى validateAndRun() فى إطار التقرير
   function clickApply() {
