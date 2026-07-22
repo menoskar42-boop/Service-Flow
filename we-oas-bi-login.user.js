@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.7.0
+// @version      1.7.1
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -294,20 +294,62 @@
     const wins = []; try { wins.push(PAGE.top); } catch (e) { wins.push(PAGE); }
     for (const d of docsList()) { try { if (d.defaultView) wins.push(d.defaultView); } catch (e) {} }
     let n = 0;
+    const tryUrl = (u, tag) => {
+      if (looksReportUrl(u) && !/\.(gif|png|jpg|jpeg|css|js|woff2?|ico)(\?|$)/i.test(u) && !seen.has(u)) {
+        seen.add(u); console.log("[430D] " + tag, u.slice(0, 130)); refetch(u); n++;
+      }
+    };
     for (const w of wins) {
       for (const type of ["resource", "navigation"]) {
         let ents = []; try { ents = w.performance.getEntriesByType(type); } catch (e) {}
-        for (const en of ents) {
-          const u = en.name || "";
-          // نعيد جلب أى رابط تقرير BIP حقيقى (مش بس اللى فيه excel) — غير-الملف يترفض بفحص PK
-          if (looksReportUrl(u) && !/\.(gif|png|jpg|css|js|woff)/i.test(u) && !seen.has(u)) { seen.add(u); console.log("[430D] perf-url", u.slice(0, 120)); refetch(u); n++; }
-        }
+        for (const en of ents) tryUrl(en.name || "", "perf-url");
       }
     }
+    // src بتاع كل iframe (docframe التقرير بيتوجّه لرابط التصدير)
+    for (const fr of qAll("iframe,frame")) { try { tryUrl(fr.getAttribute("src") || fr.src || "", "iframe-src"); } catch (e) {} }
     return n;
   }
   async function waitNewCap(before, ms) {
     return await waitFor(() => { scanPerfAndRefetch(); return caps().length > before ? caps()[caps().length - 1] : null; }, ms);
+  }
+  // يجمع كل روابط الشبكة المتعلقة بالتقرير من كل الإطارات (resource + navigation)
+  function collectReportUrls() {
+    const wins = []; try { wins.push(PAGE.top); } catch (e) { wins.push(PAGE); }
+    try { const fr = PAGE.top.frames; for (let i = 0; i < fr.length; i++) { try { wins.push(fr[i]); } catch (e) {} } } catch (e) {}
+    for (const d of docsList()) { try { if (d.defaultView) wins.push(d.defaultView); } catch (e) {} }
+    const set = new Set();
+    const keep = (u) => { if (u && /xmlpserver|saw\.dll|\.xdo|_xpt|_xmode|servlet\/xdo|deliver|export/i.test(u) && !/\.(gif|png|jpg|jpeg|css|js|woff2?|ico)(\?|$)/i.test(u)) set.add(u); };
+    for (const w of wins) {
+      for (const type of ["resource", "navigation"]) {
+        let ents = []; try { ents = w.performance.getEntriesByType(type); } catch (e) {}
+        for (const en of ents) keep(en.name || "");
+      }
+    }
+    // كمان: src بتاع كل iframe (docframe بعد التصدير = رابط الملف)
+    for (const fr of qAll("iframe,frame")) { try { keep(fr.getAttribute("src") || fr.src || ""); } catch (e) {} }
+    return [...set];
+  }
+  // صندوق ظاهر على الصفحة يعرض الروابط (بدل الكونسول) — تصوّره وابعتهولى
+  function showUrlsOverlay(list) {
+    try {
+      const old = document.getElementById("sf430-urls"); if (old) old.remove();
+      const box = document.createElement("div");
+      box.id = "sf430-urls";
+      box.style.cssText = "position:fixed;top:36px;left:8px;right:8px;bottom:8px;z-index:2147483647;background:#fff;border:3px solid #c62828;border-radius:8px;padding:8px;overflow:auto;direction:ltr;font:12px/1.5 monospace;color:#111;box-shadow:0 6px 30px rgba(0,0,0,.5)";
+      const head = document.createElement("div");
+      head.style.cssText = "direction:rtl;font:bold 13px Arial;color:#c62828;margin-bottom:6px";
+      head.textContent = "🔎 روابط شبكة التقرير — صوّر الصورة دى وابعتهالى (اقفلها من X):";
+      const x = document.createElement("button");
+      x.textContent = "✖ إغلاق"; x.style.cssText = "float:left;background:#c62828;color:#fff;border:0;border-radius:5px;padding:3px 8px;cursor:pointer";
+      x.onclick = () => box.remove();
+      head.appendChild(x); box.appendChild(head);
+      const ta = document.createElement("textarea");
+      ta.readOnly = true; ta.style.cssText = "width:100%;height:calc(100% - 34px);border:1px solid #ccc;font:11px/1.4 monospace;white-space:pre;direction:ltr";
+      ta.value = list.length ? list.map((u, i) => (i + 1) + ") " + decodeURIComponent(u)).join("\n\n") : "(لا توجد روابط تقرير فى سجل الأداء — التحميل غالباً مباشر بدون تسجيل)";
+      box.appendChild(ta);
+      (document.body || document.documentElement).appendChild(box);
+      ta.focus(); ta.select();
+    } catch (e) { console.warn("overlay err", e); }
   }
   function saveBlob(blob, name) {
     try {
@@ -434,7 +476,12 @@
       const blob = b64ToBlob(c.b64);
       return { label, blob, name, kb: Math.round(blob.size / 1024) };
     });
-    if (!got.length) { banner("❌ لم يُلتقط أى ملف — افتح Console وابعتلى سطور [430D] 🔎", "#c62828"); dumpPerfUrls(); clearFlag(); return; }
+    if (!got.length) {
+      banner("❌ لم يُلتقط ملف — بعرض روابط الشبكة فى صندوق، صوّره وابعتهولى", "#c62828");
+      dumpPerfUrls();
+      showUrlsOverlay(collectReportUrls());
+      clearFlag(); return;
+    }
 
     // (هـ) نزّلهم للمراجعة على الجهاز
     for (const g of got) saveBlob(g.blob, g.name);
