@@ -435,12 +435,16 @@ export function FileUploadSection() {
     try { const v = localStorage.getItem("sf_hourly_last"); return v ? Number(v) : null; } catch { return null; }
   });
   const toggleHourly = () => {
-    setHourlyAuto((v) => {
-      const nv = !v;
-      try { localStorage.setItem("sf_hourly_auto", nv ? "1" : "0"); } catch {}
-      try { window.dispatchEvent(new Event("sf-hourly-toggle")); } catch {}
-      return nv;
-    });
+    const nv = !hourlyAuto;
+    try { localStorage.setItem("sf_hourly_auto", nv ? "1" : "0"); } catch {}
+    try { window.dispatchEvent(new Event("sf-hourly-toggle")); } catch {}
+    setHourlyAuto(nv);
+    // عند التفعيل: شغّل مرة فوراً (ضغطة المستخدم → النوافذ المنبثقة مسموحة، بما فيها تاب 430D)
+    // ويظبط عدّاد الـ 30 دقيقة فالتشغيل التالى بعد نص ساعة.
+    if (nv) {
+      runDailyUpdate();
+      try { localStorage.setItem("sf_hourly_last", String(Date.now())); window.dispatchEvent(new Event("sf-hourly-ran")); } catch {}
+    }
   };
   // حدّث «آخر تشغيل تلقائى» لما المكوّن الخلفى يشغّل
   useEffect(() => {
