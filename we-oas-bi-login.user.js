@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يجلب تقرير «430D Trial - Details متابعة اعطال» كملفات Excel كاملة (كل الأعمدة) مباشرةً من xmlpserver للتفاصيل والمتبقى، ينزّلهم على الجهاز للمراجعة، وبعد تأكيدك يرفعهم لموقع Service-Flow.
-// @version      1.4.0
+// @version      1.4.1
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -362,6 +362,24 @@
   // يجلب الملفين (التفاصيل _xpt=0 + المتبقى _xpt=1) كاملين من xmlpserver، ينزّلهم للمراجعة،
   // وبعد تأكيدك يرفعهم للموقع. لا يعتمد على سحب الجريد إطلاقاً — كل الأعمدة موجودة.
   async function reportFlow() {
+    // 1) املأ from_date/to_date واعمل Apply — يظبط بارامترات الجلسة قبل التحميل المباشر
+    banner("📅 ضبط التواريخ (" + FROM_STR + " → " + TO_STR + ")…");
+    const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
+    if (apply) {
+      closeDatePopup();
+      const fromI = findLabeledInput(/from_?date/i);
+      const toI = findLabeledInput(/to_?date/i);
+      if (fromI) setValue(fromI, FROM_STR);
+      if (toI) setValue(toI, TO_STR);
+      closeDatePopup();
+      await sleep(700);
+      banner("▶️ Apply — استنى التقرير يتولّد…");
+      clickEl(findBtn(/^\s*apply\s*$/i) || apply);
+      await sleep(6000);
+    } else {
+      banner("⚠️ مفيش Apply — هجرّب التحميل المباشر بالتواريخ فى الرابط", "#ef6c00");
+    }
+    // 2) اجلب الملفين كاملين من xmlpserver
     banner("⬇️ تحميل ملفات Excel كاملة (" + FROM_STR + " → " + TO_STR + ")…");
     const jobs = [{ tab: 0, label: "التفاصيل" }, { tab: 1, label: "المتبقى" }];
     const got = [];
