@@ -19,6 +19,10 @@ export function runDailyUpdate(uploadTimes: Record<string, string | null> | unde
   window.open("https://wfm.te.eg/WorkOrder/faces/security/pages/Login.jsf", "wfm_daily");
   window.open("https://oss.te.eg:15201/om", "oss_daily");
 
+  // 430D (WE OAS BI): علامة #sf-run-430d تخلّى سكربت Tampermonkey يشغّل تقرير 430D
+  // تلقائياً (لوجين → التفاصيل + المتبقى → تنزيل). تاب باسم ثابت (مفيش تكديس).
+  window.open("https://we-oas.te.eg/#sf-run-430d", "weoas_430d");
+
   // بورتال منافذ MSAN: مرة واحدة يومياً بعد 7:45 (المصدر بيتحدّث حوالى 8 إلا ربع)
   const today = cairoDay(new Date());
   const pt = uploadTimes || {};
