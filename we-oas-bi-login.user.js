@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.8.0
+// @version      1.8.1
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -421,18 +421,42 @@
 
   async function homeFlow() { banner("📂 فتح التقرير باللينك المباشر…"); location.href = REPORT_URL; }
 
-  // يملأ التواريخ ثم يضغط Apply (اللى بيولّد التقرير وينزّل الـ Excel تلقائياً)
+  // خانة التاريخ: بالـ name/id أولاً (from_date/to_date) ثم باللابل المجاور
+  function findDateInput(re) {
+    const byNameId = qAll("input").find((i) => visible(i) && i.type !== "hidden" && re.test((i.name || "") + " " + (i.id || "")));
+    if (byNameId) return byNameId;
+    return findLabeledInput(re);
+  }
+  // يضغط Apply: بالنص، أو بالـ id (reportViewApply)، أو ينادى validateAndRun() فى إطار التقرير
+  function clickApply() {
+    let btn = findBtn(/^\s*apply\s*$/i);
+    if (!btn) btn = qAll("button, input[type='button'], input[type='submit']").find((b) => visible(b) && (b.id || "") === "reportViewApply");
+    if (btn) { clickEl(btn); return true; }
+    // fallback: نادِ الدالة الداخلية للموقع مباشرةً
+    let called = false;
+    for (const d of docsList()) {
+      try { const w = d.defaultView; if (w && typeof w.validateAndRun === "function") { w.validateAndRun(); called = true; } } catch (e) {}
+    }
+    return called;
+  }
+  // يملأ التواريخ (بمحاولات) ثم يضغط Apply (اللى بيولّد التقرير وينزّل الـ Excel)
   async function fillDatesAndApply() {
-    closeDatePopup();
-    const fromI = findLabeledInput(/from_?date/i);
-    const toI = findLabeledInput(/to_?date/i);
-    if (fromI) setValue(fromI, FROM_STR);
-    if (toI) setValue(toI, TO_STR);
-    closeDatePopup();
-    await sleep(700);
-    const btn = findBtn(/^\s*apply\s*$/i);
-    if (btn) clickEl(btn);
-    return !!btn;
+    for (let t = 0; t < 4; t++) {
+      closeDatePopup();
+      const fromI = findDateInput(/from_?date/i);
+      const toI = findDateInput(/to_?date/i);
+      if (fromI) setValue(fromI, FROM_STR);
+      if (toI) setValue(toI, TO_STR);
+      closeDatePopup();
+      const okFrom = fromI && String(fromI.value || "").trim();
+      const okTo = toI && String(toI.value || "").trim();
+      if (okFrom && okTo) break;
+      await sleep(500);
+    }
+    await sleep(500);
+    const clicked = clickApply();
+    console.log("[430D] Apply", clicked ? "مضغوط" : "مش لاقيه");
+    return clicked;
   }
   function findTab(re) {
     const cands = qAll("a, span, div, td, li, button").filter((e) => visible(e) && re.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 40);
@@ -441,14 +465,27 @@
     cands.sort((a, b) => { let n = 0; try { n = a.querySelectorAll("*").length - b.querySelectorAll("*").length; } catch (e) {} return n || (a.tagName === "A" ? -1 : b.tagName === "A" ? 1 : 0); });
     return cands[0];
   }
-  // زر التصدير فى شريط أدوات BIP (أيقونة Excel الخضراء) → قائمة → Excel (.xlsx)
+  // زر التصدير فى شريط أدوات BIP (أيقونة Excel الخضراء id=xdo:viewFormatLink)
+  // → قائمة (Interactive/HTML/PDF/Excel) → نضغط Excel (*.xlsx)
   function exportExcelViaToolbar() {
     // لو القائمة مفتوحة: دوس Excel (*.xlsx)
-    const item = qAll("a, span, div, li, button").find((e) => visible(e) && /excel/i.test(e.textContent || "") && /xlsx|2007|\.xls/i.test(e.textContent || ""));
-    if (item) { clickEl(item); console.log("[430D] ضغط Excel من القائمة"); return true; }
-    // افتح أيقونة التصدير
-    const icon = qAll("a, img, span, div, button").find((e) => visible(e) && /export|تصدير|xlsx|excel/i.test((e.title || "") + (e.getAttribute && (e.getAttribute("aria-label") || "") || "") + (e.className || "")));
-    if (icon) { clickEl(icon); console.log("[430D] فتحت قائمة التصدير"); return "menu"; }
+    const item = qAll("a, span, div, li, button, td").find((e) => visible(e) && /excel/i.test(e.textContent || "") && /xlsx|2007|\.xls/i.test(e.textContent || ""));
+    if (item) { clickEl(item); console.log("[430D] ضغط Excel (*.xlsx) من القائمة"); return true; }
+    // افتح أيقونة التصدير: بالـ id (viewFormat) أو بصورة preview_excel أو class imageButton
+    let icon = qAll("a, img, span, div, button").find((e) => visible(e) &&
+      /viewformat|export|تصدير/i.test((e.id || "") + " " + (e.title || "") + " " + ((e.getAttribute && e.getAttribute("aria-label")) || "")));
+    if (!icon) icon = qAll("img").find((e) => visible(e) && /preview_excel|viewformat|xlsx|excel/i.test((e.src || "") + " " + (e.id || "")));
+    if (icon) { clickEl((icon.closest && icon.closest("a")) || icon); console.log("[430D] فتحت قائمة التصدير"); return "menu"; }
+    return false;
+  }
+  // يفتح قائمة التصدير ويضغط Excel (بمحاولات) — يسبّب التنزيل الأصلى للملف
+  async function triggerExcelExport() {
+    for (let t = 0; t < 4; t++) {
+      const r = exportExcelViaToolbar();
+      if (r === true) return true;      // ضغطنا Excel
+      if (r === "menu") { await sleep(1000); continue; }  // القائمة فتحت — نعيد لنضغط Excel
+      await sleep(700);
+    }
     return false;
   }
 
@@ -460,30 +497,28 @@
     const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
     if (!apply) { banner("⚠️ مفيش زر Apply — الصفحة مش صح؟", "#ef6c00"); clearFlag(); return; }
 
-    // (أ) تبويب التفاصيل — Apply، ولو ملقيناش ملف نجرّب زر التصدير
+    // (أ) تبويب التفاصيل — تواريخ + Apply → استنى التقرير يتولّد → صدّر Excel (تنزيل)
     banner("📅 التفاصيل: تواريخ + Apply (" + FROM_STR + " → " + TO_STR + ")…");
     let before = caps().length;
     await fillDatesAndApply();
-    banner("⏳ انتظار تنزيل ملف التفاصيل…");
-    if (!await waitNewCap(before, 30000)) {
-      banner("📤 التفاصيل: تجربة زر تصدير Excel…");
-      if (exportExcelViaToolbar() === "menu") { await sleep(900); exportExcelViaToolbar(); }
-      await waitNewCap(before, 30000);
-    }
+    banner("⏳ التفاصيل: بيتولّد…");
+    await sleep(6000);
+    banner("📤 التفاصيل: تصدير Excel…");
+    await triggerExcelExport();
+    await waitNewCap(before, 12000);   // فرصة التقاط للرفع التلقائى (لو نجح)
 
-    // (ب) تبويب المتبقى — افتحه ثم Apply (ونفس منطق زر التصدير)
+    // (ب) تبويب المتبقى — افتحه ثم تواريخ + Apply → صدّر Excel (تنزيل)
     banner("🔀 فتح تبويب «المتبقى»…");
     const remTab = findTab(/متبقى|متبقي|remaining/i);
-    if (remTab) { clickEl(remTab); await sleep(2000); }
+    if (remTab) { clickEl(remTab); await sleep(2500); }
     banner("📅 المتبقى: تواريخ + Apply…");
     before = caps().length;
     await fillDatesAndApply();
-    banner("⏳ انتظار تنزيل ملف المتبقى…");
-    if (!await waitNewCap(before, 30000)) {
-      banner("📤 المتبقى: تجربة زر تصدير Excel…");
-      if (exportExcelViaToolbar() === "menu") { await sleep(900); exportExcelViaToolbar(); }
-      await waitNewCap(before, 30000);
-    }
+    banner("⏳ المتبقى: بيتولّد…");
+    await sleep(6000);
+    banner("📤 المتبقى: تصدير Excel…");
+    await triggerExcelExport();
+    await waitNewCap(before, 12000);
 
     // (ج) فحص أخير للأداء (يلتقط أى تنزيل متأخر)
     for (let i = 0; i < 6; i++) { scanPerfAndRefetch(); await sleep(1200); }
@@ -497,9 +532,9 @@
       return { label, blob, name, kb: Math.round(blob.size / 1024) };
     });
     if (!got.length) {
-      banner("❌ لم يُلتقط ملف — بعرض روابط الشبكة فى صندوق، صوّره وابعتهولى", "#c62828");
-      dumpPerfUrls();
-      showUrlsOverlay(collectReportUrls());
+      // التنزيل الأصلى نجح (الملفان اتحمّلوا على الجهاز) — الرفع التلقائى متعذّر
+      // بسبب آلية الـ job/التوكن، فنوجّه المستخدم يرفعهم يدوياً بالرفعة المتعددة.
+      banner("✅ اتحمّل التفاصيل + المتبقى على جهازك — ارفعهم من «رفع 430D» (تقدر تعلّم عليهم الاتنين مرة واحدة)", "#2e7d32");
       clearFlag(); return;
     }
 
