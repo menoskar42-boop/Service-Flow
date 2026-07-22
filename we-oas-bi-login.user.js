@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.8.3
+// @version      1.8.4
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -492,28 +492,22 @@
     const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
     if (!apply) { banner("⚠️ مفيش زر Apply — الصفحة مش صح؟", "#ef6c00"); clearFlag(); return; }
 
-    // (أ) تبويب التفاصيل — تواريخ + Apply → استنى التقرير يتولّد → صدّر Excel (تنزيل)
+    // (أ) تبويب التفاصيل — تواريخ + Apply مرة واحدة (التقرير بينزّل الملف تلقائياً)
     banner("📅 التفاصيل: تواريخ + Apply (" + FROM_STR + " → " + TO_STR + ")…");
     let before = caps().length;
     await fillDatesAndApply();
-    banner("⏳ التفاصيل: بيتولّد…");
-    await sleep(6000);
-    banner("📤 التفاصيل: تصدير Excel…");
-    await triggerExcelExport();
-    await waitNewCap(before, 12000);   // فرصة التقاط للرفع التلقائى (لو نجح)
+    banner("⏳ التفاصيل: بيتولّد وينزّل…");
+    await waitNewCap(before, 18000);
 
-    // (ب) تبويب المتبقى — افتحه ثم تواريخ + Apply → صدّر Excel (تنزيل)
+    // (ب) تبويب المتبقى — افتحه ثم تواريخ + Apply مرة واحدة
     banner("🔀 فتح تبويب «المتبقى»…");
     const remTab = findTab(/متبقى|متبقي|remaining/i);
     if (remTab) { clickEl(remTab); await sleep(2500); }
     banner("📅 المتبقى: تواريخ + Apply…");
     before = caps().length;
     await fillDatesAndApply();
-    banner("⏳ المتبقى: بيتولّد…");
-    await sleep(6000);
-    banner("📤 المتبقى: تصدير Excel…");
-    await triggerExcelExport();
-    await waitNewCap(before, 12000);
+    banner("⏳ المتبقى: بيتولّد وينزّل…");
+    await waitNewCap(before, 18000);
 
     // (ج) فحص أخير للأداء (يلتقط أى تنزيل متأخر)
     for (let i = 0; i < 6; i++) { scanPerfAndRefetch(); await sleep(1200); }
