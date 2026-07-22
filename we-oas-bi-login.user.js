@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.7.1
+// @version      1.8.0
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -198,6 +198,25 @@
       });
     } catch (e) {}
   }
+  // تصدير الموقع async: xdo(302)→loading.jsp→polling لـ xdo?_xdo= لحد ما الـ job يخلّص.
+  // نعمل polling على رابط الـ job كل 1.5ث لحد ما يرجّع ملف PK فعلى (مش رد "بيتولّد").
+  const POLLED = new Set();
+  function pollForFile(url) {
+    if (POLLED.has(url)) return; POLLED.add(url);
+    const startN = caps().length;
+    let n = 0;
+    console.log("[430D] ⏳ poll job:", url.slice(0, 110));
+    const timer = setInterval(() => {
+      if (caps().length > startN || n++ > 30) { clearInterval(timer); return; }
+      try {
+        GM_xmlhttpRequest({
+          method: "GET", url, responseType: "arraybuffer", timeout: 60000,
+          onload: (r) => { if (r.response) stashBuf(r.response, "poll:" + url.slice(0, 60)); },
+          onerror: () => {}, ontimeout: () => {},
+        });
+      } catch (e) {}
+    }, 1500);
+  }
   // إعادة إرسال فورم التقرير بنفس الحقول للحصول على نفس ملف الـ Excel (attachment)
   function replayForm(form) {
     try {
@@ -295,9 +314,10 @@
     for (const d of docsList()) { try { if (d.defaultView) wins.push(d.defaultView); } catch (e) {} }
     let n = 0;
     const tryUrl = (u, tag) => {
-      if (looksReportUrl(u) && !/\.(gif|png|jpg|jpeg|css|js|woff2?|ico)(\?|$)/i.test(u) && !seen.has(u)) {
-        seen.add(u); console.log("[430D] " + tag, u.slice(0, 130)); refetch(u); n++;
-      }
+      if (!looksReportUrl(u) || /\.(gif|png|jpg|jpeg|css|js|woff2?|ico)(\?|$)/i.test(u)) return;
+      // روابط الـ job غير المتزامن: نعمل عليها polling (مش refetch مرة واحدة)
+      if (/loading\.jsp|xdo\?_xdo=|\/xdo\?/i.test(u)) { pollForFile(u); n++; return; }
+      if (!seen.has(u)) { seen.add(u); console.log("[430D] " + tag, u.slice(0, 130)); refetch(u); n++; }
     };
     for (const w of wins) {
       for (const type of ["resource", "navigation"]) {
