@@ -136,12 +136,15 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
-    label: "التركيبات والنقل",
+    label: "تركيبات و نقل و اوامر شغل",
     icon: Wrench,
     items: [
       { id: "current-installations",     label: "التركيبات والنقل الحالى" },
       { id: "regularized-installations", label: "التركيبات المنتظمة اليوم" },
       { id: "regularized-installations-range", label: "التركيبات المنتظمة (فترة من/إلى)" },
+      { id: "work-orders", label: "أوامر الشغل" },
+      { id: "work-orders-fail", label: "أوامر الشغل الفاشلة (Fail)" },
+      { id: "installations-by-tech", label: "نسبة التركيبات لكل فنى" },
     ],
   },
   {
@@ -192,15 +195,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
-    label: "أوامر الشغل",
-    icon: FileText,
-    items: [
-      { id: "work-orders", label: "أوامر الشغل" },
-      { id: "work-orders-fail", label: "أوامر الشغل الفاشلة (Fail)" },
-      { id: "installations-by-tech", label: "نسبة التركيبات لكل فنى" },
-    ],
-  },
-  {
     label: "تقارير أعطال الشبكات الأرضية",
     icon: AlertTriangle,
     items: [
@@ -238,10 +232,10 @@ export default function Dashboard() {
   // مجموعات التقارير المعروضة حسب الدور
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
   const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
-  const DM_ALLOWED_GROUPS = ["القياسات", "أوامر الشغل"];
+  const DM_ALLOWED_GROUPS = ["القياسات", "تركيبات و نقل و اوامر شغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
   const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech", "shift-schedule"];
-  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "أوامر الشغل", "جدول الورديات"];
+  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "تركيبات و نقل و اوامر شغل", "جدول الورديات"];
   // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
   const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];
   const SALES_ADMIN_ALLOWED_GROUPS = ["متعذرات OM"];
