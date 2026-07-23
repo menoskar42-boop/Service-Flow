@@ -5549,6 +5549,12 @@ export async function registerRoutes(
         }
         total += dataRows.length;
       }
+      // نسجّل وقت آخر رفع لـ 131 فى app_state (phone_lines مافيهوش uploaded_at) — للعرض بجانب البطاقة
+      try {
+        await pool.query(
+          `INSERT INTO app_state (key, value, updated_at) VALUES ('phone_lines_import_at', now()::text, now())
+           ON CONFLICT (key) DO UPDATE SET value = now()::text, updated_at = now()`);
+      } catch (e) {}
       res.json({ inserted: upserted, upserted, total, sheets: sheetsSeen });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في استيراد 131" });
@@ -5764,6 +5770,11 @@ export async function registerRoutes(
       const { rows } = await pool.query(`SELECT updated_at AS t FROM app_state WHERE key = 'ports_run_completed_at'`);
       result["ports_run_complete"] = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
     } catch { result["ports_run_complete"] = null; }
+    // آخر رفع لملف 131 (phone_lines) — من app_state
+    try {
+      const { rows } = await pool.query(`SELECT updated_at AS t FROM app_state WHERE key = 'phone_lines_import_at'`);
+      result["/api/phone-lines/import"] = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
+    } catch { result["/api/phone-lines/import"] = null; }
     res.json(result);
   });
 
