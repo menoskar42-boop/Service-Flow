@@ -3746,9 +3746,6 @@ export async function registerRoutes(
     const { dateFrom = "", dateTo = "", lines = "" } = req.query as Record<string, string>;
     const params: any[] = [];
     const conds: string[] = ["(w.close_category IS NULL OR w.close_category = 'Success')"];
-    // نفس فلتر أوامر الشغل: نستبعد الصفوف اللى اتحفظ فيها رقم خدمة/دائرة طويل (مسلسل)
-    // بدل التليفون — فتبقى الإجماليات متطابقة مع تقرير أوامر الشغل.
-    conds.push(`length(regexp_replace(coalesce(w.phone_number,''), '\\D', '', 'g')) BETWEEN 6 AND 11`);
     if (dateFrom) { params.push(dateFrom); conds.push(`w.close_date >= $${params.length}::date`); }
     if (dateTo) { params.push(dateTo); conds.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }
     if (!seeAll) {
