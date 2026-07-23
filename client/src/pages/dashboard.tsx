@@ -187,14 +187,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
-    // تقارير التفتيش — تظهر للكل ما عدا الفنيين والمبيعات وأدمن المبيعات ومسئول البيانات
-    label: "تقارير التفتيش",
-    icon: ClipboardList,
-    items: [
-      { id: "inspection-reports", label: "تقارير التفتيش (سنترال + كابينة)" },
-    ],
-  },
-  {
     label: "تقارير أعطال الشبكات الأرضية",
     icon: AlertTriangle,
     items: [
@@ -207,6 +199,14 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "exec-jobs", label: "سجل القياس/رفع السرعة/الإيقاف" },
       { id: "queue-reorder", label: "ترتيب الطابور (الباتشات المؤجّلة)" },
+    ],
+  },
+  {
+    // تقارير التفتيش — آخر تاب (تظهر للكل ما عدا الفنيين والمبيعات وأدمن المبيعات ومسئول البيانات)
+    label: "تقارير التفتيش",
+    icon: ClipboardList,
+    items: [
+      { id: "inspection-reports", label: "تقارير التفتيش (سنترال + كابينة)" },
     ],
   },
 ];
