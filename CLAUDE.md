@@ -20,6 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - (a) **Keep the canonical copy saved in a project file** and edit it in place (e.g. `dzs-expresse-v10.user.js`, `customer360-account-grabber.user.js`, `tampermonkey-v2.9.js`). This file is the single source of truth — every change goes through it, then commit + push to `origin/main`. This lets future sessions read the current code and continue from it.
    - (b) **Output the ENTIRE updated script in the chat reply** (the full file, not just the modified section) — the user copies it directly from chat into Tampermonkey.
    Applies to every Tampermonkey code change, no exceptions.
+10. **Every file-import endpoint MUST persist the FULL raw row of every uploaded sheet — ALL its columns — not just the columns a current report needs.** Store the complete header→value object of each row in a `raw_data jsonb` column (alongside the parsed/typed columns used by reports). This way any future report can surface any column without re-importing. When adding/reviewing any `/api/*/import` handler, ensure it saves `raw_data` (all sheet columns) per row; the typed columns stay for querying, `raw_data` keeps everything else. (`raw_data jsonb` counts as a new column → follow constraint #8: add it to `shared/schema.ts` + `ensureSchema()` ALTER in the same commit.)
 
 ## Domain Context
 - Expert full-stack engineer (40+ years experience).

@@ -31,9 +31,6 @@ export function InstallationsByTechReport() {
   const [dateTo, setDateTo] = useState("");
   const [rows, setRows] = useState<TechRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showOver24, setShowOver24] = useState(false);
-  const [lines, setLines] = useState<LineRow[]>([]);
-  const [linesLoading, setLinesLoading] = useState(false);
 
   const qs = useCallback(() => {
     const p = new URLSearchParams();
@@ -52,23 +49,38 @@ export function InstallationsByTechReport() {
   }, [qs]);
   useEffect(() => { load(); }, [load]);
 
-  const loadLines = useCallback(async () => {
-    setLinesLoading(true);
+  // يفتح خطوط التركيبات المتجاوزة 24 ساعة فى نافذة منبثقة (زى تقارير الأعطال)
+  const openOver24Popup = useCallback(async () => {
+    const w = window.open("", "_blank", "width=1150,height=780");
+    if (!w) { alert("النوافذ المنبثقة متبلوكة — اسمح بالـ pop-ups للموقع"); return; }
+    const style = `body{font-family:Arial,sans-serif;direction:rtl;padding:16px}h2{color:#b91c1c}
+      table{border-collapse:collapse;width:100%;font-size:13px}
+      th,td{border:1px solid #ccc;padding:6px 8px;text-align:right;white-space:nowrap}
+      th{background:#fee2e2;color:#7f1d1d}tr:nth-child(even){background:#fafafa}
+      .hrs{color:#b91c1c;font-weight:bold;text-align:center}
+      button{margin:0 0 12px;padding:6px 14px;border:0;border-radius:6px;background:#b91c1c;color:#fff;cursor:pointer}`;
+    w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>خطوط التركيبات المتجاوزة 24 ساعة</title><style>${style}</style></head><body><h2>⚠️ جارٍ التحميل…</h2></body></html>`);
+    w.document.close();
     try {
       const p = qs(); p.set("lines", "1");
       const r = await fetch(`/api/reports/installations-by-tech?${p}`, { credentials: "include" });
       const d = await r.json();
-      setLines(Array.isArray(d.lines) ? d.lines : []);
-    } catch { setLines([]); } finally { setLinesLoading(false); }
+      const list: LineRow[] = Array.isArray(d.lines) ? d.lines : [];
+      const esc = (s: any) => String(s ?? "-").replace(/[&<>]/g, (c) => (({ "&": "&amp;", "<": "&lt;", ">": "&gt;" } as any)[c]));
+      const body = list.length
+        ? list.map((l) => `<tr><td>${esc(l.techName)}</td><td>${esc(l.centralName)}</td><td>${esc(l.workOrderId)}</td><td>${esc(l.phoneNumber)}</td><td>${esc(l.serviceType)}</td><td>${esc(fmt(l.creationDate))}</td><td>${esc(fmt(l.closeDate))}</td><td class="hrs">${esc(l.hours)}</td></tr>`).join("")
+        : `<tr><td colspan="8" style="text-align:center;color:#666">لا توجد تركيبات متجاوزة 24 ساعة</td></tr>`;
+      w.document.open();
+      w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>خطوط التركيبات المتجاوزة 24 ساعة (${list.length})</title><style>${style}</style></head><body>
+        <button onclick="window.print()">🖨️ طباعة</button>
+        <h2>⚠️ خطوط التركيبات المتجاوزة 24 ساعة (${list.length})</h2>
+        <table><thead><tr><th>اسم الفنى</th><th>السنترال</th><th>رقم الأمر</th><th>رقم التليفون</th><th>النوع</th><th>تاريخ الفتح</th><th>تاريخ الإغلاق</th><th>المدة (ساعة)</th></tr></thead><tbody>${body}</tbody></table>
+        </body></html>`);
+      w.document.close();
+    } catch (e) {
+      try { w.document.body.innerHTML = "<h2 style='color:#b91c1c'>تعذّر تحميل البيانات</h2>"; } catch {}
+    }
   }, [qs]);
-
-  const toggleOver24 = () => {
-    const next = !showOver24;
-    setShowOver24(next);
-    if (next) loadLines();
-  };
-  // إعادة تحميل الخطوط لو التاريخ اتغيّر والزر مفتوح
-  useEffect(() => { if (showOver24) loadLines(); }, [dateFrom, dateTo]); // eslint-disable-line
 
   const totals = rows.reduce((a, r) => ({ total: a.total + r.total, within24: a.within24 + r.within24, over24: a.over24 + r.over24 }), { total: 0, within24: 0, over24: 0 });
 
@@ -92,8 +104,8 @@ export function InstallationsByTechReport() {
             <div><label className="text-xs text-muted-foreground block mb-1">من تاريخ</label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-40 text-sm" /></div>
             <div><label className="text-xs text-muted-foreground block mb-1">إلى تاريخ</label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-40 text-sm" /></div>
             <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
-            <Button onClick={toggleOver24} size="sm" variant={showOver24 ? "default" : "outline"} className={`gap-1 ${showOver24 ? "bg-red-600 hover:bg-red-700" : "text-red-700 border-red-200"}`}>
-              <AlertTriangle className="w-4 h-4" /> تجاوزات 24 ساعة {showOver24 ? "✓" : `(${totals.over24})`}
+            <Button onClick={openOver24Popup} size="sm" variant="outline" className="gap-1 text-red-700 border-red-200">
+              <AlertTriangle className="w-4 h-4" /> تجاوزات 24 ساعة ({totals.over24})
             </Button>
             <Button onClick={handleExport} size="sm" variant="outline" className="gap-1 text-green-700 border-green-200" disabled={!rows.length}><FileSpreadsheet className="w-4 h-4" /> Excel</Button>
           </div>
@@ -130,34 +142,6 @@ export function InstallationsByTechReport() {
         </div>
       </Card>
 
-      {showOver24 && (
-        <Card className="p-4 space-y-3">
-          <h3 className="font-bold flex items-center gap-2 text-red-700"><AlertTriangle className="w-5 h-5" /> خطوط التركيبات المتجاوزة 24 ساعة</h3>
-          <div className="rounded-md border max-h-[55vh] overflow-auto">
-            <Table>
-              <TableHeader><TableRow>{["اسم الفنى", "السنترال", "رقم الأمر", "رقم التليفون", "النوع", "تاريخ الفتح", "تاريخ الإغلاق", "المدة (ساعة)"].map((c) => <TableHead key={c} className="text-right whitespace-nowrap">{c}</TableHead>)}</TableRow></TableHeader>
-              <TableBody>
-                {linesLoading ? (
-                  <TableRow><TableCell colSpan={8} className="text-center h-24"><Loader2 className="animate-spin mx-auto" /></TableCell></TableRow>
-                ) : lines.length === 0 ? (
-                  <TableRow><TableCell colSpan={8} className="text-center h-24 text-muted-foreground">لا توجد تركيبات متجاوزة 24 ساعة</TableCell></TableRow>
-                ) : lines.map((l, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="whitespace-nowrap">{l.techName || "-"}</TableCell>
-                    <TableCell className="whitespace-nowrap">{l.centralName || "-"}</TableCell>
-                    <TableCell>{l.workOrderId ?? "-"}</TableCell>
-                    <TableCell className="font-mono">{l.phoneNumber || "-"}</TableCell>
-                    <TableCell><span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">{l.serviceType || "-"}</span></TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{fmt(l.creationDate)}</TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{fmt(l.closeDate)}</TableCell>
-                    <TableCell className="text-center font-semibold text-red-700">{l.hours ?? "-"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      )}
     </div>
   );
 }
