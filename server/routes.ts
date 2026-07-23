@@ -5489,6 +5489,72 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/phone-lines/import — ملف 131 (شيتات نحاسي + فيبر) → upsert على phone_lines
+  // بالـ full_phone (88+الرقم القصير). يخزّن الصف كامل فى raw_data (القاعدة #10). يقبل توكن الرفع.
+  app.options("/api/phone-lines/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.post("/api/phone-lines/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "لا يوجد ملف" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: false });
+      let upserted = 0, total = 0;
+      const sheetsSeen: string[] = [];
+      for (const name of wb.SheetNames) {
+        const ws = wb.Sheets[name]; if (!ws) continue;
+        const rows: any[][] = sheetRows(ws);
+        const { find, headerRowIdx, dataRows } = smartSheet(rows, ["tel no", "رقم التليفون", "السنترال"]);
+        const iTel = find("tel no", "رقم التليفون", "رقم التلفون", "telno");
+        const iCentral = find("السنترال", "central");
+        if (iTel < 0 || iCentral < 0) continue;   // مش شيت خطوط (زى «دوائر المعلومات» بلا Tel No)
+        sheetsSeen.push(name);
+        const iCabin  = find("cabinet no", "رقم الكابينة", "رقم الكابينه");
+        const iBox    = find("dp no", "box number");
+        const iDpT    = find("dp terminal");
+        const iPrim   = find("primary block");
+        const iCabIn  = find("cabinet in");
+        const iSec    = find("sec block");
+        const iCabOut = find("cabinet out");
+        const iIdu    = find("idu no");
+        const iOdu    = find("odu no");
+        const iPort   = find("port");
+        const iLen    = find("len");
+        const iFibBlk = find("fiber block");
+        const iFibOut = find("fiber out");
+        const origHeader = (rows[headerRowIdx] || []).map((h: any) => String(h ?? "").trim());
+        const g = (r: any[], i: number) => (i >= 0 ? String(r[i] ?? "").trim() : "");
+        for (const r of dataRows) {
+          const short = g(r, iTel).replace(/\D/g, "").replace(/^0*88/, "");
+          if (!short) continue;
+          const full = "88" + short;
+          const rawObj: Record<string, any> = {};
+          for (let ci = 0; ci < origHeader.length; ci++) {
+            const k = origHeader[ci] || ("col" + ci);
+            rawObj[k] = (r[ci] === "" || r[ci] === undefined) ? null : r[ci];
+          }
+          const nn = (i: number) => g(r, i) || null;
+          await pool.query(
+            `INSERT INTO phone_lines (tel_no, full_phone, central, cabin_number, box_number, dp_terminal,
+                idu_no, odu_no, primary_block_no, cabinet_in, sec_block_no, cabinet_out, port, len, fiber_block, fiber_out, raw_data)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             ON CONFLICT (full_phone) DO UPDATE SET
+                tel_no = EXCLUDED.tel_no, central = COALESCE(EXCLUDED.central, phone_lines.central),
+                cabin_number = EXCLUDED.cabin_number, box_number = EXCLUDED.box_number, dp_terminal = EXCLUDED.dp_terminal,
+                idu_no = EXCLUDED.idu_no, odu_no = EXCLUDED.odu_no, primary_block_no = EXCLUDED.primary_block_no,
+                cabinet_in = EXCLUDED.cabinet_in, sec_block_no = EXCLUDED.sec_block_no, cabinet_out = EXCLUDED.cabinet_out,
+                port = COALESCE(EXCLUDED.port, phone_lines.port), len = EXCLUDED.len,
+                fiber_block = EXCLUDED.fiber_block, fiber_out = EXCLUDED.fiber_out, raw_data = EXCLUDED.raw_data`,
+            [short, full, nn(iCentral), nn(iCabin), nn(iBox), nn(iDpT), nn(iIdu), nn(iOdu), nn(iPrim),
+             nn(iCabIn), nn(iSec), nn(iCabOut), nn(iPort), nn(iLen), nn(iFibBlk), nn(iFibOut), JSON.stringify(rawObj)],
+          );
+          upserted++;
+        }
+        total += dataRows.length;
+      }
+      res.json({ inserted: upserted, upserted, total, sheets: sheetsSeen });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message || "خطأ في استيراد 131" });
+    }
+  });
+
   // POST /api/cabinet-technicians/import — الفنيين بأرقام الكباين (full replace each upload)
   app.post("/api/cabinet-technicians/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {

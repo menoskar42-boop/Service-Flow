@@ -102,6 +102,7 @@ export async function ensureSchema() {
       full_phone text NOT NULL UNIQUE
     )
   `);
+  await pool.query(`ALTER TABLE phone_lines ADD COLUMN IF NOT EXISTS raw_data jsonb`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS phone_line_edits (

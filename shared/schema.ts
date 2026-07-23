@@ -138,6 +138,7 @@ export const phoneLines = pgTable("phone_lines", {
   fiberOut: text("fiber_out"),
   telNumTxt: text("tel_num_txt"),
   fullPhone: text("full_phone").notNull().unique(),
+  rawData: jsonb("raw_data"),   // صف شيت 131 كامل بكل خاناته (القاعدة #10)
 });
 
 // Phone Line Edits Audit Table

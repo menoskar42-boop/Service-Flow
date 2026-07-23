@@ -736,6 +736,14 @@ export function FileUploadSection() {
           multiple
         />
         <UploadCard
+          label="بيان التليفونات 131 (نحاسي + فيبر) — تحديث/إضافة بالرقم (raw_data لكل الخانات)"
+          icon={PhoneCall}
+          endpoint="/api/phone-lines/import"
+          queryKey="/api/phone-lines"
+          color="border-indigo-200 bg-indigo-50/50"
+          lastUpload={ut("/api/phone-lines/import")}
+        />
+        <UploadCard
           label="طلبات متعذرات OM — تاريخي + حالي + أرشيف سنوي"
           icon={ClipboardList}
           endpoint="/api/ftth-orders/import"
