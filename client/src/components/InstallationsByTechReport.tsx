@@ -26,9 +26,17 @@ const fmt = (d: string | null) => {
   catch { return "-"; }
 };
 
+// الافتراضى: من أول يوم فى الشهر الحالى → اليوم (بتوقيت مصر)
+const cairoParts = () => {
+  const s = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" }); // YYYY-MM-DD
+  return s;
+};
+const firstOfMonth = () => cairoParts().slice(0, 8) + "01";
+const todayStr = () => cairoParts();
+
 export function InstallationsByTechReport() {
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateFrom, setDateFrom] = useState(firstOfMonth());
+  const [dateTo, setDateTo] = useState(todayStr());
   const [rows, setRows] = useState<TechRow[]>([]);
   const [loading, setLoading] = useState(false);
 
