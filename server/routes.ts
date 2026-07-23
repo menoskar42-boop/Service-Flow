@@ -3606,6 +3606,9 @@ export async function registerRoutes(
       const iItem      = findCol("اسم الصنف", "الصنف", "item name");
       const iCable     = findCol("consumed cables", "كميه السلك", "كمية السلك", "السلك", "cable");
       const iTech      = findCol("tech name", "اسم الفنى", "اسم الفني", "الفنى");
+      const iMsan      = findCol("msan code", "msan", "الكابينة", "الكابينه");
+      // العناوين الأصلية (بدون تصغير) لحفظ raw_data بكل خانات الشيت — القاعدة #10
+      const origHeader = rows[0].map((h: any) => String(h ?? "").trim());
 
       // central header is blank in the WFM export → fall back to first column
       const g = (row: any[], detected: number, fallback: number) =>
@@ -3654,15 +3657,26 @@ export async function registerRoutes(
         const closeDate = toDate(rawDate);
         if (!closeDate || isNaN(closeDate.getTime())) { skipped++; continue; }
         const creationDate = toDate(rawCreation); // اختيارى — لحساب زمن الإغلاق
+        // كود الكابينة (MSAN Code) من الشيت مباشرةً + النوع الخام + صف الشيت كامل (raw_data)
+        const msanCode = iMsan >= 0 ? (String(r[iMsan] ?? "").trim() || null) : null;
+        const rawObj: Record<string, any> = {};
+        for (let ci = 0; ci < origHeader.length; ci++) {
+          const k = origHeader[ci] || ("col" + ci);
+          const v = r[ci];
+          rawObj[k] = (v === "" || v === undefined) ? null : (v instanceof Date ? v.toISOString() : v);
+        }
 
         // المقارنة على (اسم السنترال + رقم امر الشغل): لو موجود يُحدَّث تصنيفه/تواريخه، لو جديد يُضاف.
         const ins = await pool.query(
-          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, uploaded_by_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
            ON CONFLICT (central_name, work_order_id) DO UPDATE SET
              close_category = EXCLUDED.close_category,
-             creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date)`,
-          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, (req.user as any).id],
+             creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date),
+             msan_code = COALESCE(EXCLUDED.msan_code, work_orders.msan_code),
+             work_order_type_raw = COALESCE(EXCLUDED.work_order_type_raw, work_orders.work_order_type_raw),
+             raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data)`,
+          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj), (req.user as any).id],
         );
         if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
       }
@@ -3775,6 +3789,10 @@ export async function registerRoutes(
     // (2) وإلا فنى منطقة الخط = صاحب كابينة الخط من البيان الفنى (phone_lines).
     const effTech = `COALESCE(
         (SELECT o.name FROM our o WHERE o.nn = ${norm("w.tech_name")} LIMIT 1),
+        (SELECT o.name FROM cabinet_technicians ct3
+           JOIN technician_names tn3 ON tn3.worker_code = ct3.worker_code
+           JOIN our o ON o.nn = ${norm("tn3.tech_name")}
+          WHERE btrim(coalesce(w.msan_code,'')) <> '' AND btrim(ct3.cabin_code) = btrim(w.msan_code) LIMIT 1),
         (SELECT o.name FROM phone_lines pl
            JOIN cabinet_technicians ct2 ON ct2.central_name = pl.central AND ct2.cabin_number = pl.cabin_number
            JOIN technician_names tn2 ON tn2.worker_code = ct2.worker_code
