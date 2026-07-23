@@ -3707,9 +3707,9 @@ export async function registerRoutes(
     if (over24 === "1" || over24 === "true") {
       conds.push(`w.creation_date IS NOT NULL AND EXTRACT(EPOCH FROM (w.close_date - w.creation_date)) / 3600 > 24`);
     }
-    // خانة التليفون: أرقام تليفونات صحيحة فقط (7 خانات، أو 88+7). نستبعد أى صف اتحفظ فيه
-    // رقم خدمة/دائرة طويل (مسلسل) بالغلط بدل التليفون — الفلترة على مستوى التقرير.
-    conds.push(`length(regexp_replace(coalesce(w.phone_number,''), '\\D', '', 'g')) BETWEEN 6 AND 11`);
+    // خانة التليفون: أرقام التركيبات فقط بصيغة 88+7 خانات (زى 88-2650505). أى صف اتحفظ
+    // فيه مسلسل طويل (معاينات … إلخ) يتشال خالص من التقرير — الفلترة على مستوى التقرير.
+    conds.push(`regexp_replace(coalesce(w.phone_number,''), '\\D', '', 'g') ~ '^88[0-9]{7}$'`);
 
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // كمية السلك: تؤخذ من work_orders لو موجودة، وإلا من cable_entries (إدخال الفنى يدوياً)
@@ -3747,6 +3747,9 @@ export async function registerRoutes(
     const params: any[] = [];
     // شروط داخلية (Success + التاريخ) على work_orders
     const inner: string[] = ["(w.close_category IS NULL OR w.close_category = 'Success')"];
+    // التركيبات فقط: الأرقام بصيغة 88+7 خانات (زى 88-2650505). أى رقم تانى (معاينات
+    // بمسلسل طويل … إلخ) يتشال خالص من نسبة التركيبات (العدّ + قائمة التجاوزات) مهما كان القافل.
+    inner.push(`regexp_replace(coalesce(w.phone_number,''),'\\D','','g') ~ '^88[0-9]{7}$'`);
     if (dateFrom) { params.push(dateFrom); inner.push(`w.close_date >= $${params.length}::date`); }
     if (dateTo) { params.push(dateTo); inner.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }
     const innerWhere = `WHERE ${inner.join(" AND ")}`;
