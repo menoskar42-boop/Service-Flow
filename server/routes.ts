@@ -5555,6 +5555,20 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/phone-lines/copper-cabinets — كباين النحاس بتوعنا (من الفنيين) لسكربت 131
+  app.options("/api/phone-lines/copper-cabinets", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.get("/api/phone-lines/copper-cabinets", requireAdminOrToken, async (_req, res) => {
+    setUploadCors(res);
+    try {
+      const { rows } = await pool.query(
+        `SELECT DISTINCT central_name AS central, btrim(cabin_number) AS cabin
+           FROM cabinet_technicians
+          WHERE coalesce(btrim(cabin_number),'') <> ''
+          ORDER BY central_name, btrim(cabin_number)`);
+      res.json({ cabinets: rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // POST /api/cabinet-technicians/import — الفنيين بأرقام الكباين (full replace each upload)
   app.post("/api/cabinet-technicians/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
     try {

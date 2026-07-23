@@ -1,10 +1,13 @@
 // ==UserScript==
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
-// @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131 ارقام التليفونات على كابينة»، يختار P_CENTRAL_NAME=ديروط و P_CABINET_NO=1-1، Apply، ثم ينزّل Excel واحد بثلاث شيتات: نحاسي + فيبر + دوائر المعلومات. لا يرفع أى بيانات للموقع.
-// @version      1.0.6
+// @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131»، يجلب كباين النحاس بتوعنا من Service-Flow، يمرّ على كل كابينة (P_CABINET_NO + Apply) ويجمع شيتات نحاسي+فيبر+دوائر فى ملف واحد، ينزّله، ويرفعه لـ Service-Flow (يستبدل رقم التليفون الموجود ويضيف الجديد على بيان التليفونات 131).
+// @version      1.1.0
 // @match        *://we-oas.te.eg/*
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @connect      service-flow-menoskar42.replit.app
+// @connect      replit.app
+// @connect      we-oas.te.eg
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -14,8 +17,10 @@
   /* ================== CONFIG ================== */
   const USER = "mena.haleem@te.eg";
   const PASS = "Mon_oskar364";
-  const CENTRAL = "ديروط";     // قيمة P_CENTRAL_NAME
-  const CABINET = "1-1";        // قيمة P_CABINET_NO
+  const CENTRAL = "ديروط";     // قيمة P_CENTRAL_NAME (غير مستخدمة — بنكتفى برقم الكابينة)
+  const CABINET = "1-1";        // كابينة افتراضية لو تعذّر الجلب
+  const SF_URL   = "https://service-flow-menoskar42.replit.app";
+  const SF_TOKEN = "sf-auto-upload-2026";
   // التبويبات المطلوبة بالترتيب (نحاسي هو الافتراضى)
   // headRe = عمود مميّز فى هيدر جدول التبويب عشان نلقط الجدول الصح (مش أكبر جدول ظاهر)
   const TABS = [
@@ -218,40 +223,80 @@
     return false;
   }
 
-  /* ================== التشغيل الرئيسى ================== */
+  /* ================== Service-Flow: جلب الكباين + الرفع ================== */
+  function sfGet(path) {
+    return new Promise((resolve) => {
+      try {
+        GM_xmlhttpRequest({
+          method: "GET", url: SF_URL + path, headers: { "X-Upload-Token": SF_TOKEN }, timeout: 60000,
+          onload: (r) => { try { resolve(JSON.parse(r.responseText)); } catch (e) { resolve(null); } },
+          onerror: () => resolve(null), ontimeout: () => resolve(null),
+        });
+      } catch (e) { resolve(null); }
+    });
+  }
+  function sfUpload(content, filename) {
+    return new Promise((resolve) => {
+      try {
+        const blob = new Blob(["﻿" + content], { type: "application/vnd.ms-excel;charset=utf-8" });
+        const fd = new FormData(); fd.append("file", blob, filename);
+        GM_xmlhttpRequest({
+          method: "POST", url: SF_URL + "/api/phone-lines/import", headers: { "X-Upload-Token": SF_TOKEN }, data: fd, timeout: 300000,
+          onload: (r) => { console.log("[131] رفع 131", r.status, (r.responseText || "").slice(0, 220)); resolve(r.status >= 200 && r.status < 300); },
+          onerror: (r) => { console.warn("[131] فشل الرفع", r && r.status); resolve(false); }, ontimeout: () => resolve(false),
+        });
+      } catch (e) { resolve(false); }
+    });
+  }
+  async function getCabinets() {
+    const d = await sfGet("/api/phone-lines/copper-cabinets");
+    const list = (d && Array.isArray(d.cabinets)) ? d.cabinets.map((c) => String(c.cabin || "").trim()).filter(Boolean) : [];
+    return [...new Set(list.length ? list : [CABINET])];
+  }
+
+  /* ================== التشغيل الرئيسى: كل الكباين + الرفع ================== */
   async function reportFlow() {
-    banner("⚙️ ضبط البرومبت (ديروط / 1-1)…");
+    banner("⚙️ جلب كباين النحاس من Service-Flow…");
     const apply = await waitFor(() => findBtn(/^\s*apply\s*$/i), 40000);
     if (!apply) { banner("❌ لم تُحمّل صفحة التقرير (لا يوجد Apply)", "#c62828"); return; }
-    // حاجز صارم: لازم يكون تقرير 131 (العلامة المميّزة = P_CABINET_NO، لأن P_CENTRAL_NAME موجودة فى 430D كمان)
     if (!/P_CABINET_NO/i.test(pageText())) { banner("⏹️ مش تقرير 131 — تجاهل.", "#607d8b"); return; }
-    // نكتفى بكتابة رقم الكابينة فقط (P_CENTRAL_NAME = All) — أسرع وبدون مشاكل الدروب ليست
-    const cab = findLabeledInput(/P_CABINET_NO/i);
-    if (cab) setValue(cab, CABINET); else banner("⚠️ لم أجد خانة P_CABINET_NO", "#ef6c00");
-    await sleep(400);
 
-    const sheets = [];
-    for (let i = 0; i < TABS.length; i++) {
-      const tab = TABS[i];
-      if (i > 0) {
-        banner("↪️ تبويب " + tab.name + "…");
-        await clickTabByText(tab.re);
-        await sleep(3500);
+    const cabinets = await getCabinets();
+    banner("🗄️ هيمرّ على " + cabinets.length + " كابينة…");
+
+    // مجمّع الشيتات: هيدر مرة واحدة لكل شيت + صفوف كل الكباين
+    const acc = {}; const headerDone = {};
+    for (const t of TABS) acc[t.name] = [];
+
+    for (let ci = 0; ci < cabinets.length; ci++) {
+      const cabNo = cabinets[ci];
+      for (let i = 0; i < TABS.length; i++) {
+        const tab = TABS[i];
+        banner("🗄️ (" + (ci + 1) + "/" + cabinets.length + ") كابينة " + cabNo + " — " + tab.name + "…");
+        await clickTabByText(tab.re);           // اتأكد إننا على التبويب الصح
+        await sleep(1500);
+        const cab = findLabeledInput(/P_CABINET_NO/i);   // اكتب رقم الكابينة قبل كل Apply
+        if (cab) setValue(cab, cabNo);
+        await sleep(400);
+        fireClick(findBtn(/^\s*apply\s*$/i) || apply);
+        await waitFor(() => tableByHeader(tab.headRe), 30000);
+        await sleep(4500);
+        let rows = scrapeRows(tableByHeader(tab.headRe));
+        if (rows.length <= 1) { await sleep(3500); rows = scrapeRows(tableByHeader(tab.headRe)); }
+        if (rows.length) {
+          if (!headerDone[tab.name]) { acc[tab.name].push(rows[0]); headerDone[tab.name] = true; }
+          acc[tab.name].push(...rows.slice(1));
+        }
       }
-      banner("▶️ Apply (" + tab.name + ") — استنى النتائج…");
-      fireClick(findBtn(/^\s*apply\s*$/i) || apply);
-      // استنى جدول التبويب (بعموده المميّز) يظهر، ثم استنى تحميل البيانات
-      await waitFor(() => tableByHeader(tab.headRe), 30000);
-      await sleep(5000);
-      let tb = tableByHeader(tab.headRe);
-      let rows = scrapeRows(tb);
-      // لو لسه هيدر بس (ممكن البيانات لسه بتحمّل) استنى شوية وأعد القراءة
-      if (rows.length <= 1) { await sleep(4000); tb = tableByHeader(tab.headRe); rows = scrapeRows(tb); }
-      banner("✔️ " + tab.name + ": " + Math.max(0, rows.length - 1) + " صف", "#2e7d32");
-      sheets.push({ name: tab.name, rows: rows.length ? rows : [["لا توجد بيانات"]] });
     }
-    downloadFile(buildXls(sheets), "131_cabinet_" + CABINET + ".xls", "application/vnd.ms-excel");
-    banner("📥 اتحمّل ملف Excel (نحاسي/فيبر/دوائر المعلومات).", "#2e7d32");
+
+    const sheets = TABS.map((t) => ({ name: t.name, rows: acc[t.name].length ? acc[t.name] : [["لا توجد بيانات"]] }));
+    const totalRows = TABS.reduce((s, t) => s + Math.max(0, acc[t.name].length - 1), 0);
+    const xls = buildXls(sheets);
+    downloadFile(xls, "131_all_cabinets.xls", "application/vnd.ms-excel");   // نسخة للمراجعة
+    banner("📤 رفع " + totalRows + " صف لـ Service-Flow…");
+    const ok = await sfUpload(xls, "131_all_cabinets.xls");
+    banner(ok ? "✅ اتحدّث بيان التليفونات 131 (" + totalRows + " صف)." : "⚠️ فشل الرفع — الملف اتحمّل للمراجعة بس.", ok ? "#2e7d32" : "#ef6c00");
   }
 
   /* ================== الراوتر ==================
