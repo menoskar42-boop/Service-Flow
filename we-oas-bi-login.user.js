@@ -2,7 +2,7 @@
 // @name         WE OAS BI — دخول تلقائى + تقرير 430D
 // @namespace    service-flow.we-oas.login
 // @description  يسجّل الدخول على we-oas.te.eg BI، يفتح تقرير «430D Trial - Details متابعة اعطال»، يملأ from_date/to_date ويضغط Apply لتبويبى التفاصيل والمتبقى، ويلتقط ملف Excel الكامل الذى يولّده التقرير نفسه من داخل سياق الصفحة (unsafeWindow) عبر اعتراض XHR/fetch/form مبكراً (document-start)، ينزّله للمراجعة، وبعد تأكيدك يرفعه لموقع Service-Flow.
-// @version      1.9.1
+// @version      1.9.2
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
@@ -574,9 +574,15 @@
     try { window.open("", "_self"); window.close(); } catch (e) {}
     try { PAGE.close && PAGE.close(); } catch (e) {}
   }
+  // قفل تبادلى مع سكربت 131 (نفس أصل we-oas): لو 131 شغّال، 430D التلقائى يتأجّل حتى لا يتداخلا
+  function otherReportRunning() {
+    try { return parseInt(localStorage.getItem("WEOAS_131_RUNNING") || "0", 10) > Date.now(); } catch (e) { return false; }
+  }
   let started = false;
   async function kickoff(manual) {
-    if (started) return; started = true;
+    if (started) return;
+    if (!manual && otherReportRunning()) { banner("⏸️ تقرير 131 شغّال — 430D اتأجّل", "#607d8b"); clearFlag(); return; }
+    started = true;
     if (isReport) { await reportFlow(); await maybeAutoClose(); }
     else if (isHome) await homeFlow();
   }

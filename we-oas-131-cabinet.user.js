@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131»، يجلب كباين النحاس بتوعنا من Service-Flow، يمرّ على كل كابينة (P_CABINET_NO + Apply) ويجمع شيتات نحاسي+فيبر+دوائر فى ملف واحد، ينزّله، ويرفعه لـ Service-Flow (يستبدل رقم التليفون الموجود ويضيف الجديد على بيان التليفونات 131).
-// @version      1.1.0
+// @version      1.1.1
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -261,6 +261,11 @@
     if (!apply) { banner("❌ لم تُحمّل صفحة التقرير (لا يوجد Apply)", "#c62828"); return; }
     if (!/P_CABINET_NO/i.test(pageText())) { banner("⏹️ مش تقرير 131 — تجاهل.", "#607d8b"); return; }
 
+    // علامة «131 شغّال» (قفل تبادلى) — 430D التلقائى بيتأجّل طول ما العلامة موجودة
+    const mark131 = () => { try { localStorage.setItem("WEOAS_131_RUNNING", String(Date.now() + 15 * 60 * 1000)); } catch (e) {} };
+    const clear131 = () => { try { localStorage.removeItem("WEOAS_131_RUNNING"); } catch (e) {} };
+    mark131();
+
     const cabinets = await getCabinets();
     banner("🗄️ هيمرّ على " + cabinets.length + " كابينة…");
 
@@ -270,6 +275,7 @@
 
     for (let ci = 0; ci < cabinets.length; ci++) {
       const cabNo = cabinets[ci];
+      mark131();   // تجديد العلامة (اللوب ممكن ياخد دقايق)
       for (let i = 0; i < TABS.length; i++) {
         const tab = TABS[i];
         banner("🗄️ (" + (ci + 1) + "/" + cabinets.length + ") كابينة " + cabNo + " — " + tab.name + "…");
@@ -296,6 +302,7 @@
     downloadFile(xls, "131_all_cabinets.xls", "application/vnd.ms-excel");   // نسخة للمراجعة
     banner("📤 رفع " + totalRows + " صف لـ Service-Flow…");
     const ok = await sfUpload(xls, "131_all_cabinets.xls");
+    clear131();   // خلّص — اسمح لـ 430D التلقائى يشتغل
     banner(ok ? "✅ اتحدّث بيان التليفونات 131 (" + totalRows + " صف)." : "⚠️ فشل الرفع — الملف اتحمّل للمراجعة بس.", ok ? "#2e7d32" : "#ef6c00");
   }
 
