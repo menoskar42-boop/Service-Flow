@@ -3768,15 +3768,18 @@ export async function registerRoutes(
     // رقم محلى (بدون 88-) من رقم التليفون المخزّن
     const phDigits = `regexp_replace(coalesce(w.phone_number,''),'\\D','','g')`;
     const phLocal = `CASE WHEN ${phDigits} LIKE '88%' AND length(${phDigits})>7 THEN substring(${phDigits} FROM 3) ELSE ${phDigits} END`;
-    // الفنى الفعلى: (1) الفنى القافل لو اسمه ضمن الخمسة، (2) وإلا فنى كابينة الخط
-    // (عبر رقم التليفون → phone_lines → الكابينة → صاحبها) بشرط يكون واحد من الخمسة.
+    // تطبيع اسم عربى للمطابقة: صغّر + شيل المسافات + وحّد ى→ي و ة→ه و أإآ→ا
+    // (لأن إملاء الاسم فى ملف الأوامر يختلف عن البيان الفنى → كان بيخفى فنيين).
+    const norm = (col: string) => `translate(regexp_replace(lower(btrim(coalesce(${col},''))),'\\s','','g'),'ىأإآة','ياااه')`;
+    // الفنى الفعلى: (1) فنى الإغلاق لو اسمه ضمن الخمسة (مطابقة مُطبَّعة)،
+    // (2) وإلا فنى منطقة الخط = صاحب كابينة الخط من البيان الفنى (phone_lines).
     const effTech = `COALESCE(
-        (CASE WHEN btrim(w.tech_name) = ANY($${iTechs}::text[]) THEN btrim(w.tech_name) END),
-        (SELECT btrim(tn2.tech_name) FROM phone_lines pl
+        (SELECT o.name FROM our o WHERE o.nn = ${norm("w.tech_name")} LIMIT 1),
+        (SELECT o.name FROM phone_lines pl
            JOIN cabinet_technicians ct2 ON ct2.central_name = pl.central AND ct2.cabin_number = pl.cabin_number
            JOIN technician_names tn2 ON tn2.worker_code = ct2.worker_code
-          WHERE btrim(tn2.tech_name) = ANY($${iTechs}::text[])
-            AND regexp_replace(coalesce(pl.tel_no,''),'\\D','','g') = ${phLocal} LIMIT 1)
+           JOIN our o ON o.nn = ${norm("tn2.tech_name")}
+          WHERE regexp_replace(coalesce(pl.tel_no,''),'\\D','','g') = ${phLocal} LIMIT 1)
       )`;
 
     // فلترة الدور تتم على الفنى الفعلى (مش القافل) — والفنى يشوف المنسوب له فقط.
@@ -3787,11 +3790,12 @@ export async function registerRoutes(
         const r = await pool.query(`SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`, [String(req.user.workerCode).trim()]);
         if (r.rows[0]?.tech_name) myName = String(r.rows[0].tech_name).trim();
       }
-      params.push(myName || "___none___"); outer.push(`btrim(eff_tech) = btrim($${params.length})`);
+      params.push(myName || "___none___"); outer.push(`${norm("eff_tech")} = ${norm(`$${params.length}`)}`);
     }
     const outerWhere = `WHERE ${outer.join(" AND ")}`;
     const over24 = `(creation_date IS NOT NULL AND EXTRACT(EPOCH FROM (close_date - creation_date)) / 3600 > 24)`;
-    const cte = `WITH att AS (SELECT w.*, ${effTech} AS eff_tech FROM work_orders w ${innerWhere})`;
+    const cte = `WITH our AS (SELECT name, ${norm("name")} AS nn FROM unnest($${iTechs}::text[]) AS name),
+      att AS (SELECT w.*, ${effTech} AS eff_tech FROM work_orders w ${innerWhere})`;
 
     if (lines === "1") {
       const { rows } = await pool.query(
