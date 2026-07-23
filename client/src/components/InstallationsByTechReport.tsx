@@ -137,12 +137,12 @@ export function InstallationsByTechReport() {
                     <TableCell className="text-center text-red-700 font-semibold">{r.over24}</TableCell>
                   </TableRow>
                 ))}
-                <TableRow className="bg-muted/40 font-bold">
-                  <TableCell>الإجمالى</TableCell>
-                  <TableCell className="text-center">{totals.total}</TableCell>
-                  <TableCell className="text-center text-green-700">{totals.within24}</TableCell>
+                <TableRow className="bg-blue-600 hover:bg-blue-600 text-white font-bold">
+                  <TableCell className="text-white">الإجمالى</TableCell>
+                  <TableCell className="text-center text-white">{totals.total}</TableCell>
+                  <TableCell className="text-center text-white">{totals.within24}</TableCell>
                   <TableCell className="text-center">{pctBadge(pct(totals.within24, totals.total))}</TableCell>
-                  <TableCell className="text-center text-red-700">{totals.over24}</TableCell>
+                  <TableCell className="text-center text-white">{totals.over24}</TableCell>
                 </TableRow>
               </>)}
             </TableBody>
