@@ -336,6 +336,14 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50/50" dir="rtl">
+      {/* مؤقّت التحديث كل نص ساعة فى الخلفية (غير مرئى) — يشتغل على أى تاب.
+          لازم يكون برّه شريط الهيدر القابل للتمرير (.nav-x-scroll) عشان الـ overflow
+          مايقصّهوش على iOS Safari. */}
+      <DailyAutoRefresh />
+      {/* لوحة عائمة (fixed) تعرض ترتيب طلبات القياس/رفع السرعة/الإيقاف فى الطابور وتحدّثه.
+          كانت جوّه .nav-x-scroll فـ iOS Safari بيقصّ الـ position:fixed → مكانتش بتظهر ع الموبايل.
+          نقلناها برّه أى حاوية فيها overflow عشان تظهر على الموبايل والديسكتوب. */}
+      <ExecQueueWatcher />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-30">
         <div className="container mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2">
@@ -367,10 +375,6 @@ export default function Dashboard() {
               </a>
             )}
             <ExecutorButton />
-            {/* مؤقّت التحديث كل نص ساعة فى الخلفية (غير مرئى) — يشتغل على أى تاب */}
-            <DailyAutoRefresh />
-            {/* لوحة عائمة تعرض ترتيب طلبات القياس/رفع السرعة/الإيقاف فى الطابور وتحدّثه */}
-            <ExecQueueWatcher />
             {(user.role === ROLES.SALES || user.role === ROLES.ADMIN || user.role === ROLES.SALES_ADMIN) && <NotificationBell />}
             {(user.role === ROLES.TECH || user.role === ROLES.DATA_MANAGER || user.role === ROLES.ADMIN || user.role === ROLES.EXTERNAL) && (
               <Button variant="outline" size="sm" onClick={() => setLocation("/phone-lines")} className="text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3">
