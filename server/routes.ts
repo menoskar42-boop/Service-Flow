@@ -5561,16 +5561,27 @@ export async function registerRoutes(
     }
   });
 
-  // GET /api/phone-lines/copper-cabinets — كباين النحاس بتوعنا (من الفنيين) لسكربت 131
+  // GET /api/phone-lines/copper-cabinets — أرقام كباين النحاس الحقيقية لسكربت 131
+  // المصدر الأساسى: phone_lines نفسها (بيان 131 الموجود) = المصدر الموثوق لأرقام الكباين (زى 1-1، 2-8)،
+  // بالإضافة لأى كابينة بصيغة صحيحة من cabinet_technicians. نفلتر على صيغة «رقم-رقم» عشان نستبعد أكواد
+  // MSAN الأبجدية (زى "shlter") اللى كانت بتترفع بالغلط فى خانة رقم الكابينة وبتخلى تبويب النحاسى يرجع فاضى.
   app.options("/api/phone-lines/copper-cabinets", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
   app.get("/api/phone-lines/copper-cabinets", requireAdminOrToken, async (_req, res) => {
     setUploadCors(res);
     try {
       const { rows } = await pool.query(
-        `SELECT DISTINCT central_name AS central, btrim(cabin_number) AS cabin
-           FROM cabinet_technicians
-          WHERE coalesce(btrim(cabin_number),'') <> ''
-          ORDER BY central_name, btrim(cabin_number)`);
+        `SELECT DISTINCT central, cabin FROM (
+           SELECT central AS central, btrim(cabin_number) AS cabin
+             FROM phone_lines
+            WHERE btrim(coalesce(cabin_number,'')) ~ '^[0-9]+ *- *[0-9]+$'
+           UNION
+           SELECT central_name AS central, btrim(cabin_number) AS cabin
+             FROM cabinet_technicians
+            WHERE btrim(coalesce(cabin_number,'')) ~ '^[0-9]+ *- *[0-9]+$'
+         ) u
+         ORDER BY central,
+                  (split_part(cabin,'-',1))::int,
+                  (split_part(cabin,'-',2))::int`);
       res.json({ cabinets: rows });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
