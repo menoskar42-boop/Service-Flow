@@ -419,6 +419,7 @@ export function TechPerformanceReport() {
       "#": i + 1, "رقم التليفون": r.phoneNumber, "السنترال": r.centralName,
       "الكابينه": r.lineCabin ?? "", "البكس": r.lineBox ?? "", "MSAN": r.msanCode ?? "", "الفريم": r.frame ?? "",
       "عدد المرات": r.appearances, "رقم الشكوى": r.complainNo,
+      "سبب الإغلاق": r.closeCode ?? "",
       "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
       "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
     })));
@@ -583,7 +584,7 @@ export function TechPerformanceReport() {
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-purple-800 hover:bg-purple-800">
-                    {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                    {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
                       <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
                     ))}
                   </TableRow>
@@ -600,6 +601,7 @@ export function TechPerformanceReport() {
                       <TableCell className="text-center">{r.frame ?? "-"}</TableCell>
                       <TableCell className="text-center font-bold">{r.appearances}</TableCell>
                       <TableCell className="text-center">{r.complainNo}</TableCell>
+                      <TableCell className="whitespace-nowrap text-center">{r.closeCode ?? "-"}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.closeByName}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.areaTechName}</TableCell>
                     </TableRow>
