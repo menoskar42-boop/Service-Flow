@@ -139,6 +139,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: SpeedLine[]; total: number }>;
     },
+    refetchOnMount: "always",
   });
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];

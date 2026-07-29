@@ -109,6 +109,7 @@ export function PhoneLinesReport() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; page: number; pageSize: number }>;
     },
+    refetchOnMount: "always",
   });
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];

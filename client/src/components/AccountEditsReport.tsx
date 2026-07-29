@@ -46,6 +46,7 @@ export function AccountEditsReport() {
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json() as Promise<EditRow[]>;
     },
+    refetchOnMount: "always",
   });
 
   const doSearch = () => { setSearchPhone(phoneFilter); setSearchEditor(editorFilter); };

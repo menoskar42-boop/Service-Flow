@@ -34,6 +34,7 @@ export function BoxLinesSummaryReport() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<BoxSummary[]>;
     },
+    refetchOnMount: "always",
   });
 
   const centrals = useMemo(() =>

@@ -80,6 +80,7 @@ export function CabinetScoreReport() {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: CabinetAvgRow[] }>;
     },
+    refetchOnMount: "always",
   });
 
   const sorted = useMemo(() => {

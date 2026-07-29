@@ -45,6 +45,7 @@ export function BoxFullRejectionsReport({ orders }: BoxFullRejectionsReportProps
       if (!res.ok) throw new Error("Failed to fetch box summary");
       return res.json() as Promise<BoxSummary[]>;
     },
+    refetchOnMount: "always",
   });
 
   const norm = (s: string) =>

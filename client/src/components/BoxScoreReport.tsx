@@ -133,6 +133,7 @@ function CabinTab({ central, cabin, msan, minScore }: { central: string; cabin: 
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: CabinetAvgRow[] }>;
     },
+    refetchOnMount: "always",
   });
 
   const sorted = useMemo(() => {
@@ -276,6 +277,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: BoxAvgRow[] }>;
     },
+    refetchOnMount: "always",
   });
 
   // البكسيات اللى لها تذكرة عطل شبكة أرضية مفتوحة (من بروكسى CFM) — لتحديد عمود "تذكرة مفتوحة"
@@ -286,6 +288,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
       if (!res.ok) return { lines: [] };
       return res.json() as Promise<{ lines: { central: string; cabinNumber: string; boxNumber: string }[] }>;
     },
+    refetchOnMount: "always",
   });
   const openTicketSet = useMemo(() => {
     const s = new Set<string>();
@@ -303,6 +306,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
       if (!res.ok) return { data: [] as MaintRow[] };
       return res.json() as Promise<{ data: MaintRow[] }>;
     },
+    refetchOnMount: "always",
   });
   const maintMap = useMemo(() => {
     const m = new Map<string, MaintRow>();
