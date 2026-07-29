@@ -125,6 +125,9 @@ export function RepetitionStatsReport() {
     }
   };
 
+  // refetchOnMount: "always" — الإعداد العام staleTime:Infinity بيخلى React Query يحتفظ بالبيانات
+  // مؤبَّد من غير ريفريش تلقائى؛ فلو التاب اتفتح قبل كده بنفس التاريخ هيفضل يعرض Snapshot قديم
+  // حتى لو البيانات اتغيرت (استيراد جديد مثلاً). هنا لازم نجيب أحدث بيانات كل مرة.
   const mkQuery = (endpoint: string, key: string) => useQuery<RepData>({
     queryKey: [key, dateFrom, dateTo],
     queryFn: async () => {
@@ -135,6 +138,7 @@ export function RepetitionStatsReport() {
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
     },
+    refetchOnMount: "always",
   });
 
   const { data: dataC, isFetching: fC } = mkQuery("/api/reports/repetition-combined", "/api/reports/repetition-combined");

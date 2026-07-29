@@ -123,22 +123,29 @@ export function TechPerformanceReport() {
     return res.json();
   };
 
+  // refetchOnMount: "always" — الإعداد العام staleTime:Infinity بيخلى React Query يحتفظ بالبيانات
+  // مؤبَّد من غير ريفريش تلقائى؛ فلو التاب اتفتح قبل كده بنفس التاريخ/السنترال هيفضل يعرض
+  // Snapshot قديم حتى لو البيانات اتغيرت (استيراد جديد مثلاً). هنا لازم نجيب أحدث بيانات كل مرة.
   const { data: removalData, isFetching: f1 } = useQuery({
     queryKey: ["/api/reports/combined-stats", dateFrom, dateTo, central],
     queryFn: () => fetchJson(`/api/reports/combined-stats?${buildParams()}`),
+    refetchOnMount: "always",
   });
   const { data: repData, isFetching: f2 } = useQuery({
     queryKey: ["/api/reports/repetition-combined", dateFrom, dateTo, central],
     queryFn: () => fetchJson(`/api/reports/repetition-combined?${buildParams()}`),
+    refetchOnMount: "always",
   });
   const { data: cabinetData, isFetching: f3 } = useQuery<any[]>({
     queryKey: ["/api/reports/cabinet-adsl-faults", dateFrom, dateTo, central],
     queryFn: () => fetchJson(`/api/reports/cabinet-adsl-faults?${buildParams()}`),
+    refetchOnMount: "always",
   });
   const { data: omData, isFetching: f4 } = useQuery({
     // نسبة تحقيق المتعذرات فى أداء الفنيين تُحسب على متعذرات السنة الحالية (2026) فقط
     queryKey: ["/api/reports/om-stats", "current"],
     queryFn: () => fetchJson(`/api/reports/om-stats?yearFilter=current`),
+    refetchOnMount: "always",
   });
 
   const isFetching = f1 || f2 || f3 || f4;
