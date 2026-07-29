@@ -1473,6 +1473,24 @@ export async function registerRoutes(
     } catch { res.json({ pending: 0 }); }
   });
 
+  // باتشات الأولوية العليا المنتظرة (2 = ≤3 خطوط، 1 = محتاجة رفع سرعة) — للعرض فقط (بدون ترتيب)،
+  // بتتنفّذ دايماً قبل باتشات الأولوية المتأخرة (priority=0) بترتيب created_at، ومش قابلة لإعادة ترتيب.
+  app.get("/api/exec-queue/priority-preview", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      await expireOrphanedExecJobs();
+      const { rows } = await pool.query(
+        `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
+                MIN(priority)::int AS priority,
+                COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
+                (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt"
+         FROM exec_jobs
+         WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority IN (1, 2) AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
+         GROUP BY batch_id
+         ORDER BY MIN(priority) DESC, MIN(created_at) ASC, batch_id`);
+      res.json({ data: rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // باتشات الأولوية المتأخرة (>3 خطوط من غير تقرير محتاجة رفع سرعة) المنتظرة — للسوبر أدمن يرتّبها.
   // بترجع بترتيب التنفيذ الفعلى (queue_order اليدوى أولاً ثم الأقدم) مع تقدّم كل باتش.
   app.get("/api/exec-queue/reorderable", requireAuth, requireSuperAdmin, async (_req, res) => {
