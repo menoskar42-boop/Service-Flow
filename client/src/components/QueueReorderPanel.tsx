@@ -78,6 +78,12 @@ export function QueueReorderPanel() {
 
   return (
     <div className="space-y-4" dir="rtl">
+      {/* زر تحديث واحد أعلى الصفحة — بيحدّث الجزئين معاً (الأولوية العليا + المؤجّلة) */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-bold text-lg">طابور التنفيذ</h2>
+        <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
+      </div>
+
       {/* جزء علوى للعرض فقط: باتشات الأولوية العليا (≤3 خطوط أو محتاجة رفع سرعة) — دايماً بتتنفّذ
           قبل الباتشات المؤجّلة تحت بترتيب created_at، ومش قابلة لإعادة ترتيب. */}
       <Card className="p-4 space-y-3">
@@ -115,10 +121,7 @@ export function QueueReorderPanel() {
           <h3 className="font-bold flex items-center gap-2"><ListOrdered className="w-5 h-5 text-purple-700" /> ترتيب الباتشات المؤجّلة (أكثر من 3 خطوط)</h3>
           <p className="text-xs text-muted-foreground">رتّب تنفيذ الباتشات الكبيرة كما تريد (الأسهم للأعلى/الأسفل). الأولوية الأعلى دايماً: الطلبات ≤3 خطوط ثم تقرير «محتاجة رفع سرعة» — مش بتتأثر بالترتيب ده.</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
-          <Button onClick={save} size="sm" className="gap-1 bg-purple-600 hover:bg-purple-700" disabled={!dirty || saving || !rows.length}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} حفظ الترتيب</Button>
-        </div>
+        <Button onClick={save} size="sm" className="gap-1 bg-purple-600 hover:bg-purple-700" disabled={!dirty || saving || !rows.length}>{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} حفظ الترتيب</Button>
       </div>
 
       {loading ? (
