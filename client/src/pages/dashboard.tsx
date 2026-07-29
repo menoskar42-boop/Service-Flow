@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrders } from "@/hooks/use-orders";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -226,8 +226,18 @@ export default function Dashboard() {
     const g = REPORT_GROUPS.find((grp) => grp.items.some((it) => it.id === "current-faults"));
     return g ? [g.label] : [];
   });
+  // refs لكل مجموعة فى القائمة الجانبية — عشان لما نفتحها نعمل scroll تلقائى يظهر التقارير اللى جواها
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const toggleGroup = (label: string) =>
-    setOpenGroups((prev) => prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]);
+    setOpenGroups((prev) => {
+      const willOpen = !prev.includes(label);
+      if (willOpen) {
+        requestAnimationFrame(() => {
+          groupRefs.current[label]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+      }
+      return willOpen ? [...prev, label] : prev.filter((l) => l !== label);
+    });
 
   // مجموعات التقارير المعروضة حسب الدور
   // مسئول البيانات: يرى تقريرين من القياسات + أوامر الشغل (للعرض فقط)
@@ -491,7 +501,7 @@ export default function Dashboard() {
                 {visibleGroups.map((group) => {
                   const isOpen = openGroups.includes(group.label);
                   return (
-                    <div key={group.label}>
+                    <div key={group.label} ref={(el) => { groupRefs.current[group.label] = el; }}>
                       <button
                         onClick={() => toggleGroup(group.label)}
                         className="w-full flex items-center gap-2 px-3 py-2.5 m-1 w-[calc(100%-0.5rem)] rounded-lg bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
