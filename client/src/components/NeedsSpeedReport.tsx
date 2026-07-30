@@ -313,10 +313,10 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 variant={complaintAny ? "default" : "outline"}
                 size="sm"
                 onClick={() => { setComplaintAny((v) => !v); setPage(1); }}
-                className={`gap-1 ${complaintAny ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-200"}`}
+                className={`gap-1 ${complaintAny ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-purple-700 border-purple-200"}`}
                 title="عرض الأرقام المحتاجة رفع سرعة ولها شكوى (مفتوحة على الشاشة أو مغلقة/مؤرشفة خارجها)"
               >
-                <AlertTriangle className="w-4 h-4" /> {complaintAny ? "لها شكوى ✓" : "لها شكوى (داخل/خارج الشاشة)"}
+                <AlertTriangle className="w-4 h-4" /> {complaintAny ? "لها شكوى ✓" : "لها شكوى"}
               </Button>
             )}
             <RefreshButton />
