@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered } from "lucide-react";
+import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban } from "lucide-react";
 
 // ترتيب باتشات «الأولوية المتأخرة» (>3 خطوط من غير تقرير محتاجة رفع سرعة) — للسوبر أدمن.
 // الأولويات الأعلى (≤3 خطوط، ثم محتاجة رفع سرعة) بتتنفّذ قبلها دايماً ومش بتتأثر بالترتيب ده.
@@ -36,6 +36,7 @@ export function QueueReorderPanel() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [canceling, setCanceling] = useState<string | null>(null); // batchId اللى بيتلغى دلوقتى
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +77,22 @@ export function QueueReorderPanel() {
     } catch { alert("تعذّر حفظ الترتيب"); } finally { setSaving(false); }
   };
 
+  // إلغاء باتش كامل من الطابور (كل خطوطه اللى لسه فى pending/claimed)
+  const cancelBatch = async (batchId: string, total: number) => {
+    if (!confirm(`تأكيد إلغاء الباتش (${total} خط)؟ اللى اتنفّذ فعلاً مش هيتراجع.`)) return;
+    setCanceling(batchId);
+    try {
+      const r = await fetch("/api/exec-queue/cancel", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId }),
+      });
+      const d = await r.json();
+      if (r.ok && d?.ok) await load();
+      else alert(d?.message || "تعذّر إلغاء الباتش");
+    } catch { alert("تعذّر إلغاء الباتش"); } finally { setCanceling(null); }
+  };
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* زر تحديث واحد أعلى الصفحة — بيحدّث الجزئين معاً (الأولوية العليا + المؤجّلة) */}
@@ -109,6 +126,14 @@ export function QueueReorderPanel() {
                     <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
                   </div>
                 </div>
+                <button
+                  onClick={() => cancelBatch(b.batchId, b.total)}
+                  disabled={canceling === b.batchId}
+                  className="text-red-500 hover:text-red-700 disabled:opacity-30 shrink-0"
+                  title="إلغاء الباتش"
+                >
+                  {canceling === b.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                </button>
               </div>
             ))}
           </div>
@@ -147,6 +172,14 @@ export function QueueReorderPanel() {
                   <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
                 </div>
               </div>
+              <button
+                onClick={() => cancelBatch(b.batchId, b.total)}
+                disabled={canceling === b.batchId}
+                className="text-red-500 hover:text-red-700 disabled:opacity-30 shrink-0"
+                title="إلغاء الباتش"
+              >
+                {canceling === b.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+              </button>
             </div>
           ))}
         </div>
