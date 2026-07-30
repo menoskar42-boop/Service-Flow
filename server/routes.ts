@@ -2676,14 +2676,16 @@ export async function registerRoutes(
     if (neverMeasured === "1" || neverMeasured === "true") {
       conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone)`);
     }
-    // فلتر "لها شكوى": الرقم له أى شكوى — داخل الشاشة (ticket_dsl_current المفتوحة) أو خارجها
-    // (complaint_details المغلقة + remaining_complaints)، مطابقة برقم التليفون القصير.
-    // نفس المصادر الثلاثة بالظبط المستخدَمة فى /api/phone-lines/needs-speed (requireComplaintAny).
+    // فلتر "لها شكوى": الرقم له أى شكوى — على شاشة الـ OSS (ticket_dsl_current المفتوحة) أو
+    // خارجها فى 430D (complaint_details المغلقة + remaining_complaints)، أو عطل «خارج الشاشة»
+    // مسجَّل يدوياً من صفحة بحث رقم التليفون (manual_faults) وممكن ملوش أى أثر فى 430D خالص.
+    // نفس المصادر الأربعة بالظبط المستخدَمة فى /api/phone-lines/needs-speed (requireComplaintAny).
     if (hasComplaint === "1" || hasComplaint === "true") {
       conds.push(`(
         EXISTS (SELECT 1 FROM complaint_details cd WHERE cd.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
         OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE rc.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
         OR EXISTS (SELECT 1 FROM ticket_dsl_current td WHERE td.close_date IS NULL AND td.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
+        OR EXISTS (SELECT 1 FROM manual_faults mf WHERE mf.phone_short = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')) OR mf.full_phone = la.full_phone)
       )`);
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
@@ -3049,7 +3051,8 @@ export async function registerRoutes(
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
     // needComplaintAny: لها أى شكوى — داخل الشاشة (ticket_dsl_current المفتوحة) أو خارجها
-    //   (complaint_details المغلقة + remaining_complaints) — بدون قيد آخر شهر.
+    //   (complaint_details المغلقة + remaining_complaints)، أو عطل «خارج الشاشة» مسجَّل يدوياً
+    //   من صفحة بحث رقم التليفون (manual_faults) وممكن ملوش أى أثر فى 430D خالص — بدون قيد آخر شهر.
     const needComplaintAny = requireComplaintAny === "1" || requireComplaintAny === "true";
     const params: any[] = [];
     const conds: string[] = [];
@@ -3096,7 +3099,11 @@ export async function registerRoutes(
           UNION ALL
           SELECT ticket_id AS complain_no, complaint_time AS complain_time, central_name, cabinet_no
             FROM ticket_dsl_current
-            WHERE close_date IS NULL AND phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))` : ""}
+            WHERE close_date IS NULL AND phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+          UNION ALL
+          SELECT ('يدوى-' || mf.id) AS complain_no, mf.flagged_at AS complain_time, mf.central AS central_name, mf.cabin_number AS cabinet_no
+            FROM manual_faults mf
+            WHERE mf.phone_short = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) OR mf.full_phone = m.full_phone` : ""}
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
