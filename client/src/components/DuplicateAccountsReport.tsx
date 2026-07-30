@@ -7,11 +7,12 @@ import { RefreshButton } from "@/components/RefreshButton";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, AlertTriangle, Pencil, Save, X, Ban } from "lucide-react";
+import { Loader2, AlertTriangle, Pencil, Save, X, Ban, IdCard } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { openCustomer360 } from "@/lib/customer360";
 
 // خطوط تليفون مختلفة لكن لها نفس رقم الأكونت — تجميع لكل رقم أكونت الخطوط المتعارضة معه
 interface DupRow {
@@ -40,6 +41,7 @@ const fmtTime = (t: string | null) => {
 export function DuplicateAccountsReport() {
   const { user } = useAuth();
   const canEdit = user?.role !== ROLES.SALES;
+  const canC360 = user?.role === ROLES.SUPER_ADMIN;
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -149,6 +151,18 @@ export function DuplicateAccountsReport() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <RefreshButton />
+            {canC360 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openCustomer360(rows.map((r) => r.fullPhone))}
+                disabled={!rows.length}
+                className="gap-1 text-purple-700 border-purple-200 disabled:opacity-40"
+                title="فتح Customer360 لكل الخطوط المكررة دفعة واحدة — يصحّح رقم الأكونت تلقائياً لو غلط"
+              >
+                <IdCard className="w-4 h-4" /> تصحيح الكل من Customer360
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!rows.length} className="text-green-700 border-green-200">
               تصدير Excel
             </Button>
@@ -215,6 +229,11 @@ export function DuplicateAccountsReport() {
                                     <Ban className="w-3 h-3" />
                                   </button>
                                 </>
+                              )}
+                              {canC360 && (
+                                <button type="button" onClick={() => openCustomer360([r.fullPhone])} title="فتح Customer360 لهذا الخط — يصحّح رقم الأكونت تلقائياً لو غلط" className="text-purple-500 hover:text-purple-700">
+                                  <IdCard className="w-3 h-3" />
+                                </button>
                               )}
                               {saveState[r.fullPhone] === "saved" && <span className="text-[10px] text-green-600">✓</span>}
                               {saveState[r.fullPhone] === "error" && <span className="text-[10px] text-red-600">خطأ</span>}
