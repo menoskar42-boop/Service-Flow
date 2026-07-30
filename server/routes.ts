@@ -1535,8 +1535,10 @@ export async function registerRoutes(
   // والمتنفّذة فعلاً + مين طلبها + من تقرير إيه + الحالة/النتيجة.
   app.get("/api/exec-queue/history", requireAuth, requireSuperAdmin, async (req, res) => {
     try {
-      const from = String((req.query.from as string) || "").trim();
-      const to = String((req.query.to as string) || "").trim();
+      let from = String((req.query.from as string) || "").trim();
+      let to = String((req.query.to as string) || "").trim();
+      // لو التاريخين مقلوبين (من بعد إلى) بنبدّلهم بدل ما نرجّع نطاق مستحيل يسبب "لا توجد نتائج" بصمت
+      if (from && to && from > to) { const t = from; from = to; to = t; }
       const conds: string[] = [];
       const params: any[] = [];
       if (from) { params.push(from); conds.push(`created_at >= $${params.length}`); }
