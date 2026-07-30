@@ -2676,11 +2676,14 @@ export async function registerRoutes(
     if (neverMeasured === "1" || neverMeasured === "true") {
       conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone)`);
     }
-    // فلتر "لها شكوى": الرقم له شكوى فى شيت التفاصيل أو المتبقى (مطابقة برقم التليفون القصير)
+    // فلتر "لها شكوى": الرقم له أى شكوى — داخل الشاشة (ticket_dsl_current المفتوحة) أو خارجها
+    // (complaint_details المغلقة + remaining_complaints)، مطابقة برقم التليفون القصير.
+    // نفس المصادر الثلاثة بالظبط المستخدَمة فى /api/phone-lines/needs-speed (requireComplaintAny).
     if (hasComplaint === "1" || hasComplaint === "true") {
       conds.push(`(
         EXISTS (SELECT 1 FROM complaint_details cd WHERE cd.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
         OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE rc.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
+        OR EXISTS (SELECT 1 FROM ticket_dsl_current td WHERE td.close_date IS NULL AND td.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
       )`);
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
