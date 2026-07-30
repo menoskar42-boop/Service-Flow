@@ -1,13 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { RefreshButton } from "@/components/RefreshButton";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Pencil, Save, X, Ban } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 
 // خطوط تليفون مختلفة لكن لها نفس رقم الأكونت — تجميع لكل رقم أكونت الخطوط المتعارضة معه
 interface DupRow {
@@ -34,6 +38,10 @@ const fmtTime = (t: string | null) => {
 };
 
 export function DuplicateAccountsReport() {
+  const { user } = useAuth();
+  const canEdit = user?.role !== ROLES.SALES;
+  const qc = useQueryClient();
+
   const { data, isLoading } = useQuery({
     queryKey: ["/api/reports/duplicate-accounts"],
     queryFn: async () => {
@@ -44,6 +52,56 @@ export function DuplicateAccountsReport() {
     refetchOnMount: "always",
   });
   const rows = data?.data ?? [];
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ["/api/reports/duplicate-accounts"] });
+    qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+    qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
+  };
+
+  // تعديل رقم الأكونت لخط معيّن (بنفس منطق تقرير خطوط لها أكونت)
+  const [editingPhone, setEditingPhone] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
+  const startEdit = (r: DupRow) => { setEditingPhone(r.fullPhone); setEditDraft(r.accountNo); };
+  const cancelEdit = () => setEditingPhone(null);
+
+  const handleSave = async (fullPhone: string) => {
+    if (!editDraft.trim()) return;
+    setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
+    try {
+      const res = await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ accountNo: editDraft.trim() }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.message || "فشل الحفظ");
+      }
+      setSaveState((s) => ({ ...s, [fullPhone]: "saved" }));
+      setEditingPhone(null);
+      invalidateAll();
+      setTimeout(() => setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; }), 2000);
+    } catch (e: any) {
+      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+      alert(e?.message || "تعذّر حفظ رقم الأكونت");
+    }
+  };
+
+  // إلغاء الأكونت من هذا الخط بالذات — حذف رقم الأكونت وتعليمه "ليس له أكونت"
+  const handleMarkNoAccount = async (fullPhone: string) => {
+    if (!confirm("تأكيد: سيتم حذف رقم الأكونت من هذا الخط وإخفاؤه من تقرير خطوط لها أكونت؟")) return;
+    setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
+    try {
+      await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, { method: "DELETE", credentials: "include" });
+      await fetch(`/api/lines-no-account/${encodeURIComponent(fullPhone)}`, { method: "POST", credentials: "include" });
+      invalidateAll();
+    } catch {
+      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+    }
+  };
 
   const handleExportExcel = () => {
     const out = rows.map((r) => ({
@@ -127,7 +185,42 @@ export function DuplicateAccountsReport() {
                     lastAccount = r.accountNo;
                     return (
                       <TableRow key={r.fullPhone + i} className={`hover:bg-muted/30 transition-colors ${isNewGroup ? "border-t-2 border-t-amber-300" : ""}`}>
-                        <TableCell dir="ltr" className="font-mono text-left font-bold text-amber-700">{r.accountNo}</TableCell>
+                        <TableCell dir="ltr" className="text-left font-mono">
+                          {editingPhone === r.fullPhone ? (
+                            <span className="inline-flex items-center gap-1">
+                              <Input
+                                value={editDraft}
+                                onChange={(e) => setEditDraft(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") handleSave(r.fullPhone); if (e.key === "Escape") cancelEdit(); }}
+                                className="h-7 w-28 text-xs px-1"
+                                dir="ltr"
+                                autoFocus
+                              />
+                              <button type="button" onClick={() => handleSave(r.fullPhone)} disabled={saveState[r.fullPhone] === "saving"} title="حفظ" className="text-green-600 hover:text-green-800 disabled:opacity-40">
+                                {saveState[r.fullPhone] === "saving" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                              </button>
+                              <button type="button" onClick={cancelEdit} title="إلغاء" className="text-gray-400 hover:text-gray-700">
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 font-bold text-amber-700">
+                              {r.accountNo}
+                              {canEdit && (
+                                <>
+                                  <button type="button" onClick={() => startEdit(r)} title="تعديل رقم الأكونت" className="text-amber-500 hover:text-amber-700">
+                                    <Pencil className="w-3 h-3" />
+                                  </button>
+                                  <button type="button" onClick={() => handleMarkNoAccount(r.fullPhone)} disabled={saveState[r.fullPhone] === "saving"} title="ليس له رقم أكونت — حذف الأكونت من هذا الخط" className="text-orange-500 hover:text-orange-700 disabled:opacity-40">
+                                    <Ban className="w-3 h-3" />
+                                  </button>
+                                </>
+                              )}
+                              {saveState[r.fullPhone] === "saved" && <span className="text-[10px] text-green-600">✓</span>}
+                              {saveState[r.fullPhone] === "error" && <span className="text-[10px] text-red-600">خطأ</span>}
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell className="font-mono font-semibold text-blue-700" dir="ltr">{r.telNo ?? r.fullPhone}</TableCell>
                         <TableCell>{r.central ?? "—"}</TableCell>
                         <TableCell className="text-center">{r.cabinNumber ?? "—"}</TableCell>
