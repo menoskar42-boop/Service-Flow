@@ -2878,6 +2878,34 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // GET /api/reports/duplicate-accounts — خطوط تليفون مختلفة لكن لها نفس رقم الأكونت
+  app.get("/api/reports/duplicate-accounts", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `WITH dup AS (
+           SELECT account_no FROM line_accounts
+           WHERE account_no IS NOT NULL AND account_no <> ''
+           GROUP BY account_no
+           HAVING COUNT(DISTINCT full_phone) > 1
+         )
+         SELECT la.account_no                                                     AS "accountNo",
+                la.full_phone                                                     AS "fullPhone",
+                COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88',''))        AS "telNo",
+                pl.central, pl.cabin_number                                       AS "cabinNumber",
+                pl.box_number                                                     AS "boxNumber",
+                la.source,
+                CASE la.source WHEN 'manual' THEN 'يدوى' WHEN 'customer360' THEN 'Customer360' ELSE 'شيت 138' END AS "sourceLabel",
+                la.updated_by_name                                                AS "updatedByName",
+                (la.updated_at AT TIME ZONE 'Africa/Cairo')                        AS "updatedAt"
+         FROM line_accounts la
+         JOIN dup ON dup.account_no = la.account_no
+         LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone
+         ORDER BY la.account_no, la.full_phone`);
+      const groups = new Set(rows.map((r) => r.accountNo)).size;
+      res.json({ data: rows, groups, lines: rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // DELETE /api/line-accounts/:fullPhone — حذف رقم الأكونت (يرجع الخط لتقرير بدون أكونت)
   app.delete("/api/line-accounts/:fullPhone", requireAuth, async (req: any, res) => {
     if (req.user.role === ROLES.SALES) return res.status(403).json({ message: "غير مصرح" });
