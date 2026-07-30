@@ -97,14 +97,18 @@ export function GroundFaultsNoAccountReport() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountNo }),
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.message || "فشل الحفظ");
+      }
       setSaveState((s) => ({ ...s, [fullPhone]: "saved" }));
       setDrafts((d) => { const n = { ...d }; delete n[fullPhone]; return n; });
       // الخط بقى له أكونت — يختفى من القائمة
       setLines((ls) => ls.filter((l) => l.fullPhone !== fullPhone));
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
-    } catch {
+    } catch (e: any) {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+      alert(e?.message || "تعذّر حفظ رقم الأكونت");
     }
   };
 
@@ -144,12 +148,20 @@ export function GroundFaultsNoAccountReport() {
       });
       if (!res.ok) throw new Error("failed");
       const json = await res.json();
-      const savedSet = new Set(entries.map((e) => e.fullPhone));
+      const duplicates: { fullPhone: string; accountNo: string; conflictsWith: string }[] = Array.isArray(json.duplicates) ? json.duplicates : [];
+      const dupPhones = new Set(duplicates.map((d) => d.fullPhone));
+      // نشيل من القائمة بس الأرقام اللى اتحفظت فعلاً — نسيب المكرَّرة المرفوضة ظاهرة
+      const savedSet = new Set(entries.map((e) => e.fullPhone).filter((p) => !dupPhones.has(p)));
       setDrafts({});
       setSaveState({});
       setLines((ls) => ls.filter((l) => !savedSet.has(l.fullPhone)));
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
-      alert(`تم حفظ ${json.saved ?? entries.length} رقم أكونت`);
+      const parts = [`تم حفظ ${json.saved ?? entries.length} رقم أكونت`];
+      if (duplicates.length > 0) {
+        parts.push(`⚠️ تم تجاهل ${duplicates.length} رقم (أكونت مستخدم بالفعل على خط تانى):`);
+        duplicates.forEach((d) => parts.push(`  ${d.fullPhone} ← أكونت ${d.accountNo} مستخدم على ${d.conflictsWith}`));
+      }
+      alert(parts.join("\n"));
     } catch {
       setSaveState((s) => {
         const n = { ...s };

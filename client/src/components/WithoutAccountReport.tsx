@@ -111,6 +111,7 @@ export function WithoutAccountReport() {
 
       let savedCount = 0;
       let noAccountCount = 0;
+      let duplicates: { fullPhone: string; accountNo: string; conflictsWith: string }[] = [];
 
       if (accountRows.length > 0) {
         const res = await fetch("/api/line-accounts/bulk", {
@@ -122,6 +123,7 @@ export function WithoutAccountReport() {
         if (!res.ok) throw new Error("failed");
         const json = await res.json();
         savedCount = json.saved ?? accountRows.length;
+        duplicates = Array.isArray(json.duplicates) ? json.duplicates : [];
       }
 
       if (noAccountRows.length > 0) {
@@ -142,6 +144,10 @@ export function WithoutAccountReport() {
       const parts: string[] = [];
       if (savedCount > 0) parts.push(`تم تحديث ${savedCount} رقم أكونت`);
       if (noAccountCount > 0) parts.push(`تم إخفاء ${noAccountCount} خط (غير موجود)`);
+      if (duplicates.length > 0) {
+        parts.push(`⚠️ تم تجاهل ${duplicates.length} رقم (أكونت مستخدم بالفعل على خط تانى):`);
+        duplicates.forEach((d) => parts.push(`  ${d.fullPhone} ← أكونت ${d.accountNo} مستخدم على ${d.conflictsWith}`));
+      }
       alert(parts.join("\n") || "لا توجد بيانات صالحة في الملف");
     } catch {
       alert("تعذّر الاستيراد — تأكد من صحة الملف وحاول مرة أخرى");
@@ -189,14 +195,18 @@ export function WithoutAccountReport() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accountNo }),
       });
-      if (!res.ok) throw new Error("failed");
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.message || "فشل الحفظ");
+      }
       setSaveState((s) => ({ ...s, [fullPhone]: "saved" }));
       setDrafts((d) => { const n = { ...d }; delete n[fullPhone]; return n; });
       // invalidate both this report and the with-account report
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
-    } catch {
+    } catch (e: any) {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+      alert(e?.message || "تعذّر حفظ رقم الأكونت");
     }
   };
 

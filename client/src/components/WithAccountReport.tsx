@@ -188,14 +188,18 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
         credentials: "include",
         body: JSON.stringify({ accountNo: editDraft.trim() }),
       });
-      if (!res.ok) throw new Error("فشل الحفظ");
+      if (!res.ok) {
+        const d = await res.json().catch(() => null);
+        throw new Error(d?.message || "فشل الحفظ");
+      }
       setSaveState((s) => ({ ...s, [fullPhone]: "saved" }));
       setEditingPhone(null);
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
       setTimeout(() => setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; }), 2000);
-    } catch {
+    } catch (e: any) {
       setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+      alert(e?.message || "تعذّر حفظ رقم الأكونت");
     }
   };
 

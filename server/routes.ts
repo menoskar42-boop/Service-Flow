@@ -2844,6 +2844,14 @@ export async function registerRoutes(
       return res.status(400).json({ message: "رقم الأكونت مطلوب" });
     }
     const newNo = accountNo.trim();
+    // منع التكرار: رقم الأكونت ده مستخدم بالفعل على خط تانى؟ (حتى لو البيان الفنى مختلف تماماً)
+    const { rows: dup } = await pool.query(
+      `SELECT full_phone FROM line_accounts WHERE account_no = $1 AND full_phone <> $2 LIMIT 1`,
+      [newNo, fullPhone],
+    );
+    if (dup.length) {
+      return res.status(409).json({ message: `رقم الأكونت ${newNo} مستخدم بالفعل على الخط ${dup[0].full_phone}` });
+    }
     // fetch old value before upsert (for audit log)
     const { rows: existing } = await pool.query(
       `SELECT account_no FROM line_accounts WHERE full_phone = $1`,
@@ -2898,7 +2906,21 @@ export async function registerRoutes(
     try {
       await client.query("BEGIN");
       let saved = 0;
+      // منع التكرار: نرفض أى صف رقم الأكونت بتاعه مستخدم بالفعل على خط تانى — سواء موجود
+      // فى القاعدة أو اتحجز لخط مختلف داخل نفس الدفعة دى، حتى لو البيان الفنى مختلف تماماً.
+      const duplicates: { fullPhone: string; accountNo: string; conflictsWith: string }[] = [];
+      const claimedInBatch = new Map<string, string>();
       for (const e of clean) {
+        const { rows: existingAcc } = await client.query(
+          `SELECT full_phone FROM line_accounts WHERE account_no = $1 AND full_phone <> $2 LIMIT 1`,
+          [e.accountNo, e.fullPhone],
+        );
+        const conflictPhone = existingAcc[0]?.full_phone || claimedInBatch.get(e.accountNo);
+        if (conflictPhone && conflictPhone !== e.fullPhone) {
+          duplicates.push({ fullPhone: e.fullPhone, accountNo: e.accountNo, conflictsWith: conflictPhone });
+          continue;
+        }
+        claimedInBatch.set(e.accountNo, e.fullPhone);
         const { rows: existing } = await client.query(
           `SELECT account_no FROM line_accounts WHERE full_phone = $1`,
           [e.fullPhone],
@@ -2923,7 +2945,7 @@ export async function registerRoutes(
         saved++;
       }
       await client.query("COMMIT");
-      res.json({ ok: true, saved });
+      res.json({ ok: true, saved, duplicates });
     } catch (err: any) {
       await client.query("ROLLBACK");
       res.status(500).json({ message: err.message });
