@@ -2204,7 +2204,7 @@ export async function registerRoutes(
         const AUTO_RULES: { tech: string; keys: string[] }[] = [
           { tech: "سامى",  keys: ["دير الجنادله", "دير الجنادلة"] },
           { tech: "محمود", keys: ["مشايعه", "مشايعة"] },
-          { tech: "اسلام", keys: ["عزايزه", "عزايزة", "عامرى", "عامري"] },
+          { tech: "اسلام", keys: ["عزايزه", "عزايزة", "عامرى", "عامري", "اولاد محمد", "أولاد محمد"] },
         ];
         const addrN = normAr(String((input as any).customerAddress || ""));
         const rule = AUTO_RULES.find((r) => r.keys.some((k) => addrN.includes(normAr(k))));
