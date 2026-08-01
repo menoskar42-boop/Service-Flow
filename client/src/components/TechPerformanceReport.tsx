@@ -57,7 +57,7 @@ function adslScore(per1000: number | null): number {
   return Math.round(Math.min(MAX_ADSL, MAX_ADSL * ADSL_TARGET / Number(per1000)) * 10) / 10;
 }
 function remScore(pct24: number | null): number {
-  if (pct24 == null) return 0;
+  if (pct24 == null) return MAX_REM; // مفيش أعطال أصلاً فى الفترة = ملوش داعى إزالة = ممتاز
   return Math.round(Math.min(MAX_REM, (Number(pct24) / 100) * MAX_REM) * 10) / 10;
 }
 
