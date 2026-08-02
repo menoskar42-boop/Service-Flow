@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
-import { Upload, FileDown, FileText, Loader2 } from "lucide-react";
+import { Upload, FileDown, FileText, Loader2, BarChart3 } from "lucide-react";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -224,7 +224,7 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
           {/* Upload — admin only, and only on the main report */}
           {showUpload && (user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN) && (
             <>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileChange} />
               <Button
                 size="sm"
                 onClick={() => fileRef.current?.click()}
@@ -235,6 +235,22 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
                 رفع تركيبات
               </Button>
             </>
+          )}
+
+          {/* جلب أوامر الشغل من WFM Reporting — سوبر أدمن فقط.
+              سكربت التامبر منكى (wfm-voice-installation-raw.user.js) بيكمّل التدفّق
+              لوحده: دخول → FO Raw Data Reports → Voice Installation Raw Data →
+              آخر 30 يوم + Middle Upper/Asuit → Generate → Export → رفع تلقائى هنا. */}
+          {showUpload && user?.role === ROLES.SUPER_ADMIN && (
+            <Button
+              size="sm"
+              onClick={() => window.open("https://wfm.te.eg/WfmReports/#/login", "wfm_voice_raw")}
+              className="gap-1 bg-rose-700 hover:bg-rose-800 text-white"
+              title="يفتح WFM Reporting ويسجّل الدخول ويشغّل تقرير Voice Installation Raw Data (آخر 30 يوم) ثم يرفعه هنا تلقائياً"
+            >
+              <BarChart3 className="w-4 h-4" />
+              جلب من WFM
+            </Button>
           )}
         </div>
       </Card>
