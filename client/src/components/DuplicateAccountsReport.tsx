@@ -97,11 +97,20 @@ export function DuplicateAccountsReport() {
     if (!confirm("تأكيد: سيتم حذف رقم الأكونت من هذا الخط وإخفاؤه من تقرير خطوط لها أكونت؟")) return;
     setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
     try {
-      await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, { method: "DELETE", credentials: "include" });
+      // fetch مابيرميش استثناء على 403/500 — لازم نفحص res.ok بنفسنا، وإلا الفشل
+      // بيعدّى كأنه نجاح والصف بيرجع تانى بعد التحديث.
+      const r1 = await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, { method: "DELETE", credentials: "include" });
+      if (!r1.ok) {
+        const d = await r1.json().catch(() => null);
+        throw new Error(d?.message || "تعذّر حذف رقم الأكونت");
+      }
       await fetch(`/api/lines-no-account/${encodeURIComponent(fullPhone)}`, { method: "POST", credentials: "include" });
       invalidateAll();
-    } catch {
-      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+      // تصفير الحالة — من غيرها الزر بيفضل disabled للأبد على الصف ده
+      setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; });
+    } catch (e: any) {
+      setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; });
+      alert(e?.message || "تعذّر حذف رقم الأكونت");
     }
   };
 

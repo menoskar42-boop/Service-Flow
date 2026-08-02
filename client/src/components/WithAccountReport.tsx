@@ -208,18 +208,26 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (!confirm("تأكيد: سيتم حذف رقم الأكونت وإخفاء هذا الخط من التقريرين؟")) return;
     setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
     try {
-      await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, {
+      // fetch مابيرميش استثناء على 403/500 — لازم نفحص res.ok بنفسنا
+      const r1 = await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, {
         method: "DELETE",
         credentials: "include",
       });
+      if (!r1.ok) {
+        const d = await r1.json().catch(() => null);
+        throw new Error(d?.message || "تعذّر حذف رقم الأكونت");
+      }
       await fetch(`/api/lines-no-account/${encodeURIComponent(fullPhone)}`, {
         method: "POST",
         credentials: "include",
       });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
-    } catch {
-      setSaveState((s) => ({ ...s, [fullPhone]: "error" }));
+      // تصفير الحالة — من غيرها الزر بيفضل disabled للأبد لو الصف فضل ظاهر
+      setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; });
+    } catch (e: any) {
+      setSaveState((s) => { const n = { ...s }; delete n[fullPhone]; return n; });
+      alert(e?.message || "تعذّر حذف رقم الأكونت");
     }
   };
 
