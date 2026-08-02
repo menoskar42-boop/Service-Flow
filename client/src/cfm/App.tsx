@@ -12,7 +12,6 @@ import MasterData from "@/cfm/pages/master-data";
 import Inventory from "@/cfm/pages/inventory";
 import Reports from "@/cfm/pages/reports";
 import Login from "@/cfm/pages/login";
-import Users from "@/cfm/pages/users";
 import NotFound from "@/cfm/pages/not-found";
 import { useStore } from "@/cfm/lib/store";
 import { useEffect, useCallback, useState } from "react";
@@ -90,7 +89,7 @@ function Router() {
         <Route path="/inventory" component={Inventory} />
         <Route path="/reports" component={Reports} />
         <Route path="/master-data" component={MasterData} />
-        <Route path="/users" component={Users} />
+        {/* /users اتشال — إدارة المستخدمين بقت مركزية فى Service-Flow نفسه. */}
         <Route path="/login" component={() => {
            setLocation("/");
            return null;

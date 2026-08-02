@@ -14,7 +14,6 @@ import {
   UserCircle,
   Package,
   FileText,
-  Users,
   Key,
   Cable
 } from "lucide-react";
@@ -112,11 +111,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <NavItem href="/reports" icon={FileText} label={t.reports} />
 
+        {/* «المستخدمين» اتشال من هنا — إدارة المستخدمين بقت مركزية فى Service-Flow نفسه. */}
         {user?.role === 'admin' && (
-          <>
-            <NavItem href="/master-data" icon={Database} label={t.masterData} />
-            <NavItem href="/users" icon={Users} label={t.users} />
-          </>
+          <NavItem href="/master-data" icon={Database} label={t.masterData} />
         )}
 
         {/* رجوع لموقع Service-Flow (رابط مطلق يخرج من قسم /cfm) */}
@@ -194,8 +191,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <h2 className="text-xl font-semibold hidden md:block">
               {location === '/' ? t.dashboard : 
                location.startsWith('/tickets') ? t.tickets : 
-               location === '/master-data' ? t.masterData : 
-               location === '/users' ? t.users :
+               location === '/master-data' ? t.masterData :
                location === '/reports' ? t.reportsTitle : ''}
             </h2>
           </div>
