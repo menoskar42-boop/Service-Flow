@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.3
+// @version      1.0.4
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -152,6 +152,18 @@
     return true;
   }
 
+  // إرسال ضغطة كيبورد حقيقية (ng-select/PrimeNG بيستجيبوا للكيبورد أكتر من click)
+  function pressKey(el, key, code) {
+    if (!el) return;
+    for (const type of ["keydown", "keypress", "keyup"]) {
+      try {
+        el.dispatchEvent(new KeyboardEvent(type, {
+          key, code: code || key, keyCode: code || 0, which: code || 0, bubbles: true, cancelable: true,
+        }));
+      } catch (e) {}
+    }
+  }
+
   /* ================== دروب ليست (ng-select / PrimeNG / select) ================== */
   // بيفتح الدروب المرتبط بالـ label ويختار العنصر اللى نصّه يطابق valueRe
   async function pickFromDropdown(boxEl, valueRe) {
@@ -191,6 +203,61 @@
     fireClick(item.closest("li,[role='option'],.ng-option,.p-dropdown-item,.dropdown-item") || item);
     await sleep(600);
     return true;
+  }
+
+  // هل اسم التقرير اتسجّل فعلاً فى المودال؟ (الخانة بتعرض الاسم الكامل بعد الاختيار)
+  function reportNameSelected() {
+    const re = new RegExp(REPORT_NAME.replace(/\s+/g, "\\s*"), "i");
+    // (أ) قيمة أى input فى المودال بقت الاسم الكامل
+    const byInput = qAll("input").some((i) => visible(i) && re.test(i.value || ""));
+    if (byInput) return true;
+    // (ب) ng-select بيعرض القيمة المختارة فى span مخصّص (مش فى الـ input)
+    return qAll(".ng-value, .ng-value-label, .p-dropdown-label, .select2-selection__rendered")
+      .some((e) => visible(e) && re.test(txt(e)));
+  }
+
+  // اختيار «Voice Installation Raw Data Report» مع تحقّق فعلى.
+  // السبب: الضغط على صف الاختيار كان بيرجّع "نجاح" من غير ما القيمة تتسجّل، فالسكربت
+  // كان بيكمّل لـ Add Report والتواريخ وGenerate وكلها بتفشل بصمت والمودال لسه مفتوح.
+  async function selectReportName() {
+    const re = new RegExp(REPORT_NAME.replace(/\s+/g, "\\s*"), "i");
+    for (let round = 0; round < 3; round++) {
+      // الخانة نفسها (input داخل المودال بجانب لابل Report Name)
+      const box = qAll("input[placeholder], ng-select, .ng-select, .p-dropdown")
+            .find((e) => visible(e) && /Select\s*Report/i.test(e.getAttribute("placeholder") || txt(e)))
+        || fieldBoxByLabel(/Report\s*Name/i);
+      if (!box) { await sleep(1000); continue; }
+
+      fireClick(box);
+      await sleep(600);
+
+      // اكتب جزء مميّز عشان القائمة تفلتر لعنصر واحد
+      const inp = box.tagName === "INPUT" ? box : box.querySelector("input");
+      if (inp) { setValue(inp, "Voice Installation"); await sleep(1200); }
+
+      // (1) الكيبورد أولاً — الأضمن مع ng-select/PrimeNG
+      const kbTarget = inp || box;
+      pressKey(kbTarget, "ArrowDown", 40);
+      await sleep(400);
+      pressKey(kbTarget, "Enter", 13);
+      await sleep(900);
+      if (reportNameSelected()) return true;
+
+      // (2) لو الكيبورد مانفعش: اضغط صف الاختيار نفسه وكل آبائه مع تحقّق
+      const OPT = "li, .ng-option, .p-dropdown-item, [role='option'], option, .mat-option, .dropdown-item, td, div, span";
+      const hits = qAll(OPT).filter((el) => visible(el) && re.test(txt(el)) && txt(el).length <= 60);
+      hits.sort((a, b) => txt(a).length - txt(b).length);
+      for (const hit of hits.slice(0, 4)) {
+        let el = hit;
+        for (let up = 0; up < 3 && el; up++, el = el.parentElement) {
+          fireClick(el);
+          await sleep(500);
+          if (reportNameSelected()) return true;
+        }
+      }
+      await sleep(1000);
+    }
+    return false;
   }
 
   // أزرار التحكّم فى اللوحة الجانبية (سهم الطى/الفتح) — ممنوع نضغطها بالغلط.
@@ -426,30 +493,40 @@
 
     // 4) من مودال Choose Report: اختَر اسم التقرير ثم Add Report
     banner("📄 اختيار «" + REPORT_NAME + "»…");
-    // الكومبوبوكس نفسه: الأفضل عنصر placeholder/نصّه «Select Report»، وإلا بالـ label
-    const sel = await waitFor(() => {
-      const byPh = qAll("input[placeholder], ng-select, .ng-select")
-        .find((e) => visible(e) && /Select\s*Report/i.test(e.getAttribute("placeholder") || txt(e)));
-      return byPh
-          || findByText("span, div", /^\s*Select\s*Report\s*$/i, 20)
-          || fieldBoxByLabel(/Report\s*Name/i);
-    }, 15000);
-    const okPick = await pickFromDropdown(sel, new RegExp(REPORT_NAME.replace(/\s+/g, "\\s*"), "i"));
-    if (!okPick) { banner("❌ مش قادر أختار اسم التقرير", "#b71c1c"); return; }
+    const okPick = await selectReportName();
+    if (!okPick) { banner("❌ اسم التقرير مااتسجّلش فى الخانة", "#b71c1c"); return; }
+    banner("✅ اتسجّل اسم التقرير — Add Report…");
     await sleep(500);
+
+    // Add Report — ونتأكد إن المودال قفل فعلاً (وإلا نضغط تانى)
     const addBtn = await waitFor(() => findByText("button, a", /Add\s*Report/i, 25), 10000);
     if (!addBtn) { banner("❌ مش لاقى Add Report", "#b71c1c"); return; }
     fireClick(addBtn);
-    await sleep(2500);
+    let modalClosed = await waitFor(() => !findByText("h4, h5, div, span", /^\s*Choose\s*Report\s*$/i, 20), 6000);
+    if (!modalClosed) {
+      const again = findByText("button, a", /Add\s*Report/i, 25);
+      if (again) fireClick(again);
+      modalClosed = await waitFor(() => !findByText("h4, h5, div, span", /^\s*Choose\s*Report\s*$/i, 20), 6000);
+    }
+    if (!modalClosed) { banner("❌ مودال Choose Report ماقفلش بعد Add Report", "#b71c1c"); return; }
+    await sleep(2000);
 
     // 5) البارامترات: التواريخ + Sector + Region
     const { from, to } = dateRange();
     banner(`📅 ${isoOf(from)} → ${isoOf(to)} …`);
     const fromIn = await waitFor(() => inputByLabel(/From\s*Date/i), 20000);
     const toIn   = inputByLabel(/To\s*Date/i);
-    if (fromIn) setDateInput(fromIn, from);
-    if (toIn)   setDateInput(toIn, to);
-    await sleep(600);
+    if (!fromIn || !toIn) { banner("❌ مش لاقى خانات التاريخ", "#b71c1c"); return; }
+    setDateInput(fromIn, from);
+    setDateInput(toIn, to);
+    await sleep(800);
+    // تحقّق إن التاريخ اتكتب فعلاً (لو الخانة رفضت الصيغة بنجرّب الصيغة التانية)
+    if (!String(fromIn.value || "").trim()) { setValue(fromIn, isoOf(from)); await sleep(300); }
+    if (!String(toIn.value || "").trim())   { setValue(toIn, isoOf(to));   await sleep(300); }
+    if (!String(fromIn.value || "").trim() || !String(toIn.value || "").trim()) {
+      banner("❌ التواريخ مااتكتبتش فى الخانات", "#b71c1c"); return;
+    }
+    await sleep(400);
 
     // Sector/Region — محاولة اختيارية فقط. لو الدروب مااستجابش بنكمّل عادى، لأن الحساب
     // محصور أصلاً على المنطقة وGenerate بالتواريخ بس بيرجّع نفس البيانات.
