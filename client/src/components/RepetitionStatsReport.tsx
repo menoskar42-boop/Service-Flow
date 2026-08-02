@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -78,6 +78,13 @@ export function RepetitionStatsReport() {
   const [repDetailOpen, setRepDetailOpen]     = useState(false);
   const [repDetailData, setRepDetailData]     = useState<RepDetailRow[] | null>(null);
   const [repDetailLoading, setRepDetailLoading] = useState(false);
+  // جدول التفاصيل مفيهوش tabindex افتراضياً فمفاتيح الأسهم (فوق/تحت/يمين/شمال) ما كانتش بتحرّك
+  // السكرول جواه إلا لو المستخدم يلمس شريط السكرول بالماوس الأول (عشان يبقى هو صاحب الـ focus).
+  // بنعمل focus عليه برمجياً لحظة فتح الحوار عشان الأسهم تشتغل فوراً.
+  const repDetailScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (repDetailOpen) requestAnimationFrame(() => repDetailScrollRef.current?.focus());
+  }, [repDetailOpen]);
   const [repDetailTech, setRepDetailTech]     = useState(""); // فلتر باسم الفنى
   const [editingTech, setEditingTech]         = useState<string | null>(null); // complainNo
   const [editTechDraft, setEditTechDraft]     = useState("");
@@ -582,7 +589,7 @@ export function RepetitionStatsReport() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-600" /></div>
           )}
           {!repDetailLoading && repDetailData && (
-            <div className="flex-1 min-h-0 overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+            <div ref={repDetailScrollRef} tabIndex={0} className="flex-1 min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader className="bg-purple-900 sticky top-0">
                   <TableRow>

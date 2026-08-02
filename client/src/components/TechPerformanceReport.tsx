@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,13 @@ export function TechPerformanceReport() {
   const [b24Data, setB24Data] = useState<Beyond24Row[] | null>(null);
   const [b24Loading, setB24Loading] = useState(false);
   const [central, setCentral]   = useState("");
+
+  // جداول التفاصيل مفيهاش tabindex افتراضياً فمفاتيح الأسهم ما كانتش بتحرّك السكرول جواها إلا لو
+  // المستخدم يلمس شريط السكرول بالماوس الأول. بنعمل focus عليها برمجياً لحظة فتح كل حوار.
+  const repScrollRef = useRef<HTMLDivElement>(null);
+  const b24ScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (repOpen) requestAnimationFrame(() => repScrollRef.current?.focus()); }, [repOpen]);
+  useEffect(() => { if (b24Open) requestAnimationFrame(() => b24ScrollRef.current?.focus()); }, [b24Open]);
 
   // تعيين/تعديل فنى الإغلاق يدوياً (سوبر أدمن فقط) — نفس آلية إحصائيات التكرار
   const canEditTech = user?.role === ROLES.SUPER_ADMIN;
@@ -629,7 +636,7 @@ export function TechPerformanceReport() {
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
           </div>
-          <div className="overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+          <div ref={repScrollRef} tabIndex={0} className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {repLoading ? (
               <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
             ) : !repFiltered.length ? (
@@ -714,7 +721,7 @@ export function TechPerformanceReport() {
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
           </div>
-          <div className="overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+          <div ref={b24ScrollRef} tabIndex={0} className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-orange-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {b24Loading ? (
               <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
             ) : !b24Filtered.length ? (
