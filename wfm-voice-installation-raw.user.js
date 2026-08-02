@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.4
+// @version      1.0.5
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -347,23 +347,110 @@
     return null;
   }
 
-  function inputByLabel(labelRe) {
+  // ملاحظة: اللابل بتاع الحقول المطلوبة شكله «From Date *» والنجمة فى span جوّاه،
+  // فشرط children.length===0 القديم كان بيستبعده. دلوقتى بنسمح بلابل فيه عناصر صغيرة.
+  function labelsMatching(labelRe) {
+    const out = [];
     for (const d of docs()) {
-      let labels = [];
       try {
-        labels = [...d.querySelectorAll("label, span, div, th")]
-          .filter((e) => e.children.length === 0 && labelRe.test(txt(e)));
-      } catch (e) { continue; }
-      for (const lbl of labels) {
-        let p = lbl.parentElement;
-        for (let up = 0; up < 4 && p; up++, p = p.parentElement) {
-          const inp = [...p.querySelectorAll("input")]
-            .find((i) => visible(i) && !/hidden|button|submit|checkbox|radio/i.test(i.type || ""));
-          if (inp) return inp;
-        }
+        out.push(...[...d.querySelectorAll("label, span, div, th, p")]
+          .filter((e) => visible(e) && labelRe.test(txt(e)) && txt(e).length <= 25 && e.children.length <= 2));
+      } catch (e) {}
+    }
+    // الأعمق (أقصر نص) الأول
+    return out.sort((a, b) => txt(a).length - txt(b).length);
+  }
+
+  // حاوية الحقل: أقرب أب فيه input (وغالباً معاه زر التقويم)
+  function fieldGroup(labelRe) {
+    for (const lbl of labelsMatching(labelRe)) {
+      let p = lbl.parentElement;
+      for (let up = 0; up < 5 && p; up++, p = p.parentElement) {
+        const inp = [...p.querySelectorAll("input")]
+          .find((i) => visible(i) && !/hidden|button|submit|checkbox|radio/i.test(i.type || ""));
+        if (inp) return { group: p, input: inp };
       }
     }
     return null;
+  }
+
+  function inputByLabel(labelRe) {
+    const g = fieldGroup(labelRe);
+    return g ? g.input : null;
+  }
+
+  /* ================== اختيار التاريخ من التقويم ================== */
+  // خانات التاريخ هنا readonly — مابتقبلش كتابة، لازم نفتح التقويم ونضغط اليوم.
+  const MONTHS3 = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+  // بيدوّر على رأس التقويم المفتوح («AUG 2026») ويرجّع العنصر + الشهر/السنة
+  function calendarHeader() {
+    const els = qAll("button, span, div").filter((e) => {
+      if (!visible(e) || e.children.length > 2) return false;
+      return /^[A-Za-z]{3,9}\s+\d{4}$/.test(txt(e));
+    });
+    els.sort((a, b) => txt(a).length - txt(b).length);
+    for (const e of els) {
+      const m = txt(e).match(/^([A-Za-z]{3,9})\s+(\d{4})$/);
+      if (!m) continue;
+      const mi = MONTHS3.indexOf(m[1].slice(0, 3).toUpperCase());
+      if (mi >= 0) return { el: e, month: mi, year: Number(m[2]) };
+    }
+    return null;
+  }
+
+  // أزرار التنقّل بين الشهور داخل التقويم
+  function calNavButtons() {
+    const btns = qAll("button").filter(visible);
+    const prev = btns.find((b) => /prev/i.test((b.getAttribute("aria-label") || "") + (b.className || "")));
+    const next = btns.find((b) => /next/i.test((b.getAttribute("aria-label") || "") + (b.className || "")));
+    return { prev, next };
+  }
+
+  // يفتح تقويم الحقل ويختار اليوم المطلوب
+  async function pickDateViaCalendar(labelRe, target) {
+    const g = fieldGroup(labelRe);
+    if (!g) return false;
+
+    // زر التقويم جنب الخانة (أيقونة) — وإلا نضغط الخانة نفسها
+    const toggle = [...g.group.querySelectorAll("button")].find(visible) || g.input;
+    fireClick(toggle);
+
+    const hdr0 = await waitFor(calendarHeader, 8000, 250);
+    if (!hdr0) return false;
+
+    // نتنقّل للشهر/السنة المطلوبين
+    const want = target.getFullYear() * 12 + target.getMonth();
+    for (let step = 0; step < 40; step++) {
+      const h = calendarHeader();
+      if (!h) break;
+      const cur = h.year * 12 + h.month;
+      if (cur === want) break;
+      const { prev, next } = calNavButtons();
+      const btn = cur > want ? prev : next;
+      if (!btn) break;
+      fireClick(btn);
+      await sleep(350);
+    }
+
+    // نضغط رقم اليوم داخل شبكة التقويم (نستبعد الأيام المعطّلة)
+    const day = String(target.getDate());
+    const cell = await waitFor(() => {
+      const cands = qAll("td, button, div, span").filter((e) => {
+        if (!visible(e) || txt(e) !== day) return false;
+        if (e.getAttribute("aria-disabled") === "true" || e.disabled) return false;
+        const cls = String(e.className || "");
+        return !/disabled/i.test(cls);
+      });
+      // الأعمق: العنصر اللى مفيهوش عنصر تانى بنفس النص
+      cands.sort((a, b) => (a.children.length - b.children.length));
+      return cands[0] || null;
+    }, 6000, 250);
+    if (!cell) return false;
+
+    fireClick(cell.closest("td,button") || cell);
+    await sleep(700);
+    return !!String(g.input.value || "").trim();
   }
 
   /* ================== التقاط ملف التصدير ================== */
@@ -517,16 +604,27 @@
     const fromIn = await waitFor(() => inputByLabel(/From\s*Date/i), 20000);
     const toIn   = inputByLabel(/To\s*Date/i);
     if (!fromIn || !toIn) { banner("❌ مش لاقى خانات التاريخ", "#b71c1c"); return; }
-    setDateInput(fromIn, from);
-    setDateInput(toIn, to);
-    await sleep(800);
-    // تحقّق إن التاريخ اتكتب فعلاً (لو الخانة رفضت الصيغة بنجرّب الصيغة التانية)
-    if (!String(fromIn.value || "").trim()) { setValue(fromIn, isoOf(from)); await sleep(300); }
-    if (!String(toIn.value || "").trim())   { setValue(toIn, isoOf(to));   await sleep(300); }
-    if (!String(fromIn.value || "").trim() || !String(toIn.value || "").trim()) {
-      banner("❌ التواريخ مااتكتبتش فى الخانات", "#b71c1c"); return;
+
+    // الخانات دى readonly (Material datepicker) — الكتابة المباشرة مابتنفعش غالباً،
+    // فبنجرّبها الأول وبعدين نرجع للتقويم (فتح → التنقّل للشهر → ضغط اليوم).
+    const setOneDate = async (labelRe, input, d, what) => {
+      setDateInput(input, d);
+      await sleep(500);
+      if (String(input.value || "").trim()) return true;
+      banner(`📆 ${what}: اختيار من التقويم…`);
+      const ok = await pickDateViaCalendar(labelRe, d);
+      return ok || !!String(input.value || "").trim();
+    };
+
+    if (!(await setOneDate(/From\s*Date/i, fromIn, from, "من"))) {
+      banner("❌ مش قادر أحدّد «From Date»", "#b71c1c"); return;
     }
-    await sleep(400);
+    await sleep(600);
+    if (!(await setOneDate(/To\s*Date/i, toIn, to, "إلى"))) {
+      banner("❌ مش قادر أحدّد «To Date»", "#b71c1c"); return;
+    }
+    banner(`✅ التواريخ: ${String(fromIn.value).trim()} → ${String(toIn.value).trim()}`);
+    await sleep(600);
 
     // Sector/Region — محاولة اختيارية فقط. لو الدروب مااستجابش بنكمّل عادى، لأن الحساب
     // محصور أصلاً على المنطقة وGenerate بالتواريخ بس بيرجّع نفس البيانات.
