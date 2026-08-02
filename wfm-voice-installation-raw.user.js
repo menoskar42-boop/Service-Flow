@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.6
+// @version      1.0.7
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -28,7 +28,7 @@
   const SECTOR = "Middle Upper";
   const REGION = "Asuit Region";
   const REQUIRE_SECTOR_REGION = false;
-  const AUTO_CLOSE_MS = 20000;                // يقفل التاب بعد الرفع (0 = مايقفلش)
+  const AUTO_CLOSE_MS = 60000;               // يفضل مفتوح دقيقة بعد الرفع عشان تقرا النتيجة (0 = مايقفلش)
 
   /* ================== أدوات عامة ================== */
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

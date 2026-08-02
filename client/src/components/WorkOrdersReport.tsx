@@ -60,6 +60,25 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
     },
   });
 
+  // آخر وقت رفع لجدول أوامر الشغل — عشان تتأكد إن رفع سكربت WFM (أو الرفع اليدوى)
+  // وصل فعلاً للموقع من غير ما تحتاج تدوّر فى الصفوف.
+  const { data: uploadTimes } = useQuery<Record<string, string | null>>({
+    queryKey: ["/api/upload-times"],
+    queryFn: async () => {
+      const res = await fetch("/api/upload-times", { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    refetchOnMount: "always",
+  });
+  const uploadedAtIso = uploadTimes?.["/api/work-orders/import"] ?? null;
+  const lastUpload = uploadedAtIso
+    ? format(new Date(uploadedAtIso), "yyyy/MM/dd HH:mm", { locale: ar })
+    : null;
+  const uploadedToday = !!uploadedAtIso &&
+    new Date(uploadedAtIso).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" }) ===
+    new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+
   // فلتر البحث: أرقام فقط عشان يطابق سواء كتبت 88-2656325 أو 2656325 أو 882656325.
   // بيطبَّق على القائمة المعروضة والتصدير (Excel/PDF) والعدّاد — كلهم بيقروا orders.
   const orders = useMemo(() => {
@@ -89,6 +108,7 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
     onSuccess: (data) => {
       toast({ title: "تم الاستيراد", description: `${data.inserted} امر شغل تم رفعهم`, duration: 4000 });
       qc.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      qc.invalidateQueries({ queryKey: ["/api/upload-times"] });   // يحدّث «آخر تحديث»
     },
     onError: (e: Error) => {
       toast({ title: "خطأ في الاستيراد", description: e.message, variant: "destructive", duration: 5000 });
@@ -296,6 +316,12 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
         <span>إجمالي: <strong className="text-foreground">{orders.length}</strong> امر شغل</span>
         {search.replace(/\D/g, "") && (
           <span className="text-xs">(نتيجة البحث — من إجمالى {allOrders.length})</span>
+        )}
+        {/* آخر تحديث للجدول — عشان تتأكد إن الرفع (اليدوى أو من سكربت WFM) وصل فعلاً */}
+        {lastUpload && (
+          <span className={`text-xs px-2 py-0.5 rounded ${uploadedToday ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-600"}`}>
+            آخر تحديث: {lastUpload}{uploadedToday ? " ✓ النهاردة" : ""}
+          </span>
         )}
       </div>
 
