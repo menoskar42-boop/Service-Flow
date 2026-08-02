@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.2
+// @version      1.0.3
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -222,6 +222,35 @@
     return qAll("button, a").find((b) => visible(b) && !isPanelToggle(b) && txt(b) === "+") || null;
   }
 
+  // هل لوحة البارامترات (يمين) ظهرت فعلاً؟ = علامة إن الكاتيجورى اتفتحت صح
+  const paramsPaneOpen = () =>
+    !!(findByText("label, span, div, h5, p", /Choose\s*Report/i, 40) ||
+       findByText("span, div, h5", /All\s*Paramters|All\s*Parameters/i, 40));
+
+  // الضغط على كاتيجورى «FO Raw Data Reports» مع تحقّق فعلى من النتيجة.
+  // السبب: النص ممكن يكون جوّه span عميق، و.closest('a,li,div') ممكن يرجّع حاوية
+  // مش قابلة للضغط — فالضغطة تروح فى الهوا واللوحة اليمين تفضل فاضية. هنا بنجرّب
+  // العنصر وكل آبائه لحد 3 مستويات، وبعد كل ضغطة بنتأكد إن اللوحة ظهرت.
+  async function clickCategory(re) {
+    for (let round = 0; round < 3; round++) {
+      const hits = qAll("a, li, span, div, td").filter((e) => visible(e) && re.test(txt(e)) && txt(e).length <= 40);
+      // الأعمق الأول (أقرب للنص نفسه)
+      hits.sort((a, b) => txt(a).length - txt(b).length);
+      for (const hit of hits.slice(0, 4)) {
+        const chain = [];
+        let el = hit;
+        for (let up = 0; up < 4 && el; up++, el = el.parentElement) chain.push(el);
+        for (const target of chain) {
+          fireClick(target);
+          const ok = await waitFor(paramsPaneOpen, 2500, 250);
+          if (ok) return true;
+        }
+      }
+      await sleep(1200);
+    }
+    return false;
+  }
+
   // لو اللوحة الجانبية اتطوت (شاشة بيضا) نرجّع نفتحها بالسهم
   async function ensurePanelOpen() {
     const listVisible = () => findByText("a, span, div, li", /FO\s*Raw\s*Data\s*Reports/i, 40);
@@ -379,23 +408,24 @@
     // 2) FO Raw Data Reports من قائمة Report Category
     banner("🗂️ اختيار «" + CATEGORY_NAME + "»…");
     await ensurePanelOpen();
-    const cat = await waitFor(() => findByText("a, span, div, li", /FO\s*Raw\s*Data\s*Reports/i, 40), 25000);
-    if (!cat) { banner("❌ مش لاقى «FO Raw Data Reports»", "#b71c1c"); return; }
-    fireClick(cat.closest("a,li,div") || cat);
-    await sleep(2000);
-    await ensurePanelOpen();   // لو اتطوت اللوحة لأى سبب نرجّعها
+    await waitFor(() => findByText("a, span, div, li", /FO\s*Raw\s*Data\s*Reports/i, 40), 25000);
+    const catOk = await clickCategory(/FO\s*Raw\s*Data\s*Reports/i);
+    if (!catOk) { banner("❌ الضغط على «FO Raw Data Reports» مافتحش لوحة البارامترات", "#b71c1c"); return; }
+    await sleep(800);
 
     // 3) زر «+» بتاع Choose Report (مش سهم طى اللوحة)
     banner("➕ فتح Choose Report…");
     const plus = await waitFor(findPlusButton, 20000);
     if (!plus) { banner("❌ مش لاقى زر «+»", "#b71c1c"); return; }
     fireClick(plus);
-    await sleep(1800);
+    // نتأكد إن المودال فتح فعلاً، وإلا نضغط تانى
+    let modalOk = await waitFor(() => findByText("label, span, div, h4, h5", /Report\s*Name/i, 30), 6000);
+    if (!modalOk) { fireClick(plus); modalOk = await waitFor(() => findByText("label, span, div, h4, h5", /Report\s*Name/i, 30), 8000); }
+    if (!modalOk) { banner("❌ مودال Choose Report مافتحش", "#b71c1c"); return; }
+    await sleep(800);
 
     // 4) من مودال Choose Report: اختَر اسم التقرير ثم Add Report
     banner("📄 اختيار «" + REPORT_NAME + "»…");
-    // ننتظر المودال نفسه يظهر (فيه لابل Report Name)
-    await waitFor(() => findByText("label, span, div, h4, h5", /Report\s*Name/i, 30), 12000);
     // الكومبوبوكس نفسه: الأفضل عنصر placeholder/نصّه «Select Report»، وإلا بالـ label
     const sel = await waitFor(() => {
       const byPh = qAll("input[placeholder], ng-select, .ng-select")
