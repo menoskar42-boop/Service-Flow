@@ -144,9 +144,6 @@ export function ExecBatchesReport() {
               <label className="text-xs text-muted-foreground block mb-1">إلى</label>
               <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-40 text-sm" />
             </div>
-            <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث
-            </Button>
             <Button onClick={handleExportExcel} size="sm" variant="outline" disabled={!shown.length} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
@@ -179,6 +176,11 @@ export function ExecBatchesReport() {
               {states.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
+          {/* «تحديث» جنب البحث (مش فوق مع التواريخ) عشان يفضل قريب من الجدول
+              ويبان وانت نازل بالسكرول على الصفوف */}
+          <Button onClick={load} size="sm" variant="outline" className="gap-1 h-9" disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث
+          </Button>
         </div>
 
         {/* إحصائية المعروض */}
