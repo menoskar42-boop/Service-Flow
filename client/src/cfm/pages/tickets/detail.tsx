@@ -1131,9 +1131,16 @@ export default function TicketDetail() {
                              const wt = workTypes.find(wt => wt.id === item.workTypeId);
                              const hasExcavationDims = item.excavationLength != null || item.excavationWidth != null || item.excavationDepth != null;
                              const isDigging = wt?.name?.includes('حفر للبحث عن اعطال');
+                             const excavationWorker = item.excavationWorkerId ? excavationWorkers.find(w2 => w2.id === item.excavationWorkerId) : null;
                              return (
                                <li key={idx} className="text-sm">
                                  {wt?.name} <span className="text-muted-foreground text-xs">{isDigging ? `(${item.quantity} م³)` : `(x${item.quantity})`}</span>
+                                 {excavationWorker && (
+                                   <span className="text-xs font-medium mr-2">— {excavationWorker.name} ({excavationWorker.nationalId})</span>
+                                 )}
+                                 {item.excavationWorkerId && !excavationWorker && (
+                                   <span className="text-xs text-destructive mr-2">— عامل غير موجود</span>
+                                 )}
                                  {hasExcavationDims && (
                                    <span className="text-xs text-muted-foreground mr-2">
                                      — {item.excavationLength != null ? `طول: ${item.excavationLength}سم` : ''}{item.excavationWidth != null ? ` عرض: ${item.excavationWidth}سم` : ''}{item.excavationDepth != null ? ` عمق: ${item.excavationDepth}سم` : ''}
