@@ -95,7 +95,15 @@ interface NeedsSpeedReportProps {
 export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/phone-lines/needs-speed", title }: NeedsSpeedReportProps) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
-  useSpeedToolSource("محتاجة رفع سرعة");
+  // «مصدر» المهام (بيتسجّل فى note ويظهر فى «من تقرير: …»). المكوّن ده بيتعاد استخدامه
+  // لتقرير «تحتاج إيقاف PO» كمان، فكان المصدر متكتوب ثابت «محتاجة رفع سرعة» — يعنى
+  // باتشات إيقاف PO كانت بتتسجّل باسم تقرير غلط (وكمان بتاخد أولوية 1 بالغلط لأن
+  // السيرفر بيحدّد الأولوية من نص الـ note). دلوقتى بنشتقّه من الـ endpoint.
+  const sourceName =
+    endpoint.includes("needs-po-stop") ? "تحتاج إيقاف PO"
+    : requireComplaint ? "محتاجة رفع سرعة (لها شكوى)"
+    : "محتاجة رفع سرعة";
+  useSpeedToolSource(sourceName);
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
