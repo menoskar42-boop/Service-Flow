@@ -553,6 +553,16 @@ const cmpTechBest = (a: any, b: any) =>
 const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
   String(a.centralName ?? "").localeCompare(String(b.centralName ?? ""), "ar") || cmp(a, b);
 
+// «رقم الفريم» مصدره منافذ MSAN (phone_ports.frame). أى رقم مالوش فريم = مش متركّب
+// على المسان فعلياً، فبيتستبعد من تقارير القياسات ومن بيان التليفونات — حتى لو ليه
+// رقم أكونت أو بيانات فنية (بيان 131). الاستثناء الوحيد: تقرير «بيان فنى بدون بورت»
+// اللى الغرض منه بالظبط إظهار الأرقام دى.
+const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
+    SELECT 1 FROM phone_ports pf
+     WHERE pf.phone_number = ${fullPhoneExpr}
+       AND COALESCE(btrim(pf.frame::text), '') <> ''
+  )`;
+
 // ── تبعية الخط لفنى (تُستخدم فى نسبة الإزالة ونسبة التكرار وتقارير التفاصيل) ──
 // فنى المنطقة = صاحب الكابينة (cabinet_technicians)، لكن لو كان فى «راحه/إجازة» يوم
 // الشكوى فالمسؤول فعلياً هو فنى الوردية القائم بالعمل مكانه (shift_schedules.covers).
@@ -2673,6 +2683,8 @@ export async function registerRoutes(
     if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
 
     const conds: string[] = [];
+    // بيان التليفونات: أى رقم مالوش فريم مايظهرش (مش متركّب على المسان فعلياً)
+    conds.push(hasFrameSql("k.full_phone"));
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -2804,6 +2816,8 @@ export async function registerRoutes(
     // التقرير مبنى على line_accounts (الأرقام اللى لها أكونت) وليس phone_lines — علشان
     // يظهر أى رقم له أكونت حتى لو مالوش بيانات فنية (مش موجود فى phone_lines).
     const conds: string[] = ["la.account_no IS NOT NULL", "la.account_no <> ''"];
+    // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات — حتى لو ليه أكونت
+    conds.push(hasFrameSql("la.full_phone"));
     const params: any[] = [];
     // فلتر "لم يتم قياسها من قبل": لا يوجد أى سجل لهذا الخط فى شيت 138 (case_138)
     if (neverMeasured === "1" || neverMeasured === "true") {
@@ -2911,6 +2925,8 @@ export async function registerRoutes(
     const conds: string[] = ["la.full_phone IS NULL"];
     // استبعاد الخطوط المعلَّمة يدوياً بأنها "بدون رقم أكونت"
     conds.push("NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = k.full_phone)");
+    // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات
+    conds.push(hasFrameSql("k.full_phone"));
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -3016,6 +3032,52 @@ export async function registerRoutes(
       [fullPhone, oldNo, newNo, req.user.id, req.user.username],
     );
     res.json({ ok: true });
+  });
+
+  // GET /api/reports/lines-without-port — أرقام لها بيان فنى (131) لكن مالهاش بورت/فريم
+  // على المسان. دى الأرقام اللى بتتستبعد من كل تقارير القياسات وبيان التليفونات، فمحتاجة
+  // متابعة: يا إما تتركّب على المسان يا إما بيانها الفنى قديم ومحتاج تنظيف.
+  app.get("/api/reports/lines-without-port", requireAuth, async (req, res) => {
+    try {
+      const { central = "", cabin = "", box = "", search = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [`NOT ${hasFrameSql("pl.full_phone")}`];
+      if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+      if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
+      if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
+      const q = search.trim().toLowerCase();
+      if (q) {
+        params.push(`%${q}%`);
+        const p = `$${params.length}`;
+        conds.push(`(LOWER(COALESCE(pl.tel_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.full_phone::text,'')) LIKE ${p}
+          OR LOWER(COALESCE(pl.central::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabin_number::text,'')) LIKE ${p}
+          OR LOWER(COALESCE(pl.box_number::text,'')) LIKE ${p} OR LOWER(COALESCE(si.sub_name::text,'')) LIKE ${p})`);
+      }
+      const { rows } = await pool.query(
+        `SELECT pl.full_phone                              AS "fullPhone",
+                COALESCE(pl.tel_no, regexp_replace(pl.full_phone,'^88','')) AS "telNo",
+                pl.central, pl.cabin_number                AS "cabinNumber",
+                pl.box_number                              AS "boxNumber",
+                pl.dp_terminal                             AS "dpTerminal",
+                pl.idu_no AS "iduNo", pl.odu_no AS "oduNo",
+                pl.primary_block_no AS "primaryBlockNo", pl.cabinet_in AS "cabinetIn",
+                pl.sec_block_no AS "secBlockNo", pl.cabinet_out AS "cabinetOut",
+                pl.port AS "port131", pl.len,
+                la.account_no                              AS "accountNo",
+                si.sub_name AS "subName", si.sub_add AS "subAdd",
+                (SELECT MAX(c.uploaded_at) AT TIME ZONE 'Africa/Cairo'
+                   FROM case_138 c WHERE c.full_phone = pl.full_phone) AS "lastMeasTime"
+           FROM phone_lines pl
+           LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
+           LEFT JOIN line_subscriber_info si ON si.phone_number = pl.full_phone
+          WHERE ${conds.join(" AND ")}
+          ORDER BY pl.central NULLS LAST,
+                   LPAD(COALESCE(pl.cabin_number,''), 8, '0'),
+                   LPAD(COALESCE(pl.box_number,''), 8, '0'),
+                   pl.full_phone
+          LIMIT 20000`, params);
+      res.json({ data: rows, total: rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // GET /api/reports/duplicate-accounts — خطوط تليفون مختلفة لكن لها نفس رقم الأكونت
@@ -3188,7 +3250,8 @@ export async function registerRoutes(
     //   من صفحة بحث رقم التليفون (manual_faults) وممكن ملوش أى أثر فى 430D خالص — بدون قيد آخر شهر.
     const needComplaintAny = requireComplaintAny === "1" || requireComplaintAny === "true";
     const params: any[] = [];
-    const conds: string[] = [];
+    // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات
+    const conds: string[] = [hasFrameSql("m.full_phone")];
 
     // مصدر التقرير = أحدث قياس لكل رقم فى case_138 (مش phone_lines) — علشان تظهر كل الأرقام
     // المحتاجة رفع سرعة سواء لها بيانات فنية (موجودة فى phone_lines) أو لأ، وسواء لها شكوى أو لأ.
@@ -3285,7 +3348,8 @@ export async function registerRoutes(
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const params: any[] = [];
-    const conds: string[] = [];
+    // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات
+    const conds: string[] = [hasFrameSql("m.full_phone")];
 
     const joinClause = `FROM (
         SELECT * FROM (
@@ -3571,6 +3635,8 @@ export async function registerRoutes(
     plConds.push(`NOT EXISTS (
        SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone AND c.uploaded_at > regm.ref_time
     )`);
+    // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات
+    plConds.push(hasFrameSql("la.full_phone"));
 
     const regCte = `WITH reg AS (
        SELECT cd.phone_number AS short, MAX(cd.close_time) AS ref_time FROM complaint_details cd
@@ -3690,7 +3756,8 @@ export async function registerRoutes(
   app.get("/api/reports/cabinet-score-avg", requireAuth, async (req: any, res) => {
     const { central, cabin, msan } = req.query as Record<string, string>;
     const params: any[] = [];
-    const conds: string[] = [];
+    // أى رقم مالوش فريم مايدخلش فى متوسط القياسات
+    const conds: string[] = [hasFrameSql("la.full_phone")];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
     if (msan)    { params.push(msan);    conds.push(`ctm.cabin_code = $${params.length}`); }
@@ -3741,7 +3808,8 @@ export async function registerRoutes(
     try {
       const { central, cabin, box } = req.query as Record<string, string>;
       const params: any[] = [];
-      const conds: string[] = [];
+      // أى رقم مالوش فريم مايدخلش فى متوسط القياسات (المرساة هنا phone_lines مش line_accounts)
+      const conds: string[] = [hasFrameSql("pl.full_phone")];
       if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
       if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
       if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
