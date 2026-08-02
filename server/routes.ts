@@ -553,6 +553,37 @@ const cmpTechBest = (a: any, b: any) =>
 const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
   String(a.centralName ?? "").localeCompare(String(b.centralName ?? ""), "ar") || cmp(a, b);
 
+// ── تبعية الخط لفنى (تُستخدم فى نسبة الإزالة ونسبة التكرار وتقارير التفاصيل) ──
+// فنى المنطقة = صاحب الكابينة (cabinet_technicians)، لكن لو كان فى «راحه/إجازة» يوم
+// الشكوى فالمسؤول فعلياً هو فنى الوردية القائم بالعمل مكانه (shift_schedules.covers).
+// جدول الورديات: صف لكل (أسبوع يبدأ الجمعة، فنى)، وdays/covers 7 قيم من الجمعة للخميس.
+//   dateExpr = تعبير timestamp للشكوى (بيتحوّل لتوقيت القاهرة جوّه).
+const areaTechSql = (centralExpr: string, cabinExpr: string, dateExpr: string) => {
+  const cairo = `(${dateExpr} AT TIME ZONE 'Africa/Cairo')`;
+  const dt = `${cairo}::date`;                                              // يوم الشكوى
+  const di = `((EXTRACT(DOW FROM ${cairo})::int - 5 + 7) % 7)`;             // 0=الجمعة … 6=الخميس
+  return `
+  (SELECT COALESCE(NULLIF(btrim(COALESCE(s.covers->>${di}, '')), ''), tn.tech_name)
+     FROM cabinet_technicians ct
+     JOIN technician_names tn ON tn.worker_code = ct.worker_code
+     LEFT JOIN shift_schedules s
+       ON s.week_start = ${dt} - ${di}
+      AND btrim(s.tech_name) = btrim(tn.tech_name)
+      AND COALESCE(s.days->>${di}, '') IN ('راحه','إجازة')
+    WHERE ct.central_name = ${centralExpr} AND ct.cabin_number = ${cabinExpr}
+    LIMIT 1)`;
+};
+
+// التبعية الكاملة بالترتيب: (1) فنى الإغلاق المُدخَل يدوياً من السوبر أدمن — مرجع أساسى،
+// (2) كود عامل الإغلاق من 430D، (3) فنى المنطقة/الوردية أعلاه، (4) غير معروف.
+const effTechSql = (complainNoExpr: string, closeByExpr: string, centralExpr: string, cabinExpr: string, dateExpr: string) => `
+  COALESCE(
+    (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = ${complainNoExpr} LIMIT 1),
+    (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = ${closeByExpr} LIMIT 1),
+    ${areaTechSql(centralExpr, cabinExpr, dateExpr)},
+    'غير معروف'
+  )`;
+
 // يُرفق بكل طلب اسم فنى الكابينة المالك (cabinet_technicians) حسب (السنترال + رقم
 // الكابينة) — بصرف النظر عن من ردّ على الطلب. يُستخدم لفلتر "متعذراتى" للفنى.
 async function attachCabinetTech(orders: any[]): Promise<any[]> {
@@ -8116,17 +8147,8 @@ export async function registerRoutes(
         WITH base AS (
           SELECT
             cd.exchange_name                                AS central_name,
-            COALESCE(
-              -- مرجعية أولى: فنى الإغلاق المُضاف يدوياً بواسطة الأدمن
-              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = cd.complain_no LIMIT 1),
-              -- ثانياً: close_by كود عامل مباشر
-              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
-              -- احتياطاً: التبعية بالكابينة والسنترال
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no LIMIT 1),
-              'غير معروف'
-            )                                               AS tech_name,
+            ${effTechSql("cd.complain_no", "cd.close_by", "cd.exchange_name", "cd.cabinet_no", "cd.complain_time")}
+                                                            AS tech_name,
             COALESCE(cd.time_till_now, EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0) AS hours
           FROM complaint_details cd
           ${where}
@@ -8199,14 +8221,8 @@ export async function registerRoutes(
         WITH base AS (
           SELECT
             rc.exchange_name                                AS central_name,
-            COALESCE(
-              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = rc.complain_no LIMIT 1),
-              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = rc.close_by LIMIT 1),
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no LIMIT 1),
-              'غير معروف'
-            )                                               AS tech_name,
+            ${effTechSql("rc.complain_no", "rc.close_by", "rc.exchange_name", "rc.cabinet_no", "rc.complain_time")}
+                                                            AS tech_name,
             -- الـ 135 (مفتوح): المدة من الشكوى حتى الآن (حيّة)
             -- الـ 138 (أُزيل): المدة من الشكوى حتى وقت الإزالة الفعلى
             CASE
@@ -8287,14 +8303,8 @@ export async function registerRoutes(
         base AS (
           SELECT
             src.exchange_name                               AS central_name,
-            COALESCE(
-              (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = src.complain_no LIMIT 1),
-              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no LIMIT 1),
-              'غير معروف'
-            )                                               AS tech_name,
+            ${effTechSql("src.complain_no", "src.close_by", "src.exchange_name", "src.cabinet_no", "src.complain_time")}
+                                                            AS tech_name,
             CASE
               WHEN src.is_open
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
@@ -8357,13 +8367,7 @@ export async function registerRoutes(
             cd.phone_number,
             cd.close_time,
             cd.complain_time,
-            COALESCE(
-              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = cd.close_by LIMIT 1),
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no LIMIT 1),
-              'غير معروف'
-            ) AS tech_name
+            ${effTechSql("cd.complain_no", "cd.close_by", "cd.exchange_name", "cd.cabinet_no", "cd.complain_time")} AS tech_name
           FROM complaint_details cd
           WHERE cd.close_time IS NOT NULL
             AND cd.exchange_name ILIKE '%غنايم%'
@@ -8427,13 +8431,7 @@ export async function registerRoutes(
             rc.phone_number,
             rc.close_time,
             rc.complain_time,
-            COALESCE(
-              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = rc.close_by LIMIT 1),
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = rc.exchange_name AND ct.cabin_number = rc.cabinet_no LIMIT 1),
-              'غير معروف'
-            ) AS tech_name
+            ${effTechSql("rc.complain_no", "rc.close_by", "rc.exchange_name", "rc.cabinet_no", "rc.complain_time")} AS tech_name
           FROM remaining_complaints_current rc
           WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
@@ -8508,7 +8506,7 @@ export async function registerRoutes(
         -- يُحسب مرة واحدة، مع تفضيل النسخة المغلقة (src_priority=1) للتبعية الصحيحة
         src AS (
           SELECT DISTINCT ON (complain_no)
-            exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+            complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
           FROM src_raw
           ORDER BY complain_no, src_priority
         ),
@@ -8518,13 +8516,7 @@ export async function registerRoutes(
             po.phone_number,
             po.close_time,
             po.complain_time,
-            COALESCE(
-              (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = po.close_by LIMIT 1),
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = po.exchange_name AND ct.cabin_number = po.cabinet_no LIMIT 1),
-              'غير معروف'
-            ) AS tech_name
+            ${effTechSql("po.complain_no", "po.close_by", "po.exchange_name", "po.cabinet_no", "po.complain_time")} AS tech_name
           FROM src po
           WHERE TRUE ${dateClause}
         ),
@@ -8656,9 +8648,7 @@ export async function registerRoutes(
             )                                                                            AS "closeByName",
             EXISTS (SELECT 1 FROM manual_close_by mcb WHERE mcb.complain_no = src.complain_no) AS "closeByManual",
             COALESCE(
-              (SELECT tn.tech_name FROM cabinet_technicians ct
-                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
-                 WHERE ct.central_name = src.exchange_name AND ct.cabin_number = src.cabinet_no LIMIT 1),
+              ${areaTechSql("src.exchange_name", "src.cabinet_no", "src.complain_time")},
               'غير معروف'
             )                                                                            AS "areaTechName",
             (SELECT pl.cabin_number FROM phone_lines pl WHERE pl.tel_no = src.phone_number LIMIT 1)
@@ -8786,9 +8776,7 @@ export async function registerRoutes(
             'غير معروف'
           )                                                                            AS "closeByName",
           COALESCE(
-            (SELECT tn.tech_name FROM cabinet_technicians ct
-               JOIN technician_names tn ON tn.worker_code = ct.worker_code
-               WHERE ct.central_name = r.central_name AND ct.cabin_number = r.cabinet_no LIMIT 1),
+            ${areaTechSql("r.central_name", "r.cabinet_no", "r.complain_time")},
             'غير معروف'
           )                                                                            AS "areaTechName",
           (SELECT pl.cabin_number FROM phone_lines pl WHERE pl.tel_no = r.phone_number LIMIT 1)
