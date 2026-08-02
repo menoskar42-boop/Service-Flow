@@ -3738,8 +3738,10 @@ export async function registerRoutes(
   // === Work Orders (تركيبات) ===
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
 
-  // POST /api/work-orders/import — admin uploads تركيبات xlsx
-  app.post("/api/work-orders/import", requireAuth, requireAdmin, upload.single("file"), async (req: any, res) => {
+  // POST /api/work-orders/import — admin uploads تركيبات xlsx / csv
+  // requireAdminOrToken: يقبل كمان رفع تلقائى من سكربت التامبر منكى بـ X-Upload-Token
+  app.options("/api/work-orders/import", (_req, res) => { setUploadCors(res); res.sendStatus(204); });
+  app.post("/api/work-orders/import", requireAdminOrToken, upload.single("file"), async (req: any, res) => {
     if (!req.file) return res.status(400).json({ message: "لم يتم إرسال ملف" });
     try {
       const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
@@ -3750,7 +3752,15 @@ export async function registerRoutes(
       // Detect column indices from header row by partial (case-insensitive)
       // match — supports the WFM "Voice Installation Raw Data" English layout
       // as well as the older Arabic تركيبات layout.
-      const header = rows[0].map((h: any) => String(h ?? "").trim().toLowerCase());
+      // تصدير WFM بيحط سطر عنوان ("Voice Installation Raw Data Report") فوق سطر
+      // العناوين الحقيقى، فبندوّر على أول سطر فيه عمود معروف بدل ما نفترض rows[0].
+      const HEADER_ANCHORS = ["work order id", "امر الشغل", "رقم الامر", "service no", "التليفون"];
+      let hdrIdx = 0;
+      for (let i = 0; i < Math.min(15, rows.length); i++) {
+        const cells = (rows[i] || []).map((c: any) => String(c ?? "").trim().toLowerCase());
+        if (HEADER_ANCHORS.some((a) => cells.some((c) => c.includes(a)))) { hdrIdx = i; break; }
+      }
+      const header = rows[hdrIdx].map((h: any) => String(h ?? "").trim().toLowerCase());
       const findCol = (...keywords: string[]) =>
         header.findIndex((h) => h !== "" && keywords.some((k) => h.includes(k.toLowerCase())));
 
@@ -3767,7 +3777,7 @@ export async function registerRoutes(
       const iTech      = findCol("tech name", "اسم الفنى", "اسم الفني", "الفنى");
       const iMsan      = findCol("msan code", "msan", "الكابينة", "الكابينه");
       // العناوين الأصلية (بدون تصغير) لحفظ raw_data بكل خانات الشيت — القاعدة #10
-      const origHeader = rows[0].map((h: any) => String(h ?? "").trim());
+      const origHeader = rows[hdrIdx].map((h: any) => String(h ?? "").trim());
 
       // central header is blank in the WFM export → fall back to first column
       const g = (row: any[], detected: number, fallback: number) =>
@@ -3776,7 +3786,7 @@ export async function registerRoutes(
       const opt = (row: any[], detected: number) =>
         detected >= 0 ? (row[detected] ?? "") : "";
 
-      const dataRows = rows.slice(1).filter((r) => {
+      const dataRows = rows.slice(hdrIdx + 1).filter((r) => {
         const id = g(r, iWorkOrder, 1);
         return id !== "" && id !== null && id !== undefined;
       });
@@ -3835,7 +3845,7 @@ export async function registerRoutes(
              msan_code = COALESCE(EXCLUDED.msan_code, work_orders.msan_code),
              work_order_type_raw = COALESCE(EXCLUDED.work_order_type_raw, work_orders.work_order_type_raw),
              raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data)`,
-          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj), (req.user as any).id],
+          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj), (req.user as any)?.id ?? null],
         );
         if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
       }
@@ -5927,6 +5937,7 @@ export async function registerRoutes(
       { key: "/api/cabinet-technicians/import", table: "cabinet_technicians" },
       { key: "/api/cabinet-capacity/import",    table: "cabinet_capacity" },
       { key: "/api/technician-names/import",    table: "technician_names" },
+      { key: "/api/work-orders/import",         table: "work_orders" },
     ];
     const result: Record<string, string | null> = {};
     for (const { key, table } of tables) {
