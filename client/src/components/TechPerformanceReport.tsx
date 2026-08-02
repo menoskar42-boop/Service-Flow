@@ -540,11 +540,13 @@ export function TechPerformanceReport() {
 
       {/* بطاقات الأوزان */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* السطر الصغير مشتقّ من نفس ثوابت الدرجات (MAX_*) — كان مكتوب يدوى بأرقام
+            من نظام أوزان قديم فكان بيتعارض مع الرقم الكبير (مثلاً OM: 10 مقابل 25). */}
         {[
-          { label: "المتعذرات OM", max: MAX_OM, note: "مطلق — 100% تحقيق = 25" },
-          { label: "التكرار", max: MAX_REP, note: `مستهدف ${REP_TARGET}% = 20 درجة` },
-          { label: "الأعطال فى الألف", max: MAX_ADSL, note: `مستهدف ${ADSL_TARGET}/ألف = 20 درجة` },
-          { label: "نسبة الإزالة 24h", max: MAX_REM, note: "مطلق — 100% = 10 درجات" },
+          { label: "المتعذرات OM", max: MAX_OM, note: `مطلق — 100% تحقيق = ${MAX_OM} درجة` },
+          { label: "التكرار", max: MAX_REP, note: `مستهدف ${REP_TARGET}% أو أقل = ${MAX_REP} درجة` },
+          { label: "الأعطال فى الألف", max: MAX_ADSL, note: `مستهدف ${ADSL_TARGET}/ألف أو أقل = ${MAX_ADSL} درجة` },
+          { label: "نسبة الإزالة 24h", max: MAX_REM, note: `مطلق — 100% = ${MAX_REM} درجة` },
         ].map((item) => (
           <div key={item.label} className="rounded-lg border bg-white p-3 text-center shadow-sm">
             <div className="text-xl font-bold text-blue-800">{item.max} <span className="text-sm font-normal">درجة</span></div>
