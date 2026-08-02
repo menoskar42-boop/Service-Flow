@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
-import { Upload, FileDown, FileText, Loader2, BarChart3 } from "lucide-react";
+import { Upload, FileDown, FileText, Loader2, BarChart3, Search, X } from "lucide-react";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -44,8 +44,9 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [search, setSearch] = useState("");   // بحث برقم التليفون أو رقم أمر الشغل
 
-  const { data: orders = [], isFetching } = useQuery<WorkOrder[]>({
+  const { data: allOrders = [], isFetching } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders", dateFrom, dateTo, category, over24],
     queryFn: async () => {
       const p = new URLSearchParams();
@@ -58,6 +59,18 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
       return res.json();
     },
   });
+
+  // فلتر البحث: أرقام فقط عشان يطابق سواء كتبت 88-2656325 أو 2656325 أو 882656325.
+  // بيطبَّق على القائمة المعروضة والتصدير (Excel/PDF) والعدّاد — كلهم بيقروا orders.
+  const orders = useMemo(() => {
+    const q = search.replace(/\D/g, "");
+    if (!q) return allOrders;
+    return allOrders.filter((o) => {
+      const phone = String(o.phoneNumber ?? "").replace(/\D/g, "");
+      const wo = String(o.workOrderId ?? "");
+      return phone.includes(q) || wo.includes(q);
+    });
+  }, [allOrders, search]);
 
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -209,7 +222,29 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
             )}
           </div>
 
-          <div className="flex-1" />
+          {/* بحث برقم التليفون أو رقم أمر الشغل */}
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-xs text-muted-foreground block mb-1">بحث برقم التليفون أو رقم أمر الشغل</label>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="مثال: 2656325 أو 91230387"
+                className="w-full text-sm pr-8"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  title="مسح البحث"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
 
           {/* Export buttons */}
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={orders.length === 0} className="text-green-700 border-green-200 gap-1">
@@ -259,6 +294,9 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
       <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
         {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
         <span>إجمالي: <strong className="text-foreground">{orders.length}</strong> امر شغل</span>
+        {search.replace(/\D/g, "") && (
+          <span className="text-xs">(نتيجة البحث — من إجمالى {allOrders.length})</span>
+        )}
       </div>
 
       {/* Table */}
@@ -282,7 +320,11 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
               {orders.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
-                    {isFetching ? "جاري التحميل..." : "لا توجد بيانات — اختر نطاق تاريخ أو ارفع ملف تركيبات"}
+                    {isFetching
+                      ? "جاري التحميل..."
+                      : search.replace(/\D/g, "")
+                        ? "مفيش أمر شغل بالرقم ده — جرّب رقم تانى أو امسح البحث"
+                        : "لا توجد بيانات — اختر نطاق تاريخ أو ارفع ملف تركيبات"}
                   </TableCell>
                 </TableRow>
               ) : (
