@@ -3921,6 +3921,15 @@ export async function registerRoutes(
         purged = del.rowCount ?? 0;
       }
 
+      // وقت آخر رفع لأوامر الشغل — بيتسجّل مهما كانت النتيجة، حتى لو كل الخطوط
+      // موجودة بالفعل ومفيش صف جديد اتضاف. (uploaded_at بيتحط على INSERT بس، والـ
+      // ON CONFLICT DO UPDATE مابيلمسهوش، فكان «آخر تحديث» بيفضل قديم لو مفيش جديد.)
+      try {
+        await pool.query(
+          `INSERT INTO app_state (key, value, updated_at) VALUES ('work_orders_import_at', now()::text, now())
+           ON CONFLICT (key) DO UPDATE SET value = now()::text, updated_at = now()`);
+      } catch (e) {}
+
       console.log(`work-orders import: purged=${purged}, headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}`);
       res.json({ ok: true, inserted, skipped, purged, total: dataRows.length });
     } catch (e: any) {
@@ -6010,6 +6019,14 @@ export async function registerRoutes(
       const { rows } = await pool.query(`SELECT updated_at AS t FROM app_state WHERE key = 'phone_lines_import_at'`);
       result["/api/phone-lines/import"] = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
     } catch { result["/api/phone-lines/import"] = null; }
+    // آخر رفع لأوامر الشغل — من app_state (بيتسجّل حتى لو مفيش صفوف جديدة اتضافت).
+    // لو أحدث من MAX(uploaded_at) بناخده، وإلا نسيب اللى اتحسب من الجدول (رفعات قديمة).
+    try {
+      const { rows } = await pool.query(`SELECT updated_at AS t FROM app_state WHERE key = 'work_orders_import_at'`);
+      const stamp = rows[0]?.t ? (rows[0].t instanceof Date ? rows[0].t.toISOString() : String(rows[0].t)) : null;
+      const prev = result["/api/work-orders/import"];
+      if (stamp && (!prev || new Date(stamp) > new Date(prev))) result["/api/work-orders/import"] = stamp;
+    } catch {}
     res.json(result);
   });
 
