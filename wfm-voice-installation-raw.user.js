@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.0
+// @version      1.0.2
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -19,11 +19,15 @@
   const PASS = "Mon_oskar11";
   const SF_URL   = "https://service-flow-menoskar42.replit.app";
   const SF_TOKEN = "sf-auto-upload-2026";
-  const DAYS_BACK = 29;                       // من (النهاردة − 29) إلى النهاردة = 30 يوم
+  const DAYS_BACK = 30;                       // من (النهاردة − 30) إلى النهاردة — زى الاستخدام الفعلى (7/3 → 8/2)
   const REPORT_NAME   = "Voice Installation Raw Data Report";
   const CATEGORY_NAME = "FO Raw Data Reports";
+  // Sector/Region اختياريين: الحساب أصلاً محصور على GHNAT/Asuit، والتجربة الفعلية أثبتت
+  // إن Generate بالتواريخ بس بيرجّع البيانات كاملة (244 صف) وهما سايبين "Select".
+  // بنحاول نظبّطهم best-effort من غير ما نوقف التدفّق لو مانفعش.
   const SECTOR = "Middle Upper";
   const REGION = "Asuit Region";
+  const REQUIRE_SECTOR_REGION = false;
   const AUTO_CLOSE_MS = 20000;                // يقفل التاب بعد الرفع (0 = مايقفلش)
 
   /* ================== أدوات عامة ================== */
@@ -152,18 +156,79 @@
   // بيفتح الدروب المرتبط بالـ label ويختار العنصر اللى نصّه يطابق valueRe
   async function pickFromDropdown(boxEl, valueRe) {
     if (!boxEl) return false;
+
+    // (أ) لو <select> عادى: نختار مباشرةً من غير فتح قائمة
+    const nativeSel = boxEl.tagName === "SELECT" ? boxEl : boxEl.querySelector && boxEl.querySelector("select");
+    if (nativeSel) {
+      const opt = [...nativeSel.options].find((o) => valueRe.test(txt(o) || o.textContent || ""));
+      if (opt) {
+        nativeSel.value = opt.value;
+        for (const t of ["input", "change"]) { try { nativeSel.dispatchEvent(new Event(t, { bubbles: true })); } catch (e) {} }
+        return true;
+      }
+    }
+
+    // (ب) دروب مخصّص: افتحه ثم دوّر على العنصر
     fireClick(boxEl);
-    await sleep(700);
+    await sleep(800);
+
+    // بعض الدروبات فيها خانة بحث — الكتابة بتقلّل القائمة وبتسهّل المطابقة
+    const typeBox = qAll("input").find((i) => visible(i) && !/hidden|checkbox|radio/i.test(i.type || "") &&
+      (i === boxEl || (boxEl.contains && boxEl.contains(i)) || /search|filter/i.test((i.className || "") + (i.placeholder || ""))));
+    if (typeBox) { setValue(typeBox, "Voice Installation"); await sleep(900); }
+
+    const OPT_SEL = "li, .ng-option, .p-dropdown-item, [role='option'], option, .mat-option, .dropdown-item, .select2-results__option, td, div";
     const item = await waitFor(() => {
-      const cands = qAll("li, .ng-option, .p-dropdown-item, [role='option'], option, .mat-option")
-        .filter((el) => visible(el) && valueRe.test(txt(el)));
-      cands.sort((a, b) => txt(a).length - txt(b).length);   // الأقرب للنص المطلوب
+      const cands = qAll(OPT_SEL).filter((el) => {
+        if (!visible(el) || !valueRe.test(txt(el))) return false;
+        if (txt(el).length > 60) return false;                    // استبعد الحاويات الكبيرة
+        return !el.querySelector(OPT_SEL.split(", ")[0]);         // الأعمق (مش حاوية لعنصر تانى)
+      });
+      cands.sort((a, b) => txt(a).length - txt(b).length);        // الأقرب للنص المطلوب
       return cands[0] || null;
-    }, 8000);
+    }, 9000);
     if (!item) return false;
-    fireClick(item);
-    await sleep(500);
+    fireClick(item.closest("li,[role='option'],.ng-option,.p-dropdown-item,.dropdown-item") || item);
+    await sleep(600);
     return true;
+  }
+
+  // أزرار التحكّم فى اللوحة الجانبية (سهم الطى/الفتح) — ممنوع نضغطها بالغلط.
+  // دى كانت سبب «الشاشة البيضا»: الفلتر القديم كان بيطابق أى زر أيقونة بدون نص.
+  function isPanelToggle(el) {
+    const cls = String((el && el.className) || "");
+    const al  = String((el && el.getAttribute && (el.getAttribute("aria-label") || "")) || "");
+    return /toggle|collaps|expand|arrow|chevron|sidebar|menu/i.test(cls + " " + al);
+  }
+
+  // زر «+» بتاع Choose Report — بندوّر عليه جنب لابل "Choose Report" نفسه،
+  // ولو مالقيناهوش بنقبل زر نصّه "+" بالظبط (مش أى زر أيقونة فاضى).
+  function findPlusButton() {
+    for (const d of docs()) {
+      let lbls = [];
+      try {
+        lbls = [...d.querySelectorAll("label, span, div, h5, p, legend")]
+          .filter((e) => e.children.length === 0 && /Choose\s*Report/i.test(txt(e)));
+      } catch (e) { continue; }
+      for (const lbl of lbls) {
+        let p = lbl.parentElement;
+        for (let up = 0; up < 5 && p; up++, p = p.parentElement) {
+          const btns = [...p.querySelectorAll("button, a")].filter((b) => visible(b) && !isPanelToggle(b));
+          const plus = btns.find((b) => txt(b) === "+" || b.querySelector(".fa-plus, .pi-plus, [class*='plus']"));
+          if (plus) return plus;
+        }
+      }
+    }
+    return qAll("button, a").find((b) => visible(b) && !isPanelToggle(b) && txt(b) === "+") || null;
+  }
+
+  // لو اللوحة الجانبية اتطوت (شاشة بيضا) نرجّع نفتحها بالسهم
+  async function ensurePanelOpen() {
+    const listVisible = () => findByText("a, span, div, li", /FO\s*Raw\s*Data\s*Reports/i, 40);
+    if (listVisible()) return true;
+    const toggle = qAll("button, a, i, span").find((e) => visible(e) && isPanelToggle(e));
+    if (toggle) { fireClick(toggle); await sleep(1200); }
+    return !!listVisible();
   }
 
   // يلاقى الحاوية القابلة للضغط الخاصة بحقل عنوانه labelRe
@@ -313,28 +378,32 @@
 
     // 2) FO Raw Data Reports من قائمة Report Category
     banner("🗂️ اختيار «" + CATEGORY_NAME + "»…");
+    await ensurePanelOpen();
     const cat = await waitFor(() => findByText("a, span, div, li", /FO\s*Raw\s*Data\s*Reports/i, 40), 25000);
     if (!cat) { banner("❌ مش لاقى «FO Raw Data Reports»", "#b71c1c"); return; }
     fireClick(cat.closest("a,li,div") || cat);
-    await sleep(1800);
+    await sleep(2000);
+    await ensurePanelOpen();   // لو اتطوت اللوحة لأى سبب نرجّعها
 
-    // 3) زر «+» بتاع Choose Report
+    // 3) زر «+» بتاع Choose Report (مش سهم طى اللوحة)
     banner("➕ فتح Choose Report…");
-    const plus = await waitFor(() => {
-      // الزر الأخضر الصغير جنب "Choose Report"
-      const byIcon = qAll("button, a").filter((b) => visible(b) && /^\+?$/.test(txt(b)) &&
-        (b.querySelector("i,svg,.fa-plus") || txt(b) === "+"));
-      if (byIcon.length) return byIcon[0];
-      return findByText("button, a", /^\s*\+\s*$/, 3);
-    }, 20000);
+    const plus = await waitFor(findPlusButton, 20000);
     if (!plus) { banner("❌ مش لاقى زر «+»", "#b71c1c"); return; }
     fireClick(plus);
-    await sleep(1500);
+    await sleep(1800);
 
     // 4) من مودال Choose Report: اختَر اسم التقرير ثم Add Report
     banner("📄 اختيار «" + REPORT_NAME + "»…");
-    const sel = await waitFor(() =>
-      fieldBoxByLabel(/Report\s*Name/i) || findByText("span, div, input", /Select\s*Report/i, 30), 15000);
+    // ننتظر المودال نفسه يظهر (فيه لابل Report Name)
+    await waitFor(() => findByText("label, span, div, h4, h5", /Report\s*Name/i, 30), 12000);
+    // الكومبوبوكس نفسه: الأفضل عنصر placeholder/نصّه «Select Report»، وإلا بالـ label
+    const sel = await waitFor(() => {
+      const byPh = qAll("input[placeholder], ng-select, .ng-select")
+        .find((e) => visible(e) && /Select\s*Report/i.test(e.getAttribute("placeholder") || txt(e)));
+      return byPh
+          || findByText("span, div", /^\s*Select\s*Report\s*$/i, 20)
+          || fieldBoxByLabel(/Report\s*Name/i);
+    }, 15000);
     const okPick = await pickFromDropdown(sel, new RegExp(REPORT_NAME.replace(/\s+/g, "\\s*"), "i"));
     if (!okPick) { banner("❌ مش قادر أختار اسم التقرير", "#b71c1c"); return; }
     await sleep(500);
@@ -352,22 +421,37 @@
     if (toIn)   setDateInput(toIn, to);
     await sleep(600);
 
-    banner("🌍 Sector / Region…");
-    const secBox = fieldBoxByLabel(/^\s*Sector\s*$/i);
-    if (secBox) await pickFromDropdown(secBox, new RegExp(SECTOR.replace(/\s+/g, "\\s*"), "i"));
-    await sleep(500);
-    const regBox = fieldBoxByLabel(/^\s*Region\s*$/i);
-    if (regBox) await pickFromDropdown(regBox, new RegExp(REGION.replace(/\s+/g, "\\s*"), "i"));
-    await sleep(600);
+    // Sector/Region — محاولة اختيارية فقط. لو الدروب مااستجابش بنكمّل عادى، لأن الحساب
+    // محصور أصلاً على المنطقة وGenerate بالتواريخ بس بيرجّع نفس البيانات.
+    if (REQUIRE_SECTOR_REGION) {
+      banner("🌍 Sector / Region…");
+      const secBox = fieldBoxByLabel(/^\s*Sector\s*$/i);
+      if (secBox) await pickFromDropdown(secBox, new RegExp(SECTOR.replace(/\s+/g, "\\s*"), "i"));
+      await sleep(500);
+      const regBox = fieldBoxByLabel(/^\s*Region\s*$/i);
+      if (regBox) await pickFromDropdown(regBox, new RegExp(REGION.replace(/\s+/g, "\\s*"), "i"));
+      await sleep(600);
+    }
 
     // 6) Generate
     banner("⚙️ Generate…");
     const gen = await waitFor(() => findByText("button, a", /^\s*Generate\s*$/i, 20), 15000);
     if (!gen) { banner("❌ مش لاقى زر Generate", "#b71c1c"); return; }
     fireClick(gen);
-    // نستنّى الجدول يظهر (أو على الأقل زر Export يتفعّل)
-    await waitFor(() => findByText("button, a", /^\s*Export\s*$/i, 15), 90000);
-    await sleep(4000);
+
+    // نستنّى صفوف فعلية — زر Export بيبقى موجود حتى مع «No Rows To Show»،
+    // فالانتظار عليه لوحده كان ممكن يصدّر ملف فاضى. العلامة الأكيدة: عدّاد
+    // الصفحات بيتحوّل من «0 to 0 of 0» لأرقام حقيقية.
+    const hasRows = await waitFor(() => {
+      const t = docs().map((d) => { try { return d.body ? d.body.innerText : ""; } catch (e) { return ""; } }).join(" ");
+      if (/No\s*Rows\s*To\s*Show/i.test(t)) return null;
+      const m = t.match(/(\d+)\s*to\s*(\d+)\s*of\s*(\d+)/i);
+      return m && Number(m[3]) > 0 ? m[3] : null;
+    }, 120000, 800);
+
+    if (!hasRows) { banner("⚠️ Generate مارجّعش صفوف — راجع التواريخ.", "#ef6c00"); return; }
+    banner(`✅ ظهر ${hasRows} صف — جارٍ التصدير…`);
+    await sleep(2500);
 
     // 7) Export
     banner("⬇️ Export…");
