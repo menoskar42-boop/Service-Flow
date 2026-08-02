@@ -5677,6 +5677,7 @@ export async function registerRoutes(
     try {
       await client.query("BEGIN");
       let markedNoAccount = 0;
+      let clearedAccounts = 0;
       for (const fullPhone of [...new Set(noAccount)]) {
         const r = await client.query(
           `INSERT INTO lines_no_account (full_phone, marked_by_name)
@@ -5685,6 +5686,21 @@ export async function registerRoutes(
           [fullPhone],
         );
         markedNoAccount += r.rowCount ?? 0;
+
+        // Customer360 قال «Subscriber information is not exist» ⇒ الخط ملوش أكونت
+        // حالياً، فأى رقم أكونت متسجّل عليه بقى قديم/غلط ولازم يتشال — ده اللى بيحلّ
+        // الأكونتات المكررة (رقم أكونت واحد متسجّل على خطين والخط ده مابقاش صاحبه).
+        const { rows: had } = await client.query(
+          `SELECT account_no FROM line_accounts WHERE full_phone = $1`, [fullPhone]);
+        if (had.length) {
+          await client.query(`DELETE FROM line_accounts WHERE full_phone = $1`, [fullPhone]);
+          clearedAccounts++;
+          // سجل التعديل عشان يظهر فى تقرير «تعديلات الأكونت» (الجديد = فاضى يعنى اتشال)
+          await client.query(
+            `INSERT INTO line_account_edits (full_phone, old_account_no, new_account_no, edited_by_name)
+             VALUES ($1, $2, '', 'customer360 (غير موجود)')`,
+            [fullPhone, had[0].account_no ?? null]);
+        }
       }
       let saved = 0;
       for (const e of clean) {
@@ -5712,7 +5728,7 @@ export async function registerRoutes(
         saved++;
       }
       await client.query("COMMIT");
-      res.json({ saved, markedNoAccount });
+      res.json({ saved, markedNoAccount, clearedAccounts });
     } catch (err: any) {
       await client.query("ROLLBACK");
       res.status(500).json({ message: err.message });
