@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.5
+// @version      1.0.6
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -361,15 +361,19 @@
     return out.sort((a, b) => txt(a).length - txt(b).length);
   }
 
-  // حاوية الحقل: أقرب أب فيه input (وغالباً معاه زر التقويم)
+  // حقل اللابل = أول input **بعد** اللابل فى ترتيب المستند.
+  // مهم جداً: الصعود للأب المشترك كان بيرجّع أول input فى الصف (From Date) حتى لما
+  // نطلب To Date — فخطوة «إلى» كانت بتكتب فوق خانة «من» وتسيب «إلى» فاضية.
+  const realInputs = () =>
+    qAll("input").filter((i) => visible(i) && !/hidden|button|submit|checkbox|radio/i.test(i.type || ""));
+
   function fieldGroup(labelRe) {
     for (const lbl of labelsMatching(labelRe)) {
-      let p = lbl.parentElement;
-      for (let up = 0; up < 5 && p; up++, p = p.parentElement) {
-        const inp = [...p.querySelectorAll("input")]
-          .find((i) => visible(i) && !/hidden|button|submit|checkbox|radio/i.test(i.type || ""));
-        if (inp) return { group: p, input: inp };
-      }
+      const after = (el) => !!(lbl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const input = realInputs().find(after);
+      if (!input) continue;
+      const toggle = qAll("button").filter((b) => visible(b) && after(b))[0] || null;
+      return { input, toggle, label: lbl };
     }
     return null;
   }
@@ -407,15 +411,24 @@
     return { prev, next };
   }
 
+  // حاوية التقويم المفتوح (عشان ندوّر على أيام الشهر جوّاها بس مش فى الصفحة كلها)
+  function calendarRoot(hdrEl) {
+    let p = hdrEl;
+    for (let up = 0; up < 8 && p; up++, p = p.parentElement) {
+      // الحاوية الصح فيها شبكة أيام (أرقام كتير من 1 لـ 28+)
+      const nums = [...p.querySelectorAll("td, button, div, span")]
+        .filter((e) => /^\d{1,2}$/.test(txt(e))).length;
+      if (nums >= 20) return p;
+    }
+    return hdrEl.parentElement || document.body;
+  }
+
   // يفتح تقويم الحقل ويختار اليوم المطلوب
   async function pickDateViaCalendar(labelRe, target) {
     const g = fieldGroup(labelRe);
     if (!g) return false;
 
-    // زر التقويم جنب الخانة (أيقونة) — وإلا نضغط الخانة نفسها
-    const toggle = [...g.group.querySelectorAll("button")].find(visible) || g.input;
-    fireClick(toggle);
-
+    fireClick(g.toggle || g.input);          // زر أيقونة التقويم، وإلا الخانة نفسها
     const hdr0 = await waitFor(calendarHeader, 8000, 250);
     if (!hdr0) return false;
 
@@ -432,18 +445,23 @@
       fireClick(btn);
       await sleep(350);
     }
+    // لازم نكون وصلنا للشهر الصح — وإلا هنضغط يوم من شهر غلط
+    const h2 = calendarHeader();
+    if (!h2 || h2.year * 12 + h2.month !== want) return false;
 
-    // نضغط رقم اليوم داخل شبكة التقويم (نستبعد الأيام المعطّلة)
+    // نضغط رقم اليوم **جوّه شبكة التقويم فقط** (نستبعد الأيام المعطّلة)
+    const root = calendarRoot(h2.el);
     const day = String(target.getDate());
     const cell = await waitFor(() => {
-      const cands = qAll("td, button, div, span").filter((e) => {
-        if (!visible(e) || txt(e) !== day) return false;
-        if (e.getAttribute("aria-disabled") === "true" || e.disabled) return false;
-        const cls = String(e.className || "");
-        return !/disabled/i.test(cls);
-      });
-      // الأعمق: العنصر اللى مفيهوش عنصر تانى بنفس النص
-      cands.sort((a, b) => (a.children.length - b.children.length));
+      let cands = [];
+      try {
+        cands = [...root.querySelectorAll("td, button, div, span")].filter((e) => {
+          if (!visible(e) || txt(e) !== day) return false;
+          if (e.getAttribute("aria-disabled") === "true" || e.disabled) return false;
+          return !/disabled/i.test(String(e.className || ""));
+        });
+      } catch (e) {}
+      cands.sort((a, b) => a.children.length - b.children.length);   // الأعمق
       return cands[0] || null;
     }, 6000, 250);
     if (!cell) return false;
@@ -623,7 +641,12 @@
     if (!(await setOneDate(/To\s*Date/i, toIn, to, "إلى"))) {
       banner("❌ مش قادر أحدّد «To Date»", "#b71c1c"); return;
     }
-    banner(`✅ التواريخ: ${String(fromIn.value).trim()} → ${String(toIn.value).trim()}`);
+    // تحقّق نهائى: الخانتين مختلفتين ومملوءتين (كان بيحصل إن خطوة «إلى» تكتب فوق «من»)
+    const fv = String(fromIn.value || "").trim(), tv = String(toIn.value || "").trim();
+    if (!fv || !tv || fromIn === toIn || fv === tv) {
+      banner(`❌ التواريخ مش مظبوطة (من: ${fv || "فاضى"} / إلى: ${tv || "فاضى"})`, "#b71c1c"); return;
+    }
+    banner(`✅ التواريخ: ${fv} → ${tv}`);
     await sleep(600);
 
     // Sector/Region — محاولة اختيارية فقط. لو الدروب مااستجابش بنكمّل عادى، لأن الحساب
