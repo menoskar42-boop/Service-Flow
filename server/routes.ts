@@ -1615,6 +1615,60 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/exec-queue/batches — كل الباتشات (تاريخياً) مهما كانت أولويتها وحالتها:
+  // اكتملت / جزئى / أُلغِيت / لسه فى الطابور / موقّفة مؤقتاً. ?from=&to=
+  app.get("/api/exec-queue/batches", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      await expireOrphanedExecJobs();
+      let from = String((req.query.from as string) || "").trim();
+      let to   = String((req.query.to as string) || "").trim();
+      if (from && to && from > to) { const t = from; from = to; to = t; }   // نطاق مقلوب
+      const params: any[] = [];
+      const conds: string[] = ["batch_id IS NOT NULL"];
+      if (from) { params.push(from); conds.push(`created_at >= $${params.length}`); }
+      if (to)   { params.push(to + " 23:59:59"); conds.push(`created_at <= $${params.length}`); }
+
+      // نتائج تعتبر «خلصت بإيرور» (المهمة قفلت من غير نتيجة سليمة)
+      const ERR = `('tab_closed','timeout','stopped','preempted')`;
+      const { rows } = await pool.query(
+        `SELECT batch_id                                                        AS "batchId",
+                MIN(type)                                                       AS type,
+                MIN(priority)::int                                              AS priority,
+                MIN(requested_by)                                               AS "requestedBy",
+                MIN(note)                                                       AS note,
+                COUNT(*)::int                                                   AS total,
+                COUNT(*) FILTER (WHERE status = 'done')::int                    AS done,
+                COUNT(*) FILTER (WHERE status = 'done'
+                   AND (result IS NULL OR result NOT IN ${ERR}))::int           AS "doneOk",
+                COUNT(*) FILTER (WHERE status = 'done'
+                   AND result IN ${ERR})::int                                   AS "doneErr",
+                COUNT(*) FILTER (WHERE status = 'stale')::int                   AS canceled,
+                COUNT(*) FILTER (WHERE status = 'pending')::int                 AS pending,
+                COUNT(*) FILTER (WHERE status = 'claimed')::int                 AS running,
+                bool_or(status = 'pending' AND paused_at IS NOT NULL)           AS paused,
+                (MIN(created_at) AT TIME ZONE 'Africa/Cairo')                   AS "createdAt",
+                (MAX(done_at)    AT TIME ZONE 'Africa/Cairo')                   AS "finishedAt"
+           FROM exec_jobs
+          WHERE ${conds.join(" AND ")}
+          GROUP BY batch_id
+          ORDER BY MIN(created_at) DESC
+          LIMIT 1000`, params);
+
+      // حالة الباتش المحسوبة (نفس منطق العرض فى الطابور)
+      const data = rows.map((b: any) => {
+        const active = (b.pending || 0) + (b.running || 0);
+        let state: string;
+        if (active > 0) state = b.paused ? "موقّف مؤقتاً" : (b.running > 0 ? "جارٍ التنفيذ" : "فى الطابور");
+        else if (b.total > 0 && b.canceled === b.total) state = "أُلغِيت بالكامل";
+        else if (b.done === b.total) state = "اكتملت";
+        else if (b.done > 0) state = "اكتملت جزئياً";
+        else state = "لم تُنفَّذ";
+        return { ...b, active, state };
+      });
+      res.json({ data });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // إلغاء مهام محددة من الطابور (سوبر أدمن): بالـ id (رقم/خط واحد) أو batch_id (باتش كامل).
   app.post("/api/exec-queue/cancel", requireAuth, requireSuperAdmin, async (req, res) => {
     try {

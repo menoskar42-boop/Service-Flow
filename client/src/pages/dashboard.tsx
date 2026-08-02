@@ -50,6 +50,7 @@ import { DailyAutoRefresh } from "@/components/DailyAutoRefresh";
 import { ExecQueueWatcher } from "@/components/ExecQueueWatcher";
 import { ExecJobsReport } from "@/components/ExecJobsReport";
 import { QueueReorderPanel } from "@/components/QueueReorderPanel";
+import { ExecBatchesReport } from "@/components/ExecBatchesReport";
 import { ManualCurrentFaultsReport } from "@/components/ManualCurrentFaultsReport";
 import { EngineeringInspectionReport } from "@/components/EngineeringInspectionReport";
 import { MajorFaultsReport } from "@/components/MajorFaultsReport";
@@ -70,7 +71,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -200,6 +201,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     icon: Server,
     items: [
       { id: "exec-jobs", label: "سجل القياس/رفع السرعة/الإيقاف" },
+      { id: "exec-batches", label: "سجل كل الباتشات (المنفَّذة والملغاة)" },
       { id: "queue-reorder", label: "ترتيب الطابور (الباتشات المؤجّلة)" },
     ],
   },
@@ -651,6 +653,7 @@ export default function Dashboard() {
               {reportTab === "manual-regularized-range" && <ManualRegularizedFaultsRangeReport />}
               {reportTab === "exec-jobs"           && isSuperAdmin && <ExecJobsReport />}
               {reportTab === "queue-reorder"       && isSuperAdmin && <QueueReorderPanel />}
+              {reportTab === "exec-batches"        && isSuperAdmin && <ExecBatchesReport />}
             </div>
           </div>
         )}
