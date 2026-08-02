@@ -7,8 +7,10 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat2, Clock } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat2, Clock, Pencil, Save, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SearchableCombobox } from "@/components/ui/searchable-combobox";
+import { closeReason } from "@/lib/close-codes";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -23,7 +25,7 @@ interface Beyond24Row {
   complainNo: string; phoneNumber: string; centralName: string; cabinetNo: string;
   complainTime: string; closeTime: string; closeCode: string | null; hours: number;
   closeByName: string; areaTechName: string; lineCabin: string | null; lineBox: string | null;
-  msanCode: string | null; frame: string | null;
+  msanCode: string | null; frame: string | null; subName: string | null; subAdd: string | null;
 }
 
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
@@ -93,6 +95,49 @@ export function TechPerformanceReport() {
   const [b24Data, setB24Data] = useState<Beyond24Row[] | null>(null);
   const [b24Loading, setB24Loading] = useState(false);
   const [central, setCentral]   = useState("");
+
+  // تعيين/تعديل فنى الإغلاق يدوياً (سوبر أدمن فقط) — نفس آلية إحصائيات التكرار
+  const canEditTech = user?.role === ROLES.SUPER_ADMIN;
+  const [editingTech, setEditingTech] = useState<string | null>(null); // complainNo
+  const [editTechDraft, setEditTechDraft] = useState("");
+  const [savingTech, setSavingTech] = useState(false);
+  const { data: techNamesList } = useQuery<{ workerCode: string; techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    queryFn: async () => {
+      const res = await fetch("/api/technician-names", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل تحميل أسماء الفنيين");
+      return res.json();
+    },
+    enabled: canEditTech,
+  });
+  const techNameOptions = [
+    ...new Set((techNamesList ?? []).map((t) => (t.techName ?? "").trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, "ar"));
+  const startEditTech = (complainNo: string, closeByName: string) => {
+    setEditingTech(complainNo);
+    setEditTechDraft(closeByName === "غير معروف" ? "" : (closeByName ?? ""));
+  };
+  const handleSaveCloseTech = async (complainNo: string) => {
+    const tech = editTechDraft.trim();
+    if (!tech) return;
+    setSavingTech(true);
+    try {
+      const res = await fetch("/api/manual-close-by", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ complainNo, techName: tech }),
+      });
+      if (!res.ok) throw new Error("فشل الحفظ");
+      setRepDetailData((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech } : r) : prev);
+      setB24Data((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech } : r) : prev);
+      setEditingTech(null);
+    } catch {
+      alert("تعذّر حفظ فنى الإغلاق");
+    } finally {
+      setSavingTech(false);
+    }
+  };
 
   const buildParams = (extra?: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -437,10 +482,12 @@ export function TechPerformanceReport() {
   const exportB24 = () => {
     if (!b24Filtered.length) return;
     const ws = XLSX.utils.json_to_sheet(b24Filtered.map((r, i) => ({
-      "#": i + 1, "رقم التليفون": r.phoneNumber, "السنترال": r.centralName,
-      "الكابينه": r.lineCabin ?? r.cabinetNo ?? "", "البكس": r.lineBox ?? "", "MSAN": r.msanCode ?? "",
-      "رقم الشكوى": r.complainNo, "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
-      "عدد الساعات": Math.round(r.hours), "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
+      "#": i + 1, "رقم الشكوى": r.complainNo, "رقم التليفون": r.phoneNumber,
+      "اسم العميل": r.subName ?? "", "العنوان": r.subAdd ?? "", "السنترال": r.centralName,
+      "الكابينه": r.lineCabin ?? r.cabinetNo ?? "", "البكس": r.lineBox ?? "", "كود MSAN": r.msanCode ?? "",
+      "الفريم": r.frame ?? "", "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
+      "عدد الساعات": Math.round(r.hours), "سبب الإغلاق": r.closeCode ? (closeReason(r.closeCode) || r.closeCode) : "",
+      "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "تجاوزت 24 ساعة");
@@ -609,7 +656,35 @@ export function TechPerformanceReport() {
                       <TableCell className="text-center font-bold">{r.appearances}</TableCell>
                       <TableCell className="text-center">{r.complainNo}</TableCell>
                       <TableCell className="whitespace-nowrap text-center">{r.closeCode ?? "-"}</TableCell>
-                      <TableCell className="whitespace-nowrap">{r.closeByName}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {editingTech === r.complainNo ? (
+                          <span className="inline-flex items-center gap-1">
+                            <SearchableCombobox
+                              options={techNameOptions}
+                              value={editTechDraft}
+                              onChange={setEditTechDraft}
+                              placeholder="اختر اسم الفنى"
+                              searchPlaceholder="ابحث عن فنى..."
+                              className="w-40 text-xs"
+                            />
+                            <button onClick={() => handleSaveCloseTech(r.complainNo)} disabled={savingTech || !editTechDraft.trim()} className="text-green-600 hover:text-green-800 disabled:opacity-40" title="حفظ">
+                              {savingTech ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                            </button>
+                            <button onClick={() => setEditingTech(null)} className="text-gray-400 hover:text-gray-600" title="إلغاء">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <span>{r.closeByName}</span>
+                            {canEditTech && (
+                              <button onClick={() => startEditTech(r.complainNo, r.closeByName)} className="text-amber-500 hover:text-amber-700" title="تعيين فنى الإغلاق يدوياً">
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">{r.areaTechName}</TableCell>
                     </TableRow>
                   ))}
@@ -648,7 +723,7 @@ export function TechPerformanceReport() {
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-orange-700 hover:bg-orange-700">
-                    {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "رقم الشكوى", "وقت الشكوى", "ساعات", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                    {["#", "رقم الشكوى", "رقم التليفون", "اسم العميل", "العنوان", "السنترال", "الكابينة", "البكس", "كود MSAN", "الفريم", "وقت الشكوى", "تاريخ الإغلاق", "ساعات", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
                       <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
                     ))}
                   </TableRow>
@@ -657,14 +732,50 @@ export function TechPerformanceReport() {
                   {b24Filtered.map((r, i) => (
                     <TableRow key={r.complainNo + "-" + i} className="hover:bg-muted/30">
                       <TableCell className="text-center">{i + 1}</TableCell>
-                      <TableCell className="text-center">{r.phoneNumber}</TableCell>
+                      <TableCell className="text-center font-mono">{r.complainNo}</TableCell>
+                      <TableCell className="text-center font-bold">{r.phoneNumber}</TableCell>
+                      <TableCell className="whitespace-nowrap">{r.subName ?? "—"}</TableCell>
+                      <TableCell className="max-w-[220px] truncate" title={r.subAdd ?? ""}>{r.subAdd ?? "—"}</TableCell>
                       <TableCell>{r.centralName}</TableCell>
                       <TableCell className="text-center">{r.lineCabin ?? r.cabinetNo ?? "-"}</TableCell>
                       <TableCell className="text-center">{r.lineBox ?? "-"}</TableCell>
-                      <TableCell className="text-center">{r.complainNo}</TableCell>
+                      <TableCell className="text-center font-mono">{r.msanCode ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.frame ?? "-"}</TableCell>
                       <TableCell className="text-center whitespace-nowrap">{fmtDT(r.complainTime)}</TableCell>
+                      <TableCell className="text-center whitespace-nowrap">{fmtDT(r.closeTime)}</TableCell>
                       <TableCell className="text-center font-bold text-red-600">{Math.round(r.hours)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{r.closeByName}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs" title={r.closeCode ? `كود ${r.closeCode}` : ""}>
+                        {r.closeCode ? (closeReason(r.closeCode) || `كود ${r.closeCode}`) : "-"}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {editingTech === r.complainNo ? (
+                          <span className="inline-flex items-center gap-1">
+                            <SearchableCombobox
+                              options={techNameOptions}
+                              value={editTechDraft}
+                              onChange={setEditTechDraft}
+                              placeholder="اختر اسم الفنى"
+                              searchPlaceholder="ابحث عن فنى..."
+                              className="w-40 text-xs"
+                            />
+                            <button onClick={() => handleSaveCloseTech(r.complainNo)} disabled={savingTech || !editTechDraft.trim()} className="text-green-600 hover:text-green-800 disabled:opacity-40" title="حفظ">
+                              {savingTech ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                            </button>
+                            <button onClick={() => setEditingTech(null)} className="text-gray-400 hover:text-gray-600" title="إلغاء">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            <span>{r.closeByName}</span>
+                            {canEditTech && (
+                              <button onClick={() => startEditTech(r.complainNo, r.closeByName)} className="text-amber-500 hover:text-amber-700" title="تعيين فنى الإغلاق يدوياً">
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">{r.areaTechName}</TableCell>
                     </TableRow>
                   ))}
