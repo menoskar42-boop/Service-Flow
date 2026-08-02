@@ -1394,7 +1394,7 @@ export async function registerRoutes(
     try {
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
-         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending'
+         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' AND paused_at IS NULL
                      ORDER BY priority DESC,
                               CASE WHEN queue_order > 0 THEN queue_order ELSE 9223372036854775807 END ASC,
                               created_at, id
@@ -1482,6 +1482,7 @@ export async function registerRoutes(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
                 MIN(priority)::int AS priority,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
+                bool_or(status = 'pending' AND paused_at IS NOT NULL) AS paused,
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt"
          FROM exec_jobs
          WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority IN (1, 2) AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
@@ -1499,6 +1500,7 @@ export async function registerRoutes(
       const { rows } = await pool.query(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
+                bool_or(status = 'pending' AND paused_at IS NOT NULL) AS paused,
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt", MAX(queue_order) AS "queueOrder"
          FROM exec_jobs
          WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority = 0 AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
@@ -1597,6 +1599,52 @@ export async function registerRoutes(
         params,
       );
       res.json({ ok: true, canceled: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // إيقاف مؤقت لباتش معيّن (سوبر أدمن): بيعلّم مهامه pending كـ paused فيتخطّاها جهاز التنفيذ
+  // (claim) ويكمّل مباشرة التالى فى الترتيب — عكس /cancel، ده قابل للاستئناف ومش بيلغى حاجة.
+  app.post("/api/exec-queue/pause", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const batchId = String(req.body?.batchId || "").trim();
+      if (!batchId) return res.status(400).json({ message: "لا يوجد باتش" });
+      const { rowCount } = await pool.query(
+        `UPDATE exec_jobs SET paused_at = now() WHERE batch_id = $1 AND status = 'pending' AND paused_at IS NULL`,
+        [batchId],
+      );
+      res.json({ ok: true, paused: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // استئناف باتش موقَّف مؤقتاً (سوبر أدمن).
+  app.post("/api/exec-queue/resume", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const batchId = String(req.body?.batchId || "").trim();
+      if (!batchId) return res.status(400).json({ message: "لا يوجد باتش" });
+      const { rowCount } = await pool.query(
+        `UPDATE exec_jobs SET paused_at = NULL WHERE batch_id = $1 AND paused_at IS NOT NULL`,
+        [batchId],
+      );
+      res.json({ ok: true, resumed: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // إيقاف مؤقت لكل الطابور دفعة واحدة (سوبر أدمن) — كل المهام pending بتتوقّف عن الاستلام
+  // لحد الاستئناف، من غير ما تتلغى ومن غير ما توقف الخط اللى شغّال دلوقتى.
+  app.post("/api/exec-queue/pause-all", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rowCount } = await pool.query(
+        `UPDATE exec_jobs SET paused_at = now() WHERE status = 'pending' AND paused_at IS NULL`);
+      res.json({ ok: true, paused: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // استئناف كل الباتشات الموقَّفة مؤقتاً دفعة واحدة (سوبر أدمن).
+  app.post("/api/exec-queue/resume-all", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rowCount } = await pool.query(
+        `UPDATE exec_jobs SET paused_at = NULL WHERE paused_at IS NOT NULL`);
+      res.json({ ok: true, resumed: rowCount ?? 0 });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

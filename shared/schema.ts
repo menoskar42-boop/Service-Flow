@@ -630,6 +630,7 @@ export const execJobs = pgTable("exec_jobs", {
   priority: integer("priority").notNull().default(0), // 2 = ≤3 خطوط (أعلى) | 1 = تقرير محتاجة رفع سرعة | 0 = باتش كبير عادى
   batchId: text("batch_id"), // معرّف الباتش: كل مهام الباتش الواحد (المقسّم لخطوط) ليها نفس القيمة — لتتبّع «تم X من N»
   queueOrder: bigint("queue_order", { mode: "number" }).notNull().default(0), // ترتيب يدوى داخل نفس الأولوية (السوبر أدمن)
+  pausedAt: timestamp("paused_at"), // إيقاف مؤقت (سوبر أدمن) — جهاز التنفيذ يتخطّى المهام دى ويكمّل التالى
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

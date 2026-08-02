@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban } from "lucide-react";
+import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban, Pause, Play } from "lucide-react";
 
 // ترتيب باتشات «الأولوية المتأخرة» (>3 خطوط من غير تقرير محتاجة رفع سرعة) — للسوبر أدمن.
 // الأولويات الأعلى (≤3 خطوط، ثم محتاجة رفع سرعة) بتتنفّذ قبلها دايماً ومش بتتأثر بالترتيب ده.
@@ -12,6 +12,7 @@ interface Batch {
   note: string | null;
   total: number;
   done: number;
+  paused: boolean;
   createdAt: string | null;
   queueOrder: number;
 }
@@ -37,6 +38,7 @@ export function QueueReorderPanel() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [canceling, setCanceling] = useState<string | null>(null); // batchId اللى بيتلغى دلوقتى
+  const [pausing, setPausing] = useState<string | null>(null); // batchId اللى بيتوقّف/يستأنف دلوقتى ("all" للكل)
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,12 +95,53 @@ export function QueueReorderPanel() {
     } catch { alert("تعذّر إلغاء الباتش"); } finally { setCanceling(null); }
   };
 
+  // إيقاف مؤقت/استئناف باتش واحد — بيتخطّاه جهاز التنفيذ ويكمّل التالى فى الترتيب فوراً، وقابل للاستئناف.
+  const togglePauseBatch = async (batchId: string, paused: boolean) => {
+    setPausing(batchId);
+    try {
+      const r = await fetch(`/api/exec-queue/${paused ? "resume" : "pause"}`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId }),
+      });
+      const d = await r.json();
+      if (r.ok && d?.ok) await load();
+      else alert(d?.message || "تعذّر تنفيذ الطلب");
+    } catch { alert("تعذّر تنفيذ الطلب"); } finally { setPausing(null); }
+  };
+
+  // إيقاف مؤقت/استئناف لكل الباتشات دفعة واحدة
+  const anyPaused = [...priorityRows, ...rows].some((b) => b.paused);
+  const togglePauseAll = async () => {
+    setPausing("all");
+    try {
+      const r = await fetch(`/api/exec-queue/${anyPaused ? "resume-all" : "pause-all"}`, {
+        method: "POST", credentials: "include",
+      });
+      const d = await r.json();
+      if (r.ok && d?.ok) await load();
+      else alert(d?.message || "تعذّر تنفيذ الطلب");
+    } catch { alert("تعذّر تنفيذ الطلب"); } finally { setPausing(null); }
+  };
+
   return (
     <div className="space-y-4" dir="rtl">
       {/* زر تحديث واحد أعلى الصفحة — بيحدّث الجزئين معاً (الأولوية العليا + المؤجّلة) */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-bold text-lg">طابور التنفيذ</h2>
-        <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={togglePauseAll}
+            size="sm"
+            variant="outline"
+            disabled={pausing === "all" || (!priorityRows.length && !rows.length)}
+            className={`gap-1 ${anyPaused ? "text-emerald-700 border-emerald-200" : "text-amber-700 border-amber-200"}`}
+          >
+            {pausing === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : anyPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            {anyPaused ? "استئناف الكل" : "إيقاف مؤقت للكل"}
+          </Button>
+          <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
+        </div>
       </div>
 
       {/* جزء علوى للعرض فقط: باتشات الأولوية العليا (≤3 خطوط أو محتاجة رفع سرعة) — دايماً بتتنفّذ
@@ -124,8 +167,17 @@ export function QueueReorderPanel() {
                     <span className="text-xs text-muted-foreground">طلبها: <span className="text-foreground">{b.requestedBy || "-"}</span></span>
                     <span className="text-xs text-muted-foreground">التوقيت: {fmt(b.createdAt)}</span>
                     <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
+                    {b.paused && <span className="text-xs px-2 py-0.5 rounded font-semibold bg-amber-100 text-amber-800">موقَّف مؤقتاً</span>}
                   </div>
                 </div>
+                <button
+                  onClick={() => togglePauseBatch(b.batchId, b.paused)}
+                  disabled={pausing === b.batchId}
+                  className={`shrink-0 disabled:opacity-30 ${b.paused ? "text-emerald-600 hover:text-emerald-800" : "text-amber-500 hover:text-amber-700"}`}
+                  title={b.paused ? "استئناف الباتش" : "إيقاف مؤقت — يكمّل التالى فوراً"}
+                >
+                  {pausing === b.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : b.paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                </button>
                 <button
                   onClick={() => cancelBatch(b.batchId, b.total)}
                   disabled={canceling === b.batchId}
@@ -170,8 +222,17 @@ export function QueueReorderPanel() {
                   <span className="text-xs text-muted-foreground">طلبها: <span className="text-foreground">{b.requestedBy || "-"}</span></span>
                   <span className="text-xs text-muted-foreground">التوقيت: {fmt(b.createdAt)}</span>
                   <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
+                  {b.paused && <span className="text-xs px-2 py-0.5 rounded font-semibold bg-amber-100 text-amber-800">موقَّف مؤقتاً</span>}
                 </div>
               </div>
+              <button
+                onClick={() => togglePauseBatch(b.batchId, b.paused)}
+                disabled={pausing === b.batchId}
+                className={`shrink-0 disabled:opacity-30 ${b.paused ? "text-emerald-600 hover:text-emerald-800" : "text-amber-500 hover:text-amber-700"}`}
+                title={b.paused ? "استئناف الباتش" : "إيقاف مؤقت — يكمّل التالى فوراً"}
+              >
+                {pausing === b.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : b.paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+              </button>
               <button
                 onClick={() => cancelBatch(b.batchId, b.total)}
                 disabled={canceling === b.batchId}

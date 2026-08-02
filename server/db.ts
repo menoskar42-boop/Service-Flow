@@ -942,6 +942,8 @@ export async function ensureSchema() {
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS batch_id text;
     -- ترتيب يدوى داخل نفس الأولوية (السوبر أدمن يرتّب باتشات الأولوية المتأخرة). 0 = افتراضى (الأقدم).
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS queue_order bigint NOT NULL DEFAULT 0;
+    -- إيقاف مؤقت (سوبر أدمن) — جهاز التنفيذ يتخطّى المهام دى (claim) لحد ما تتلغى، فيكمّل التالى فى الترتيب فوراً.
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS paused_at timestamptz;
   `);
 
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
