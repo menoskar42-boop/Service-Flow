@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { Upload, FileDown, FileText, Loader2, BarChart3, Search, X } from "lucide-react";
+import { RefreshButton } from "@/components/RefreshButton";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -265,6 +266,9 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
               )}
             </div>
           </div>
+
+          {/* تحديث — يعيد جلب أوامر الشغل و«آخر تحديث» من غير refresh للمتصفح */}
+          <RefreshButton queryKeys={["/api/work-orders", "/api/upload-times"]} />
 
           {/* Export buttons */}
           <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={orders.length === 0} className="text-green-700 border-green-200 gap-1">
