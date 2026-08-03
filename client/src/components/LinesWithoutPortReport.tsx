@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RefreshButton } from "@/components/RefreshButton";
+import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, PlugZap, Search, X } from "lucide-react";
@@ -128,6 +129,8 @@ export function LinesWithoutPortReport() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <RefreshButton queryKeys={["/api/reports/lines-without-port"]} />
+              {/* جلب اسم/عنوان العميل من FCC لأرقام النطاق المعروض (سوبر أدمن) */}
+              <ReviewSubscriberInfoButton filters={{ central, cabin, box }} />
               <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={!rows.length} className="text-green-700 border-green-200">
                 تصدير Excel
               </Button>

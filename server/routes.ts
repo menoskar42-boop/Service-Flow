@@ -5588,8 +5588,15 @@ export async function registerRoutes(
       if (pFrom) { params.push(pFrom); conds.push(`${numExpr} >= $${params.length}::bigint`); }
       if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
     }
+    // المصدر = اتحاد أرقام البورتات + أرقام البيان الفنى (phone_lines). قبل كده كان أرقام
+    // البورتات بس، فالأرقام اللى ليها بيان فنى 131 ومالهاش بورت/فريم (تقرير «بيان فنى بدون
+    // بورت») ماكانتش بتدخل قائمة الجلب أبداً → اسم/عنوان فاضى دايماً. دلوقتى بتتجلب زى غيرها.
     const { rows } = await pool.query(
-      `SELECT pp.phone_number FROM phone_ports pp
+      `SELECT pp.phone_number FROM (
+         SELECT phone_number FROM phone_ports
+         UNION
+         SELECT full_phone AS phone_number FROM phone_lines
+       ) pp
        LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
        ${plJoin}
        WHERE ${conds.join(" AND ")}
