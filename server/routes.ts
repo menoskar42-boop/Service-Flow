@@ -3241,7 +3241,7 @@ export async function registerRoutes(
   //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).
   // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
   app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", search = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
@@ -3311,6 +3311,16 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    // بحث نصّى: رقم التليفون (كامل أو قصير) أو رقم الأكونت أو رقم الشكوى — على مستوى السيرفر
+    // علشان يبحث فى كل السجلات مش فى الصفحة المعروضة بس.
+    if (search.trim()) {
+      params.push(`%${search.trim()}%`);
+      const p = params.length;
+      conds.push(`(m.full_phone ILIKE $${p}
+                OR COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) ILIKE $${p}
+                OR COALESCE(la.account_no, '') ILIKE $${p}
+                OR COALESCE(cpl.complain_no, '') ILIKE $${p})`);
+    }
     // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت، ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
@@ -3344,7 +3354,7 @@ export async function registerRoutes(
   // المعيار: لها رقم أكونت + آخر قياس مرّ عليه أقل من 3 أيام + لا تحتاج رفع سرعة (عكس معيار
   //   محتاجة رفع سرعة). دى غالباً خطوط اتعملها Profile Optimization ومحتاجة إيقاف الـ nightly PO.
   app.get("/api/phone-lines/needs-po-stop", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", poStoppedBefore = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", poStoppedBefore = "", page = "1", limit = "50", search = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const params: any[] = [];
@@ -3395,6 +3405,14 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    // بحث نصّى: رقم التليفون (كامل أو قصير) أو رقم الأكونت — على مستوى السيرفر
+    if (search.trim()) {
+      params.push(`%${search.trim()}%`);
+      const p = params.length;
+      conds.push(`(m.full_phone ILIKE $${p}
+                OR COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) ILIKE $${p}
+                OR COALESCE(la.account_no, '') ILIKE $${p})`);
+    }
     // فلتر: يستبعد الخطوط اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت (بتوقيت القاهرة)،
     //        ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف (last_stop_at IS NULL).
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }

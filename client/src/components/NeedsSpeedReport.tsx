@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { PageJump } from "@/components/ui/page-jump";
 import { RefreshButton } from "@/components/RefreshButton";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
@@ -15,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle, Search } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openProfileOptimization } from "@/lib/profile-optimization";
@@ -108,6 +109,10 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
   const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد التاريخ
+  // بحث برقم التليفون / الأكونت / الشكوى — بيتنفّذ على السيرفر (كل السجلات، مش الصفحة الحالية بس).
+  // debounce نصف ثانية علشان مانبعتش request مع كل حرف.
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const showPoStopFilter = endpoint.includes("needs-po-stop") || endpoint.includes("needs-speed");
   const dateFilterLabel = "استبعد إيقاف PO بعد:";
   const dateFilterParam = "poStoppedBefore";
@@ -117,6 +122,11 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // زر «لها شكوى (داخل/خارج الشاشة)» — يفلتر على الأرقام اللى ليها أى شكوى (مفتوحة على الشاشة أو
   // مغلقة/مؤرشفة خارجها). متاح فقط على تقرير «الكل» (مش على تاب «لها شكوى» اللى أصلاً مفلتر بالشهر).
   const [complaintAny, setComplaintAny] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -134,6 +144,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (search) params.set("search", search);
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
     if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
@@ -141,7 +152,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, page, requireComplaint, complaintAny],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, search, page, requireComplaint, complaintAny],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -262,6 +273,25 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-56">
+              <Search className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="بحث برقم التليفون أو الأكونت…"
+                className="text-sm pr-8 h-9"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  title="مسح البحث"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
             <SearchableCombobox
               options={filterOptions?.centrals ?? []}
               value={central}
