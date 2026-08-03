@@ -2716,7 +2716,10 @@ export async function registerRoutes(
         LOWER(COALESCE(pl.port::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.len::text,'')) LIKE ${p} OR
         LOWER(COALESCE(pp.frame::text,'')) LIKE ${p} OR
         EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = k.full_phone AND LOWER(COALESCE(c.account_no::text,'')) LIKE ${p}) OR
-        EXISTS (SELECT 1 FROM line_accounts la WHERE la.full_phone = k.full_phone AND LOWER(COALESCE(la.account_no::text,'')) LIKE ${p})
+        EXISTS (SELECT 1 FROM line_accounts la WHERE la.full_phone = k.full_phone AND LOWER(COALESCE(la.account_no::text,'')) LIKE ${p}) OR
+        EXISTS (SELECT 1 FROM cabinet_technicians ct JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+                   AND LOWER(COALESCE(tn.tech_name::text,'')) LIKE ${p})
       )`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
@@ -2752,6 +2755,11 @@ export async function registerRoutes(
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
+              -- فنى المنطقة = صاحب الكابينة (cabinet_technicians) حسب السنترال + رقم الكابينة
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+                LIMIT 1) AS "techName",
               pl.tel_num_txt AS "telNumTxt", k.full_phone AS "fullPhone",
               si2.sub_name AS "subName", si2.sub_add AS "subAdd",
               c138p.account_no AS "accountNo",

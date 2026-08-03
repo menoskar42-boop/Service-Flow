@@ -50,6 +50,7 @@ interface PhoneLine extends Measurement138 {
   len: string;
   fiberBlock: string;
   fiberOut: string;
+  techName: string | null;   // فنى المنطقة (صاحب الكابينة)
   telNumTxt: string;
   fullPhone: string;
   subName: string | null;
@@ -237,6 +238,7 @@ export function PhoneLinesReport() {
       "آخر إيقاف PO": fmtPoDt(r.lastPoStopAt),
       "Fiber Block": r.fiberBlock,
       "Fiber Out": r.fiberOut,
+      "الفنى": r.techName ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -258,10 +260,10 @@ export function PhoneLinesReport() {
     printTablePDF({
       title: "تقرير بيان أرقام التليفونات",
       columns: ["#", "التليفون الكامل", "الأكونت", "سرعة حالية", "أقصى سرعة", "السنترال", "اسم العميل", "العنوان", "الكابينه", "البكس", "التليفون",
-        "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN"],
+        "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN", "الفنى"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
         r.central, r.subName ?? "", r.subAdd ?? "", r.cabinNumber, r.boxNumber,
-        r.telNo, r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len]),
+        r.telNo, r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len, r.techName ?? ""]),
     });
   };
 
@@ -391,6 +393,7 @@ export function PhoneLinesReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">LEN</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Fiber Block</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Fiber Out</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">الفنى</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
                   </TableRow>
@@ -432,6 +435,7 @@ export function PhoneLinesReport() {
                       <TableCell>{r.len || "-"}</TableCell>
                       <TableCell>{r.fiberBlock || "-"}</TableCell>
                       <TableCell>{r.fiberOut || "-"}</TableCell>
+                      <TableCell className="whitespace-nowrap font-medium text-indigo-700">{r.techName || "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtPoDt(r.lastPoRaiseAt)}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtPoDt(r.lastPoStopAt)}</TableCell>
                     </TableRow>
