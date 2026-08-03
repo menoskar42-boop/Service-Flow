@@ -1470,6 +1470,9 @@ export async function registerRoutes(
   // جهاز التنفيذ يسحب أقدم مهمة (atomic) — SKIP LOCKED
   app.post("/api/exec-queue/claim", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {
+      // نظّف المهام اليتيمة قبل السحب — عشان أى مهمة عالقة ترجع للطابور وتتنفّذ فى مكانها
+      // الصحيح حسب الأولوية، بدل ما الجهاز يعدّيها ويكمّل فى باتشات أقل أولوية.
+      await expireOrphanedExecJobs();
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
          WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' AND paused_at IS NULL
@@ -1560,7 +1563,7 @@ export async function registerRoutes(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
                 MIN(priority)::int AS priority,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
-                bool_or(status = 'pending' AND paused_at IS NOT NULL) AS paused,
+                bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt"
          FROM exec_jobs
          WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority IN (1, 2) AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
@@ -1578,7 +1581,7 @@ export async function registerRoutes(
       const { rows } = await pool.query(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
-                bool_or(status = 'pending' AND paused_at IS NOT NULL) AS paused,
+                bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt", MAX(queue_order) AS "queueOrder"
          FROM exec_jobs
          WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority = 0 AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
@@ -1692,7 +1695,7 @@ export async function registerRoutes(
                 COUNT(*) FILTER (WHERE status = 'stale')::int                   AS canceled,
                 COUNT(*) FILTER (WHERE status = 'pending')::int                 AS pending,
                 COUNT(*) FILTER (WHERE status = 'claimed')::int                 AS running,
-                bool_or(status = 'pending' AND paused_at IS NOT NULL)           AS paused,
+                bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo')                   AS "createdAt",
                 (MAX(done_at)    AT TIME ZONE 'Africa/Cairo')                   AS "finishedAt"
            FROM exec_jobs
@@ -1741,7 +1744,7 @@ export async function registerRoutes(
       const batchId = String(req.body?.batchId || "").trim();
       if (!batchId) return res.status(400).json({ message: "لا يوجد باتش" });
       const { rowCount } = await pool.query(
-        `UPDATE exec_jobs SET paused_at = now() WHERE batch_id = $1 AND status = 'pending' AND paused_at IS NULL`,
+        `UPDATE exec_jobs SET paused_at = now() WHERE batch_id = $1 AND status IN ('pending','claimed') AND paused_at IS NULL`,
         [batchId],
       );
       res.json({ ok: true, paused: rowCount ?? 0 });
@@ -1766,7 +1769,7 @@ export async function registerRoutes(
   app.post("/api/exec-queue/pause-all", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {
       const { rowCount } = await pool.query(
-        `UPDATE exec_jobs SET paused_at = now() WHERE status = 'pending' AND paused_at IS NULL`);
+        `UPDATE exec_jobs SET paused_at = now() WHERE status IN ('pending','claimed') AND paused_at IS NULL`);
       res.json({ ok: true, paused: rowCount ?? 0 });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1793,10 +1796,21 @@ export async function registerRoutes(
   // أو (ب) مهمة claimed من أكثر من 5 ساعات (أطول من أقصى تشغيل باتش).
   const expireOrphanedExecJobs = async () => {
     try {
-      // مابنلغّيش المهام المنتظرة (pending) عند انقطاع جهاز التنفيذ — تفضل فى الطابور صامدة،
-      // ويكمّلها الجهاز لما يرجع (انقطاع شحن/ريستارت). بس نعلّم أى مهمة claimed «عالقة» جداً
-      // (>6 ساعات) كـ stale — احتياط لو علّقت والجهاز شغّال (المهمة اللى وقف عندها جهاز مقفول
-      // بترجع للطابور تلقائياً عند تفعيله عبر reset-orphaned).
+      // (1) مهمة claimed «معلّقة» والجهاز عدّاها فعلاً (سحب مهمة أحدث منها بعد كده) — دى مهمة
+      //     يتيمة أكيد: التاب اتقفل أو التنفيذ فشل من غير ما يبعت /done. بنرجّعها pending عشان
+      //     تتنفّذ تانى فى مكانها الصحيح حسب الأولوية.
+      //     من غير ده كانت بتفضل claimed للأبد فتعمل مشكلتين:
+      //       • claim بياخد pending بس → الباتش بتاعها مابيخلصش والجهاز بيروح لباتشات أقل أولوية
+      //         (الباتش يبان فى «الأولوية العليا» لكن كأنه مش موجود).
+      //       • pause/pause-all بتشتغل على pending بس → الباتش ده مابيقفش مع «إيقاف الكل».
+      //     شرط «فيه مهمة اتسحبت بعدها» بيضمن إننا مانرجّعش مهمة الجهاز لسه شغّال عليها.
+      await pool.query(
+        `UPDATE exec_jobs e SET status = 'pending', claimed_at = NULL
+          WHERE e.status = 'claimed'
+            AND e.claimed_at < now() - interval '10 minutes'
+            AND EXISTS (SELECT 1 FROM exec_jobs j2 WHERE j2.claimed_at > e.claimed_at)`,
+      );
+      // (2) آخر حدّ: مهمة claimed عدّى عليها >6 ساعات (والجهاز مارجعش يسحب حاجة بعدها) — stale.
       await pool.query(
         `UPDATE exec_jobs SET status = 'stale', done_at = now()
          WHERE status = 'claimed' AND claimed_at < now() - interval '6 hours'`,
