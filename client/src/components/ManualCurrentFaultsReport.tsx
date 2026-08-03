@@ -118,16 +118,21 @@ export function ManualCurrentFaultsReport() {
     } finally { setRegBusy(false); }
   };
 
+  // ترتيب الأعمدة: بيانات الموقع (سنترال→الفريم) الأول، وبعدها بيانات الأكونت والقياس.
+  // ملاحظة: عمود «رقم التليفون» لازم يفضل index 1 لأن أزرار المعاينة/تسجيل الانتظام
+  // بتترسم جوّه الخلية دى (i === 1 فى الـ JSX تحت).
   const COLUMNS = [
-    "تاريخ العطل", "رقم التليفون", "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس",
-    "القياس الحالى", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم", "Shelf", "Slot",
-    "Port", "Port Type", "voice", "data", "operator", "ONU", "آخر رفع سرعة", "آخر إيقاف PO", "سجّل العطل",
+    "تاريخ العطل", "رقم التليفون", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم",
+    "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس", "القياس الحالى",
+    "Shelf", "Slot", "Port", "Port Type", "voice", "data", "operator", "ONU",
+    "آخر رفع سرعة", "آخر إيقاف PO", "سجّل العطل",
   ];
   const dash = (v: any) => (v == null || v === "" ? "-" : String(v));
   const toRow = (x: Row) => [
-    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed),
-    dash(x.lastMeasScore), fmt(x.lastMeasTime), dash(x.curMeasScore), dash(x.central), dash(x.cabinNumber), dash(x.boxNumber),
-    dash(x.msanCode), dash(x.techName), dash(x.frame), dash(x.shelf), dash(x.slot), dash(x.portNumber), dash(x.portType),
+    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-",
+    dash(x.central), dash(x.cabinNumber), dash(x.boxNumber), dash(x.msanCode), dash(x.techName), dash(x.frame),
+    dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed), dash(x.lastMeasScore), fmt(x.lastMeasTime), dash(x.curMeasScore),
+    dash(x.shelf), dash(x.slot), dash(x.portNumber), dash(x.portType),
     dash(x.voiceStatus), dash(x.dataStatus), dash(x.operator), dash(x.onu), fmt(x.lastPoRaiseAt), fmt(x.lastPoStopAt), dash(x.flaggedBy),
   ];
 
