@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, PlugZap, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 // أرقام لها بيان فنى (131) لكن مالهاش بورت/فريم على المسان.
 // دى بالظبط الأرقام اللى بتتستبعد من تقارير القياسات وبيان التليفونات.
@@ -68,14 +69,14 @@ export function LinesWithoutPortReport() {
 
   // بحث محلى فورى (أرقام فقط للتليفون، ونص لباقى الأعمدة)
   const rows = useMemo(() => {
-    const s = search.trim().toLowerCase();
+    const s = arNorm(search.trim());
     if (!s) return all;
     const digits = s.replace(/\D/g, "");
     return all.filter((r) => {
       if (digits && (String(r.telNo ?? "").replace(/\D/g, "").includes(digits)
                   || String(r.fullPhone ?? "").replace(/\D/g, "").includes(digits))) return true;
       return [r.central, r.cabinNumber, r.boxNumber, r.subName, r.subAdd, r.accountNo]
-        .some((v) => String(v ?? "").toLowerCase().includes(s));
+        .some((v) => arIncludes(String(v ?? ""), s));
     });
   }, [all, search]);
 

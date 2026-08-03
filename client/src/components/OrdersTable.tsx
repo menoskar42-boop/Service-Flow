@@ -31,6 +31,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useOrders } from "@/hooks/use-orders";
 import { useUsers } from "@/hooks/use-users";
 import { Search, RotateCcw, Loader2, FileCheck, Undo2, RefreshCw } from "lucide-react";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 interface OrdersTableProps {
   orders: Order[];
@@ -145,7 +146,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     }
 
     if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
+    const query = arNorm(searchQuery);
     const searchableFields = [
       order.id.toString(),
       order.customerName,
@@ -166,7 +167,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       format(new Date(order.createdAt), "yyyy/MM/dd HH:mm"),
       order.techResponseAt ? format(new Date(order.techResponseAt), "yyyy/MM/dd HH:mm") : "",
     ];
-    return searchableFields.some(field => field.toLowerCase().includes(query));
+    return searchableFields.some(field => arIncludes(field, query));
   });
 
   const statusCounts = {

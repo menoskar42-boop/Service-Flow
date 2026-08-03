@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, RefreshCw, FileSpreadsheet, FileText, Layers, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 // كل الباتشات اللى اتطلبت (قياس/رفع سرعة/إيقاف PO) مهما كانت أولويتها وحالتها:
 // اكتملت / اكتملت جزئياً / أُلغِيت / لسه فى الطابور / موقّفة مؤقتاً.
@@ -79,14 +80,14 @@ export function ExecBatchesReport() {
   const states = useMemo(() => [...new Set(rows.map((r) => r.state))], [rows]);
 
   const shown = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = arNorm(q.trim());
     return rows.filter((r) => {
       if (stateFilter && r.state !== stateFilter) return false;
       if (!s) return true;
-      return (r.batchId || "").toLowerCase().includes(s)
-          || (r.note || "").toLowerCase().includes(s)
-          || (r.requestedBy || "").toLowerCase().includes(s)
-          || typeLabel(r.type).includes(s);
+      return arIncludes((r.batchId || ""), s)
+          || arIncludes((r.note || ""), s)
+          || arIncludes((r.requestedBy || ""), s)
+          || arIncludes(typeLabel(r.type), s);
     });
   }, [rows, q, stateFilter]);
 

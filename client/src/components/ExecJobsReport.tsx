@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, RefreshCw, FileSpreadsheet, FileText, ListChecks } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 interface ExecJobRow {
   id: number;
@@ -90,14 +91,14 @@ export function ExecJobsReport() {
 
   // بحث برقم الباتش / التليفون / الأكونت / الطالب / المصدر
   const displayed = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = arNorm(q.trim());
     if (!s) return jobs;
     return jobs.filter((j) =>
-      (j.batchId || "").toLowerCase().includes(s) ||
-      (j.phone || "").toLowerCase().includes(s) ||
-      (j.account || "").toLowerCase().includes(s) ||
-      (j.requestedBy || "").toLowerCase().includes(s) ||
-      (j.source || "").toLowerCase().includes(s),
+      arIncludes((j.batchId || ""), s) ||
+      arIncludes((j.phone || ""), s) ||
+      arIncludes((j.account || ""), s) ||
+      arIncludes((j.requestedBy || ""), s) ||
+      arIncludes((j.source || ""), s),
     );
   }, [jobs, q]);
 

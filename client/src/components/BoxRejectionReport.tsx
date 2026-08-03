@@ -23,6 +23,7 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 interface BoxRejectionReportProps {
   orders: Order[];
@@ -59,16 +60,16 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
     const rowKey = `${row.centralName}||${row.cabinNumber}||${row.boxNumber}`;
     if (dialogKey && rowKey !== dialogKey) return false;
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    const q = arNorm(searchQuery);
     return (
-      row.boxNumber.toLowerCase().includes(q) ||
-      row.centralName.toLowerCase().includes(q) ||
-      row.cabinNumber.toLowerCase().includes(q) ||
-      row.rejectionReason.toLowerCase().includes(q) ||
-      row.techName.toLowerCase().includes(q) ||
-      row.customerName.toLowerCase().includes(q) ||
-      row.customerAddress.toLowerCase().includes(q) ||
-      row.orderId.toString().includes(q)
+      arIncludes(row.boxNumber, q) ||
+      arIncludes(row.centralName, q) ||
+      arIncludes(row.cabinNumber, q) ||
+      arIncludes(row.rejectionReason, q) ||
+      arIncludes(row.techName, q) ||
+      arIncludes(row.customerName, q) ||
+      arIncludes(row.customerAddress, q) ||
+      arIncludes(row.orderId.toString(), q)
     );
   });
 

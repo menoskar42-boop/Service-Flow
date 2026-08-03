@@ -17,6 +17,7 @@ import MemoryStore from "memorystore";
 import connectPgSimple from "connect-pg-simple";
 import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
+import { arNorm } from "@shared/ar-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 
@@ -557,6 +558,15 @@ const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
 // على المسان فعلياً، فبيتستبعد من تقارير القياسات ومن بيان التليفونات — حتى لو ليه
 // رقم أكونت أو بيانات فنية (بيان 131). الاستثناء الوحيد: تقرير «بيان فنى بدون بورت»
 // اللى الغرض منه بالظبط إظهار الأرقام دى.
+// ── بحث عربى غير حرفى ──
+// الفكرة: نطبّع الطرفين قبل المقارنة — العمود بدالة sf_ar_norm() فى الداتابيز، وكلمة البحث
+// بدالة arNorm() فى الـ JS (نفس المنطق بالظبط). فـ«ايمن» تلاقى «أيمن» و«فاطمه» تلاقى «فاطمة».
+// الدالتين بيعملوا lower() كمان، فمش محتاجين LOWER() ولا ILIKE — LIKE عادى بيكفى.
+//   n("col")     → sf_ar_norm(COALESCE(col::text,''))  للعمود
+//   arQ("كلمة")  → '%كلمه%'  للـ param
+const n = (expr: string) => `sf_ar_norm(COALESCE(${expr}::text, ''))`;
+const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
+
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf
      WHERE pf.phone_number = ${fullPhoneExpr}
@@ -648,9 +658,9 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
   ];
   if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
   if (q.trim()) {
-    params.push(`%${q.trim()}%`);
+    params.push(arQ(q));
     const p = `$${params.length}`;
-    conds.push(`(t.phone_number ILIKE ${p} OR t.cabinet_no ILIKE ${p} OR t.status_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
+    conds.push(`(${n("t.phone_number")} LIKE ${p} OR ${n("t.cabinet_no")} LIKE ${p} OR ${n("t.status_code")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
   }
   const where = "WHERE " + conds.join(" AND ");
   const { rows } = await pool.query(
@@ -792,9 +802,9 @@ async function queryWfmReport(
   }
   if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
   if (q.trim()) {
-    params.push(`%${q.trim()}%`);
+    params.push(arQ(q));
     const p = `$${params.length}`;
-    conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
+    conds.push(`(${n("t.phone_number")} LIKE ${p} OR ${n("t.work_order_type")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p} OR ${n("t.description")} LIKE ${p})`);
   }
   const where = "WHERE " + conds.join(" AND ");
   const sourceTable = regularized ? "wfm_sod" : "wfm_current";
@@ -831,9 +841,9 @@ async function queryWfmRegularizedRange(
   if (dateTo)   { params.push(dateTo);   conds.push(`(t.creation_date AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`); }
   if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
   if (q.trim()) {
-    params.push(`%${q.trim()}%`);
+    params.push(arQ(q));
     const p = `$${params.length}`;
-    conds.push(`(t.phone_number ILIKE ${p} OR t.work_order_type ILIKE ${p} OR pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR t.description ILIKE ${p})`);
+    conds.push(`(${n("t.phone_number")} LIKE ${p} OR ${n("t.work_order_type")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p} OR ${n("t.description")} LIKE ${p})`);
   }
   const where = "WHERE " + conds.join(" AND ");
   const { rows } = await pool.query(
@@ -2699,27 +2709,27 @@ export async function registerRoutes(
       if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
     }
     if (q) {
-      params.push(`%${q}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
       // بحث نصّى فى كل الأعمدة الظاهرة: التليفون/الأكونت/الاسم/العنوان/السنترال/الكابينة/البكس
       // + كل الحقول الفنية (IDU/ODU/DP/البلوكات/الفايبر/البورت...). الأكونت عبر EXISTS (مش join
       // فى الـ count). كله ::text عشان أى عمود رقمى مايكسّرش LOWER.
       conds.push(`(
-        LOWER(COALESCE(k.full_phone::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.tel_no::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.central::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabin_number::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.box_number::text,'')) LIKE ${p} OR LOWER(COALESCE(si2.sub_name::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(si2.sub_add::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.dp_terminal::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.idu_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.odu_no::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.primary_block_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabinet_in::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.sec_block_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabinet_out::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.fiber_block::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.fiber_out::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pl.port::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.len::text,'')) LIKE ${p} OR
-        LOWER(COALESCE(pp.frame::text,'')) LIKE ${p} OR
-        EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = k.full_phone AND LOWER(COALESCE(c.account_no::text,'')) LIKE ${p}) OR
-        EXISTS (SELECT 1 FROM line_accounts la WHERE la.full_phone = k.full_phone AND LOWER(COALESCE(la.account_no::text,'')) LIKE ${p}) OR
+        ${n("k.full_phone")} LIKE ${p} OR ${n("pl.tel_no")} LIKE ${p} OR
+        ${n("pl.central")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p} OR
+        ${n("pl.box_number")} LIKE ${p} OR ${n("si2.sub_name")} LIKE ${p} OR
+        ${n("si2.sub_add")} LIKE ${p} OR ${n("pl.dp_terminal")} LIKE ${p} OR
+        ${n("pl.idu_no")} LIKE ${p} OR ${n("pl.odu_no")} LIKE ${p} OR
+        ${n("pl.primary_block_no")} LIKE ${p} OR ${n("pl.cabinet_in")} LIKE ${p} OR
+        ${n("pl.sec_block_no")} LIKE ${p} OR ${n("pl.cabinet_out")} LIKE ${p} OR
+        ${n("pl.fiber_block")} LIKE ${p} OR ${n("pl.fiber_out")} LIKE ${p} OR
+        ${n("pl.port")} LIKE ${p} OR ${n("pl.len")} LIKE ${p} OR
+        ${n("pp.frame")} LIKE ${p} OR
+        EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = k.full_phone AND ${n("c.account_no")} LIKE ${p}) OR
+        EXISTS (SELECT 1 FROM line_accounts la WHERE la.full_phone = k.full_phone AND ${n("la.account_no")} LIKE ${p}) OR
         EXISTS (SELECT 1 FROM cabinet_technicians ct JOIN technician_names tn ON tn.worker_code = ct.worker_code
                  WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
-                   AND LOWER(COALESCE(tn.tech_name::text,'')) LIKE ${p})
+                   AND ${n("tn.tech_name")} LIKE ${p})
       )`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
@@ -2853,14 +2863,14 @@ export async function registerRoutes(
       if (boxTo.trim())   { params.push(parseInt(boxTo));   conds.push(`pl.box_number::int <= $${params.length}`); }
     }
     if (q) {
-      params.push(`%${q}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(LOWER(la.full_phone) LIKE ${p} OR LOWER(COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88',''))) LIKE ${p} OR LOWER(COALESCE(pl.central,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabin_number,'')) LIKE ${p} OR LOWER(COALESCE(pl.box_number,'')) LIKE ${p} OR LOWER(la.account_no) LIKE ${p})`);
+      conds.push(`(${n("la.full_phone")} LIKE ${p} OR ${n("COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88',''))")} LIKE ${p} OR ${n("pl.central")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p} OR ${n("la.account_no")} LIKE ${p})`);
     }
     // بحث مخصّص برقم الأكونت فقط
     if (accountQ.trim()) {
-      params.push(`%${accountQ.trim().toLowerCase()}%`);
-      conds.push(`LOWER(la.account_no) LIKE $${params.length}`);
+      params.push(arQ(accountQ));
+      conds.push(`${n("la.account_no")} LIKE $${params.length}`);
     }
     // الفنى: يرى خطوطه فقط (كباينه من cabinet_technicians حسب رقم العامل)
     if (req.user?.role === ROLES.TECH) {
@@ -2940,9 +2950,9 @@ export async function registerRoutes(
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
     if (q) {
-      params.push(`%${q}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(LOWER(k.full_phone) LIKE ${p} OR LOWER(pl.tel_no) LIKE ${p} OR LOWER(pl.central) LIKE ${p} OR LOWER(pl.cabin_number) LIKE ${p} OR LOWER(pl.box_number) LIKE ${p})`);
+      conds.push(`(${n("k.full_phone")} LIKE ${p} OR ${n("pl.tel_no")} LIKE ${p} OR ${n("pl.central")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
     }
     // فلتر: الأرقام التى نزلت لها شكوى خلال الشهر الحالى (شيت التفاصيل أو المتبقى) — المطابقة برقم التليفون
     if (complaintThisMonth === "1" || complaintThisMonth === "true") {
@@ -3055,11 +3065,11 @@ export async function registerRoutes(
       if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
       const q = search.trim().toLowerCase();
       if (q) {
-        params.push(`%${q}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        conds.push(`(LOWER(COALESCE(pl.tel_no::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.full_phone::text,'')) LIKE ${p}
-          OR LOWER(COALESCE(pl.central::text,'')) LIKE ${p} OR LOWER(COALESCE(pl.cabin_number::text,'')) LIKE ${p}
-          OR LOWER(COALESCE(pl.box_number::text,'')) LIKE ${p} OR LOWER(COALESCE(si.sub_name::text,'')) LIKE ${p})`);
+        conds.push(`(${n("pl.tel_no")} LIKE ${p} OR ${n("pl.full_phone")} LIKE ${p}
+          OR ${n("pl.central")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p}
+          OR ${n("pl.box_number")} LIKE ${p} OR ${n("si.sub_name")} LIKE ${p})`);
       }
       const { rows } = await pool.query(
         `SELECT pl.full_phone                              AS "fullPhone",
@@ -3221,9 +3231,9 @@ export async function registerRoutes(
     const conds: string[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (q.trim()) {
-      params.push(`%${q.trim().toLowerCase()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(LOWER(na.full_phone) LIKE ${p} OR LOWER(COALESCE(pl.tel_no,'')) LIKE ${p} OR LOWER(COALESCE(pl.central,'')) LIKE ${p} OR LOWER(COALESCE(na.marked_by_name,'')) LIKE ${p})`);
+      conds.push(`(${n("na.full_phone")} LIKE ${p} OR ${n("pl.tel_no")} LIKE ${p} OR ${n("pl.central")} LIKE ${p} OR ${n("na.marked_by_name")} LIKE ${p})`);
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const { rows } = await pool.query(
@@ -3322,12 +3332,12 @@ export async function registerRoutes(
     // بحث نصّى: رقم التليفون (كامل أو قصير) أو رقم الأكونت أو رقم الشكوى — على مستوى السيرفر
     // علشان يبحث فى كل السجلات مش فى الصفحة المعروضة بس.
     if (search.trim()) {
-      params.push(`%${search.trim()}%`);
+      params.push(arQ(search));
       const p = params.length;
-      conds.push(`(m.full_phone ILIKE $${p}
-                OR COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) ILIKE $${p}
-                OR COALESCE(la.account_no, '') ILIKE $${p}
-                OR COALESCE(cpl.complain_no, '') ILIKE $${p})`);
+      conds.push(`(${n("m.full_phone")} LIKE $${p}
+                OR ${n("COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))")} LIKE $${p}
+                OR ${n("la.account_no")} LIKE $${p}
+                OR ${n("cpl.complain_no")} LIKE $${p})`);
     }
     // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت، ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
@@ -3415,11 +3425,11 @@ export async function registerRoutes(
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
     // بحث نصّى: رقم التليفون (كامل أو قصير) أو رقم الأكونت — على مستوى السيرفر
     if (search.trim()) {
-      params.push(`%${search.trim()}%`);
+      params.push(arQ(search));
       const p = params.length;
-      conds.push(`(m.full_phone ILIKE $${p}
-                OR COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) ILIKE $${p}
-                OR COALESCE(la.account_no, '') ILIKE $${p})`);
+      conds.push(`(${n("m.full_phone")} LIKE $${p}
+                OR ${n("COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))")} LIKE $${p}
+                OR ${n("la.account_no")} LIKE $${p})`);
     }
     // فلتر: يستبعد الخطوط اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت (بتوقيت القاهرة)،
     //        ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف (last_stop_at IS NULL).
@@ -3720,8 +3730,8 @@ export async function registerRoutes(
     const { phone, editor } = req.query as Record<string, string>;
     const params: any[] = [];
     const conds: string[] = [];
-    if (phone?.trim()) { params.push(`%${phone.trim()}%`); conds.push(`e.full_phone ILIKE $${params.length}`); }
-    if (editor?.trim()) { params.push(`%${editor.trim()}%`); conds.push(`e.edited_by_name ILIKE $${params.length}`); }
+    if (phone?.trim()) { params.push(arQ(phone)); conds.push(`${n("e.full_phone")} LIKE $${params.length}`); }
+    if (editor?.trim()) { params.push(arQ(editor)); conds.push(`${n("e.edited_by_name")} LIKE $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const { rows } = await pool.query(
       `SELECT
@@ -4179,8 +4189,8 @@ export async function registerRoutes(
     const params: any[] = [];
     const conds: string[] = [];
     if (q && q.trim()) {
-      params.push(`%${q.trim()}%`);
-      conds.push(`(phone_local ILIKE $${params.length} OR phone_full ILIKE $${params.length})`);
+      params.push(arQ(q));
+      conds.push(`(${n("phone_local")} LIKE $${params.length} OR ${n("phone_full")} LIKE $${params.length})`);
     }
     // 🆕 الفني يشوف إدخالاته فقط (اللى هو دخلها)؛ الأدمن يشوف الكل
     if (req.user?.role === ROLES.TECH) {
@@ -4516,9 +4526,9 @@ export async function registerRoutes(
     if (dateFrom) { params.push(dateFrom); conds.push(`complaint_time >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complaint_time <= $${params.length}`); }
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(ticket_id ILIKE ${p} OR phone_number ILIKE ${p} OR central_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+      conds.push(`(${n("ticket_id")} LIKE ${p} OR ${n("phone_number")} LIKE ${p} OR ${n("central_name")} LIKE ${p} OR ${n("cabinet_no")} LIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     // A ticket can hold several status_code rows. Show only the LAST status per
@@ -4796,9 +4806,9 @@ export async function registerRoutes(
     if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(complain_no ILIKE ${p} OR phone_number ILIKE ${p} OR exchange_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+      conds.push(`(${n("complain_no")} LIKE ${p} OR ${n("phone_number")} LIKE ${p} OR ${n("exchange_name")} LIKE ${p} OR ${n("cabinet_no")} LIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const { rows } = await pool.query(
@@ -4831,9 +4841,9 @@ export async function registerRoutes(
     if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(complain_no ILIKE ${p} OR phone_number ILIKE ${p} OR exchange_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+      conds.push(`(${n("complain_no")} LIKE ${p} OR ${n("phone_number")} LIKE ${p} OR ${n("exchange_name")} LIKE ${p} OR ${n("cabinet_no")} LIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const { rows } = await pool.query(
@@ -4959,9 +4969,9 @@ export async function registerRoutes(
     const params: any[] = [];
     let where = "";
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      where = `WHERE (fcc_code ILIKE ${p} OR main_ex ILIKE ${p} OR sub_ex ILIKE ${p} OR msan_gpon_code ILIKE ${p} OR type ILIKE ${p})`;
+      where = `WHERE (${n("fcc_code")} LIKE ${p} OR ${n("main_ex")} LIKE ${p} OR ${n("sub_ex")} LIKE ${p} OR ${n("msan_gpon_code")} LIKE ${p} OR ${n("type")} LIKE ${p})`;
     }
     const { rows } = await pool.query(
       `SELECT id, sector, region, main_ex AS "mainEx", sub_ex AS "subEx",
@@ -5112,9 +5122,9 @@ export async function registerRoutes(
     if (dateFrom) { params.push(dateFrom); conds.push(`complain_time >= $${params.length}`); }
     if (dateTo)   { params.push(dateTo + " 23:59:59"); conds.push(`complain_time <= $${params.length}`); }
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(complain_no ILIKE ${p} OR full_phone ILIKE ${p} OR phone_short ILIKE ${p} OR central_name ILIKE ${p} OR cabinet_no ILIKE ${p})`);
+      conds.push(`(${n("complain_no")} LIKE ${p} OR ${n("full_phone")} LIKE ${p} OR ${n("phone_short")} LIKE ${p} OR ${n("central_name")} LIKE ${p} OR ${n("cabinet_no")} LIKE ${p})`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     const { rows } = await pool.query(
@@ -5665,7 +5675,7 @@ export async function registerRoutes(
     const q = String((req.query as Record<string, string>).q || "").trim().toLowerCase();
     const params: any[] = [];
     let where = "";
-    if (q) { params.push(`%${q}%`); where = `WHERE LOWER(si.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')) LIKE $1`; }
+    if (q) { params.push(arQ(q)); where = `WHERE ${n("si.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')")} LIKE $1`; }
     const { rows } = await pool.query(
       `SELECT si.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
               substring(si.work_ord_date from '[0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4}') AS "workOrdDate",
@@ -5693,8 +5703,8 @@ export async function registerRoutes(
     const q = String((req.query as Record<string, string>).q || "").trim().toLowerCase();
     const params: any[] = [];
     const conds: string[] = [`pp.voice_status = 'ALL_SUSPEND'`, `pp.data_status = 'FREE'`];
-    if (central) { params.push(`%${central}%`); conds.push(`COALESCE(si.central, pl.central) ILIKE $${params.length}`); }
-    if (q) { params.push(`%${q}%`); conds.push(`LOWER(pp.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')) LIKE $${params.length}`); }
+    if (central) { params.push(arQ(central)); conds.push(`${n("COALESCE(si.central, pl.central)")} LIKE $${params.length}`); }
+    if (q) { params.push(arQ(q)); conds.push(`${n("pp.phone_number || ' ' || COALESCE(si.sub_name,'') || ' ' || COALESCE(si.sub_add,'') || ' ' || COALESCE(pp.msan_code,'') || ' ' || COALESCE(pp.frame,'')")} LIKE $${params.length}`); }
     const { rows } = await pool.query(
       `SELECT pp.phone_number AS "phoneNumber", si.sub_name AS "subName", si.sub_add AS "subAdd",
               substring(si.work_ord_date from '[0-9]{1,2}[-/][0-9]{1,2}[-/][0-9]{2,4}') AS "workOrdDate",
@@ -6085,9 +6095,9 @@ export async function registerRoutes(
     const params: any[] = [];
     let where = "";
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      where = `WHERE (central_name ILIKE ${p} OR exch_code ILIKE ${p} OR cabin_number ILIKE ${p} OR cabinet_type ILIKE ${p})`;
+      where = `WHERE (${n("central_name")} LIKE ${p} OR ${n("exch_code")} LIKE ${p} OR ${n("cabin_number")} LIKE ${p} OR ${n("cabinet_type")} LIKE ${p})`;
     }
     const { rows } = await pool.query(
       `SELECT id, central_name AS "centralName", exch_code AS "exchCode", exch_name AS "exchName",
@@ -6152,9 +6162,9 @@ export async function registerRoutes(
     const params: any[] = [];
     let where = "";
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      where = `WHERE (central_name ILIKE ${p} OR cabin_number ILIKE ${p} OR worker_code ILIKE ${p} OR region_name ILIKE ${p} OR cabin_code ILIKE ${p} OR idu ILIKE ${p})`;
+      where = `WHERE (${n("central_name")} LIKE ${p} OR ${n("cabin_number")} LIKE ${p} OR ${n("worker_code")} LIKE ${p} OR ${n("region_name")} LIKE ${p} OR ${n("cabin_code")} LIKE ${p} OR ${n("idu")} LIKE ${p})`;
     }
     const { rows } = await pool.query(
       `SELECT id, central_name AS "centralName", cabin_number AS "cabinNumber",
@@ -6216,8 +6226,8 @@ export async function registerRoutes(
     const params: any[] = [];
     let where = "";
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
-      where = `WHERE (worker_code ILIKE $1 OR tech_name ILIKE $1)`;
+      params.push(arQ(q));
+      where = `WHERE (${n("worker_code")} LIKE $1 OR ${n("tech_name")} LIKE $1)`;
     }
     const { rows } = await pool.query(
       `SELECT id, worker_code AS "workerCode", tech_name AS "techName"
@@ -6308,9 +6318,9 @@ export async function registerRoutes(
     const params: any[] = [];
     let where = "";
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      where = `WHERE (phone_number ILIKE ${p} OR msan_code ILIKE ${p} OR operator ILIKE ${p})`;
+      where = `WHERE (${n("phone_number")} LIKE ${p} OR ${n("msan_code")} LIKE ${p} OR ${n("operator")} LIKE ${p})`;
     }
     const { rows } = await pool.query(
       `SELECT id, phone_number AS "phoneNumber", area_code AS "areaCode",
@@ -6415,9 +6425,9 @@ export async function registerRoutes(
     }
     if (bucket === "archive" && year) { params.push(parseInt(year)); conds.push(`fo.archived_year = $${params.length}`); }
     if (q?.trim()) {
-      params.push(`%${q.trim()}%`);
+      params.push(arQ(q));
       const p = `$${params.length}`;
-      conds.push(`(fo.service_order_id ILIKE ${p} OR fo.serial_number ILIKE ${p} OR fo.customer_order_id ILIKE ${p} OR fo.customer_name ILIKE ${p} OR fo.msan_code ILIKE ${p} OR fo.fcc_exchange ILIKE ${p})`);
+      conds.push(`(${n("fo.service_order_id")} LIKE ${p} OR ${n("fo.serial_number")} LIKE ${p} OR ${n("fo.customer_order_id")} LIKE ${p} OR ${n("fo.customer_name")} LIKE ${p} OR ${n("fo.msan_code")} LIKE ${p} OR ${n("fo.fcc_exchange")} LIKE ${p})`);
     }
     if (msanFilter?.trim()) {
       params.push(msanFilter.trim());
@@ -6685,9 +6695,9 @@ export async function registerRoutes(
       const params: any[] = [];
       let where = "";
       if (q && q.trim()) {
-        params.push(`%${q.trim().toLowerCase()}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        where = `WHERE (LOWER(central) LIKE ${p} OR LOWER(cabin_number) LIKE ${p} OR LOWER(box_number) LIKE ${p})`;
+        where = `WHERE (${n("central")} LIKE ${p} OR ${n("cabin_number")} LIKE ${p} OR ${n("box_number")} LIKE ${p})`;
       }
 
       const totalRes = await pool.query(
@@ -6732,13 +6742,13 @@ export async function registerRoutes(
       const params: any[] = [];
       const conds: string[] = [];
 
-      if (exchange) { params.push(`%${exchange}%`); conds.push(`central ILIKE $${params.length}`); }
-      if (cabinet)  { params.push(`%${cabinet}%`);  conds.push(`cabin_number ILIKE $${params.length}`); }
-      if (box)      { params.push(`%${box}%`);      conds.push(`box_number ILIKE $${params.length}`); }
+      if (exchange) { params.push(arQ(exchange)); conds.push(`${n("central")} LIKE $${params.length}`); }
+      if (cabinet)  { params.push(arQ(cabinet));  conds.push(`${n("cabin_number")} LIKE $${params.length}`); }
+      if (box)      { params.push(arQ(box));      conds.push(`${n("box_number")} LIKE $${params.length}`); }
       if (q) {
-        params.push(`%${q}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        conds.push(`(full_phone ILIKE ${p} OR tel_no ILIKE ${p} OR central ILIKE ${p} OR cabin_number ILIKE ${p} OR box_number ILIKE ${p})`);
+        conds.push(`(${n("full_phone")} LIKE ${p} OR ${n("tel_no")} LIKE ${p} OR ${n("central")} LIKE ${p} OR ${n("cabin_number")} LIKE ${p} OR ${n("box_number")} LIKE ${p})`);
       }
 
       const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
@@ -6923,7 +6933,7 @@ export async function registerRoutes(
     const params: any[] = [];
 
     if (status) { params.push(status); conds.push(`status = $${params.length}`); }
-    if (search.trim()) { params.push(`%${search.trim()}%`); conds.push(`full_phone ILIKE $${params.length}`); }
+    if (search.trim()) { params.push(arQ(search)); conds.push(`${n("full_phone")} LIKE $${params.length}`); }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
 
     const { rows } = await pool.query(
@@ -6973,12 +6983,12 @@ export async function registerRoutes(
     const conds: string[] = ["status = 'not_feasible'"];
 
     if (q) {
-      params.push(`%${q}%`);
+      params.push(arQ(q));
       conds.push(`(
-        customer_name ILIKE $${params.length} OR
-        central_name ILIKE $${params.length} OR
-        cabin_number ILIKE $${params.length} OR
-        box_number ILIKE $${params.length}
+        ${n("customer_name")} LIKE $${params.length} OR
+        ${n("central_name")} LIKE $${params.length} OR
+        ${n("cabin_number")} LIKE $${params.length} OR
+        ${n("box_number")} LIKE $${params.length}
       )`);
     }
 
@@ -7257,9 +7267,9 @@ export async function registerRoutes(
       ];
       if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
       if (q.trim()) {
-        params.push(`%${q.trim()}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        conds.push(`(t.phone_number ILIKE ${p} OR t.cabinet_no ILIKE ${p} OR t.status_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
+        conds.push(`(${n("t.phone_number")} LIKE ${p} OR ${n("t.cabinet_no")} LIKE ${p} OR ${n("t.status_code")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
       }
       const where = "WHERE " + conds.join(" AND ");
 
@@ -7476,10 +7486,10 @@ export async function registerRoutes(
         rcConds.push(`COALESCE(rc.close_time, rc.complain_time)::date <= $${params.length}::date`);
       }
       if (q.trim()) {
-        params.push(`%${q.trim()}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        cdConds.push(`(cd.phone_number ILIKE ${p} OR cd.cabinet_no ILIKE ${p} OR cd.close_code ILIKE ${p} OR pl.box_number ILIKE ${p})`);
-        rcConds.push(`(rc.phone_number ILIKE ${p} OR rc.cabinet_no ILIKE ${p} OR rc.status_code ILIKE ${p})`);
+        cdConds.push(`(${n("cd.phone_number")} LIKE ${p} OR ${n("cd.cabinet_no")} LIKE ${p} OR ${n("cd.close_code")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
+        rcConds.push(`(${n("rc.phone_number")} LIKE ${p} OR ${n("rc.cabinet_no")} LIKE ${p} OR ${n("rc.status_code")} LIKE ${p})`);
       }
       const cdWhere = "WHERE " + cdConds.join(" AND ");
       const rcWhere = "WHERE " + rcConds.join(" AND ");
@@ -7685,10 +7695,10 @@ export async function registerRoutes(
       let centralParam = "";
       if (central) { params.push(central); centralParam = `$${params.length}`; }
       let qParam = "";
-      if (q.trim()) { params.push(`%${q.trim()}%`); qParam = `$${params.length}`; }
+      if (q.trim()) { params.push(arQ(q)); qParam = `$${params.length}`; }
       const cdCentral = central ? `AND cd.exchange_name = ${centralParam}` : "";
       const rcCentral = central ? `AND rc.exchange_name = ${centralParam}` : "";
-      const phoneQ = q.trim() ? `AND lc.phone ILIKE ${qParam}` : "";
+      const phoneQ = q.trim() ? `AND ${n("lc.phone")} LIKE ${qParam}` : "";
 
       const { rows } = await pool.query(
         `WITH comps AS (
@@ -7782,9 +7792,9 @@ export async function registerRoutes(
       ];
       if (central) { params.push(central); conds.push(`ct.central_name = $${params.length}`); }
       if (q.trim()) {
-        params.push(`%${q.trim()}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        conds.push(`(ct.cabin_number ILIKE ${p} OR ct.cabin_code ILIKE ${p} OR tn.tech_name ILIKE ${p})`);
+        conds.push(`(${n("ct.cabin_number")} LIKE ${p} OR ${n("ct.cabin_code")} LIKE ${p} OR ${n("tn.tech_name")} LIKE ${p})`);
       }
       const where = "WHERE " + conds.join(" AND ");
       // تُجمّع كباين النحاس التى تشترك فى نفس كود الـ MSAN فى صف واحد (مثل 6-2 و6-3)
@@ -7838,9 +7848,9 @@ export async function registerRoutes(
       ];
       if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
       if (q.trim()) {
-        params.push(`%${q.trim()}%`);
+        params.push(arQ(q));
         const p = `$${params.length}`;
-        conds.push(`(pl.cabin_number ILIKE ${p} OR pl.box_number ILIKE ${p} OR tn.tech_name ILIKE ${p})`);
+        conds.push(`(${n("pl.cabin_number")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p} OR ${n("tn.tech_name")} LIKE ${p})`);
       }
       const where = "WHERE " + conds.join(" AND ");
       const { rows } = await pool.query(
@@ -8300,7 +8310,7 @@ export async function registerRoutes(
       if (dateFrom) { params.push(dateFrom); conds.push(`snapshot_date >= $${params.length}::date`); }
       if (dateTo)   { params.push(dateTo);   conds.push(`snapshot_date <= $${params.length}::date`); }
       if (central)  { params.push(central);  conds.push(`central_name = $${params.length}`); }
-      if (q.trim()) { params.push(`%${q.trim()}%`); conds.push(`data::text ILIKE $${params.length}`); }
+      if (q.trim()) { params.push(arQ(q)); conds.push(`${n("data")} LIKE $${params.length}`); }
       const where = "WHERE " + conds.join(" AND ");
       const { rows } = await pool.query(
         `SELECT snapshot_date AS "snapshotDate", data

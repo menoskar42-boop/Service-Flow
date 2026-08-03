@@ -17,6 +17,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/cfm/components/ui/tabs";
 import { Plus, Search, Eye, FileSpreadsheet, ArrowDownUp, ArrowDown, ArrowUp } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import ExcelJS from 'exceljs';
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 export default function TicketList() {
   const { language, user } = useStore();
@@ -100,20 +101,20 @@ export default function TicketList() {
   };
 
   const filteredTickets = tickets.filter(ticket => {
-    const searchLower = search.toLowerCase();
+    const searchLower = arNorm(search);
     const central = centrals.find(c => c.id === ticket.centralId);
     const cable = cables.find(c => c.id === ticket.cableId);
     const fault = faultTypes.find(f => f.id === ticket.faultTypeId);
     const creator = users.find(u => u.id === ticket.createdBy);
     
     const matchesSearch = 
-      ticket.ticketNumber.toLowerCase().includes(searchLower) ||
-      (central?.name?.toLowerCase() || '').includes(searchLower) ||
-      (cable?.number?.toLowerCase() || '').includes(searchLower) ||
-      (ticket.box?.toLowerCase() || '').includes(searchLower) ||
-      (fault?.name?.toLowerCase() || '').includes(searchLower) ||
-      (creator?.name?.toLowerCase() || '').includes(searchLower) ||
-      t[ticket.status as keyof typeof t]?.toString().toLowerCase().includes(searchLower);
+      arIncludes(ticket.ticketNumber, searchLower) ||
+      arIncludes((central?.name?.toLowerCase() || ''), searchLower) ||
+      arIncludes((cable?.number?.toLowerCase() || ''), searchLower) ||
+      arIncludes((ticket.box?.toLowerCase() || ''), searchLower) ||
+      arIncludes((fault?.name?.toLowerCase() || ''), searchLower) ||
+      arIncludes((creator?.name?.toLowerCase() || ''), searchLower) ||
+      arIncludes(t[ticket.status as keyof typeof t]?.toString(), searchLower);
     
     if (activeTab === 'all') return matchesSearch;
     

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer, Ruler } from "lucide-react";
 import { format } from "date-fns";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 // شكل الرد من نظام صيانة البوكسات (عبر الوسيط /api/reports/box-overlap)
 interface OverlapRow {
@@ -93,9 +94,9 @@ export function BoxOverlapReport() {
   // بحث نصّى محلى على السنترال/الكابينة/البوكس/المراقب/البند/نوع الكابل
   const displayed = rows.filter((r) => {
     if (!q.trim()) return true;
-    const t = q.trim().toLowerCase();
+    const t = arNorm(q.trim());
     return [r.central, r.cabin, r.box, r.observer, r.item, r.cableType, r.status]
-      .some((v) => (v ?? "").toString().toLowerCase().includes(t));
+      .some((v) => arIncludes((v ?? "").toString(), t));
   });
 
   const CARDS: { label: string; value: number; suffix: string }[] = [

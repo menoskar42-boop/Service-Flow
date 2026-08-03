@@ -18,6 +18,28 @@ export const db = drizzle(pool, { schema });
 // Idempotent runtime migrations: keep DB in sync with schema additions even
 // when `npm run db:push` is not executed (e.g. Replit deploy).
 export async function ensureSchema() {
+  // ── sf_ar_norm(): تطبيع النص العربى للبحث ──
+  // البحث كان حرفياً جداً: «ايمن» مكانش بيلاقى «أيمن»، و«يحيى» مكانش بيلاقى «يحيي».
+  // الدالة دى بتوحّد الحروف قبل المقارنة:
+  //   آ أ إ ٱ → ا | ى ئ → ي | ؤ → و | ة → ه
+  //   تشيل التشكيل (ً ٌ ٍ َ ُ ِ ّ ْ) والتطويل (ـ) والألف الخنجرية (ٰ)
+  //   تحوّل الأرقام العربية/الفارسية (٠١٢… ۰۱۲…) لأرقام لاتينية
+  //   + lower() للحروف اللاتينية
+  // لازم تفضل مطابقة تماماً لدالة arNorm() فى shared/ar-norm.ts (المستخدَمة فى الواجهة).
+  // IMMUTABLE عشان تقدر تدخل فى index لو احتجنا لاحقاً.
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION sf_ar_norm(t text) RETURNS text
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+      SELECT lower(translate(COALESCE(t, ''),
+        E'\\u0622\\u0623\\u0625\\u0671\\u0649\\u0626\\u0624\\u0629'
+        || E'\\u0660\\u0661\\u0662\\u0663\\u0664\\u0665\\u0666\\u0667\\u0668\\u0669'
+        || E'\\u06F0\\u06F1\\u06F2\\u06F3\\u06F4\\u06F5\\u06F6\\u06F7\\u06F8\\u06F9'
+        || E'\\u064B\\u064C\\u064D\\u064E\\u064F\\u0650\\u0651\\u0652\\u0640\\u0670',
+        E'\\u0627\\u0627\\u0627\\u0627\\u064A\\u064A\\u0648\\u0647'
+        || '0123456789' || '0123456789'))
+    $fn$
+  `);
+
   // Core tables (users, orders) — historically created by drizzle-kit push, now
   // also created here so ensureSchema is self-sufficient on a fresh database.
   await pool.query(`

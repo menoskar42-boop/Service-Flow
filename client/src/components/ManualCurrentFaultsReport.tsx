@@ -11,6 +11,7 @@ import { useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { ROLES } from "@shared/schema";
 import { CLOSE_CODE_REASONS } from "@/lib/close-codes";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
+import { arNorm } from "@shared/ar-norm";
 
 // «الأعطال الحالية خارج الشاشة» — الأعطال اليدوية (زر «الخط به عطل») اللى لسه ماانتظمتش.
 interface Row {
@@ -71,12 +72,13 @@ export function ManualCurrentFaultsReport() {
   // فلتر «أعطالى» — أعطال الفني نفسه (بالاسم فى «اسم الفنى» أو «سجّل العطل»)
   const [onlyMine, setOnlyMine] = useState(false);
   // أسمائى + أسماء الزملاء اللى لى تغطية عليهم (منح دائمة) — كلهم يظهروا فى «أعطالى»
+  // arNorm عشان «أيمن» تطابق «ايمن» و«يحيى» تطابق «يحيي» — الأسماء بتتكتب بأشكال مختلفة
   const myNames = [(user as any)?.techName, user?.username, ...(((user as any)?.coveredTechNames as string[]) ?? [])]
-    .map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
+    .map((s) => arNorm(String(s || "").trim())).filter(Boolean);
   const isMine = (x: Row) => {
-    const t = String(x.techName || "").trim().toLowerCase();
-    const f = String(x.flaggedBy || "").trim().toLowerCase();
-    return myNames.some((n) => n === t || n === f);
+    const t = arNorm(String(x.techName || "").trim());
+    const f = arNorm(String(x.flaggedBy || "").trim());
+    return myNames.some((nm) => nm === t || nm === f);
   };
 
   const load = useCallback(async () => {

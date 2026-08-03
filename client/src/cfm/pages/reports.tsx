@@ -8,6 +8,7 @@ import { FileSpreadsheet, FileText, Search, ArrowLeft, Users, Package, AlertTria
 import { useState, useEffect, useCallback } from "react";
 import ExcelJS from 'exceljs';
 import { ticketsApi, masterDataApi, inventoryApi, type Ticket, type Contractor, type WorkType, type TaskType, type InventoryTransaction, type ExcavationWorker, type Cable } from "@/cfm/lib/api";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 // Split a performedBy field (which may contain multiple technicians joined by
 // an Arabic/Latin comma) into individual technician names.
@@ -104,12 +105,12 @@ export default function Reports() {
           });
         });
     }).filter(item => {
-      const searchLower = search.toLowerCase();
+      const searchLower = arNorm(search);
       return (
-        item.contractorName.toLowerCase().includes(searchLower) ||
-        item.ticketNumber.toLowerCase().includes(searchLower) ||
-        item.taskName.toLowerCase().includes(searchLower) ||
-        String(item.quantity).includes(searchLower)
+        arIncludes(item.contractorName, searchLower) ||
+        arIncludes(item.ticketNumber, searchLower) ||
+        arIncludes(item.taskName, searchLower) ||
+        arIncludes(String(item.quantity), searchLower)
       );
     });
   };
@@ -179,12 +180,12 @@ export default function Reports() {
     const result = [...groupedEntries, ...ungrouped];
 
     return result.filter(item => {
-      const searchLower = search.toLowerCase();
+      const searchLower = arNorm(search);
       return (
-        item.name.toLowerCase().includes(searchLower) ||
-        String(item.incoming).includes(searchLower) ||
-        String(item.outgoing).includes(searchLower) ||
-        String(item.balance).includes(searchLower)
+        arIncludes(item.name, searchLower) ||
+        arIncludes(String(item.incoming), searchLower) ||
+        arIncludes(String(item.outgoing), searchLower) ||
+        arIncludes(String(item.balance), searchLower)
       );
     });
   };
@@ -242,16 +243,16 @@ export default function Reports() {
     const results = Array.from(resultsMap.values());
     
     return results.filter(item => {
-      const searchLower = search.toLowerCase();
+      const searchLower = arNorm(search);
       return (
-        item.workerName.toLowerCase().includes(searchLower) ||
-        item.ticketNumber.toLowerCase().includes(searchLower) ||
+        arIncludes(item.workerName, searchLower) ||
+        arIncludes(item.ticketNumber, searchLower) ||
         item.nationalId.includes(search) ||
-        item.centralName.toLowerCase().includes(searchLower) ||
-        item.cableNumber.toLowerCase().includes(searchLower) ||
-        item.cabinetNumber.toLowerCase().includes(searchLower) ||
-        item.boxNumber.toLowerCase().includes(searchLower) ||
-        item.tasksUsed.toLowerCase().includes(searchLower)
+        arIncludes(item.centralName, searchLower) ||
+        arIncludes(item.cableNumber, searchLower) ||
+        arIncludes(item.cabinetNumber, searchLower) ||
+        arIncludes(item.boxNumber, searchLower) ||
+        arIncludes(item.tasksUsed, searchLower)
       );
     }).filter(item => {
       if (excavationDateFrom) {
@@ -291,13 +292,13 @@ export default function Reports() {
         };
       })
       .filter(item => {
-        const searchLower = search.toLowerCase();
+        const searchLower = arNorm(search);
         return (
-          item.ticketNumber.toLowerCase().includes(searchLower) ||
-          item.centralName.toLowerCase().includes(searchLower) ||
-          item.cabinetNumber.toLowerCase().includes(searchLower) ||
-          item.boxNumber.toLowerCase().includes(searchLower) ||
-          item.measurements.toLowerCase().includes(searchLower)
+          arIncludes(item.ticketNumber, searchLower) ||
+          arIncludes(item.centralName, searchLower) ||
+          arIncludes(item.cabinetNumber, searchLower) ||
+          arIncludes(item.boxNumber, searchLower) ||
+          arIncludes(item.measurements, searchLower)
         );
       });
   };
@@ -322,13 +323,13 @@ export default function Reports() {
         };
       })
       .filter(item => {
-        const searchLower = search.toLowerCase();
+        const searchLower = arNorm(search);
         return (
-          item.ticketNumber.toLowerCase().includes(searchLower) ||
-          item.centralName.toLowerCase().includes(searchLower) ||
-          item.cabinetNumber.toLowerCase().includes(searchLower) ||
-          item.boxNumber.toLowerCase().includes(searchLower) ||
-          item.faultType.toLowerCase().includes(searchLower)
+          arIncludes(item.ticketNumber, searchLower) ||
+          arIncludes(item.centralName, searchLower) ||
+          arIncludes(item.cabinetNumber, searchLower) ||
+          arIncludes(item.boxNumber, searchLower) ||
+          arIncludes(item.faultType, searchLower)
         );
       })
       .sort((a, b) => {

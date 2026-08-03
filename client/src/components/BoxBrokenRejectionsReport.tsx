@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { arNorm, arIncludes } from "@shared/ar-norm";
 
 interface BoxSummary {
   central: string;
@@ -125,18 +126,18 @@ export function BoxBrokenRejectionsReport({ orders }: BoxBrokenRejectionsReportP
       if (row.workingCount === null || row.workingCount > maxWorkingNum) return false;
     }
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    const q = arNorm(searchQuery);
     const workingText = row.workingCount !== null ? String(row.workingCount) : "لا يوجد في بيان التليفونات";
     return (
-      row.customerName.toLowerCase().includes(q) ||
-      row.customerAddress.toLowerCase().includes(q) ||
-      row.centralName.toLowerCase().includes(q) ||
-      row.cabinNumber.toLowerCase().includes(q) ||
-      row.boxNumber.toLowerCase().includes(q) ||
-      row.techName.toLowerCase().includes(q) ||
-      (row.nearestBoxDistance || "").toLowerCase().includes(q) ||
-      (row.additionalNotes || "").toLowerCase().includes(q) ||
-      workingText.includes(q)
+      arIncludes(row.customerName, q) ||
+      arIncludes(row.customerAddress, q) ||
+      arIncludes(row.centralName, q) ||
+      arIncludes(row.cabinNumber, q) ||
+      arIncludes(row.boxNumber, q) ||
+      arIncludes(row.techName, q) ||
+      arIncludes((row.nearestBoxDistance || ""), q) ||
+      arIncludes((row.additionalNotes || ""), q) ||
+      arIncludes(workingText, q)
     );
   });
 
