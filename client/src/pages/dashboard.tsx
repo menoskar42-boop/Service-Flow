@@ -128,6 +128,16 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     ],
   },
   {
+    // بعد «القياسات» مباشرةً — لأن باتشات القياس/رفع السرعة/الإيقاف بتتبعت من تقارير القياسات
+    label: "معاملات التنفيذ",
+    icon: Server,
+    items: [
+      { id: "exec-jobs", label: "سجل القياس/رفع السرعة/الإيقاف" },
+      { id: "exec-batches", label: "سجل كل الباتشات (المنفَّذة والملغاة)" },
+      { id: "queue-reorder", label: "ترتيب الطابور (الباتشات المؤجّلة)" },
+    ],
+  },
+  {
     label: "متعذرات OM",
     icon: FileText,
     items: [
@@ -196,15 +206,6 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     icon: AlertTriangle,
     items: [
       { id: "cfm-tickets", label: "تذاكر الأعطال" },
-    ],
-  },
-  {
-    label: "معاملات التنفيذ",
-    icon: Server,
-    items: [
-      { id: "exec-jobs", label: "سجل القياس/رفع السرعة/الإيقاف" },
-      { id: "exec-batches", label: "سجل كل الباتشات (المنفَّذة والملغاة)" },
-      { id: "queue-reorder", label: "ترتيب الطابور (الباتشات المؤجّلة)" },
     ],
   },
   {
