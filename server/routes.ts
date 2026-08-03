@@ -567,6 +567,18 @@ const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
 const n = (expr: string) => `sf_ar_norm(COALESCE(${expr}::text, ''))`;
 const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
 
+// ── مطابقة أرقام التليفون بين الجداول ──
+// أرقام 430D (complaint_details / remaining_complaints) وticket_dsl_current مخزّنة بصيغ
+// مختلفة: بعضها فيه مسافات/شرطات، وبعضها بالبادئة 88، وبعضها بأصفار بادئة. المقارنة كانت
+// بـ «=» على القيمة الخام، فأى اختلاف فى الصيغة كان بيخلّى الشكوى مش تتلاقى أصلاً.
+// sp() بترجّع الرقم القصير المعيارى: أرقام فقط، وتشيل بادئة 88 بس لو الطول أكبر من 7
+// (عشان رقم محلى بيبدأ بـ 88 مايتقصّش بالغلط) — نفس المنطق المستخدم فى تقارير أوامر الشغل.
+const sp = (expr: string) => {
+  // أرقام فقط + شيل الأصفار البادئة (بعض الملفات بتخزّن 0882656325)
+  const d = `regexp_replace(regexp_replace(COALESCE(${expr}::text, ''), '[^0-9]', '', 'g'), '^0+', '')`;
+  return `(CASE WHEN ${d} LIKE '88%' AND length(${d}) > 7 THEN substring(${d} FROM 3) ELSE ${d} END)`;
+};
+
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf
      WHERE pf.phone_number = ${fullPhoneExpr}
@@ -2862,10 +2874,10 @@ export async function registerRoutes(
     // نفس المصادر الأربعة بالظبط المستخدَمة فى /api/phone-lines/needs-speed (requireComplaintAny).
     if (hasComplaint === "1" || hasComplaint === "true") {
       conds.push(`(
-        EXISTS (SELECT 1 FROM complaint_details cd WHERE cd.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
-        OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE rc.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
-        OR EXISTS (SELECT 1 FROM ticket_dsl_current td WHERE td.close_date IS NULL AND td.phone_number = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')))
-        OR EXISTS (SELECT 1 FROM manual_faults mf WHERE mf.phone_short = COALESCE(pl.tel_no, regexp_replace(la.full_phone,'^88','')) OR mf.full_phone = la.full_phone)
+        EXISTS (SELECT 1 FROM complaint_details cd WHERE ${sp("cd.phone_number")} = ${sp("la.full_phone")})
+        OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE ${sp("rc.phone_number")} = ${sp("la.full_phone")})
+        OR EXISTS (SELECT 1 FROM ticket_dsl_current td WHERE td.close_date IS NULL AND ${sp("td.phone_number")} = ${sp("la.full_phone")})
+        OR EXISTS (SELECT 1 FROM manual_faults mf WHERE ${sp("mf.phone_short")} = ${sp("la.full_phone")} OR ${sp("mf.full_phone")} = ${sp("la.full_phone")})
       )`);
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
@@ -2974,13 +2986,13 @@ export async function registerRoutes(
       conds.push(`(
         EXISTS (
           SELECT 1 FROM complaint_details cd
-          WHERE cd.phone_number = COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', ''))
+          WHERE ${sp("cd.phone_number")} = ${sp("k.full_phone")}
             AND date_trunc('month', cd.complain_time AT TIME ZONE 'Africa/Cairo')
                 = date_trunc('month', now() AT TIME ZONE 'Africa/Cairo')
         )
         OR EXISTS (
           SELECT 1 FROM remaining_complaints rc
-          WHERE rc.phone_number = COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', ''))
+          WHERE ${sp("rc.phone_number")} = ${sp("k.full_phone")}
             AND date_trunc('month', rc.complain_time AT TIME ZONE 'Africa/Cairo')
                 = date_trunc('month', now() AT TIME ZONE 'Africa/Cairo')
         )
@@ -3320,19 +3332,19 @@ export async function registerRoutes(
         SELECT u.complain_no, u.complain_time, u.central_name, u.cabinet_no FROM (
           SELECT complain_no, complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
             FROM complaint_details
-            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+            WHERE ${sp("phone_number")} = ${sp("m.full_phone")}
           UNION ALL
           SELECT complain_no, complain_time, exchange_name AS central_name, cabinet_no
             FROM remaining_complaints
-            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))${needComplaintAny ? `
+            WHERE ${sp("phone_number")} = ${sp("m.full_phone")}${needComplaintAny ? `
           UNION ALL
           SELECT ticket_id AS complain_no, complaint_time AS complain_time, central_name, cabinet_no
             FROM ticket_dsl_current
-            WHERE close_date IS NULL AND phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+            WHERE close_date IS NULL AND ${sp("phone_number")} = ${sp("m.full_phone")}
           UNION ALL
           SELECT ('يدوى-' || mf.id) AS complain_no, mf.flagged_at AS complain_time, mf.central AS central_name, mf.cabin_number AS cabinet_no
             FROM manual_faults mf
-            WHERE mf.phone_short = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', '')) OR mf.full_phone = m.full_phone` : ""}
+            WHERE ${sp("mf.phone_short")} = ${sp("m.full_phone")} OR ${sp("mf.full_phone")} = ${sp("m.full_phone")}` : ""}
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
@@ -3427,11 +3439,11 @@ export async function registerRoutes(
         SELECT u.central_name, u.cabinet_no FROM (
           SELECT complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
             FROM complaint_details
-            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+            WHERE ${sp("phone_number")} = ${sp("m.full_phone")}
           UNION ALL
           SELECT complain_time, exchange_name AS central_name, cabinet_no
             FROM remaining_complaints
-            WHERE phone_number = COALESCE(pl.tel_no, regexp_replace(m.full_phone, '^88', ''))
+            WHERE ${sp("phone_number")} = ${sp("m.full_phone")}
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
@@ -3556,10 +3568,10 @@ export async function registerRoutes(
        LEFT JOIN LATERAL (
          SELECT u.complain_no, u.central_name, u.cabinet_no, u.complain_time FROM (
            SELECT complain_no, complain_time, COALESCE(NULLIF(central_name,''), exchange_name) AS central_name, cabinet_no
-             FROM complaint_details WHERE phone_number = COALESCE(pl.tel_no, t.short)
+             FROM complaint_details WHERE ${sp("phone_number")} = ${sp("t.short")}
            UNION ALL
            SELECT complain_no, complain_time, exchange_name AS central_name, cabinet_no
-             FROM remaining_complaints WHERE phone_number = COALESCE(pl.tel_no, t.short)
+             FROM remaining_complaints WHERE ${sp("phone_number")} = ${sp("t.short")}
          ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
        ) cpl ON true
        LEFT JOIN LATERAL (
