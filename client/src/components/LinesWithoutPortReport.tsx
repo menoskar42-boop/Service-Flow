@@ -78,15 +78,17 @@ export function LinesWithoutPortReport() {
     });
   }, [all, search]);
 
-  const COLS = ["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "DP Terminal",
+  const COLS = ["#", "رقم التليفون", "اسم العميل", "العنوان", "رقم الأكونت",
+    "السنترال", "الكابينة", "البكس", "DP Terminal",
     "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out",
-    "البورت (131)", "LEN", "رقم الأكونت", "اسم العميل", "العنوان", "آخر قياس"];
+    "البورت (131)", "LEN", "آخر قياس"];
 
   const asRow = (r: Row, i: number) => [
-    i + 1, r.telNo ?? r.fullPhone, r.central ?? "—", r.cabinNumber ?? "—", r.boxNumber ?? "—",
+    i + 1, r.telNo ?? r.fullPhone, r.subName ?? "—", r.subAdd ?? "—", r.accountNo ?? "—",
+    r.central ?? "—", r.cabinNumber ?? "—", r.boxNumber ?? "—",
     r.dpTerminal ?? "—", r.iduNo ?? "—", r.oduNo ?? "—", r.primaryBlockNo ?? "—", r.cabinetIn ?? "—",
     r.secBlockNo ?? "—", r.cabinetOut ?? "—", r.port131 ?? "—", r.len ?? "—",
-    r.accountNo ?? "—", r.subName ?? "—", r.subAdd ?? "—", fmt(r.lastMeasTime),
+    fmt(r.lastMeasTime),
   ];
 
   const handleExportExcel = () => {
@@ -101,10 +103,10 @@ export function LinesWithoutPortReport() {
     printTablePDF({
       title: "أرقام لها بيان فنى وليس لها بورت",
       // نختصر الأعمدة فى الـ PDF عشان تبقى مقروءة
-      columns: ["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "DP Terminal", "رقم الأكونت", "اسم العميل"],
+      columns: ["#", "رقم التليفون", "اسم العميل", "العنوان", "رقم الأكونت", "السنترال", "الكابينة", "البكس", "DP Terminal"],
       rows: rows.map((r, i) => [
-        i + 1, r.telNo ?? r.fullPhone, r.central ?? "—", r.cabinNumber ?? "—",
-        r.boxNumber ?? "—", r.dpTerminal ?? "—", r.accountNo ?? "—", r.subName ?? "—",
+        i + 1, r.telNo ?? r.fullPhone, r.subName ?? "—", r.subAdd ?? "—", r.accountNo ?? "—",
+        r.central ?? "—", r.cabinNumber ?? "—", r.boxNumber ?? "—", r.dpTerminal ?? "—",
       ]),
     });
   };
@@ -192,6 +194,9 @@ export function LinesWithoutPortReport() {
                   <TableRow key={r.fullPhone} className="hover:bg-muted/30">
                     <TableCell className="text-center text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="text-center font-mono font-semibold text-blue-700">{r.telNo ?? r.fullPhone}</TableCell>
+                    <TableCell className="whitespace-nowrap font-medium">{r.subName ?? "—"}</TableCell>
+                    <TableCell className="max-w-[260px] truncate" title={r.subAdd ?? ""}>{r.subAdd ?? "—"}</TableCell>
+                    <TableCell className="text-center font-mono">{r.accountNo ?? "—"}</TableCell>
                     <TableCell>{r.central ?? "—"}</TableCell>
                     <TableCell className="text-center">{r.cabinNumber ?? "—"}</TableCell>
                     <TableCell className="text-center">{r.boxNumber ?? "—"}</TableCell>
@@ -204,9 +209,6 @@ export function LinesWithoutPortReport() {
                     <TableCell className="text-center">{r.cabinetOut ?? "—"}</TableCell>
                     <TableCell className="text-center">{r.port131 ?? "—"}</TableCell>
                     <TableCell className="text-center">{r.len ?? "—"}</TableCell>
-                    <TableCell className="text-center font-mono">{r.accountNo ?? "—"}</TableCell>
-                    <TableCell className="whitespace-nowrap">{r.subName ?? "—"}</TableCell>
-                    <TableCell className="max-w-[220px] truncate" title={r.subAdd ?? ""}>{r.subAdd ?? "—"}</TableCell>
                     <TableCell className="text-center">{fmt(r.lastMeasTime)}</TableCell>
                   </TableRow>
                 ))}
