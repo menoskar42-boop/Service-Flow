@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban, Pause, Play } from "lucide-react";
@@ -39,9 +39,12 @@ export function QueueReorderPanel() {
   const [dirty, setDirty] = useState(false);
   const [canceling, setCanceling] = useState<string | null>(null); // batchId اللى بيتلغى دلوقتى
   const [pausing, setPausing] = useState<string | null>(null); // batchId اللى بيتوقّف/يستأنف دلوقتى ("all" للكل)
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // silent = تحديث فى الخلفية (التحديث التلقائى): مايوريّش سبينر ولا يمسح الشاشة،
+  // عشان الجدول مايرفرفش كل 15 ثانية.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [r, rp] = await Promise.all([
         fetch("/api/exec-queue/reorderable", { credentials: "include" }),
@@ -52,9 +55,28 @@ export function QueueReorderPanel() {
       setRows(Array.isArray(d.data) ? d.data : []);
       setPriorityRows(Array.isArray(dp.data) ? dp.data : []);
       setDirty(false);
-    } catch { setRows([]); setPriorityRows([]); } finally { setLoading(false); }
+      setLastRefresh(new Date());
+    } catch { if (!silent) { setRows([]); setPriorityRows([]); } } finally { if (!silent) setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // التحديث التلقائى بيتخطّى نفسه لو فيه ترتيب لسه ماتحفظش (عشان مايضيعش) أو فيه
+  // عملية شغالة (حفظ/إلغاء/إيقاف) — نحدّثها فى ref عشان الـ interval يقرا آخر قيمة
+  // من غير ما نعيد إنشاؤه كل رندر.
+  const busyRef = useRef(false);
+  useEffect(() => {
+    busyRef.current = dirty || saving || loading || !!canceling || !!pausing;
+  }, [dirty, saving, loading, canceling, pausing]);
+
+  // تحديث تلقائى كل 15 ثانية — بيقف لو التاب مش ظاهر (مافيش داعى نضرب السيرفر فى الخلفية)
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (busyRef.current) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      load(true);
+    }, 15000);
+    return () => clearInterval(id);
+  }, [load]);
 
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
@@ -127,8 +149,16 @@ export function QueueReorderPanel() {
   return (
     <div className="space-y-4" dir="rtl">
       {/* زر تحديث واحد أعلى الصفحة — بيحدّث الجزئين معاً (الأولوية العليا + المؤجّلة) */}
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="font-bold text-lg">طابور التنفيذ</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-baseline gap-3">
+          <h2 className="font-bold text-lg">طابور التنفيذ</h2>
+          {/* مؤشّر التحديث التلقائى — يوضّح إن الأرقام حيّة من غير ما تضغط تحديث */}
+          <span className="text-xs text-muted-foreground">
+            {dirty
+              ? "⏸ التحديث التلقائى متوقف — فيه ترتيب لسه ماتحفظش"
+              : <>🔄 يتحدّث تلقائياً كل 15 ثانية{lastRefresh ? ` — آخر تحديث ${lastRefresh.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}</>}
+          </span>
+        </div>
         <div className="flex gap-2">
           <Button
             onClick={togglePauseAll}
@@ -140,7 +170,9 @@ export function QueueReorderPanel() {
             {pausing === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : anyPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
             {anyPaused ? "استئناف الكل" : "إيقاف مؤقت للكل"}
           </Button>
-          <Button onClick={load} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
+          {/* () => load() مش load مباشرة — عشان onClick بيمرّر الحدث كأول باراميتر
+              وكان هيتقرا كـ silent=true فيتحوّل التحديث اليدوى لتحديث صامت بغير قصد */}
+          <Button onClick={() => load()} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
         </div>
       </div>
 
