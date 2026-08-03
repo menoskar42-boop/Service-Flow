@@ -1050,6 +1050,21 @@ export async function registerRoutes(
     ws.on('error', console.error);
   });
 
+  // أى رفع ملف ناجح (POST /api/*/import…) بيبعت إشعار لكل المتصفحات المفتوحة، فالتقارير
+  // المعتمدة على الملف ده تتحدّث لوحدها فوراً — من غير ما تعمل refresh أو تضغط «تحديث».
+  // متسجّل هنا (قبل أى app.post للرفع) عشان يلفّها كلها — الموجودة دلوقتى وأى واحدة تتضاف
+  // بعدين — بدل ما نكرّر broadcast فى نهاية كل handler وننسى واحد.
+  app.use((req, res, next) => {
+    if (req.method === "POST" && /^\/api\/[^/]+\/import/.test(req.path)) {
+      res.on("finish", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          broadcast({ type: WS_EVENTS.DATA_IMPORT, payload: { key: req.path } });
+        }
+      });
+    }
+    next();
+  });
+
   // Notify the sales rep who created the order + all admins when an order
   // becomes feasible (by tech or external affairs).
   const notifyOrderFeasible = async (order: any, source: "tech" | "external") => {

@@ -903,4 +903,7 @@ export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',
   ORDER_CREATE: 'ORDER_CREATE',
   NOTIFICATION: 'NOTIFICATION',
+  // رفع ملف جديد (أى POST /api/*/import ناجح) — المتصفحات المفتوحة بتحدّث تقاريرها
+  // لوحدها من غير ما المستخدم يعمل refresh. payload.key = مسار الرفع.
+  DATA_IMPORT: 'DATA_IMPORT',
 } as const;
