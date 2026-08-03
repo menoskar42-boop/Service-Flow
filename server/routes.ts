@@ -1609,7 +1609,9 @@ export async function registerRoutes(
   // حسب created_at)، بدل ما تتلغى. المهام المنتظرة الأخرى تفضل زى ما هى ويكمّلها الجهاز.
   app.post("/api/exec-queue/reset-orphaned", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {
-      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'pending', claimed_at = NULL WHERE status = 'claimed'`);
+      // نزوّد attempts هنا كمان — الاسترجاع اليدوى ده إعادة محاولة برضه، فلو مهمة فضلت
+      // تعلق كل مرة تتحسب صح وتتلغى فى النهاية بدل ما تلفّ فى الطابور للأبد.
+      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'pending', claimed_at = NULL, attempts = attempts + 1 WHERE status = 'claimed'`);
       res.json({ ok: true, requeued: rowCount ?? 0 });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1796,23 +1798,44 @@ export async function registerRoutes(
   // أو (ب) مهمة claimed من أكثر من 5 ساعات (أطول من أقصى تشغيل باتش).
   const expireOrphanedExecJobs = async () => {
     try {
-      // (1) مهمة claimed «معلّقة» والجهاز عدّاها فعلاً (سحب مهمة أحدث منها بعد كده) — دى مهمة
-      //     يتيمة أكيد: التاب اتقفل أو التنفيذ فشل من غير ما يبعت /done. بنرجّعها pending عشان
-      //     تتنفّذ تانى فى مكانها الصحيح حسب الأولوية.
-      //     من غير ده كانت بتفضل claimed للأبد فتعمل مشكلتين:
-      //       • claim بياخد pending بس → الباتش بتاعها مابيخلصش والجهاز بيروح لباتشات أقل أولوية
-      //         (الباتش يبان فى «الأولوية العليا» لكن كأنه مش موجود).
-      //       • pause/pause-all بتشتغل على pending بس → الباتش ده مابيقفش مع «إيقاف الكل».
+      // المهمة بتعلق فى claimed لما التاب يتقفل أو التنفيذ يفشل من غير ما يبعت /done.
+      // من غير علاج بتفضل claimed للأبد فتعمل تلات مشاكل:
+      //   • claim بياخد pending بس → الباتش بتاعها مابيخلصش والجهاز بيروح لباتشات أقل أولوية
+      //     (الباتش يبان فى «الأولوية العليا» لكن كأنه مش موجود).
+      //   • pause/pause-all بتشتغل على pending/claimed → لكن مافيش حاجة بترجّعها للطابور.
+      //   • كانت بتتلغى (stale) بعد 6 ساعات من غير أى محاولة تانية.
+      // العلاج: إعادة محاولة تلقائية لحد 3 مرات، وبعدها بس تتلغى.
+      const MAX_ATTEMPTS = 3;
+
+      // (1) الجهاز عدّاها فعلاً (سحب مهمة أحدث منها بعد كده) → يتيمة أكيد، نرجّعها بسرعة (10 دقايق).
       //     شرط «فيه مهمة اتسحبت بعدها» بيضمن إننا مانرجّعش مهمة الجهاز لسه شغّال عليها.
+      // (2) الجهاز مات عليها هى نفسها (مافيش مهمة أحدث) → مافيش دليل مباشر، فبنستنى أطول
+      //     (45 دقيقة — مهمة الخط الواحد بتاخد دقيقة أو اتنين) وبعدين نرجّعها برضه.
+      //     ده كان الفراغ: الحالة دى كانت بتفضل عالقة 6 ساعات وتتلغى من غير محاولة.
       await pool.query(
-        `UPDATE exec_jobs e SET status = 'pending', claimed_at = NULL
+        `UPDATE exec_jobs e
+            SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1
           WHERE e.status = 'claimed'
-            AND e.claimed_at < now() - interval '10 minutes'
-            AND EXISTS (SELECT 1 FROM exec_jobs j2 WHERE j2.claimed_at > e.claimed_at)`,
+            AND e.attempts < $1
+            AND (
+              (e.claimed_at < now() - interval '10 minutes'
+               AND EXISTS (SELECT 1 FROM exec_jobs j2 WHERE j2.claimed_at > e.claimed_at))
+              OR e.claimed_at < now() - interval '45 minutes'
+            )`,
+        [MAX_ATTEMPTS],
       );
-      // (2) آخر حدّ: مهمة claimed عدّى عليها >6 ساعات (والجهاز مارجعش يسحب حاجة بعدها) — stale.
+
+      // (3) استنفدت المحاولات ولسه عالقة → نسيبها ساعة كمان ثم نعلّمها stale بنتيجة واضحة
+      //     تظهر فى تقرير الباتشات (بدل ما تختفى من غير سبب).
       await pool.query(
-        `UPDATE exec_jobs SET status = 'stale', done_at = now()
+        `UPDATE exec_jobs SET status = 'stale', done_at = now(), result = 'stuck_max_attempts'
+          WHERE status = 'claimed' AND attempts >= $1 AND claimed_at < now() - interval '1 hour'`,
+        [MAX_ATTEMPTS],
+      );
+
+      // (4) آخر حدّ مطلق: مهمة claimed عدّى عليها >6 ساعات مهما كانت محاولاتها.
+      await pool.query(
+        `UPDATE exec_jobs SET status = 'stale', done_at = now(), result = COALESCE(result, 'stuck_expired')
          WHERE status = 'claimed' AND claimed_at < now() - interval '6 hours'`,
       );
     } catch { /* تنظيف إضافى — لو فشل نكمّل عادى */ }

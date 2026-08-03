@@ -966,6 +966,9 @@ export async function ensureSchema() {
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS queue_order bigint NOT NULL DEFAULT 0;
     -- إيقاف مؤقت (سوبر أدمن) — جهاز التنفيذ يتخطّى المهام دى (claim) لحد ما تتلغى، فيكمّل التالى فى الترتيب فوراً.
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS paused_at timestamptz;
+    -- عدد مرات إعادة المحاولة: المهمة اللى بتعلق فى claimed (التاب اتقفل/التنفيذ فشل من غير /done)
+    -- بترجع pending وتتعاد لحد 3 مرات، وبعدها تتعلّم stale بدل ما تفضل تتكرر للأبد.
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;
   `);
 
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.

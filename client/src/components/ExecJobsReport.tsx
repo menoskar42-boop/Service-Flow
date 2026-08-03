@@ -32,7 +32,12 @@ const ERR_RESULTS = ["tab_closed", "timeout", "stopped", "preempted"];
 function statusText(j: ExecJobRow): string {
   if (j.status === "pending") return "فى الطابور";
   if (j.status === "claimed") return "جارٍ التنفيذ";
-  if (j.status === "stale") return "أُلغِيت (جهاز التنفيذ مقفول)";
+  if (j.status === "stale") {
+    // اتلغت بعد ما التعليق تكرّر — نوضّح السبب بدل «جهاز التنفيذ مقفول» العام
+    if (j.result === "stuck_max_attempts") return "أُلغِيت بعد 3 محاولات (علّقت كل مرة)";
+    if (j.result === "stuck_expired") return "أُلغِيت (علّقت أكثر من 6 ساعات)";
+    return "أُلغِيت (جهاز التنفيذ مقفول)";
+  }
   if (j.status === "done") {
     if (j.result === "tab_closed") return "اتقفل قبل ما يخلص";
     if (j.result === "timeout") return "علّق قبل ما يخلص";

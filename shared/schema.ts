@@ -631,6 +631,7 @@ export const execJobs = pgTable("exec_jobs", {
   batchId: text("batch_id"), // معرّف الباتش: كل مهام الباتش الواحد (المقسّم لخطوط) ليها نفس القيمة — لتتبّع «تم X من N»
   queueOrder: bigint("queue_order", { mode: "number" }).notNull().default(0), // ترتيب يدوى داخل نفس الأولوية (السوبر أدمن)
   pausedAt: timestamp("paused_at"), // إيقاف مؤقت (سوبر أدمن) — جهاز التنفيذ يتخطّى المهام دى ويكمّل التالى
+  attempts: integer("attempts").notNull().default(0), // عدد مرات إعادة المحاولة بعد التعليق فى claimed (حد أقصى 3 ثم stale)
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;
