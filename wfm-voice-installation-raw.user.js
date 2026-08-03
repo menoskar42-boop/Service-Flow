@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.7
+// @version      1.0.8
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -128,6 +128,47 @@
     bar.style.background = color || "#8e1e1e";
     bar.textContent = msg;
     console.log("[WFM-VOICE]", msg);
+  }
+
+  // رسالة نتيجة الرفع من رد السيرفر (بتوضّح كمان إن «آخر تحديث» اتختم فعلاً)
+  function uploadMsg(resp) {
+    try {
+      const j = JSON.parse(resp);
+      if (j && typeof j.inserted === "number") {
+        return "✅ اتحدّث تقرير أوامر الشغل — " + j.inserted + " أمر" +
+               (j.skipped ? " (تخطّى " + j.skipped + ")" : "") +
+               (j.total ? " من " + j.total + " صف" : "") +
+               (j.stampedAt ? " — آخر تحديث اتسجّل ✓" : "");
+      }
+    } catch (e) {}
+    return "✅ اتحدّث تقرير أوامر الشغل.";
+  }
+
+  // شريط فيه زر رفع يدوى — يظهر لو الملف اتحمّل على الجهاز بس السكربت مالقطهوش،
+  // أو لو الرفع التلقائى فشل. كده ترفعه من نفس الصفحة بضغطة بدل ما تسيبها وتروح
+  // لـ Service-Flow ترفعه من هناك (وده كان بيخلّى «آخر تحديث» يفضل قديم).
+  function bannerWithUpload(msg, color) {
+    banner(msg, color);
+    if (!bar) return;
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = ".csv,.xls,.xlsx,text/csv";
+    inp.style.display = "none";
+    const btn = document.createElement("button");
+    btn.textContent = "📁 اختر الملف من التحميلات وارفعه";
+    btn.style.cssText = "margin:0 10px;padding:4px 12px;font:bold 13px Arial;cursor:pointer;" +
+      "border:0;border-radius:5px;background:#fff;color:#8e1e1e";
+    btn.addEventListener("click", () => inp.click());
+    inp.addEventListener("change", async () => {
+      const f = inp.files && inp.files[0];
+      if (!f) return;
+      banner("📤 جارٍ رفع " + f.name + "…", "#1565c0");
+      const resp = await sfUpload(f, f.name);
+      if (!resp) { bannerWithUpload("⚠️ فشل الرفع — جرّب تانى.", "#ef6c00"); return; }
+      banner(uploadMsg(resp), "#2e7d32");
+    });
+    bar.appendChild(inp);
+    bar.appendChild(btn);
   }
 
   /* ================== تسجيل الدخول ================== */
@@ -690,22 +731,19 @@
     // 8) استنى الملف يتلقط ثم ارفعه
     banner("⏳ فى انتظار الملف…");
     const file = await waitFor(() => captured, 120000, 500);
-    if (!file) { banner("⚠️ الملف اتحمّل على الجهاز بس مااتلقطش — ارفعه يدوى.", "#ef6c00"); return; }
+    if (!file) {
+      bannerWithUpload("⚠️ الملف اتحمّل على الجهاز بس السكربت مالقطهوش — اختاره من التحميلات وهيترفع فوراً.", "#ef6c00");
+      return;
+    }
 
     banner("📤 رفع الشيت لـ Service-Flow…");
     const resp = await sfUpload(file.blob, file.name || "voice_installation_raw.csv");
-    if (!resp) { banner("⚠️ فشل الرفع — الملف موجود فى التحميلات، ارفعه يدوى.", "#ef6c00"); return; }
+    if (!resp) {
+      bannerWithUpload("⚠️ فشل الرفع التلقائى — الملف موجود فى التحميلات، اختاره من هنا.", "#ef6c00");
+      return;
+    }
 
-    let msg = "✅ اتحدّث تقرير أوامر الشغل.";
-    try {
-      const j = JSON.parse(resp);
-      if (j && typeof j.inserted === "number") {
-        msg = `✅ اتحدّث تقرير أوامر الشغل — ${j.inserted} أمر` +
-              (j.skipped ? ` (تخطّى ${j.skipped})` : "") +
-              (j.total ? ` من ${j.total} صف` : "");
-      }
-    } catch (e) {}
-    banner(msg, "#2e7d32");
+    banner(uploadMsg(resp), "#2e7d32");
 
     if (AUTO_CLOSE_MS > 0) {
       setTimeout(() => { try { window.close(); } catch (e) {} }, AUTO_CLOSE_MS);

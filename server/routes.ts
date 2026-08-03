@@ -4002,7 +4002,10 @@ export async function registerRoutes(
              creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date),
              msan_code = COALESCE(EXCLUDED.msan_code, work_orders.msan_code),
              work_order_type_raw = COALESCE(EXCLUDED.work_order_type_raw, work_orders.work_order_type_raw),
-             raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data)`,
+             raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data),
+             -- نجدّد وقت الرفع حتى لو الصف موجود بالفعل، عشان MAX(uploaded_at) اللى بيغذّى
+             -- «آخر تحديث» يفضل صحيح لو الملف الجديد كل صفوفه موجودة أصلاً.
+             uploaded_at = now()`,
           [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj), (req.user as any)?.id ?? null],
         );
         if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
@@ -4028,14 +4031,21 @@ export async function registerRoutes(
       // وقت آخر رفع لأوامر الشغل — بيتسجّل مهما كانت النتيجة، حتى لو كل الخطوط
       // موجودة بالفعل ومفيش صف جديد اتضاف. (uploaded_at بيتحط على INSERT بس، والـ
       // ON CONFLICT DO UPDATE مابيلمسهوش، فكان «آخر تحديث» بيفضل قديم لو مفيش جديد.)
+      // ملحوظة: الخطأ هنا كان بيتبلع بصمت (catch فاضى) فلو الختم فشل مكانش حد ياخد باله.
+      // دلوقتى بنسجّله فى اللوج وبنرجّع stampedAt فى الرد عشان يبان إن الرفع اتختم فعلاً.
+      let stampedAt: string | null = null;
       try {
-        await pool.query(
+        const st = await pool.query(
           `INSERT INTO app_state (key, value, updated_at) VALUES ('work_orders_import_at', now()::text, now())
-           ON CONFLICT (key) DO UPDATE SET value = now()::text, updated_at = now()`);
-      } catch (e) {}
+           ON CONFLICT (key) DO UPDATE SET value = now()::text, updated_at = now()
+           RETURNING updated_at`);
+        stampedAt = st.rows[0]?.updated_at?.toISOString?.() ?? String(st.rows[0]?.updated_at ?? "");
+      } catch (e: any) {
+        console.error("work-orders import: فشل ختم work_orders_import_at:", e?.message || e);
+      }
 
-      console.log(`work-orders import: purged=${purged}, headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}`);
-      res.json({ ok: true, inserted, skipped, purged, total: dataRows.length });
+      console.log(`work-orders import: purged=${purged}, headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}, stampedAt=${stampedAt}`);
+      res.json({ ok: true, inserted, skipped, purged, total: dataRows.length, stampedAt });
     } catch (e: any) {
       console.error("work-orders import error:", e);
       res.status(500).json({ message: "خطأ أثناء معالجة الملف", detail: e.message });
