@@ -1122,6 +1122,32 @@ export async function ensureSchema() {
     )
   `);
 
+  // om_responses — رد الفنى على متعذر OM (نفس دورة الطلبات: يمكن التنفيذ / لا يمكن + سبب،
+  // ثم تحويل للشئون الخارجية وردّها). المفتاح رقم المسلسل عشان الرد يصمد بعد إعادة رفع ملف
+  // المتعذرات (ftth_orders_current بيتستبدل كل رفعة) — نفس أسلوب om_manual_mobiles.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS om_responses (
+      serial_number text PRIMARY KEY,
+      status text NOT NULL DEFAULT 'pending',
+      is_feasible boolean,
+      rejection_reason text,
+      central_name text,
+      cabin_number text,
+      box_number text,
+      nearest_box_distance text,
+      additional_notes text,
+      tech_id integer,
+      tech_name text,
+      responded_at timestamptz,
+      external_id integer,
+      external_name text,
+      is_feasible_external boolean,
+      external_rejection_reason text,
+      external_response_at timestamptz,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // ===== Cable-Fault-Manager (CFM) — جداول برنامج الكوابل المدمج =====
   // كل جداول CFM بأسماءها الأصلية عدا users → cfm_users (لتجنّب التعارض مع users بتاعنا).
   // كتلة واحدة داخل try عشان أى فشل مايوقفش باقى ensureSchema. الأنواع مطابقة لـ shared/schema.ts بتاع CFM.

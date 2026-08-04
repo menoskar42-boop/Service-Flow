@@ -899,6 +899,32 @@ export const linesNoAccount = pgTable("lines_no_account", {
 
 export type LineNoAccount = typeof linesNoAccount.$inferSelect;
 
+// om_responses — رد الفنى على متعذر OM (نفس دورة الطلبات: يمكن التنفيذ / لا يمكن + سبب،
+// ثم تحويل للشئون الخارجية وردّها). المفتاح رقم المسلسل عشان الرد يصمد بعد إعادة رفع ملف
+// المتعذرات (ftth_orders_current بيتستبدل كل رفعة).
+export const omResponses = pgTable("om_responses", {
+  serialNumber: text("serial_number").primaryKey(),
+  status: text("status").notNull().default("pending"), // نفس قيم ORDER_STATUS
+  isFeasible: boolean("is_feasible"),
+  rejectionReason: text("rejection_reason"),
+  centralName: text("central_name"),
+  cabinNumber: text("cabin_number"),
+  boxNumber: text("box_number"),
+  nearestBoxDistance: text("nearest_box_distance"),
+  additionalNotes: text("additional_notes"),
+  techId: integer("tech_id"),
+  techName: text("tech_name"),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  externalId: integer("external_id"),
+  externalName: text("external_name"),
+  isFeasibleExternal: boolean("is_feasible_external"),
+  externalRejectionReason: text("external_rejection_reason"),
+  externalResponseAt: timestamp("external_response_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type OmResponse = typeof omResponses.$inferSelect;
+
 // WebSocket Events
 export const WS_EVENTS = {
   ORDER_UPDATE: 'ORDER_UPDATE',

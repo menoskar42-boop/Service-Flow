@@ -2535,6 +2535,16 @@ export async function registerRoutes(
         if (existingOrder.status === "pending") {
           return res.status(400).json({ message: "Cannot mark as contracted before tech response" });
         }
+      } else if (user.role === ROLES.SALES_ADMIN) {
+        // أدمن المبيعات مشرف على المبيعات كلها، فيقدر يعلّم أى طلب «تم التعاقد» (مش طلباته بس).
+        // زر «تم التعاقد» كان ظاهر له فى الواجهة أصلاً لكن السيرفر كان بيرفضه بـ 403.
+        // الرجوع لـ«لم يتم التعاقد» يفضل للأدمن وحده (زى ما مكتوب فى نافذة التأكيد).
+        if (contractStatus !== CONTRACT_STATUS.CONTRACTED) {
+          return res.status(403).json({ message: "إرجاع حالة التعاقد للأدمن فقط" });
+        }
+        if (existingOrder.status === ORDER_STATUS.PENDING) {
+          return res.status(400).json({ message: "لا يمكن التعاقد قبل رد الفنى" });
+        }
       } else if (!hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only Sales or Admin can update contract status" });
       }
@@ -6553,8 +6563,21 @@ export async function registerRoutes(
               fo.current_activity AS "currentActivity", fo.error_name AS "errorName",
               fo.governorate, fo.line_type AS "lineType", fo.fcc_exchange AS "fccExchange",
               COALESCE(tn.tech_name, mto.tech_name, 'غير معروف') AS "techName",
-              (tn.tech_name IS NULL AND mto.tech_name IS NOT NULL) AS "techManual"
+              (tn.tech_name IS NULL AND mto.tech_name IS NOT NULL) AS "techManual",
+              -- رد الفنى على المتعذر (om_responses) — نفس دورة الطلبات
+              COALESCE(orp.status, 'pending') AS "respStatus",
+              orp.rejection_reason AS "respRejectionReason",
+              orp.central_name AS "respCentralName", orp.cabin_number AS "respCabinNumber",
+              orp.box_number AS "respBoxNumber", orp.nearest_box_distance AS "respNearestBoxDistance",
+              orp.additional_notes AS "respAdditionalNotes",
+              orp.tech_name AS "respTechName",
+              (orp.responded_at AT TIME ZONE 'Africa/Cairo') AS "respRespondedAt",
+              orp.external_name AS "respExternalName",
+              orp.is_feasible_external AS "respIsFeasibleExternal",
+              orp.external_rejection_reason AS "respExternalRejectionReason",
+              (orp.external_response_at AT TIME ZONE 'Africa/Cairo') AS "respExternalResponseAt"
        FROM ${table} fo
+       LEFT JOIN om_responses orp ON orp.serial_number = fo.serial_number
        LEFT JOIN LATERAL (
          SELECT tn.tech_name
          FROM cabinet_technicians ct
