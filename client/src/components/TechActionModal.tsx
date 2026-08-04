@@ -12,14 +12,32 @@ import { REJECTION_REASONS, CENTRAL_NAMES, type RejectionReason, type CentralNam
 import { getCabins, getBoxes } from "@/lib/technical-data";
 import { useFccCentrals } from "@/hooks/use-fcc-centrals";
 
-interface TechActionModalProps {
-  order: Order;
-  action: "feasible" | "not_feasible";
+/** القيم اللى النموذج بيجمّعها — نفسها لطلب أو لمتعذر OM */
+export interface TechActionValues {
+  isFeasible: boolean;
+  rejectionReason: string | null;
+  centralName: string | null;
+  cabinNumber: string | null;
+  boxNumber: string | null;
+  nearestBoxDistance: string | null;
+  additionalNotes: string | null;
 }
 
-export function TechActionModal({ order, action }: TechActionModalProps) {
+interface TechActionModalProps {
+  /** طلب من قسم الطلبات (الاستخدام الأصلى) — اختيارى لو بتستخدم onSubmit */
+  order?: Order;
+  action: "feasible" | "not_feasible";
+  /** استخدام بديل (متعذرات OM): نفس النموذج بالظبط لكن الحفظ بيتم من برّه */
+  onSubmit?: (values: TechActionValues, done: () => void) => void;
+  submitting?: boolean;
+  /** نص/شكل زر الفتح — لو مش متبعت بيستخدم الأزرار الافتراضية */
+  triggerLabel?: string;
+}
+
+export function TechActionModal({ order, action, onSubmit, submitting, triggerLabel }: TechActionModalProps) {
   const [open, setOpen] = useState(false);
-  const { updateOrder, isUpdating } = useOrders();
+  const { updateOrder, isUpdating: isUpdatingOrder } = useOrders();
+  const isUpdating = onSubmit ? !!submitting : isUpdatingOrder;
   // أسماء السنترالات من FCC (المرجع) — مدموجة مع الثابت/البيانات الفنية
   const centralOptions = useFccCentrals();
   
@@ -43,7 +61,35 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
+    // وضع «استخدام بديل» (متعذرات OM): نبعت القيم لبرّه بدل تحديث الطلب
+    if (onSubmit) {
+      onSubmit(
+        isFeasible
+          ? {
+              isFeasible: true,
+              rejectionReason: null,
+              centralName: feasibleCentral || null,
+              cabinNumber: cabinNumber || null,
+              boxNumber: boxNumber || null,
+              nearestBoxDistance: null,
+              additionalNotes: null,
+            }
+          : {
+              isFeasible: false,
+              rejectionReason: reason || null,
+              centralName: showCentralAndBoxFields ? (centralName || null) : null,
+              cabinNumber: showCentralAndBoxFields ? (notFeasibleCabin || null) : null,
+              boxNumber: showCentralAndBoxFields ? (notFeasibleBox || null) : null,
+              nearestBoxDistance: reason === REJECTION_REASONS.BOX_FULL ? (distance || null) : null,
+              additionalNotes: reason === REJECTION_REASONS.OTHER ? (notes || null) : null,
+            },
+        () => setOpen(false),
+      );
+      return;
+    }
+
+    if (!order) return;
     if (isFeasible) {
       updateOrder({
         id: order.id,
@@ -86,9 +132,9 @@ export function TechActionModal({ order, action }: TechActionModalProps) {
           className={isFeasible ? "bg-green-600 hover:bg-green-700" : ""}
         >
           {isFeasible ? (
-            <><CheckCircle2 className="w-4 h-4 mr-1" /> يمكن التنفيذ</>
+            <><CheckCircle2 className="w-4 h-4 mr-1" /> {triggerLabel ?? "يمكن التنفيذ"}</>
           ) : (
-            <><XCircle className="w-4 h-4 mr-1" /> لا يمكن</>
+            <><XCircle className="w-4 h-4 mr-1" /> {triggerLabel ?? "لا يمكن"}</>
           )}
         </Button>
       </DialogTrigger>

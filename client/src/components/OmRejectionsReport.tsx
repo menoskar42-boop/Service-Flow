@@ -14,6 +14,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { ROLES } from "@shared/schema";
+import { TechActionModal } from "@/components/TechActionModal";
 
 interface Row {
   id: number;
@@ -32,7 +33,39 @@ interface Row {
   techName: string | null;
   techManual: boolean | null;
   address: string | null;
+  // رد الفنى على المتعذر (om_responses) — نفس دورة الطلبات
+  respStatus: string | null;
+  respRejectionReason: string | null;
+  respCentralName: string | null;
+  respCabinNumber: string | null;
+  respBoxNumber: string | null;
+  respNearestBoxDistance: string | null;
+  respAdditionalNotes: string | null;
+  respTechName: string | null;
+  respRespondedAt: string | null;
+  respExternalName: string | null;
+  respIsFeasibleExternal: boolean | null;
+  respExternalRejectionReason: string | null;
+  respExternalResponseAt: string | null;
 }
+
+// نص حالة رد الفنى على المتعذر (نفس مسمّيات قسم الطلبات)
+const RESP_LABEL: Record<string, string> = {
+  pending: "قيد الانتظار",
+  feasible: "يمكن التنفيذ",
+  not_feasible: "لا يمكن التنفيذ",
+  needs_external: "يحتاج رد الشئون الخارجية",
+  external_feasible: "يمكن التنفيذ (شئون خارجية)",
+  external_not_feasible: "لا يمكن التنفيذ (شئون خارجية)",
+};
+const RESP_CLASS: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-600",
+  feasible: "bg-green-100 text-green-700",
+  not_feasible: "bg-red-100 text-red-700",
+  needs_external: "bg-yellow-100 text-yellow-800",
+  external_feasible: "bg-teal-100 text-teal-700",
+  external_not_feasible: "bg-red-100 text-red-700",
+};
 
 // الوقت مخزَّن كـ UTC (توقيت الملف) — يُعرض كما هو دون إزاحة المتصفح.
 const fmtDt = (d: string | null) => {
@@ -75,6 +108,105 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     } catch { toast({ title: "تعذّر حفظ رقم المحمول", variant: "destructive" }); }
     finally { setSavingMobile(false); }
   };
+  // ── رد الفنى على المتعذر (نفس دورة الطلبات) ──
+  // الفنى (وكذلك الأدمن/السوبر أدمن) يسجّل «يمكن التنفيذ» أو «لا يمكن + سبب» بنفس نافذة الطلبات؛
+  // السوبر أدمن يقدر يحوّل المتعذر للشئون الخارجية للفحص، والشئون الخارجية بترد.
+  const isSuperAdmin = user?.role === ROLES.SUPER_ADMIN;
+  const isExternal = user?.role === ROLES.EXTERNAL;
+  const canRespond = bucket === "current" &&
+    ([ROLES.TECH, ROLES.ADMIN, ROLES.SUPER_ADMIN] as string[]).includes(user?.role ?? "");
+  const canResetResp = bucket === "current" &&
+    ([ROLES.ADMIN, ROLES.SUPER_ADMIN] as string[]).includes(user?.role ?? "");
+  const [respBusy, setRespBusy] = useState<string | null>(null);
+
+  const postResp = async (path: string, body: any, okMsg: string, done?: () => void) => {
+    setRespBusy(String(body.serialNumber));
+    try {
+      await apiRequest("POST", path, body);
+      qc.invalidateQueries({ queryKey: ["/api/ftth-orders"] });
+      toast({ title: okMsg });
+      done?.();
+    } catch (e: any) {
+      toast({ title: e?.message || "تعذّر الحفظ", variant: "destructive" });
+    } finally { setRespBusy(null); }
+  };
+
+  const renderRespStatusCell = (r: Row) => {
+    const st = r.respStatus || "pending";
+    const detail =
+      st === "not_feasible" ? r.respRejectionReason
+      : st === "external_not_feasible" ? r.respExternalRejectionReason
+      : null;
+    return (
+      <span className="inline-flex flex-col items-start gap-0.5">
+        <span className={`px-2 py-0.5 rounded font-semibold ${RESP_CLASS[st] ?? RESP_CLASS.pending}`}>
+          {RESP_LABEL[st] ?? st}
+        </span>
+        {detail && <span className="text-[11px] text-muted-foreground">{detail}</span>}
+        {r.respTechName && <span className="text-[11px] text-muted-foreground">الفنى: {r.respTechName}</span>}
+        {r.respExternalName && <span className="text-[11px] text-muted-foreground">خارجية: {r.respExternalName}</span>}
+      </span>
+    );
+  };
+
+  const renderRespActionsCell = (r: Row) => {
+    const serial = r.serialNumber;
+    if (!serial) return <span className="text-muted-foreground">—</span>;
+    const st = r.respStatus || "pending";
+    const busy = respBusy === serial;
+    const submit = (values: any, done: () => void) =>
+      postResp("/api/om-rejections/response", { serialNumber: serial, ...values }, "تم تسجيل الرد", done);
+
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {canRespond && (
+          <>
+            <TechActionModal action="feasible" onSubmit={submit} submitting={busy} />
+            <TechActionModal action="not_feasible" onSubmit={submit} submitting={busy} />
+          </>
+        )}
+        {/* تحويل للشئون الخارجية للفحص — سوبر أدمن، بعد ما الفنى يقول «لا يمكن» */}
+        {isSuperAdmin && st === "not_feasible" && (
+          <Button variant="outline" size="sm" disabled={busy}
+            className="text-yellow-600 border-yellow-300 hover:bg-yellow-50"
+            onClick={() => postResp("/api/om-rejections/request-external", { serialNumber: serial }, "تم التحويل للشئون الخارجية")}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "تحويل للشئون الخارجية"}
+          </Button>
+        )}
+        {/* رد الشئون الخارجية */}
+        {(isExternal || isSuperAdmin) && st === "needs_external" && (
+          <>
+            <Button variant="outline" size="sm" disabled={busy}
+              className="text-green-700 border-green-300 hover:bg-green-50"
+              onClick={() => postResp("/api/om-rejections/external-response", { serialNumber: serial, isFeasible: true }, "تم تسجيل رد الشئون الخارجية")}>
+              يمكن (خارجية)
+            </Button>
+            <Button variant="outline" size="sm" disabled={busy}
+              className="text-red-700 border-red-300 hover:bg-red-50"
+              onClick={() => {
+                const reason = window.prompt("سبب عدم الإمكانية (شئون خارجية):", "");
+                if (reason && reason.trim()) {
+                  postResp("/api/om-rejections/external-response",
+                    { serialNumber: serial, isFeasible: false, rejectionReason: reason.trim() },
+                    "تم تسجيل رد الشئون الخارجية");
+                }
+              }}>
+              لا يمكن (خارجية)
+            </Button>
+          </>
+        )}
+        {/* إلغاء الرد ورجوعه قيد الانتظار */}
+        {canResetResp && st !== "pending" && (
+          <Button variant="outline" size="sm" disabled={busy} title="إلغاء الرد"
+            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+            onClick={() => postResp("/api/om-rejections/reset-response", { serialNumber: serial }, "تم إلغاء الرد")}>
+            <X className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+    );
+  };
+
   const renderMobileCell = (r: Row) => {
     if (!canEditMobile || !r.serialNumber) return r.customerMobile || "-";
     const masked = !r.customerMobile || /[*]/.test(String(r.customerMobile));
@@ -234,6 +366,14 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     ["الموبايل", (r) => r.customerMobile],
     ["عنوان العميل", (r) => r.address],
     ["تاريخ الإنشاء", (r) => fmtDt(r.orderCreateTime)],
+    // رد الفنى — للمتعذرات الحالية فقط (بداية السنة/تم فكها للعرض التاريخى)
+    ...(bucket === "current"
+      ? ([
+          ["رد الفنى", (r: Row) => RESP_LABEL[r.respStatus || "pending"] ?? "-"],
+          ["سبب التعذر (الفنى)", (r: Row) => r.respRejectionReason ?? r.respExternalRejectionReason ?? "-"],
+          ["إجراء", () => ""],
+        ] as [string, (r: Row) => any][])
+      : []),
   ];
 
   const handleExportExcel = () => {
@@ -393,7 +533,11 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                     {cols.map(([h, f]) => (
                       <TableCell key={h} className="whitespace-nowrap">
-                        {h === "اسم الفنى" ? renderTechCell(r) : h === "الموبايل" ? renderMobileCell(r) : (f(r) ?? "-")}
+                        {h === "اسم الفنى" ? renderTechCell(r)
+                          : h === "الموبايل" ? renderMobileCell(r)
+                          : h === "رد الفنى" ? renderRespStatusCell(r)
+                          : h === "إجراء" ? renderRespActionsCell(r)
+                          : (f(r) ?? "-")}
                       </TableCell>
                     ))}
                   </TableRow>

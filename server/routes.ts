@@ -6632,6 +6632,131 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // ===== رد الفنى على متعذر OM — نفس دورة الطلبات =====
+  // الفنى يسجّل «يمكن التنفيذ» أو «لا يمكن» + سبب التعذر، والسوبر أدمن يقدر يحوّله للشئون
+  // الخارجية للفحص، والشئون الخارجية بترد. كله متخزّن فى om_responses بمفتاح رقم المسلسل
+  // عشان يصمد بعد إعادة رفع ملف المتعذرات.
+
+  // الفنى صاحب المتعذر (حسب كابينة الـ MSAN) أو الأدمن/السوبر أدمن
+  const canRespondToOm = async (user: any, serialNumber: string): Promise<boolean> => {
+    const role = user?.role;
+    if (hasAdminAccess(role)) return true;
+    if (role !== ROLES.TECH) return false;
+    const wc = String(user?.workerCode || "").trim();
+    if (!wc) return false;
+    // متعذر بدون فنى معروف متاح لأى فنى (نفس منطق العرض فى /api/ftth-orders)
+    const { rows } = await pool.query(
+      `SELECT COALESCE(tn.tech_name, mto.tech_name) AS owner,
+              (SELECT tech_name FROM technician_names WHERE worker_code = $2 ORDER BY id DESC LIMIT 1) AS me
+         FROM ftth_orders_current fo
+         LEFT JOIN LATERAL (SELECT tn.tech_name FROM cabinet_technicians ct
+                              JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                             WHERE ct.cabin_code = fo.msan_code LIMIT 1) tn ON TRUE
+         LEFT JOIN LATERAL (SELECT mto.tech_name FROM msan_tech_overrides mto
+                             WHERE mto.cabin_code = fo.msan_code LIMIT 1) mto ON TRUE
+        WHERE fo.serial_number = $1 LIMIT 1`,
+      [serialNumber, wc],
+    );
+    if (!rows.length) return false;
+    return !rows[0].owner || rows[0].owner === rows[0].me;
+  };
+
+  // POST /api/om-rejections/response — رد الفنى (يمكن التنفيذ / لا يمكن + سبب)
+  app.post("/api/om-rejections/response", requireAuth, async (req: any, res) => {
+    try {
+      const b = req.body || {};
+      const serialNumber = String(b.serialNumber ?? "").trim();
+      if (!serialNumber) return res.status(400).json({ message: "رقم المسلسل مطلوب" });
+      if (!(await canRespondToOm(req.user, serialNumber))) {
+        return res.status(403).json({ message: "غير مسموح — المتعذر ده مش تابع لك" });
+      }
+      const isFeasible = b.isFeasible === true || b.isFeasible === "true";
+      if (!isFeasible && !String(b.rejectionReason ?? "").trim()) {
+        return res.status(400).json({ message: "سبب التعذر مطلوب" });
+      }
+      const clean = (v: any) => { const s = String(v ?? "").trim(); return s === "" ? null : s; };
+      const status = isFeasible ? ORDER_STATUS.FEASIBLE : ORDER_STATUS.NOT_FEASIBLE;
+      const { rows } = await pool.query(
+        `INSERT INTO om_responses (serial_number, status, is_feasible, rejection_reason, central_name,
+            cabin_number, box_number, nearest_box_distance, additional_notes, tech_id, tech_name, responded_at,
+            external_id, external_name, is_feasible_external, external_rejection_reason, external_response_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(), NULL,NULL,NULL,NULL,NULL, now())
+         ON CONFLICT (serial_number) DO UPDATE SET
+           status = EXCLUDED.status, is_feasible = EXCLUDED.is_feasible,
+           rejection_reason = EXCLUDED.rejection_reason, central_name = EXCLUDED.central_name,
+           cabin_number = EXCLUDED.cabin_number, box_number = EXCLUDED.box_number,
+           nearest_box_distance = EXCLUDED.nearest_box_distance, additional_notes = EXCLUDED.additional_notes,
+           tech_id = EXCLUDED.tech_id, tech_name = EXCLUDED.tech_name, responded_at = now(),
+           -- رد جديد من الفنى بيلغى أى رد شئون خارجية قديم (زى إعادة الطلب للفنى فى قسم الطلبات)
+           external_id = NULL, external_name = NULL, is_feasible_external = NULL,
+           external_rejection_reason = NULL, external_response_at = NULL, updated_at = now()
+         RETURNING *`,
+        [serialNumber, status, isFeasible,
+         isFeasible ? null : clean(b.rejectionReason), clean(b.centralName), clean(b.cabinNumber),
+         clean(b.boxNumber), clean(b.nearestBoxDistance), clean(b.additionalNotes),
+         req.user?.id ?? null, String(req.user?.username || "")],
+      );
+      res.json({ ok: true, response: rows[0] });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/om-rejections/request-external — تحويل المتعذر للشئون الخارجية للفحص (سوبر أدمن)
+  app.post("/api/om-rejections/request-external", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const serialNumber = String(req.body?.serialNumber ?? "").trim();
+      if (!serialNumber) return res.status(400).json({ message: "رقم المسلسل مطلوب" });
+      const { rows } = await pool.query(
+        `INSERT INTO om_responses (serial_number, status, updated_at)
+         VALUES ($1, $2, now())
+         ON CONFLICT (serial_number) DO UPDATE SET
+           status = $2,
+           external_id = NULL, external_name = NULL, is_feasible_external = NULL,
+           external_rejection_reason = NULL, external_response_at = NULL, updated_at = now()
+         RETURNING *`,
+        [serialNumber, ORDER_STATUS.NEEDS_EXTERNAL],
+      );
+      res.json({ ok: true, response: rows[0] });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/om-rejections/external-response — رد الشئون الخارجية على المتعذر المحوَّل
+  app.post("/api/om-rejections/external-response", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.user?.role;
+      if (role !== ROLES.EXTERNAL && !hasAdminAccess(role)) {
+        return res.status(403).json({ message: "غير مسموح" });
+      }
+      const b = req.body || {};
+      const serialNumber = String(b.serialNumber ?? "").trim();
+      if (!serialNumber) return res.status(400).json({ message: "رقم المسلسل مطلوب" });
+      const isFeasible = b.isFeasible === true || b.isFeasible === "true";
+      const reason = String(b.rejectionReason ?? "").trim();
+      if (!isFeasible && !reason) return res.status(400).json({ message: "سبب عدم الإمكانية مطلوب" });
+      const status = isFeasible ? ORDER_STATUS.EXTERNAL_FEASIBLE : ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
+      const { rows } = await pool.query(
+        `UPDATE om_responses
+            SET status = $2, is_feasible_external = $3, external_rejection_reason = $4,
+                external_id = $5, external_name = $6, external_response_at = now(), updated_at = now()
+          WHERE serial_number = $1
+          RETURNING *`,
+        [serialNumber, status, isFeasible, isFeasible ? null : reason,
+         req.user?.id ?? null, String(req.user?.username || "")],
+      );
+      if (!rows.length) return res.status(404).json({ message: "المتعذر ده مش محوَّل للشئون الخارجية" });
+      res.json({ ok: true, response: rows[0] });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/om-rejections/reset-response — إلغاء الرد ورجوعه «قيد الانتظار» (أدمن/سوبر أدمن)
+  app.post("/api/om-rejections/reset-response", requireAuth, requireAdmin, async (req: any, res) => {
+    try {
+      const serialNumber = String(req.body?.serialNumber ?? "").trim();
+      if (!serialNumber) return res.status(400).json({ message: "رقم المسلسل مطلوب" });
+      await pool.query(`DELETE FROM om_responses WHERE serial_number = $1`, [serialNumber]);
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/ftth-orders/msan-codes — قائمة أكواد الكباين المميزة للـ bucket (لفلتر الدروب ليست)
   app.get("/api/ftth-orders/msan-codes", requireAuth, async (req, res) => {
     const { bucket, all, fccFilter } = req.query as Record<string, string>;
