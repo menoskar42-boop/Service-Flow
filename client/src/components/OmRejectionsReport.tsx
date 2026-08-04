@@ -369,13 +369,18 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     ["الموبايل", (r) => r.customerMobile],
     ["عنوان العميل", (r) => r.address],
     ["تاريخ الإنشاء", (r) => fmtDt(r.orderCreateTime)],
-    // رد الفنى — للمتعذرات الحالية فقط (بداية السنة/تم فكها للعرض التاريخى)
+    // رد الفنى وسبب التعذر — للمتعذرات الحالية، وبيظهروا **لكل** من يفتح التقرير
+    // (ومنهم أدمن المبيعات) لأنهم معلومة، مش إجراء.
     ...(bucket === "current"
       ? ([
           ["رد الفنى", (r: Row) => RESP_LABEL[r.respStatus || "pending"] ?? "-"],
           ["سبب التعذر (الفنى)", (r: Row) => r.respRejectionReason ?? r.respExternalRejectionReason ?? "-"],
-          ["إجراء", () => ""],
         ] as [string, (r: Row) => any][])
+      : []),
+    // عمود «إجراء» بيظهر بس لمين يقدر يعمل حاجة فعلاً — أدمن المبيعات مثلاً بيشوف
+    // الأسباب من غير عمود فاضى.
+    ...(bucket === "current" && (canRespond || canResetResp || isSuperAdmin || isExternal)
+      ? ([["إجراء", () => ""]] as [string, (r: Row) => any][])
       : []),
   ];
 
