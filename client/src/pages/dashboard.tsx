@@ -438,7 +438,7 @@ export default function Dashboard() {
                     التقارير
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && (
+                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL || user.role === ROLES.DATA_MANAGER) && (
                   <button
                     onClick={() => setAdminTab("phone-lookup")}
                     data-testid="tab-admin-phone-lookup"
@@ -663,7 +663,7 @@ export default function Dashboard() {
         )}
 
         {/* ── PHONE LOOKUP TAB (Admin, Tech & External) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && adminTab === "phone-lookup" && (
+        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL || user.role === ROLES.DATA_MANAGER) && adminTab === "phone-lookup" && (
           <div className="space-y-6" dir="rtl">
             <PhoneLookupReport />
           </div>

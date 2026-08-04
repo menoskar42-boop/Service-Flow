@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { executeBatch, latestMeasureAt, latestPoEventAt, sleep, PHONE_LOOKUP_SOURCE, type ExecJob } from "@/lib/exec-queue";
+import { executeBatch, latestMeasureAt, latestPoEventAt, latestSubInfoAt, sleep, PHONE_LOOKUP_SOURCE, type ExecJob } from "@/lib/exec-queue";
 
 // زر «جهاز التنفيذ» — للسوبر أدمن فقط. لما يتفعّل، البراوزر ده يبقى هو المنفّذ:
 // يبعت نبضة كل 20ث، ويسحب المهام من الطابور كل 4ث وينفّذها (رفع سرعة/قياس/إيقاف).
@@ -65,6 +65,8 @@ export function ExecutorButton() {
 
     // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
     const MEASURE_MAX_MS = 2.5 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
+    // المراجعة بتحتاج دخول FCC + بحث + قراءة البيانات — 3 دقايق سقف كريم للرقم الواحد
+    const SUBINFO_MAX_MS = 3 * 60 * 1000;
 
     const MAX_TOTAL_MS = 4 * 60 * 60 * 1000; // سقف إجمالى معقول للباتش الواحد (٤ ساعات)
 
@@ -88,6 +90,24 @@ export function ExecutorButton() {
     const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number, note?: string | null): Promise<string> => {
       const last = accs[accs.length - 1];
       const canPreempt = accs.length > 3; // الباتش الكبير بس هو اللى يتقطع
+      // مراجعة الاسم والعنوان من FCC — رقم واحد لكل مهمة (سكربت FCC بياخد الرقم من اسم النافذة).
+      // بنستنى fetched_at يتحدّث فى line_subscriber_info كدليل إن المراجعة خلصت فعلاً.
+      if (type === "subinfo") {
+        const phone = accs[0];
+        const before = await latestSubInfoAt(phone);
+        const win = executeBatch("subinfo", accs);
+        const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
+        const deadline = Date.now() + SUBINFO_MAX_MS;
+        while (!stopped && Date.now() < deadline) {
+          await sleep(5 * 1000);
+          const chk = await jobCheck(jobId);
+          if (!chk.active) { closeWin(); return "canceled"; }
+          if ((await latestSubInfoAt(phone)) > before) { closeWin(); return "done"; }
+          if (win && win.closed) return "tab_closed";
+        }
+        closeWin();
+        return stopped ? "stopped" : "timeout";
+      }
       if (type === "measure") {
         try { if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close(); } catch {}
         // القياس الجاى من «بحث برقم التليفون» يختار «A recent fix (past 24h)» فى شاشة DZS
@@ -137,7 +157,8 @@ export function ExecutorButton() {
           const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
           let result: string | null = null;
           if (accs.length && !stopped) {
-            const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف" : "رفع سرعة";
+            const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف"
+              : job.type === "subinfo" ? "مراجعة اسم/عنوان" : "رفع سرعة";
             setCurrent(`${label} (${accs.length} رقم)`);
             result = await runBatch(job.type, accs, job.id, job.note); // الجوب كله دفعة واحدة
           }

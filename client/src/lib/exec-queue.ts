@@ -5,13 +5,24 @@
 // ============================================================================
 import { openProfileOptimization } from "./profile-optimization";
 
-export type ExecJobType = "raise" | "stop" | "measure";
+// subinfo = مراجعة اسم/عنوان العميل من FCC (زر «مراجعة» فى بحث برقم التليفون).
+// «الأرقام» فيه أرقام تليفون مش أرقام أكونت.
+export type ExecJobType = "raise" | "stop" | "measure" | "subinfo";
 export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; }
 
 // مصدر «بحث برقم التليفون» — القياس اللى بييجى منه بيختار «A recent fix (past 24h)» فى شاشة DZS.
 export const PHONE_LOOKUP_SOURCE = "بحث برقم التليفون";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
+const FCC_URL = "https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf";
+
+// سكربت FCC بيقرا الرقم المطلوب من اسم النافذة (window.name = "sf_subinfo_one:<رقم>")،
+// والهاش للتوضيح بس. نفس اللى بيعمله زر «مراجعة» لما بينفّذ محلياً.
+export function openSubInfo(phone: string): Window | null {
+  const p = String(phone ?? "").trim();
+  if (!p) return null;
+  return window.open(`${FCC_URL}#sf_si=one:${encodeURIComponent(p)}`, "sf_subinfo_one:" + p);
+}
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -24,6 +35,7 @@ const DZS_MEASURE_TARGET = "dzs_measure";
 export function executeSingle(type: ExecJobType, account: string | number, opts?: { fixRecent?: boolean }): Window | null {
   const acc = String(account ?? "").trim();
   if (!acc) return null;
+  if (type === "subinfo") return openSubInfo(acc);
   if (type === "raise") { openProfileOptimization([acc]); return null; }
   if (type === "stop") { openProfileOptimization([acc], { stopOnly: true }); return null; }
   const fix = opts?.fixRecent ? "&sf_fix=recent" : "";
@@ -35,6 +47,9 @@ export function executeSingle(type: ExecJobType, account: string | number, opts?
 export function executeBatch(type: ExecJobType, accounts: (string | number)[], opts?: { fixRecent?: boolean; afterStop?: boolean }): Window | null {
   const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
   if (!accs.length) return null;
+  // المراجعة بتتعمل رقم-رقم (سكربت FCC بياخد رقم واحد فى النافذة)، والطابور أصلاً بيقسّم
+  // كل طلب لمهمة لكل رقم، فالمصفوفة هنا بتبقى رقم واحد.
+  if (type === "subinfo") return openSubInfo(accs[0]);
   // afterStop: يرفع السرعة ثم يوقف الـ nightly الناتج فى **نفس تشغيلة PO** (مهمة واحدة، مفيش تداخل).
   if (type === "raise") { openProfileOptimization(accs, opts?.afterStop ? { afterStop: true } : {}); return null; }
   if (type === "stop") { openProfileOptimization(accs, { stopOnly: true }); return null; }
@@ -46,6 +61,15 @@ export function executeBatch(type: ExecJobType, accounts: (string | number)[], o
 export async function latestMeasureAt(account: string | number): Promise<number> {
   try {
     const r = await fetch(`/api/exec-queue/measure-check?account=${encodeURIComponent(String(account).trim())}`, { credentials: "include" });
+    const d = await r.json();
+    return d?.at ? new Date(d.at).getTime() : 0;
+  } catch { return 0; }
+}
+
+// آخر وقت مراجعة (جلب اسم/عنوان من FCC) لرقم تليفون — millis أو 0
+export async function latestSubInfoAt(phone: string | number): Promise<number> {
+  try {
+    const r = await fetch(`/api/exec-queue/subinfo-check?phone=${encodeURIComponent(String(phone).trim())}`, { credentials: "include" });
     const d = await r.json();
     return d?.at ? new Date(d.at).getTime() : 0;
   } catch { return 0; }
@@ -161,7 +185,7 @@ export function canRunLocalExecutor(): boolean {
     return true;
   }
 }
-const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", raise: "رفع السرعة", stop: "إيقاف PO" };
+const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", raise: "رفع السرعة", stop: "إيقاف PO", subinfo: "مراجعة الاسم والعنوان" };
 
 // منطق موحّد لأزرار القياس/رفع السرعة/الإيقاف فى كل التقارير (نفس بحث برقم التليفون):
 //  - جهاز التنفيذ مفعّل → أضف للطابور ورجّع true (اتعامل معاها).
@@ -169,8 +193,9 @@ const QUEUE_LABEL: Record<ExecJobType, string> = { measure: "القياس", rais
 //  - مش مفعّل + سوبر أدمن → رجّع false عشان المُنادِى ينفّذ محلياً عادى.
 export async function dispatchSpeedTool(type: ExecJobType, accounts: (string | number)[], isSuper: boolean): Promise<boolean> {
   const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
-  if (!accs.length) { alert("لا توجد أرقام أكونت"); return true; }
-  void recordOpIntent(type, accs); // سجّل مين طلب العملية (للعرض بعدها: اتعمل بواسطة …)
+  if (!accs.length) { alert(type === "subinfo" ? "لا يوجد رقم تليفون" : "لا توجد أرقام أكونت"); return true; }
+  // نيّة العملية بتتسجّل لأرقام الأكونت بس (المراجعة أرقام تليفون فمالهاش op-intent)
+  if (type !== "subinfo") void recordOpIntent(type, accs);
   if (await isExecutorActive()) {
     const res = await enqueueJob(type, accs);
     alert(res.ok ? `تم إضافة ${accs.length} رقم لطابور ${QUEUE_LABEL[type]} — هيتنفّذ على جهاز التنفيذ` : (res.message || "تعذّر الإضافة للطابور"));

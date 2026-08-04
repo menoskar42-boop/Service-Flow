@@ -1444,7 +1444,9 @@ export async function registerRoutes(
   app.post("/api/exec-queue/enqueue", requireAuth, async (req: any, res) => {
     try {
       const { type, accounts, note } = req.body || {};
-      if (!["raise", "stop", "measure"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
+      // subinfo = مراجعة اسم/عنوان العميل من FCC (زر «مراجعة» فى بحث برقم التليفون).
+      // «الأرقام» هنا أرقام تليفون مش أرقام أكونت، لكن الطابور بيتعامل معاها بنفس الطريقة.
+      if (!["raise", "stop", "measure", "subinfo"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
       const uniqAccs = [...new Set((Array.isArray(accounts) ? accounts : []).map((a: any) => String(a).trim()).filter(Boolean))];
       if (!uniqAccs.length) return res.status(400).json({ message: "لا توجد أرقام" });
       const user = String(req.user.username || "");
@@ -1513,6 +1515,19 @@ export async function registerRoutes(
       if (!acc || (event !== "raise" && event !== "stop")) return res.json({ at: null });
       const col = event === "raise" ? "last_raise_at" : "last_stop_at";
       const { rows } = await pool.query(`SELECT ${col} AS at FROM line_po_events WHERE account_no = $1`, [acc]);
+      res.json({ at: rows[0]?.at || null });
+    } catch { res.json({ at: null }); }
+  });
+
+  // تأكيد المراجعة: آخر وقت جلب اسم/عنوان لرقم تليفون من FCC (line_subscriber_info.fetched_at).
+  // جهاز التنفيذ بيقارنه بالوقت قبل الفتح عشان يعرف إن المراجعة خلصت فعلاً.
+  app.get("/api/exec-queue/subinfo-check", requireAuth, async (req, res) => {
+    try {
+      const phone = String(req.query.phone || "").trim();
+      if (!phone) return res.json({ at: null });
+      const { rows } = await pool.query(
+        `SELECT MAX(fetched_at) AS at FROM line_subscriber_info WHERE ${sp("phone_number")} = ${sp("$1")}`,
+        [phone]);
       res.json({ at: rows[0]?.at || null });
     } catch { res.json({ at: null }); }
   });
@@ -1852,6 +1867,10 @@ export async function registerRoutes(
     let q: string;
     if (type === "measure") {
       q = `SELECT COUNT(DISTINCT account_no)::int AS n FROM case_138 WHERE account_no = ANY($1::text[]) AND uploaded_at >= $2`;
+    } else if (type === "subinfo") {
+      // المراجعة خلصت لما سكربت FCC يرفع اسم/عنوان الرقم (fetched_at بيتحدّث فى الـ ingest)
+      q = `SELECT COUNT(DISTINCT phone_number)::int AS n FROM line_subscriber_info
+            WHERE ${sp("phone_number")} = ANY(SELECT ${sp("x")} FROM unnest($1::text[]) AS x) AND fetched_at >= $2`;
     } else {
       const col = type === "stop" ? "last_stop_at" : "last_raise_at";
       q = `SELECT COUNT(DISTINCT account_no)::int AS n FROM line_po_events WHERE account_no = ANY($1::text[]) AND ${col} >= $2`;

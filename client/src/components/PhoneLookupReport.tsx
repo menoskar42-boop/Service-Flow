@@ -9,7 +9,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor, PHONE_LOOKUP_SOURCE } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor, dispatchSpeedTool, PHONE_LOOKUP_SOURCE } from "@/lib/exec-queue";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -370,6 +370,21 @@ export function PhoneLookupReport() {
   };
 
   // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
+  // زر «مراجعة» (جلب اسم/عنوان العميل من FCC): متاح للفنيين والشئون الخارجية (ومنها مهندس
+  // الكوابل) والأدمن (ومنه مدير السنترال) والسوبر أدمن ومسئول البيانات — يعنى الكل ما عدا المبيعات.
+  const canReview = ([ROLES.TECH, ROLES.EXTERNAL, ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.DATA_MANAGER] as string[])
+    .includes(user?.role ?? "");
+  const [reviewBusy, setReviewBusy] = useState(false);
+  // بيدخل طابور التنفيذ زى القياس/رفع السرعة/الإيقاف — جهاز التنفيذ هو اللى بيفتح FCC ويجيبها،
+  // فالمستخدم مايحتاجش يكون على جهاز فيه وصول لـ FCC ولا يستنى التاب مفتوح.
+  const reviewSubInfo = async () => {
+    const p = String(line?.fullPhone || phone || "").trim();
+    if (!p) return;
+    setReviewBusy(true);
+    try { await dispatchSpeedTool("subinfo", [p], isSuper); }
+    finally { setReviewBusy(false); }
+  };
+
   const canFlagFault = isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL;
   const canRegularize = isSuper || user?.role === ROLES.TECH;
 
@@ -608,14 +623,15 @@ export function PhoneLookupReport() {
             <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
             تحديث
           </Button>
-          {line && (
+          {line && canReview && (
             <Button
               variant="outline"
-              onClick={() => window.open("https://fcc.te.eg/TroubleTicket/faces/security/pages/Login.jsf#sf_si=one:" + (line.fullPhone || phone), "sf_subinfo_one:" + (line.fullPhone || phone))}
+              onClick={reviewSubInfo}
+              disabled={reviewBusy}
               className="gap-2 text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50"
-              title="جلب اسم وعنوان هذا الرقم من FCC (يفتح FCC ويجلبه تلقائياً)"
+              title="جلب اسم وعنوان هذا الرقم من FCC — بيتضاف لطابور التنفيذ زى القياس ورفع السرعة"
             >
-              <UserSearch className="w-4 h-4" />
+              {reviewBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserSearch className="w-4 h-4" />}
               مراجعة
             </Button>
           )}
