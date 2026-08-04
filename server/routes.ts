@@ -573,11 +573,10 @@ const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
 // بـ «=» على القيمة الخام، فأى اختلاف فى الصيغة كان بيخلّى الشكوى مش تتلاقى أصلاً.
 // sp() بترجّع الرقم القصير المعيارى: أرقام فقط، وتشيل بادئة 88 بس لو الطول أكبر من 7
 // (عشان رقم محلى بيبدأ بـ 88 مايتقصّش بالغلط) — نفس المنطق المستخدم فى تقارير أوامر الشغل.
-const sp = (expr: string) => {
-  // أرقام فقط + شيل الأصفار البادئة (بعض الملفات بتخزّن 0882656325)
-  const d = `regexp_replace(regexp_replace(COALESCE(${expr}::text, ''), '[^0-9]', '', 'g'), '^0+', '')`;
-  return `(CASE WHEN ${d} LIKE '88%' AND length(${d}) > 7 THEN substring(${d} FROM 3) ELSE ${d} END)`;
-};
+// بتنادى دالة sf_phone_norm() المعرَّفة فى ensureSchema — مش تعبير inline — عشان الـ functional
+// indexes على نفس التعبير تشتغل. (لما كان inline، الـ LATERAL بتاع الشكاوى كان بيعمل seq scan
+// لكل صف فعلّق تقرير «محتاجة رفع سرعة».)
+const sp = (expr: string) => `sf_phone_norm(${expr}::text)`;
 
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf

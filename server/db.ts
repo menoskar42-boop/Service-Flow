@@ -40,6 +40,21 @@ export async function ensureSchema() {
     $fn$
   `);
 
+  // ── sf_phone_norm(): تطبيع رقم التليفون للمطابقة بين الجداول ──
+  // أرقام 430D / ticket_dsl_current / manual_faults متخزّنة بصيغ مختلفة (مسافات، شرطات،
+  // بادئة 88، أصفار بادئة). الدالة بترجّع الرقم القصير المعيارى:
+  //   أرقام فقط ← شيل الأصفار البادئة ← شيل بادئة 88 لو الطول > 7
+  //   (الشرط ده بيحمى رقم محلى من 7 خانات بيبدأ بـ 88 من إنه يتقصّ بالغلط).
+  // IMMUTABLE عشان تدخل فى functional index — من غير الـ index المطابقة بتبقى seq scan
+  // لكل صف جوّه الـ LATERAL بتاع الشكاوى (اللى علّق تقرير «محتاجة رفع سرعة»).
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION sf_phone_norm(t text) RETURNS text
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
+      SELECT CASE WHEN d LIKE '88%' AND length(d) > 7 THEN substring(d FROM 3) ELSE d END
+        FROM (SELECT regexp_replace(regexp_replace(COALESCE(t, ''), '[^0-9]', '', 'g'), '^0+', '') AS d) x
+    $fn$
+  `);
+
   // Core tables (users, orders) — historically created by drizzle-kit push, now
   // also created here so ensureSchema is self-sufficient on a fresh database.
   await pool.query(`
@@ -1147,6 +1162,23 @@ export async function ensureSchema() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+
+  // فهارس على الرقم المطبَّع — بتخلّى مطابقة الشكوى بالخط تستخدم index بدل seq scan.
+  // بتتعمل بعد إنشاء الجداول كلها. داخل try عشان لو جدول لسه مش موجود مايوقفش ensureSchema.
+  for (const [tbl, col] of [
+    ["complaint_details", "phone_number"],
+    ["remaining_complaints", "phone_number"],
+    ["ticket_dsl_current", "phone_number"],
+    ["manual_faults", "phone_short"],
+    ["manual_faults", "full_phone"],
+    ["line_subscriber_info", "phone_number"],
+  ] as const) {
+    try {
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS ${tbl}_${col}_norm_idx ON ${tbl} (sf_phone_norm(${col}::text))`,
+      );
+    } catch { /* الجدول لسه مش موجود أو الفهرس بيتعمل — نكمّل */ }
+  }
 
   // ===== Cable-Fault-Manager (CFM) — جداول برنامج الكوابل المدمج =====
   // كل جداول CFM بأسماءها الأصلية عدا users → cfm_users (لتجنّب التعارض مع users بتاعنا).
