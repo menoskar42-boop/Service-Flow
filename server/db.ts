@@ -3,6 +3,7 @@ import pg from "pg";
 import { readFileSync } from "fs";
 import { join } from "path";
 import * as schema from "@shared/schema";
+import { phoneNormSql } from "./phone-norm";
 
 const { Pool } = pg;
 
@@ -37,21 +38,6 @@ export async function ensureSchema() {
         || E'\\u064B\\u064C\\u064D\\u064E\\u064F\\u0650\\u0651\\u0652\\u0640\\u0670',
         E'\\u0627\\u0627\\u0627\\u0627\\u064A\\u064A\\u0648\\u0647'
         || '0123456789' || '0123456789'))
-    $fn$
-  `);
-
-  // ── sf_phone_norm(): تطبيع رقم التليفون للمطابقة بين الجداول ──
-  // أرقام 430D / ticket_dsl_current / manual_faults متخزّنة بصيغ مختلفة (مسافات، شرطات،
-  // بادئة 88، أصفار بادئة). الدالة بترجّع الرقم القصير المعيارى:
-  //   أرقام فقط ← شيل الأصفار البادئة ← شيل بادئة 88 لو الطول > 7
-  //   (الشرط ده بيحمى رقم محلى من 7 خانات بيبدأ بـ 88 من إنه يتقصّ بالغلط).
-  // IMMUTABLE عشان تدخل فى functional index — من غير الـ index المطابقة بتبقى seq scan
-  // لكل صف جوّه الـ LATERAL بتاع الشكاوى (اللى علّق تقرير «محتاجة رفع سرعة»).
-  await pool.query(`
-    CREATE OR REPLACE FUNCTION sf_phone_norm(t text) RETURNS text
-    LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $fn$
-      SELECT CASE WHEN d LIKE '88%' AND length(d) > 7 THEN substring(d FROM 3) ELSE d END
-        FROM (SELECT regexp_replace(regexp_replace(COALESCE(t, ''), '[^0-9]', '', 'g'), '^0+', '') AS d) x
     $fn$
   `);
 
@@ -1163,8 +1149,10 @@ export async function ensureSchema() {
     )
   `);
 
-  // فهارس على الرقم المطبَّع — بتخلّى مطابقة الشكوى بالخط تستخدم index بدل seq scan.
-  // بتتعمل بعد إنشاء الجداول كلها. داخل try عشان لو جدول لسه مش موجود مايوقفش ensureSchema.
+  // فهارس على الرقم المطبَّع — بتخلّى مطابقة الشكوى بالخط تستخدم index بدل seq scan
+  // (من غيرها الـ LATERAL بتاع الشكاوى بيعلّق تقارير القياسات).
+  // التعبير مضمَّن مش دالة مخصصة — عشان migration النشر بتاع Replit بيطبّق الفهرس على prod
+  // قبل ما السيرفر يشتغل، فأى دالة بنعملها احنا مابتبقاش موجودة لسه وقتها.
   for (const [tbl, col] of [
     ["complaint_details", "phone_number"],
     ["remaining_complaints", "phone_number"],
@@ -1174,11 +1162,15 @@ export async function ensureSchema() {
     ["line_subscriber_info", "phone_number"],
   ] as const) {
     try {
+      // نشيل النسخة القديمة اللى كانت بتعتمد على sf_phone_norm() — هى سبب فشل النشر
+      await pool.query(`DROP INDEX IF EXISTS ${tbl}_${col}_norm_idx`);
       await pool.query(
-        `CREATE INDEX IF NOT EXISTS ${tbl}_${col}_norm_idx ON ${tbl} (sf_phone_norm(${col}::text))`,
+        `CREATE INDEX IF NOT EXISTS ${tbl}_${col}_pnorm_idx ON ${tbl} ((${phoneNormSql(col)}))`,
       );
     } catch { /* الجدول لسه مش موجود أو الفهرس بيتعمل — نكمّل */ }
   }
+  // الدالة القديمة بقت بلا استخدام بعد ما الفهارس اللى كانت بتعتمد عليها اتشالت
+  try { await pool.query(`DROP FUNCTION IF EXISTS sf_phone_norm(text)`); } catch {}
 
   // ===== Cable-Fault-Manager (CFM) — جداول برنامج الكوابل المدمج =====
   // كل جداول CFM بأسماءها الأصلية عدا users → cfm_users (لتجنّب التعارض مع users بتاعنا).

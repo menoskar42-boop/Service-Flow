@@ -18,6 +18,7 @@ import connectPgSimple from "connect-pg-simple";
 import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
+import { phoneNormSql } from "./phone-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 
@@ -573,10 +574,9 @@ const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
 // بـ «=» على القيمة الخام، فأى اختلاف فى الصيغة كان بيخلّى الشكوى مش تتلاقى أصلاً.
 // sp() بترجّع الرقم القصير المعيارى: أرقام فقط، وتشيل بادئة 88 بس لو الطول أكبر من 7
 // (عشان رقم محلى بيبدأ بـ 88 مايتقصّش بالغلط) — نفس المنطق المستخدم فى تقارير أوامر الشغل.
-// بتنادى دالة sf_phone_norm() المعرَّفة فى ensureSchema — مش تعبير inline — عشان الـ functional
-// indexes على نفس التعبير تشتغل. (لما كان inline، الـ LATERAL بتاع الشكاوى كان بيعمل seq scan
-// لكل صف فعلّق تقرير «محتاجة رفع سرعة».)
-const sp = (expr: string) => `sf_phone_norm(${expr}::text)`;
+// نفس التعبير المستخدَم فى فهارس server/db.ts بالحرف — لازم يتطابقوا عشان الـ planner
+// يستخدم الفهرس (وإلا الـ LATERAL بتاع الشكاوى يرجع seq scan لكل صف ويعلّق التقارير).
+const sp = phoneNormSql;
 
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf
