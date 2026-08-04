@@ -10,6 +10,8 @@ import {
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
 import { format } from "date-fns";
 
+interface UnassignedRow { msanCode: string; fccCode: string | null; subEx: string | null; fbbSubs: number }
+
 interface CabinetRow {
   centralName: string;
   cabinNumber: string;
@@ -235,6 +237,19 @@ export function CabinetAdslFaultsReport() {
   };
 
   const countLabel = isBox ? "عدد البكسيات" : (isTech ? "عدد الفنيين" : "عدد الكباين");
+  // كباين موجودة فى ملف المشتركين ومش مسجّلة عندنا فى «فنيى الكباين» — مشتركينها
+  // مش داخلين فى «الشغال ADSL»، وده بيفسّر أى فرق بين إجمالى التقرير وإجمالى الشيت.
+  const { data: unassigned } = useQuery<{ rows: UnassignedRow[]; missingSubs: number; totalSheet: number }>({
+    queryKey: ["/api/reports/cabinet-adsl-faults/unassigned"],
+    queryFn: async () => {
+      const res = await fetch("/api/reports/cabinet-adsl-faults/unassigned", { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    refetchOnMount: "always",
+  });
+  const [showUnassigned, setShowUnassigned] = useState(false);
+
   const workingLabel = isBox ? "إجمالى الخطوط" : "إجمالى الشغال ADSL";
 
   return (
@@ -317,6 +332,45 @@ export function CabinetAdslFaultsReport() {
           <div className="text-xs text-red-700 mt-1">إجمالى الأعطال</div>
         </div>
       </div>
+
+      {/* كباين فى الشيت ومش مسجّلة عندنا — بتفسّر الفرق بين إجمالى التقرير وإجمالى الشيت */}
+      {!isBox && !!unassigned && unassigned.missingSubs > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm" dir="rtl">
+          <button onClick={() => setShowUnassigned((v) => !v)} className="w-full text-right font-medium text-amber-900">
+            ⚠️ {unassigned.rows.length} كابينة فى ملف المشتركين مش مسجّلة عندنا فى «فنيى الكباين» —
+            مشتركينها ({unassigned.missingSubs}) مش داخلين فى «الشغال ADSL»
+            <span className="text-xs font-normal mr-2">({showUnassigned ? "إخفاء" : "عرض الأكواد"})</span>
+          </button>
+          {showUnassigned && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-amber-900">
+                  <tr>
+                    <th className="text-right py-1">كود MSAN</th>
+                    <th className="text-right py-1">FCC</th>
+                    <th className="text-right py-1">السنترال</th>
+                    <th className="text-right py-1">شغال ADSL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {unassigned.rows.map((r) => (
+                    <tr key={r.msanCode} className="border-t border-amber-200">
+                      <td className="py-1 font-mono">{r.msanCode}</td>
+                      <td className="py-1">{r.fccCode ?? "-"}</td>
+                      <td className="py-1">{r.subEx ?? "-"}</td>
+                      <td className="py-1 font-semibold">{r.fbbSubs}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[11px] text-amber-800 mt-2">
+                إجمالى الشيت (نحاس): {unassigned.totalSheet} — لو الكابينة تخصنا ضيفها فى «فنيى
+                الكباين» بكود الـ MSAN وهتدخل التقرير تلقائياً.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <Card className="overflow-hidden shadow-sm border-0 bg-white">

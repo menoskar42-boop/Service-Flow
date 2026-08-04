@@ -8114,6 +8114,37 @@ export async function registerRoutes(
     }
   });
 
+  // GET /api/reports/cabinet-adsl-faults/unassigned — أكواد MSAN موجودة فى ملف المشتركين
+  // (نحاس + سنترالات الغنايم) لكنها **مش مسجّلة فى فنيى الكباين**، فمشتركينها مش بيدخلوا
+  // حساب «الشغال ADSL» فى التقرير. ده بيفسّر أى فرق بين إجمالى التقرير وإجمالى الشيت.
+  app.get("/api/reports/cabinet-adsl-faults/unassigned", requireAuth, async (_req, res) => {
+    try {
+      const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
+      const FCC = ["GHNAT", "AMZAT", "DRGAT", "NGOAT"];
+      const { rows } = await pool.query(
+        `SELECT f.msan_gpon_code AS "msanCode", MIN(f.fcc_code) AS "fccCode",
+                MIN(f.sub_ex) AS "subEx", SUM(f.fbb_subs)::int AS "fbbSubs"
+           FROM ftth_subscribers f
+          WHERE f.type = 'Copper' AND f.fcc_code = ANY($1::text[])
+            AND COALESCE(f.fbb_subs, 0) > 0
+            AND NOT EXISTS (SELECT 1 FROM cabinet_technicians ct
+                             WHERE ct.cabin_code = f.msan_gpon_code
+                               AND ct.central_name = ANY($2::text[]))
+          GROUP BY f.msan_gpon_code
+          ORDER BY SUM(f.fbb_subs) DESC`,
+        [FCC, CENTRALS],
+      );
+      const totalSheet = await pool.query(
+        `SELECT COALESCE(SUM(fbb_subs), 0)::int AS t FROM ftth_subscribers
+          WHERE type = 'Copper' AND fcc_code = ANY($1::text[])`, [FCC]);
+      res.json({
+        rows,
+        missingSubs: rows.reduce((a: number, r: any) => a + (r.fbbSubs || 0), 0),
+        totalSheet: totalSheet.rows[0]?.t ?? 0,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/box-faults — لكل بكس: عدد الخطوط (من بيان التليفونات) + عدد الأعطال
   // (من شيت التفاصيل + تفاصيل المتبقى، ربط برقم التليفون) + أعطال لكل 1000 + المتوقع نهاية الشهر.
   //   ?dateFrom=YYYY-MM-DD & dateTo=YYYY-MM-DD & central= & q=
