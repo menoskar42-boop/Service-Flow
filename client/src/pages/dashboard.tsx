@@ -270,6 +270,19 @@ export default function Dashboard() {
       if (user?.role === ROLES.SALES_ADMIN) return { ...g, items: g.items.filter((it) => SALES_ADMIN_ALLOWED.includes(it.id)) };
       return g;
     });
+  // حارس: لو التاب الحالى مش من ضمن المسموح لدور المستخدم، نرجّعه لأول تاب مسموح ونفتح
+  // مجموعته. ضرورى لأن القيمة الافتراضية لـ reportTab بتتحسب عند **أول رندر بس**، وساعتها
+  // بيانات المستخدم ممكن تكون لسه بتتحمّل — فأدمن المبيعات كان بيقع على «الأعطال الحالية»
+  // ويفضل عليها رغم إن المسموح له «المتعذرات الحالية» بس. بيغطّى كل الأدوار مش بس دور واحد.
+  useEffect(() => {
+    if (authLoading || !user) return;
+    const allowed = visibleGroups.flatMap((g) => g.items.map((it) => it.id));
+    if (!allowed.length || allowed.includes(reportTab)) return;
+    setReportTab(allowed[0]);
+    const grp = visibleGroups.find((g) => g.items.some((it) => it.id === allowed[0]));
+    if (grp) setOpenGroups([grp.label]);
+  }, [authLoading, user, visibleGroups, reportTab]);
+
   // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
   const [navOpen, setNavOpen] = useState(false);
   const currentReportLabel =
