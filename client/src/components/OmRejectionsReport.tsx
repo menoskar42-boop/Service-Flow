@@ -13,7 +13,7 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { ROLES } from "@shared/schema";
+import { ROLES, REJECTION_REASONS } from "@shared/schema";
 import { TechActionModal } from "@/components/TechActionModal";
 
 interface Row {
@@ -87,6 +87,8 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const [msanFilter, setMsanFilter] = useState("");
   const [fccFilter, setFccFilter] = useState("");
   const [techFilter, setTechFilter] = useState("");
+  // فلتر رد الفنى: الكل | قيد الانتظار | يمكن التنفيذ | سبب تعذر محدد
+  const [respFilter, setRespFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const { user } = useAuth();
@@ -282,14 +284,28 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
 
   // فلتر السنة client-side — يضمن الصحة بغض النظر عن الـ DB timezone
   const displayRows = useMemo(() => {
-    if (yearFilter === "all") return rows;
     const nowYear = new Date().getFullYear();
     return rows.filter((r) => {
-      if (!r.orderCreateTime) return yearFilter === "previous";
-      const yr = new Date(r.orderCreateTime).getFullYear();
-      return yearFilter === "current" ? yr === nowYear : yr < nowYear;
+      // فلتر السنة
+      if (yearFilter !== "all") {
+        if (!r.orderCreateTime) { if (yearFilter !== "previous") return false; }
+        else {
+          const yr = new Date(r.orderCreateTime).getFullYear();
+          if (yearFilter === "current" ? yr !== nowYear : yr >= nowYear) return false;
+        }
+      }
+      // فلتر رد الفنى / سبب التعذر
+      if (respFilter) {
+        const st = r.respStatus || "pending";
+        if (respFilter === "pending") return st === "pending";
+        // «يمكن التنفيذ» تشمل رد الفنى ورد الشئون الخارجية
+        if (respFilter === "feasible") return st === "feasible" || st === "external_feasible";
+        // غير كده: سبب تعذر محدد (من الفنى أو من الشئون الخارجية)
+        return r.respRejectionReason === respFilter || r.respExternalRejectionReason === respFilter;
+      }
+      return true;
     });
-  }, [rows, yearFilter]);
+  }, [rows, yearFilter, respFilter]);
 
   const assignTech = async (msanCode: string, techName: string) => {
     try {
@@ -484,6 +500,21 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
               />
             </div>
           )}
+          {bucket === "current" && (
+            <select
+              value={respFilter}
+              onChange={(e) => setRespFilter(e.target.value)}
+              className="border rounded-md text-sm px-2 py-2 bg-white"
+              title="فلتر حسب رد الفنى / سبب التعذر"
+            >
+              <option value="">كل الحالات</option>
+              <option value="pending">قيد الانتظار</option>
+              <option value="feasible">يمكن التنفيذ</option>
+              {Object.values(REJECTION_REASONS).map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          )}
           <select
             value={yearFilter}
             onChange={(e) => setYearFilter(e.target.value as YearFilter)}
@@ -500,9 +531,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <label className="text-xs text-muted-foreground whitespace-nowrap">إلى:</label>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="border rounded-md text-sm px-2 py-1.5 bg-white" />
-          {(msanFilter || fccFilter || techFilter || dateFrom || dateTo) && (
+          {(msanFilter || fccFilter || techFilter || respFilter || dateFrom || dateTo) && (
             <button
-              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setDateFrom(""); setDateTo(""); }}
+              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setRespFilter(""); setDateFrom(""); setDateTo(""); }}
               className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
             >مسح الفلاتر</button>
           )}
