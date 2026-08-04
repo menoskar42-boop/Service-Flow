@@ -44,6 +44,11 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const { user } = useAuth();
   // الأدمن الأعلى (super_admin) يقدر يعمل أى فعل لأى دور — يعدّى كل شروط الأدوار
   const roleIs = (r: string) => user?.role === r || user?.role === ROLES.SUPER_ADMIN;
+  // أدمن المبيعات مسؤول عن مندوبى المبيعات وطلباتهم، فبيشوف بيانات الطلب كاملة زى الأدمن:
+  // الرقم القومى، رقم المسلسل، المندوب، حالة التعاقد، رد الشئون الخارجية. (قبل كده كانت
+  // الأعمدة دى مشروطة بـ ADMIN بس فكان بيشوف جدول ناقص.) العرض فقط — تعديل حالة التعاقد
+  // لسه للأدمن وحده.
+  const seesFullOrderData = roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES_ADMIN);
   const { resetTechResponse, isResetting, updateContractStatus, isUpdatingContract, requestExternalReview, isRequestingExternal, assignOrder, isAssigning } = useOrders();
   const { users } = useUsers();
   const [searchQuery, setSearchQuery] = useState("");
@@ -140,7 +145,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       if (!isTechMatch && !isUnassignedPending) return false;
     }
 
-    if (roleIs(ROLES.ADMIN) && contractFilter !== "all") {
+    if (seesFullOrderData && contractFilter !== "all") {
       if (contractFilter === "contracted" && order.contractStatus !== CONTRACT_STATUS.CONTRACTED) return false;
       if (contractFilter === "not_contracted" && order.contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) return false;
     }
@@ -315,8 +320,8 @@ export function OrdersTable({ orders }: OrdersTableProps) {
         </div>
       )}
 
-      {/* Contract Status Filter Tabs (Admin only) */}
-      {roleIs(ROLES.ADMIN) && (
+      {/* Contract Status Filter Tabs (Admin + Sales Admin) */}
+      {seesFullOrderData && (
         <div className="border-b overflow-x-auto bg-muted/20">
           <div className="flex min-w-max items-center gap-2 px-4 py-2" dir="rtl">
             <span className="text-sm text-muted-foreground">حالة التعاقد:</span>
@@ -409,22 +414,22 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               <TableHead className="text-right font-bold">العميل</TableHead>
               <TableHead className="text-right font-bold">العنوان</TableHead>
               <TableHead className="text-right font-bold">رقم الهاتف</TableHead>
-              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
+              {(seesFullOrderData || roleIs(ROLES.SALES)) && (
                 <TableHead className="text-right font-bold">الرقم القومي</TableHead>
               )}
-              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
+              {(seesFullOrderData || roleIs(ROLES.SALES)) && (
                 <TableHead className="text-right font-bold">رقم المسلسل</TableHead>
               )}
-              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.TECH) || roleIs(ROLES.EXTERNAL)) && (
+              {(seesFullOrderData || roleIs(ROLES.TECH) || roleIs(ROLES.EXTERNAL)) && (
                 <TableHead className="text-right font-bold">المندوب</TableHead>
               )}
               <TableHead className="text-right font-bold">الحالة</TableHead>
-              {roleIs(ROLES.ADMIN) && (
+              {seesFullOrderData && (
                 <TableHead className="text-right font-bold">حالة التعاقد</TableHead>
               )}
               <TableHead className="text-right font-bold">الفني</TableHead>
               <TableHead className="text-right font-bold">رد الفني</TableHead>
-              {(roleIs(ROLES.ADMIN) || roleIs(ROLES.EXTERNAL)) && (
+              {(seesFullOrderData || roleIs(ROLES.EXTERNAL)) && (
                 <TableHead className="text-right font-bold">رد الشئون الخارجية</TableHead>
               )}
               <TableHead className="text-right font-bold">إجراء</TableHead>
@@ -443,25 +448,25 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 </TableCell>
                 <TableCell className="font-mono text-xs whitespace-normal break-words min-w-[100px]">{order.customerPhone}</TableCell>
 
-                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
+                {(seesFullOrderData || roleIs(ROLES.SALES)) && (
                   <TableCell className="font-mono text-xs">
                     {order.nationalId || <span className="text-muted-foreground">-</span>}
                   </TableCell>
                 )}
 
-                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.SALES)) && (
+                {(seesFullOrderData || roleIs(ROLES.SALES)) && (
                   <TableCell className="font-mono text-xs whitespace-normal break-words min-w-[100px] max-w-[180px]">
                     {order.serialNumber || <span className="text-muted-foreground">-</span>}
                   </TableCell>
                 )}
 
-                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.TECH) || roleIs(ROLES.EXTERNAL)) && (
+                {(seesFullOrderData || roleIs(ROLES.TECH) || roleIs(ROLES.EXTERNAL)) && (
                   <TableCell>{order.salesName}</TableCell>
                 )}
 
                 <TableCell>{getStatusBadge(order.status)}</TableCell>
 
-                {roleIs(ROLES.ADMIN) && (
+                {seesFullOrderData && (
                   <TableCell>{getContractBadge(order.contractStatus)}</TableCell>
                 )}
 
@@ -499,7 +504,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                 </TableCell>
 
                 {/* External Response Cell (Admin & External role) */}
-                {(roleIs(ROLES.ADMIN) || roleIs(ROLES.EXTERNAL)) && (
+                {(seesFullOrderData || roleIs(ROLES.EXTERNAL)) && (
                   <TableCell className="max-w-[200px] text-sm">
                     {!order.externalName ? (
                       <span className="text-muted-foreground">-</span>
