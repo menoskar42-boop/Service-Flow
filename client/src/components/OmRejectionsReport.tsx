@@ -80,7 +80,10 @@ type YearFilter = "all" | "current" | "previous";
 
 export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy" | "resolved"; title: string }) {
   const [q, setQ] = useState("");
-  const [yearFilter, setYearFilter] = useState<YearFilter>("all");
+  // «المتعذرات الحالية» بتفتح على متعذرات العام الحالى (المعتاد فى المتابعة اليومية)،
+  // والمستخدم يقدر يغيّرها لـ«الكل» أو «سنوات سابقة» عادى. باقى التابات (بداية السنة /
+  // تم فكها) بتفضل «الكل» لأنها تاريخية بطبيعتها وتقييدها بالسنة هيخفى بيانات.
+  const [yearFilter, setYearFilter] = useState<YearFilter>(bucket === "current" ? "current" : "all");
   const [msanFilter, setMsanFilter] = useState("");
   const [fccFilter, setFccFilter] = useState("");
   const [techFilter, setTechFilter] = useState("");
