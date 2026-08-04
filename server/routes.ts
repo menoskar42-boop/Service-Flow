@@ -4188,6 +4188,47 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // GET /api/reports/work-orders-no-cable — أوامر الشغل اللى لسه مالهاش كمية سلك.
+  // كمية السلك مابتيجيش من ملف أوامر الشغل خالص — الفنى بيدخّلها من «استكمال بيانات»
+  // فتتخزّن فى cable_entries. فالتقرير ده = أوامر الشغل اللى مالهاش صف مقابل هناك.
+  // المطابقة بنفس منطق تقرير أوامر الشغل بالظبط: رقم محلى (بدون 88) + نوع الأمر (نقل/تركيب).
+  app.get("/api/reports/work-orders-no-cable", requireAuth, async (req, res) => {
+    try {
+      const { dateFrom = "", dateTo = "", q = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = [
+        // التركيبات فقط: أرقام بصيغة 88+7 خانات (المعاينات بمسلسل طويل مش تخصنا)
+        `regexp_replace(coalesce(w.phone_number,''), '\\D', '', 'g') ~ '^88[0-9]{7}$'`,
+        // الناجحة فقط (زى الافتراضى فى تقرير أوامر الشغل)
+        `(w.close_category IS NULL OR w.close_category = 'Success')`,
+        // مالهاش كمية سلك: لا فى work_orders ولا فى cable_entries
+        `COALESCE(NULLIF(w.cable_quantity, ''), ce.cable_quantity) IS NULL`,
+      ];
+      if (dateFrom) { params.push(dateFrom); conds.push(`w.close_date >= $${params.length}::date`); }
+      if (dateTo) { params.push(dateTo); conds.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }
+      if (q.trim()) {
+        params.push(arQ(q));
+        const p = `$${params.length}`;
+        conds.push(`(${n("w.phone_number")} LIKE ${p} OR ${n("w.work_order_id")} LIKE ${p}
+                  OR ${n("w.tech_name")} LIKE ${p} OR ${n("w.central_name")} LIKE ${p})`);
+      }
+      const { rows } = await pool.query(
+        `SELECT w.id, w.central_name AS "centralName", w.work_order_id AS "workOrderId",
+                w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
+                w.close_date AS "closeDate", w.item_name AS "itemName", w.tech_name AS "techName"
+           FROM work_orders w
+           LEFT JOIN cable_entries ce
+             ON ${sp("ce.phone_local")} = ${sp("w.phone_number")}
+            AND ce.work_order_type = CASE WHEN trim(w.service_type) = 'نقل' THEN 'نقل' ELSE 'تركيب' END
+          WHERE ${conds.join(" AND ")}
+          ORDER BY w.close_date DESC
+          LIMIT 20000`,
+        params,
+      );
+      res.json(rows);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/installations-by-tech — نسبة إنجاز التركيبات خلال 24 ساعة لكل فنى (Success فقط).
   // الرؤية: السوبر أدمن/الأدمن/الشئون الخارجية = كل الفنيين؛ الفنى = أرقامه فقط؛ الباقى ممنوع.
   // lines=1 → يرجّع خطوط التركيبات المتجاوزة 24 ساعة (بنفس فلترة الدور) لزر «تجاوزات 24 ساعة».
