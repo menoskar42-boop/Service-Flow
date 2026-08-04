@@ -71,6 +71,9 @@ const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
 >(({ className, children, position = "popper", ...props }, ref) => (
+  // Portal ضرورى: من غيره القائمة بتترسم جوّه العنصر الأب، فلو الأب فيه overflow-y-auto
+  // (زى نوافذ الـ Dialog) القائمة بتتقص. مع الـ Portal بتترسم على مستوى الصفحة فتظهر كاملة.
+  <SelectPrimitive.Portal>
   <SelectPrimitive.Content
     ref={ref}
     className={cn(
@@ -92,6 +95,7 @@ const SelectContent = React.forwardRef<
       {children}
     </SelectPrimitive.Viewport>
   </SelectPrimitive.Content>
+  </SelectPrimitive.Portal>
 ))
 SelectContent.displayName = SelectPrimitive.Content.displayName
 
