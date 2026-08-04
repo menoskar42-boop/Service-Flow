@@ -19,12 +19,12 @@ interface RepDetailRow {
   phoneNumber: string; centralName: string; lineCabin: string | null; lineBox: string | null;
   msanCode: string | null; frame: string | null; appearances: number; complainNo: string;
   complainTime: string | null; closeTime: string | null; closeCode: string | null;
-  closeByName: string; areaTechName: string;
+  closeByName: string; closeByManual?: boolean; areaTechName: string;
 }
 interface Beyond24Row {
   complainNo: string; phoneNumber: string; centralName: string; cabinetNo: string;
   complainTime: string; closeTime: string; closeCode: string | null; hours: number;
-  closeByName: string; areaTechName: string; lineCabin: string | null; lineBox: string | null;
+  closeByName: string; closeByManual?: boolean; areaTechName: string; lineCabin: string | null; lineBox: string | null;
   msanCode: string | null; frame: string | null; subName: string | null; subAdd: string | null;
 }
 
@@ -120,6 +120,12 @@ export function TechPerformanceReport() {
   const techNameOptions = [
     ...new Set((techNamesList ?? []).map((t) => (t.techName ?? "").trim()).filter(Boolean)),
   ].sort((a, b) => a.localeCompare(b, "ar"));
+  // فنى الإغلاق الجاى من التقرير نفسه (كود العامل فى 430D) مرجع رسمى فمش بيتعدّل.
+  // القلم بيظهر بس لو الفنى لسه «غير معروف»، أو لو الاسم اتحط يدوياً قبل كده — وساعتها
+  // يفضل قابل للتعديل فى أى وقت.
+  const canEditCloseTech = (r: { closeByName: string; closeByManual?: boolean }) =>
+    !!r.closeByManual || !r.closeByName || r.closeByName === "غير معروف";
+
   const startEditTech = (complainNo: string, closeByName: string) => {
     setEditingTech(complainNo);
     setEditTechDraft(closeByName === "غير معروف" ? "" : (closeByName ?? ""));
@@ -136,8 +142,8 @@ export function TechPerformanceReport() {
         body: JSON.stringify({ complainNo, techName: tech }),
       });
       if (!res.ok) throw new Error("فشل الحفظ");
-      setRepDetailData((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech } : r) : prev);
-      setB24Data((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech } : r) : prev);
+      setRepDetailData((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech, closeByManual: true } : r) : prev);
+      setB24Data((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech, closeByManual: true } : r) : prev);
       setEditingTech(null);
     } catch {
       alert("تعذّر حفظ فنى الإغلاق");
@@ -686,8 +692,9 @@ export function TechPerformanceReport() {
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             <span>{r.closeByName}</span>
-                            {canEditTech && (
-                              <button onClick={() => startEditTech(r.complainNo, r.closeByName)} className="text-amber-500 hover:text-amber-700" title="تعيين فنى الإغلاق يدوياً">
+                            {canEditTech && canEditCloseTech(r) && (
+                              <button onClick={() => startEditTech(r.complainNo, r.closeByName)} className="text-amber-500 hover:text-amber-700"
+                                title={r.closeByManual ? "تعديل فنى الإغلاق المُدخَل يدوياً" : "تعيين فنى الإغلاق يدوياً"}>
                                 <Pencil className="w-3 h-3" />
                               </button>
                             )}
@@ -777,8 +784,9 @@ export function TechPerformanceReport() {
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             <span>{r.closeByName}</span>
-                            {canEditTech && (
-                              <button onClick={() => startEditTech(r.complainNo, r.closeByName)} className="text-amber-500 hover:text-amber-700" title="تعيين فنى الإغلاق يدوياً">
+                            {canEditTech && canEditCloseTech(r) && (
+                              <button onClick={() => startEditTech(r.complainNo, r.closeByName)} className="text-amber-500 hover:text-amber-700"
+                                title={r.closeByManual ? "تعديل فنى الإغلاق المُدخَل يدوياً" : "تعيين فنى الإغلاق يدوياً"}>
                                 <Pencil className="w-3 h-3" />
                               </button>
                             )}

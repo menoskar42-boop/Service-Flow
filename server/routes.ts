@@ -9224,6 +9224,7 @@ export async function registerRoutes(
             (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = r.close_by LIMIT 1),
             'غير معروف'
           )                                                                            AS "closeByName",
+          EXISTS (SELECT 1 FROM manual_close_by mcb WHERE mcb.complain_no = r.complain_no) AS "closeByManual",
           COALESCE(
             ${areaTechSql("r.central_name", "r.cabinet_no", "r.complain_time")},
             'غير معروف'
