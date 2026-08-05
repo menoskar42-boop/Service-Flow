@@ -1139,9 +1139,16 @@
       // (7) بعد Cancel ممكن تظهر نافذة تأكيد وممكن تظهر نافذة رسالة من WFM — بنضغط
       //     زر الموافقة (OK/Yes/موافق) وخلاص، من غير ما نقرا نص الرسالة. وممكن تظهر
       //     نافذتين ورا بعض (تأكيد ثم رسالة) فبنلفّ مرتين.
+      let lastDlg = null, lastDlgText = "";
       for (let d = 1; d <= 2; d++) {
         const dlg = await waitFor(() => adfDialogRoot(), d === 1 ? 8000 : 3000);
         if (!dlg) { if (d === 1) logln("ℹ️ مفيش نافذة — الإلغاء اتنفّذ مباشرةً."); break; }
+        // نفس النافذة/نفس الرسالة تانى = ADF لسه سايبها فى الصفحة بعد الإغلاق، مش
+        // رسالة جديدة. بنوقف بدل ما نضغط OK على حاجة اتقفلت أصلاً ونكتب سطر مضلّل.
+        if (dlg === lastDlg || txt(dlg).replace(/\s+/g, " ").slice(0, 200) === lastDlgText) {
+          logln("ℹ️ نفس الرسالة السابقة — مش رسالة جديدة.");
+          break;
+        }
         const CONFIRM_RE = /^\s*(yes|ok|confirm|submit|close|نعم|موافق|تأكيد|إغلاق)\s*$/i;
         const okBtn = qAll("button, a, input[type='submit'], span[role='button'], [role='menuitem'], td, div", dlg)
           .find((el) => visible(el) && !isDisabled(el) && CONFIRM_RE.test(txt(el)));
@@ -1152,6 +1159,7 @@
         logln("🪟 نافذة " + d + ": " + (dtxt || "(بدون نص)"));
         // بنسيبها ظاهرة شوية قبل ما نقفلها عشان تلحق تتقرا على الشاشة — قبل كده كنا
         // بنضغط OK فى نفس اللحظة فمابتلحقش تتشاف، والمستخدم افتكرها بطلت تظهر.
+        lastDlg = dlg; lastDlgText = dtxt;
         banner("🪟 " + (dtxt || "رسالة من WFM") , "#0277bd");
         await sleep(DIALOG_SHOW_MS);
         logln("   ↩️ بضغط «" + txt(okBtn) + "».");
