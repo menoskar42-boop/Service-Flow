@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher على wfm.te.eg، يسجّل الدخول لو ظهرت شاشة اللوجين، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.1.0
+// @version      1.1.1
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -238,7 +238,7 @@
     if (el.getAttribute && el.getAttribute("aria-disabled") === "true") return true;
     if (el.disabled) return true;
     let n = el;
-    for (let i = 0; i < 3 && n; i++, n = n.parentElement) {
+    for (let i = 0; i < 4 && n; i++, n = n.parentElement) {
       const cls = String((n.className && n.className.baseVal !== undefined ? n.className.baseVal : n.className) || "");
       if (/disabled/i.test(cls)) return true;
     }
@@ -246,16 +246,28 @@
   }
 
   function matchingItems(re) {
-    return qAllDocs("a, div, span, li, td").filter((el) => {
+    return qAllDocs("[role='menuitem'], a, div, span, li, td").filter((el) => {
       if (!visible(el)) return false;
       const t = txt(el);
       return t && t.length <= 40 && re.test(t);
     });
   }
+  // ADF بيرسم عنصر القائمة كـ <tr role="menuitem"> جوّاه <td>Cancel</td> — الضغط لازم
+  // يكون على الصف (اللى شايل الـ handler) مش على الخلية.
+  function menuTarget(el) {
+    if (!el) return null;
+    try {
+      const mi = el.closest("[role='menuitem']");
+      if (mi) return mi;
+      if (el.tagName === "TD") return el.closest("tr") || el;
+    } catch (e) {}
+    return el;
+  }
   // «Cancel» موجودة كمان كزر عادى فى مكان تانى فى الصفحة — فبناخد **اللى ظهر جديد**
   // بعد فتح قائمة السطر بس، عشان مانضغطش على زر غلط.
   function findNewMenuItem(re, before) {
-    return matchingItems(re).find((el) => before.indexOf(el) < 0) || null;
+    const hit = matchingItems(re).find((el) => before.indexOf(el) < 0);
+    return hit ? menuTarget(hit) : null;
   }
 
   /* ================== التدفّق الرئيسى ================== */
