@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.6
+// @version      1.5.7
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -503,7 +503,11 @@
       const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/port-change/ingest", {
         method: "POST", headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN }, body: JSON.stringify(payload),
       });
-      return r.json();
+      // لازم نتأكد إن السيرفر قبلها فعلاً — قبل كده كنا بنرجّع الـ json مهما كانت الحالة،
+      // فأى 401/500 كان بيعدّى وتظهر رسالة نجاح خضراء والبيانات مش متحدّثة.
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) return { ok: false, error: (j && j.message) || ("HTTP " + r.status) };
+      return Object.assign({ ok: true }, j);
     } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   }
   // قراءة قيمة حقل بعنوان محدد داخل نافذة تفاصيل الطلب (label نصّه == العنوان بالظبط → أقرب input)
@@ -685,9 +689,19 @@
       if (/COMPLETED/.test(status)) {
         const NEW_FRAME_LABELS = ["New Frame", "New Frame No", "New FrameNo", "New Frame Number", "NewFrame", "Frame New", "New Port"];
         const NEW_MSAN_LABELS  = ["New Msan Code", "New MSAN", "New Msan", "New MsanCode", "NewMsanCode", "Msan Code New"];
+        // القيمة أحياناً بترجع ومعاها اسم الحقل («New Frame 131») حسب شكل الـ DOM —
+        // بنشيل اسم الحقل من أولها فتبقى «131».
+        const stripLabel = (v, labels) => {
+          let out = String(v || "").trim();
+          for (const l of labels) {
+            const esc = l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
+            out = out.replace(new RegExp("^\\s*" + esc + "\\s*[::\\-]?\\s*", "i"), "").trim();
+          }
+          return out;
+        };
         const readNew = () => ({
-          frame: readLabeledValue.apply(null, NEW_FRAME_LABELS),
-          msan: readLabeledValue.apply(null, NEW_MSAN_LABELS),
+          frame: stripLabel(readLabeledValue.apply(null, NEW_FRAME_LABELS), NEW_FRAME_LABELS),
+          msan: stripLabel(readLabeledValue.apply(null, NEW_MSAN_LABELS), NEW_MSAN_LABELS),
         });
         // فتح تفاصيل الطلب = الضغط على رقم Request Id. أحياناً الضغطة الأولى مابتفتحش
         // (الرابط لسه بيترسم/Angular)، فبنعيد المحاولة لحد ما القيم تظهر فعلاً.
@@ -717,7 +731,14 @@
         logln("✅ COMPLETED " + phone + " — Frame=" + newFrame + " | Msan=" + newMsan);
         const res = await sfIngestResult({ requestId: mine.requestId, phone, oldMsan: data.old || "", newMsan: newMsan || data.new || "", newFrame, portType: data.pt || "", status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
         if (closeBtn) clickEl(closeBtn);
-        banner("✅ اتحدّث البورت الجديد للرقم " + phone + " (Frame " + (newFrame || "-") + " / Msan " + (newMsan || "-") + ").", "#2e7d32");
+        if (!res || res.ok === false) {
+          banner("❌ اتقرا البورت الجديد بس الرفع لـ Service-Flow فشل: " + ((res && res.error) || "سبب غير معروف"), "#c62828");
+          logln("❌ " + phone + " — فشل الرفع: " + ((res && res.error) || "?") + " (Frame=" + newFrame + " | Msan=" + newMsan + ")");
+          return;
+        }
+        // نعرض اللى السيرفر خزّنه فعلاً — مش اللى احنا بعتناه — عشان مايبقاش فيه لبس
+        const saved = "Frame " + (res.savedFrame || newFrame || "-") + " / Msan " + (res.savedMsan || newMsan || "-");
+        banner("✅ اتحدّث البورت الجديد للرقم " + phone + " (" + saved + ").", "#2e7d32");
         logln(res && res.updatedPort ? "💾 اتحدّث بيان البورت فى Service-Flow (Request " + mine.requestId + " اتسجّل)." : "ℹ️ الرد: " + JSON.stringify(res));
         return;
       }

@@ -5438,8 +5438,19 @@ export async function registerRoutes(
     const phone = pcNormFull(b.phone);
     const status = String(b.status || "").trim().toUpperCase();
     const completed = status === "COMPLETED";
-    const newFrame = String(b.newFrame || "").trim();
-    const newMsan = String(b.newMsan || "").trim();
+    // تنظيف دفاعى: أحياناً بيوصل اسم الحقل ملزوق بالقيمة («New Frame 131») حسب شكل
+    // صفحة البوابة. بنشيل البادئة دى هنا كمان — عشان القيمة المخزّنة تفضل نضيفة حتى لو
+    // السكربت قديم على جهاز المستخدم.
+    const stripLbl = (v: any, labels: string[]) => {
+      let out = String(v || "").trim();
+      for (const l of labels) {
+        const esc = l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s*");
+        out = out.replace(new RegExp("^\\s*" + esc + "\\s*[:\u061B-]?\\s*", "i"), "").trim();
+      }
+      return out;
+    };
+    const newFrame = stripLbl(b.newFrame, ["New Frame No", "New Frame Number", "New Frame", "NewFrame", "New Port", "Frame"]);
+    const newMsan = stripLbl(b.newMsan, ["New Msan Code", "New MsanCode", "New MSAN", "New Msan", "Msan Code", "Msan"]);
     const oldMsan = String(b.oldMsan || "").trim();
     const portType = String(b.portType || "").trim();
     const reservationCode = String(b.reservationCode || "").trim();
@@ -5466,7 +5477,15 @@ export async function registerRoutes(
         [phone, newFrame, newMsan, portType]);
       updatedPort = true;
     }
-    res.json({ ok: true, recorded: wasNew, alreadyExisted: !wasNew, completed, updatedPort });
+    // نرجّع اللى اتخزّن فعلاً فى phone_ports — السكربت بيعرضه للمستخدم، فأى اختلاف بين
+    // اللى اتبعت واللى اتخزّن يبان فوراً بدل ما نفترض إن التحديث تم.
+    let savedFrame = "", savedMsan = "";
+    if (phone) {
+      const { rows } = await pool.query(
+        `SELECT COALESCE(frame,'') AS frame, COALESCE(msan_code,'') AS msan FROM phone_ports WHERE phone_number = $1`, [phone]);
+      savedFrame = rows[0]?.frame ?? ""; savedMsan = rows[0]?.msan ?? "";
+    }
+    res.json({ ok: true, recorded: wasNew, alreadyExisted: !wasNew, completed, updatedPort, savedFrame, savedMsan });
   });
 
   // GET /api/port-change/list — تقرير متابعة طلبات تغيير البورت (كل المستخدمين المصرّح لهم)
