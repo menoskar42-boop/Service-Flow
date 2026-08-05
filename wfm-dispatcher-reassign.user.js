@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.2.5
+// @version      1.2.6
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -248,7 +248,9 @@
   // **قائمة الإجراءات**. الأخذ بالأقصى-شمال كان بيضغط على التوسيع فيفتح تفاصيل الصف بدل
   // القائمة. فبنرتّبهم: اللى شكله قائمة الأول، واللى شكله توسيع/تحديد يتستبعد.
   // أيقونة القائمة شكلها مفتاح/عدّة (wrench) ومعاها سهم صغير — دى اللى بتفتح القائمة.
-  const MENU_HINT = /menu|dropdown|action|popup|caret|gear|tool|wrench|key|cmd|oper/i;
+  // من DevTools: زر القائمة الحقيقى هو <div role="menuitem" aria-haspopup="true">،
+  // وجوّاه صورة اسمها WOFunctions (أيقونة المفتاح). العلامة الأقوى هى aria-haspopup.
+  const MENU_HINT = /menu|dropdown|action|popup|caret|gear|tool|wrench|key|cmd|oper|wofunction/i;
   const NOT_MENU_HINT = /expand|collapse|disclos|detail|select|checkbox|sort/i;
   function iconMeta(el) {
     const cls = el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className;
@@ -259,10 +261,10 @@
     let r; try { r = tr.getBoundingClientRect(); } catch (e) { return null; }
     if (!r || !r.height) return null;
     const mid = r.top + r.height / 2;
-    let cands = qAllDocs("a, button, img, [role='button']").filter((el) => {
+    let cands = qAllDocs("[aria-haspopup='true'], [role='menuitem'], a, button, img, [role='button']").filter((el) => {
       if (!visible(el)) return false;
       const b = el.getBoundingClientRect();
-      if (b.width > 60 || b.height > 40) return false;       // أيقونة صغيرة
+      if (b.width > 80 || b.height > 44) return false;       // أيقونة/زر صغير
       return b.top <= mid && b.bottom >= mid;                 // على نفس ارتفاع الصف
     });
     if (!cands.length) return null;
@@ -271,6 +273,9 @@
     const scored = cands.map((el) => {
       const meta = iconMeta(el);
       let score = 0;
+      // أقوى علامة: العنصر نفسه بيفتح قائمة منبثقة
+      if (el.getAttribute && el.getAttribute("aria-haspopup") === "true") score += 20;
+      if (el.getAttribute && el.getAttribute("role") === "menuitem") score += 8;
       if (MENU_HINT.test(meta)) score += 10;
       if (NOT_MENU_HINT.test(meta)) score -= 10;
       return { el, score, left: el.getBoundingClientRect().left };
