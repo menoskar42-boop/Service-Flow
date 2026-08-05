@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.5
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.6
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -181,7 +181,7 @@
     go.addEventListener("click", () => {
       const v = String(input.value || "").replace(/\D/g, "").trim();
       if (!v) { banner("❌ اكتب Service Id الأول.", "#c62828"); return; }
-      runFlow(v);
+      runFlow(v, "cancel");   // اللوحة اليدوى = إلغاء صريح
     });
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") go.click(); });
   }
@@ -1030,11 +1030,26 @@
   // بيتحطّ true لما نكون بننقل لصفحة تانية — ساعتها بنسيب الرقم محفوظ عشان السكربت
   // يكمّل عليه بعد التحميل بدل ما يضيع.
   let navigating = false;
-  async function runFlow(serviceId) {
+  async function runFlow(serviceId, modeOverride) {
     // الوضع المطلوب: إلغاء الاسناد (Cancel) أو إسناد لفنى آخر (Re-assign) — بيتحدّد من
     // موقعنا قبل ما نفتح WFM، فالسكربت بيضغط البند المطلوب مباشرةً من غير ما يعمل الاتنين.
-    let MODE = "cancel", WORKER = "";
-    try { MODE = sessionStorage.getItem(MODE_KEY) || "cancel"; WORKER = sessionStorage.getItem(WORKER_KEY) || ""; } catch (e) {}
+    let MODE = "", WORKER = "";
+    try { MODE = sessionStorage.getItem(MODE_KEY) || ""; WORKER = sessionStorage.getItem(WORKER_KEY) || ""; } catch (e) {}
+    if (!MODE) MODE = modeOverride || "";
+    // ⚠️ مافيش افتراض إن الوضع «إلغاء». الإلغاء عملية مدمّرة، ولو الوضع ضاع لأى سبب
+    // (sessionStorage اتمسح، تاب جديد، الهاش اتغيّر) كان الطلب هيتحوّل من «إسناد لفنى»
+    // لـ «إلغاء» فى صمت — يعنى يلغى مهمة المفروض تتسند. فبنوقف ونقول بدل ما نخمّن.
+    if (!MODE) {
+      banner("❌ الوضع (إلغاء ولا إسناد) مش محدّد — مش هنفّذ حاجة. ابدأ من Service-Flow تانى.", "#c62828");
+      logln("⛔ مفيش sf_mode محفوظ ولا فى الهاش — وقفت بدل ما أفترض «إلغاء».");
+      clearPending();
+      return;
+    }
+    if (MODE === "reassign" && !WORKER) {
+      banner("❌ وضع الإسناد من غير كود عامل — مش هنفّذ.", "#c62828");
+      clearPending();
+      return;
+    }
     const WANTED_RE = MODE === "reassign" ? /^\s*re-?\s*assign\s*$/i : /^\s*cancel\s*$/i;
     const WANTED_LABEL = MODE === "reassign" ? "Re-assign" : "Cancel";
     if (running) { banner("⏳ فيه عملية شغّالة بالفعل…", "#ef6c00"); return; }
