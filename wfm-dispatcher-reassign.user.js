@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.2.6
+// @version      1.2.7
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -261,11 +261,26 @@
     let r; try { r = tr.getBoundingClientRect(); } catch (e) { return null; }
     if (!r || !r.height) return null;
     const mid = r.top + r.height / 2;
+    const onRow = (el) => {
+      const b = el.getBoundingClientRect();
+      return b.top <= mid && b.bottom >= mid;                 // على نفس ارتفاع الصف
+    };
+    // (1) الأدق: زر قائمة ADF فى شاشة Tasks Queue بياخد id زى
+    //     pt:mr:0:pt:TasksQueuePC:TasksQueueTab:<رقم الصف>:m10 ومعاه aria-haspopup.
+    const byId = qAllDocs("[id*='TasksQueueTab'][aria-haspopup='true'], [id*='TasksQueueTab'][role='menuitem']")
+      .filter((el) => visible(el) && onRow(el));
+    if (byId.length) { lastRowIcons = byId.map((el) => String(el.id || "menuitem").slice(0, 60)); return byId; }
+
+    // (2) وإلا: أيقونات صغيرة على نفس ارتفاع الصف — **وفى أقصى شمال الصف فقط**.
+    //     من غير الحد ده كان بيمسك أيقونة من آخر الصف (زى زر الخريطة فى عمود Longitude)
+    //     ويفتح «Organization Location» بدل القائمة.
+    const leftLimit = r.left + 220;
     let cands = qAllDocs("[aria-haspopup='true'], [role='menuitem'], a, button, img, [role='button']").filter((el) => {
       if (!visible(el)) return false;
       const b = el.getBoundingClientRect();
       if (b.width > 80 || b.height > 44) return false;       // أيقونة/زر صغير
-      return b.top <= mid && b.bottom >= mid;                 // على نفس ارتفاع الصف
+      if (b.left > leftLimit) return false;                   // مش من الأعمدة المجمّدة
+      return onRow(el);
     });
     if (!cands.length) return null;
     // تشخيص: لو فشلنا بعدين نبقى عارفين إيه اللى كان موجود
