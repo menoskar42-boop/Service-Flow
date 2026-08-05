@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.2
+// @description  v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.3
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -422,15 +422,33 @@
   const DISPATCH_RE = /assignment\s*and\s*dispatch/i;
   // بيجرّب عنصر واحد ويتأكد إن التنقّل حصل فعلاً. لو العنصر جوّه <a href> بننقل باللينك
   // مباشرةً (أضمن من ضغطة على div شكله بند قائمة بس مش شايل الـ handler).
+  // ADF بيحط اللينك الحقيقى فى <a> **جوّه** البند/البلاطة (طبقة شفافة فوقها)، مش فوقه.
+  // فبندوّر جوّا الأول ثم فوق. بيرجّع الـ <a> أو null.
+  function innerAnchor(el) {
+    let a = null;
+    try { a = el.querySelector && el.querySelector("a"); } catch (e) {}
+    if (a) return a;
+    // ندوّر جوّا الحاويات الأعلى شوية (البلاطة = span/gridcell فيها label + طبقة اللينك)
+    let node = el;
+    for (let up = 0; up < 5 && node; up++) {
+      node = node.parentElement;
+      if (!node) break;
+      try { a = node.querySelector && node.querySelector("a"); } catch (e) {}
+      if (a) return a;
+    }
+    try { return el.closest && el.closest("a"); } catch (e) { return null; }
+  }
+
   async function tryDispatchEntry(el, why) {
-    let a = null; try { a = el.closest && el.closest("a[href]"); } catch (e) {}
+    const a = innerAnchor(el);
     const href = a && a.getAttribute("href");
     if (href && !/^\s*(#|javascript:)/i.test(href)) {
       logln("🔗 " + why + " — لينك مباشر: " + href);
       try { location.href = new URL(href, location.href).href; return true; } catch (e) {}
     }
-    logln("📂 " + why + " — بضغط العنصر (" + describeEl(el) + ")…");
-    fireClick(menuTarget(el));
+    const target = a || menuTarget(el);
+    logln("📂 " + why + " — بضغط " + describeEl(target) + "…");
+    fireClick(target);
     // مابنفترضش إن الضغطة نفعت — بنستنى تنقّل فعلى لـ /Dispatcher/
     return !!(await waitFor(() => /\/Dispatcher\//i.test(location.pathname), 6000, 300));
   }
@@ -467,15 +485,51 @@
     return "navigating";
   }
 
+  // ضغط «بلاطة» على شاشة Dispatcher/faces/Home. البلاطة = نص العنوان + طبقة شفافة
+  // فوقها فيها <a> هو اللينك الحقيقى — فبنضغط الـ <a> مش النص.
+  async function clickTile(re, label) {
+    const hits = matchingItems(re).filter((el) => {
+      const b = el.getBoundingClientRect();
+      return b.width > 20 && b.height > 5;
+    });
+    if (!hits.length) { logln("… مش لاقى بلاطة «" + label + "» على الشاشة."); return false; }
+    for (const hit of hits.slice(0, 4)) {
+      const a = innerAnchor(hit);
+      const href = a && a.getAttribute("href");
+      if (href && !/^\s*(#|javascript:)/i.test(href)) {
+        logln("🔗 بلاطة «" + label + "» — لينك مباشر: " + href);
+        try { location.href = new URL(href, location.href).href; return true; } catch (e) {}
+      }
+      const target = a || menuTarget(hit);
+      logln("🧱 بضغط بلاطة «" + label + "»: " + describeEl(target) + "…");
+      fireClick(target);
+      await waitIdle(20000);
+      if (findServiceIdInput()) return true;
+      if (await waitFor(() => findServiceIdInput(), 6000)) return true;
+    }
+    return false;
+  }
+
   // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue». على Dispatcher/faces/Home بتبقى
-  // مربّع ظاهر، ولو إحنا على شاشة تانية بنعدّى على Home الأول.
+  // بلاطة ظاهرة قدامنا — بنضغطها على طول. (الإصدار القديم كان بيدوّر على بند «Home»
+  // فى القائمة الأول ويفضل يلفّ عليه من غير ما يوصل، والبلاطة قدامه.)
   async function gotoTasksQueue() {
     if (findServiceIdInput()) return true;           // إحنا عليها أصلاً
-    await clickMenuEntry(/^\s*home\s*$/i, "Home");
-    await sleep(1000);
-    if (findServiceIdInput()) return true;
-    if (!(await clickMenuEntry(/tasks\s*queue/i, "Tasks Queue"))) return false;
-    return !!(await waitFor(() => findServiceIdInput(), 25000));
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      // matchingItems أصلاً بيستبعد الحاويات الكبيرة (نص أطول من 40 حرف)، فالمطابقة
+      // المرنة هنا آمنة وبتلقط عنوان البلاطة حتى لو حواليه مسافات/أيقونة.
+      if (await clickTile(/tasks\s*queue/i, "Tasks Queue")) return true;
+      if (findServiceIdInput()) return true;
+      // مش على شاشة البلاطات؟ ندخل Dispatcher/faces/Home ونعيد بعد التحميل
+      if (!/\/Dispatcher\/faces\/Home/i.test(location.href)) {
+        logln("↪️ مش على شاشة بلاطات Dispatcher — بادخل Dispatcher/faces/Home.");
+        location.href = DISPATCHER_URL;
+        return false;
+      }
+      logln("… محاولة " + attempt + " لفتح Tasks Queue لسه ماوصلتش.");
+      await sleep(1500);
+    }
+    return !!findServiceIdInput();
   }
 
   // تبليغ Service-Flow بنتيجة الإلغاء. بنتحقّق من r.ok فعلاً — لو السيرفر رفض بنقول،
