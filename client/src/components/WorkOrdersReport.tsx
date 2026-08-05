@@ -14,6 +14,7 @@ import { Upload, FileDown, FileText, Loader2, BarChart3, Search, X } from "lucid
 import { RefreshButton } from "@/components/RefreshButton";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { dispatchSpeedTool, openOpSite, SITE_WIDE_KEY } from "@/lib/exec-queue";
 
 interface WorkOrder {
   id: number;
@@ -303,7 +304,11 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
           {showUpload && user?.role === ROLES.SUPER_ADMIN && (
             <Button
               size="sm"
-              onClick={() => window.open("https://wfm.te.eg/WfmReports/#/login", "wfm_voice_raw")}
+              // مسار wfm.te.eg واحد: مايفتحش مع «إلغاء الاسناد» ولا مع تحديث ملف أوامر الشغل
+              onClick={async () => {
+                if (await dispatchSpeedTool("wfmreport", [SITE_WIDE_KEY], true)) return;
+                openOpSite("wfmreport", "");
+              }}
               className="gap-1 bg-rose-700 hover:bg-rose-800 text-white"
               title="يفتح WFM Reporting ويسجّل الدخول ويشغّل تقرير Voice Installation Raw Data (آخر 30 يوم) ثم يرفعه هنا تلقائياً"
             >

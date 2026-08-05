@@ -636,6 +636,8 @@ export const execJobs = pgTable("exec_jobs", {
   // الاسم والعنوان) | … — الطابور بينفّذ مهمة واحدة **لكل موقع** فى نفس الوقت، لكن
   // مواقع مختلفة بتشتغل بالتوازى.
   site: text("site").notNull().default("dzs"),
+  // بيانات إضافية للمهمة (مش أرقام): كود الكابينة القديم/الجديد ونوع البورت لمهمة «غيّر البورت»
+  params: jsonb("params"),
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;
@@ -928,6 +930,18 @@ export const omResponses = pgTable("om_responses", {
 });
 
 export type OmResponse = typeof omResponses.$inferSelect;
+
+// wfm_task_cancels — سجل إلغاء إسناد المهام على WFM (مين طلبه وإمتى وعلى أى رقم)
+export const wfmTaskCancels = pgTable("wfm_task_cancels", {
+  id: serial("id").primaryKey(),
+  phoneNumber: text("phone_number").notNull(),
+  workOrderId: text("work_order_id"),
+  assignmentStatus: text("assignment_status"),
+  requestedBy: text("requested_by"),
+  canceledAt: timestamp("canceled_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type WfmTaskCancel = typeof wfmTaskCancels.$inferSelect;
 
 // WebSocket Events
 export const WS_EVENTS = {

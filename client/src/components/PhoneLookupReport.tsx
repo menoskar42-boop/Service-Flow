@@ -9,7 +9,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
 import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
-import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor, dispatchSpeedTool, PHONE_LOOKUP_SOURCE } from "@/lib/exec-queue";
+import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor, dispatchSpeedTool, openOpSite, PHONE_LOOKUP_SOURCE } from "@/lib/exec-queue";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -343,30 +343,30 @@ export function PhoneLookupReport() {
     if (mode === "same") { setMsanNew(cur); setMsanOld(defaultOldFor(cur)); }
     else { setMsanOld(cur); setMsanNew(""); }
   };
-  const submitChangePort = () => {
+  const submitChangePort = async () => {
     const phoneShort = (line?.telNo ?? "").toString().replace(/\D/g, "").replace(/^88/, "");
     const oldC = msanOld.trim(), newC = msanNew.trim();
     if (!phoneShort) { alert("لا يوجد رقم تليفون صالح لهذا الخط"); return; }
     if (!oldC || !newC) { alert("املأ كود الكابينة القديم والجديد"); return; }
     if (oldC === newC) { alert("الكود القديم لازم يختلف عن الجديد (البورتال بيرفض تطابقهما)"); return; }
     if (!msanPt) { alert("اختر نوع البورت"); return; }
-    const qs = new URLSearchParams({
-      sf_msan: "1", old: oldC, new: newC, phone: phoneShort, area: "88", pt: msanPt, sp: "WE30",
-    });
-    window.open(`https://provisioningportal.te.eg/provisioningPortal/?${qs.toString()}#/login`, "sf_msan_replace");
     setMsanOpen(false);
+    // الطابور: بوابة البروفيجن مسار واحد — تغيير البورت وتحديث البورت وتحديث ملف البورتات
+    // مايفتحوش مع بعض أبداً. لو مفيش جهاز تنفيذ والمستخدم سوبر أدمن → يفتح محلياً زى الأول.
+    const params = { old: oldC, new: newC, pt: msanPt, sp: "WE30" };
+    if (await dispatchSpeedTool("portchange", [phoneShort], isSuper, { params })) return;
+    openOpSite("portchange", phoneShort, params);
   };
 
   // «تحديث البورت» (يدوى) — يفتح Provisioning Portal بماركر sf_pcheck (نافذة مستقلة) فيفتح
   // Search For My Requests مرة واحدة، يطابق الرقم، ولو COMPLETED يجيب البورت الجديد ويحدّث بيان
   // البورت فى Service-Flow. بديل المتابعة التلقائية القديمة كل نص ساعة — دلوقتى يدوى بالكامل.
-  const refreshPort = () => {
+  const refreshPort = async () => {
     const phoneShort = (line?.telNo ?? "").toString().replace(/\D/g, "").replace(/^88/, "");
     if (!phoneShort) { alert("لا يوجد رقم تليفون صالح لهذا الخط"); return; }
-    const qs = new URLSearchParams({
-      sf_pcheck: "1", phone: phoneShort, old: (line?.msanCode ?? "").toString().trim(), pt: "SV",
-    });
-    window.open(`https://provisioningportal.te.eg/provisioningPortal/?${qs.toString()}#/login`, "sf_msan_check");
+    const params = { old: (line?.msanCode ?? "").toString().trim(), pt: "SV" };
+    if (await dispatchSpeedTool("portcheck", [phoneShort], isSuper, { params })) return;
+    openOpSite("portcheck", phoneShort, params);
   };
 
   // ===== الأعطال «خارج الشاشة» (اليدوية): زر «الخط به عطل» + انتظام =====
@@ -388,15 +388,12 @@ export function PhoneLookupReport() {
   // «إلغاء مهمة WFM»: يفتح Dispatcher ومعاه الرقم فى الهاش، وسكربت التامبر منكى
   // (wfm-dispatcher-reassign.user.js) بيكمّل: بحث بالـ Service Id ← سطر Started/Assigned
   // ← Cancel من قائمة السطر. نافذة باسم ثابت للرقم عشان مايتفتحش تابات متكررة.
-  const cancelWfmTask = () => {
+  const cancelWfmTask = async () => {
     const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
     if (!sid) { alert("مفيش رقم للمتابعة"); return; }
-    window.open(
-      // faces/Home هى المدخل الصحيح — السكربت بيفتح «Tasks Queue» من القائمة بعدها.
-      // (faces/UIShell كان بيقع على شاشة Assignment and Dispatch اللى مالهاش خانة Service Id.)
-      "https://wfm.te.eg/Dispatcher/faces/Home#sf_cancel=" + encodeURIComponent(sid),
-      "sf_wfm_cancel_" + sid,
-    );
+    // مسار wfm.te.eg واحد: إلغاء الإسناد وتقارير WFM وتحديث ملف أوامر الشغل مايفتحوش مع بعض.
+    if (await dispatchSpeedTool("wfmcancel", [sid], isSuper)) return;
+    openOpSite("wfmcancel", sid);
   };
 
   const canFlagFault = isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL;
@@ -746,7 +743,7 @@ export function PhoneLookupReport() {
               ) : isSuper ? (
                 <Button
                   variant="outline"
-                  onClick={() => openCustomer360([line.fullPhone])}
+                  onClick={() => { void openCustomer360([line.fullPhone]); }}
                   className="bg-white gap-2 text-purple-700 border-purple-200"
                   title="لا يوجد رقم أكونت — فتح Customer360 لجلب رقم الأكونت تلقائياً"
                 >

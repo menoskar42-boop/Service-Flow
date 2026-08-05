@@ -1418,12 +1418,28 @@ export async function registerRoutes(
     if (req.isAuthenticated() && req.user.role === ROLES.SUPER_ADMIN) return next();
     res.status(403).json({ message: "Super admin only" });
   };
-  // «الموقع» اللى كل نوع مهمة بيشتغل عليه. الطابور بينفّذ مهمة واحدة **لكل موقع** فى نفس
-  // الوقت (عشان صفحتين من نفس الموقع مايتعارضوش)، لكن مواقع مختلفة بتشتغل بالتوازى.
+  // «الموقع» = **الدومين** اللى المهمة بتفتحه، مهما كانت بتعمل إيه. الطابور بينفّذ مهمة
+  // واحدة لكل دومين فى نفس الوقت (تابين من نفس الموقع بيتعارضوا: نفس الجلسة/الكوكيز/الشاشة)،
+  // ودومينات مختلفة بتشتغل بالتوازى.
+  // ملاحظات مقصودة:
+  //  - القياس ورفع السرعة والإيقاف كلهم على 10.42.187.101 (DZS + AXON PO) → مسار واحد.
+  //  - غيّر البورت + تحديث البورت + تحديث ملف البورتات كلهم provisioningportal.te.eg → مسار واحد.
+  //  - إلغاء الإسناد (Dispatcher) + تقارير WFM + تحديث أوامر الشغل كلهم wfm.te.eg → مسار واحد.
   const SITE_OF_TYPE: Record<string, string> = {
-    measure: "dzs", raise: "dzs", stop: "dzs",   // بوابة DZS/PO الداخلية
-    subinfo: "fcc",                               // FCC Complains
+    measure: "10.42.187.101", raise: "10.42.187.101", stop: "10.42.187.101",
+    subinfo: "fcc.te.eg", fccdaily: "fcc.te.eg",
+    c360: "customer360.te.eg",
+    portchange: "provisioningportal.te.eg", portcheck: "provisioningportal.te.eg", ports: "provisioningportal.te.eg",
+    wfmcancel: "wfm.te.eg", wfmreport: "wfm.te.eg", wfmdaily: "wfm.te.eg",
+    ossdaily: "oss.te.eg",
+    weoas: "we-oas.te.eg",
   };
+  const ALL_JOB_TYPES = Object.keys(SITE_OF_TYPE);
+  // أنواع مابتتقسّمش رقم-رقم: السكربت بتاعها بيلفّ على كل الأرقام جوّه نفس التاب (تسجيل دخول
+  // واحد)، فتقسيمها يعنى فتح الموقع وتسجيل دخول لكل رقم — بطىء جداً وبلا فايدة.
+  const NO_SPLIT_TYPES = new Set(["c360"]);
+  // تحديث الملفات (اليومى + كل نص ساعة): أولوية قصوى وبتقاطع الشغل الجارى على نفس الدومين.
+  const DAILY_TYPES = new Set(["ports", "fccdaily", "wfmdaily", "ossdaily", "weoas"]);
 
   // نبضة جهاز التنفيذ (كل ~20ث) — تُخزَّن فى app_state
   app.post("/api/exec-queue/heartbeat", requireAuth, requireSuperAdmin, async (req: any, res) => {
@@ -1449,12 +1465,19 @@ export async function registerRoutes(
   // إضافة مهمة للطابور
   app.post("/api/exec-queue/enqueue", requireAuth, async (req: any, res) => {
     try {
-      const { type, accounts, note } = req.body || {};
+      const { type, accounts, note, params: jobParams } = req.body || {};
       // subinfo = مراجعة اسم/عنوان العميل من FCC (زر «مراجعة» فى بحث برقم التليفون).
       // «الأرقام» هنا أرقام تليفون مش أرقام أكونت، لكن الطابور بيتعامل معاها بنفس الطريقة.
-      if (!["raise", "stop", "measure", "subinfo"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
+      if (!ALL_JOB_TYPES.includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
       const uniqAccs = [...new Set((Array.isArray(accounts) ? accounts : []).map((a: any) => String(a).trim()).filter(Boolean))];
       if (!uniqAccs.length) return res.status(400).json({ message: "لا توجد أرقام" });
+      // منع تكرار تحديث نفس الملف: لو فيه مهمة تحديث بنفس النوع لسه فى الطابور (منتظرة أو
+      // شغّالة) مانضيفش تانية — التحديث الدورى ممكن يتنادى من أكتر من تاب فى نفس اللحظة.
+      if (DAILY_TYPES.has(type)) {
+        const { rows: dup } = await pool.query(
+          `SELECT id FROM exec_jobs WHERE type = $1 AND status IN ('pending','claimed') LIMIT 1`, [type]);
+        if (dup.length) return res.json({ ok: true, id: dup[0].id, count: 0, duplicate: true });
+      }
       const user = String(req.user.username || "");
       // نقسّم **دايماً** لمهام خط-خط (كل خط مهمة). أولوية الطلب: طلب صغير (≤3 خطوط) = عاجل (1)
       // يتخطّى مهام الباتش؛ باتش كبير (>3) = عادى (0). المنفّذ يبعت رقم-رقم حسب الأولوية، ويخلّص كل
@@ -1465,13 +1488,18 @@ export async function registerRoutes(
       //   1 = خطوط من تقرير «محتاجة رفع سرعة» (قياس/رفع/إيقاف) حتى لو أكثر من 3.
       //   0 = باتش كبير (>3) من أى تقرير آخر → أقل أولوية، والسوبر أدمن يتحكم فى ترتيبه (queue_order).
       const isNeedsSpeed = /محتاجة رفع سرعة/.test(String(note || ""));
-      const priority = uniqAccs.length <= 3 ? 2 : (isNeedsSpeed ? 1 : 0);
+      // 3 = تحديث الملفات اليومية/الدورية: أعلى أولوية على الإطلاق وبتقاطع أى مهمة شغّالة على
+      // **نفس الدومين** (مثلاً تحديث ملفات FCC بيوقف مراجعة البيان الفنى، والمراجعة بتكمّل بعده).
+      const priority = DAILY_TYPES.has(type) ? 3 : (uniqAccs.length <= 3 ? 2 : (isNeedsSpeed ? 1 : 0));
       const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      const site = SITE_OF_TYPE[type] || "dzs";
-      const params: any[] = [type, user, note || null, priority, batchId, site];
-      const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4, $5, $6)`; }).join(",");
+      const site = SITE_OF_TYPE[type] || "10.42.187.101";
+      // أنواع NO_SPLIT بتتحوّل لمهمة واحدة بكل الأرقام (السكربت بيلفّ عليها جوّه نفس التاب).
+      const groups: string[][] = NO_SPLIT_TYPES.has(type) ? [uniqAccs] : uniqAccs.map((a) => [a]);
+      const extra = jobParams && typeof jobParams === "object" ? JSON.stringify(jobParams) : null;
+      const params: any[] = [type, user, note || null, priority, batchId, site, extra];
+      const valueSql = groups.map((g) => { params.push(JSON.stringify(g)); return `($1, $${params.length}::jsonb, $2, $3, $4, $5, $6, $7::jsonb)`; }).join(",");
       const { rows } = await pool.query(
-        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site) VALUES ${valueSql} RETURNING id`,
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params) VALUES ${valueSql} RETURNING id`,
         params);
       res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length, batchId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -1486,15 +1514,15 @@ export async function registerRoutes(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
          WHERE id = (SELECT e.id FROM exec_jobs e
                       WHERE e.status = 'pending' AND e.paused_at IS NULL
-                        -- الموقع لازم يكون فاضى: مفيش مهمة شغّالة عليه دلوقتى
+                        -- الدومين لازم يكون فاضى: مفيش مهمة شغّالة على نفس الموقع دلوقتى
                         AND NOT EXISTS (SELECT 1 FROM exec_jobs b
                                          WHERE b.status = 'claimed'
-                                           AND COALESCE(b.site, 'dzs') = COALESCE(e.site, 'dzs'))
+                                           AND COALESCE(b.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101'))
                       ORDER BY e.priority DESC,
                                CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
                                e.created_at, e.id
                       LIMIT 1 FOR UPDATE SKIP LOCKED)
-         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site`);
+         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site, params`);
       res.json(rows[0] || null);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1542,6 +1570,58 @@ export async function registerRoutes(
         [phone]);
       res.json({ at: rows[0]?.at || null });
     } catch { res.json({ at: null }); }
+  });
+
+  // فحص انتهاء العمليات الجديدة (جلب الأكونت / تغيير أو تحديث البورت / إلغاء الإسناد).
+  // بنرجّع وقت آخر أثر للعملية دى على الرقم — جهاز التنفيذ بيقارنه بالوقت قبل الفتح.
+  app.get("/api/exec-queue/op-check", requireAuth, async (req, res) => {
+    try {
+      const type = String(req.query.type || "").trim();
+      const key = String(req.query.key || "").trim();
+      let sql = "";
+      // تحديث ملف البورتات: عملية على مستوى الموقع كله (مش رقم بعينه) — الإشارة هى ختم انتهاء
+      // الرفعة فى app_state، فمش محتاجة key.
+      if (type === "ports") {
+        sql = `SELECT updated_at AS at FROM app_state WHERE key = 'ports_run_completed_at'`;
+        const { rows } = await pool.query(sql);
+        return res.json({ at: rows[0]?.at || null });
+      }
+      if (!key) return res.json({ at: null });
+      if (type === "c360") {
+        sql = `SELECT MAX(updated_at) AS at FROM line_accounts WHERE ${sp("full_phone")} = ${sp("$1")}`;
+      } else if (type === "portchange") {
+        sql = `SELECT MAX(recorded_at) AS at FROM port_change_requests WHERE ${sp("phone_number")} = ${sp("$1")}`;
+      } else if (type === "portcheck") {
+        // تحديث البورت بيعيد رفع نفس الـ Request ID (فـ recorded_at مابيتغيّرش) — الأثر الحقيقى
+        // هو تحديث بيان البورت نفسه فى phone_ports.
+        sql = `SELECT MAX(uploaded_at) AS at FROM phone_ports WHERE ${sp("phone_number")} = ${sp("$1")}`;
+      } else if (type === "wfmcancel") {
+        sql = `SELECT MAX(canceled_at) AS at FROM wfm_task_cancels WHERE ${sp("phone_number")} = ${sp("$1")}`;
+      } else return res.json({ at: null });   // wfmreport مالهاش أثر على رقم — بتعتمد على قفل التاب
+      const { rows } = await pool.query(sql, [key]);
+      res.json({ at: rows[0]?.at || null });
+    } catch { res.json({ at: null }); }
+  });
+
+  // استقبال نتيجة إلغاء الإسناد من سكربت WFM (توكن + CORS). «مين عمل إيه» بيتاخد من
+  // op_intents (نفس أسلوب القياس ورفع السرعة) لأن السكربت مابيعرفش مين ضغط الزر.
+  app.options("/api/wfm-tasks/cancel-ingest", (_req, res) => { setPortsCors(res); res.sendStatus(204); });
+  app.post("/api/wfm-tasks/cancel-ingest", async (req: any, res) => {
+    setPortsCors(res);
+    if (req.headers["x-dzs-token"] !== DZS_INGEST_TOKEN) return res.status(401).json({ message: "invalid token" });
+    const b = req.body || {};
+    const phone = String(b.phone || "").replace(/\D/g, "");
+    if (!phone) return res.status(400).json({ message: "phone مطلوب" });
+    try {
+      const who = await pool.query(
+        `SELECT username FROM op_intents WHERE account = $1 AND op_type = 'wfmcancel' LIMIT 1`, [phone]);
+      const { rows } = await pool.query(
+        `INSERT INTO wfm_task_cancels (phone_number, work_order_id, assignment_status, requested_by, canceled_at)
+         VALUES ($1, $2, $3, $4, now()) RETURNING id`,
+        [phone, String(b.workOrderId || "").trim() || null, String(b.status || "").trim() || null,
+         who.rows[0]?.username || null]);
+      res.json({ ok: true, id: rows[0]?.id });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // إيقاف جهاز التنفيذ فوراً: يمسح النبضة عشان /status يرجّع غير-مفعّل حالاً (بدل انتظار 45ث).
@@ -1879,6 +1959,15 @@ export async function registerRoutes(
     let q: string;
     if (type === "measure") {
       q = `SELECT COUNT(DISTINCT account_no)::int AS n FROM case_138 WHERE account_no = ANY($1::text[]) AND uploaded_at >= $2`;
+    } else if (type === "c360") {
+      q = `SELECT COUNT(DISTINCT full_phone)::int AS n FROM line_accounts
+            WHERE ${sp("full_phone")} = ANY(SELECT ${sp("x")} FROM unnest($1::text[]) AS x) AND updated_at >= $2`;
+    } else if (type === "portchange" || type === "portcheck") {
+      q = `SELECT COUNT(DISTINCT phone_number)::int AS n FROM port_change_requests
+            WHERE ${sp("phone_number")} = ANY(SELECT ${sp("x")} FROM unnest($1::text[]) AS x) AND recorded_at >= $2`;
+    } else if (type === "wfmcancel") {
+      q = `SELECT COUNT(DISTINCT phone_number)::int AS n FROM wfm_task_cancels
+            WHERE ${sp("phone_number")} = ANY(SELECT ${sp("x")} FROM unnest($1::text[]) AS x) AND canceled_at >= $2`;
     } else if (type === "subinfo") {
       // المراجعة خلصت لما سكربت FCC يرفع اسم/عنوان الرقم (fetched_at بيتحدّث فى الـ ingest)
       q = `SELECT COUNT(DISTINCT phone_number)::int AS n FROM line_subscriber_info
@@ -1902,9 +1991,28 @@ export async function registerRoutes(
     let q: string;
     if (type === "measure") {
       q = `SELECT DISTINCT account_no FROM case_138 WHERE account_no = ANY($1::text[]) AND uploaded_at >= $2`;
-    } else {
+    } else if (type === "raise" || type === "stop") {
       const col = type === "stop" ? "last_stop_at" : "last_raise_at";
       q = `SELECT DISTINCT account_no FROM line_po_events WHERE account_no = ANY($1::text[]) AND ${col} >= $2`;
+    } else {
+      // الأنواع اللى بتشتغل بأرقام تليفون (مراجعة/جلب أكونت/بورت/WFM): بنستخدم نفس مصادر
+      // jobProgress. اللى مالوش أثر فى قاعدة البيانات (تحديث ملفات) بيرجع كله كأنه متبقّى.
+      const src: Record<string, [string, string, string]> = {
+        subinfo:   ["line_subscriber_info", "phone_number", "fetched_at"],
+        c360:      ["line_accounts", "full_phone", "updated_at"],
+        portchange:["port_change_requests", "phone_number", "recorded_at"],
+        portcheck: ["phone_ports", "phone_number", "uploaded_at"],
+        wfmcancel: ["wfm_task_cancels", "phone_number", "canceled_at"],
+      };
+      const s = src[type];
+      if (!s) return accs;
+      q = `SELECT DISTINCT ${sp(s[1])} AS k FROM ${s[0]}
+            WHERE ${sp(s[1])} = ANY(SELECT ${sp("x")} FROM unnest($1::text[]) AS x) AND ${s[2]} >= $2`;
+      try {
+        const { rows } = await pool.query(q, [accs, claimedAt]);
+        const done = new Set((rows as any[]).map((r) => String(r.k).trim()));
+        return accs.filter((a) => !done.has(a.replace(/\D/g, "").replace(/^88/, "")) && !done.has(a));
+      } catch { return accs; }
     }
     try {
       const { rows } = await pool.query(q, [accs, claimedAt]);
@@ -1920,12 +2028,18 @@ export async function registerRoutes(
     try {
       const jobId = parseInt(String(req.query.jobId || ""));
       if (!jobId) return res.json({ active: false, preempt: false, measured: 0, total: 0 });
-      const { rows } = await pool.query(`SELECT priority, status, accounts, type, claimed_at FROM exec_jobs WHERE id = $1`, [jobId]);
+      const { rows } = await pool.query(`SELECT priority, status, accounts, type, claimed_at, site FROM exec_jobs WHERE id = $1`, [jobId]);
       const job = rows[0];
       if (!job) return res.json({ active: false, preempt: false, measured: 0, total: 0 });
       const active = job.status === "claimed";
+      // المقاطعة **داخل نفس الدومين فقط**: المواقع المختلفة بتشتغل بالتوازى أصلاً فمفيش سبب
+      // إن مهمة عاجلة على DZS توقف مهمة شغّالة على FCC. لكن تحديث ملفات FCC (أولوية 3) بيوقف
+      // مراجعة البيان الفنى الجارية على FCC، وبعد ما يخلص المراجعة بتكمّل للمتبقى.
       const { rows: p } = await pool.query(
-        `SELECT 1 FROM exec_jobs WHERE status = 'pending' AND priority > $1 LIMIT 1`, [job.priority ?? 0]);
+        `SELECT 1 FROM exec_jobs
+          WHERE status = 'pending' AND paused_at IS NULL AND priority > $1
+            AND COALESCE(site, '10.42.187.101') = COALESCE($2, '10.42.187.101') LIMIT 1`,
+        [job.priority ?? 0, job.site]);
       const prog = await jobProgress(job.accounts, job.type, job.claimed_at);
       res.json({ active, preempt: p.length > 0, measured: prog.done, total: prog.total });
     } catch {
@@ -1938,7 +2052,8 @@ export async function registerRoutes(
   app.post("/api/exec-queue/:id/preempt", requireAuth, requireSuperAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { rows } = await pool.query(`SELECT type, accounts, claimed_at, note, requested_by FROM exec_jobs WHERE id = $1`, [id]);
+      const { rows } = await pool.query(
+        `SELECT type, accounts, claimed_at, note, requested_by, priority, site, batch_id, params FROM exec_jobs WHERE id = $1`, [id]);
       const job = rows[0];
       if (!job) return res.json({ ok: false });
       const remaining = await jobRemainingAccounts(job.accounts, job.type, job.claimed_at);
@@ -1946,9 +2061,15 @@ export async function registerRoutes(
       let newId: number | null = null;
       if (remaining.length) {
         const note = (job.note ? job.note + " " : "") + "(تكملة)";
+        // الطلب الصغير/العاجل (أولوية ≥2) بيرجع بنفس أولويته فيكمّل فوراً بعد اللى قاطعه
+        // (مثلاً مراجعة اتقطعت لتحديث ملفات FCC → بتكمّل أول ما التحديث يخلص).
+        // الباتش الكبير بينزل لـ 0 زى ما هو عشان مايزاحمش الطلبات العاجلة.
+        const newPriority = (job.priority ?? 0) >= 2 ? job.priority : 0;
         const { rows: ins } = await pool.query(
-          `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority) VALUES ($1, $2, $3, $4, 0) RETURNING id`,
-          [job.type, JSON.stringify(remaining), job.requested_by || null, note]);
+          `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, site, batch_id, params)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          [job.type, JSON.stringify(remaining), job.requested_by || null, note, newPriority,
+           job.site || SITE_OF_TYPE[job.type] || "10.42.187.101", job.batch_id || null, job.params || null]);
         newId = ins[0].id;
       }
       res.json({ ok: true, remaining: remaining.length, newId });
@@ -3443,19 +3564,20 @@ export async function registerRoutes(
     ];
     // إظهار الكباين المستثناة للسوبر أدمن فقط — الزر مخفى عن غيره فى الواجهة، وبنتحقق
     // هنا كمان عشان مايتعملش تحايل بالباراميتر مباشرةً.
-    const canIncludeExcluded = req.user?.role === ROLES.SUPER_ADMIN
+    // الزر بيبدّل بين وضعين (مش بيضيف): الوضع العادى = كل الخطوط **ما عدا** الكباين
+    // المستثناة، ووضع الإظهار = خطوط الكباين المستثناة **فقط**.
+    const onlyExcluded = req.user?.role === ROLES.SUPER_ADMIN
       && (includeExcluded === "1" || includeExcluded === "true");
-    if (!canIncludeExcluded) {
-      params.push(SPEED_EXCLUDED_MSAN);
-      const ex = `$${params.length}::text[]`;
-      conds.push(`NOT EXISTS (SELECT 1 FROM phone_ports pxe
-                               WHERE pxe.phone_number = m.full_phone
-                                 AND btrim(pxe.msan_code) = ANY(${ex}))`);
-      conds.push(`NOT EXISTS (SELECT 1 FROM cabinet_technicians ctx
-                               WHERE ctx.central_name = COALESCE(pl.central, cpl.central_name)
-                                 AND ctx.cabin_number = COALESCE(pl.cabin_number, cpl.cabinet_no)
-                                 AND btrim(ctx.cabin_code) = ANY(${ex}))`);
-    }
+    params.push(SPEED_EXCLUDED_MSAN);
+    const ex = `$${params.length}::text[]`;
+    const inExcludedCabin = `(EXISTS (SELECT 1 FROM phone_ports pxe
+                                       WHERE pxe.phone_number = m.full_phone
+                                         AND btrim(pxe.msan_code) = ANY(${ex}))
+                              OR EXISTS (SELECT 1 FROM cabinet_technicians ctx
+                                          WHERE ctx.central_name = COALESCE(pl.central, cpl.central_name)
+                                            AND ctx.cabin_number = COALESCE(pl.cabin_number, cpl.cabinet_no)
+                                            AND btrim(ctx.cabin_code) = ANY(${ex})))`;
+    conds.push(onlyExcluded ? inExcludedCabin : `NOT ${inExcludedCabin}`);
     // بحث نصّى: رقم التليفون (كامل أو قصير) أو رقم الأكونت أو رقم الشكوى — على مستوى السيرفر
     // علشان يبحث فى كل السجلات مش فى الصفحة المعروضة بس.
     if (search.trim()) {
@@ -5410,7 +5532,9 @@ export async function registerRoutes(
   app.post("/api/op-intent", requireAuth, async (req: any, res) => {
     try {
       const type = String(req.body?.type || "").trim().toLowerCase();
-      if (!["measure", "raise", "stop"].includes(type)) return res.status(400).json({ message: "نوع غير صحيح" });
+      if (!ALL_JOB_TYPES.includes(type)) {
+        return res.status(400).json({ message: "نوع غير صحيح" });
+      }
       const list = Array.isArray(req.body?.accounts) ? req.body.accounts : (req.body?.account ? [req.body.account] : []);
       const accs = [...new Set(list.map((a: any) => String(a ?? "").trim()).filter(Boolean))];
       if (!accs.length) return res.json({ ok: true, count: 0 });
@@ -5491,12 +5615,25 @@ export async function registerRoutes(
     const reservationCode = String(b.reservationCode || "").trim();
     const requestDate = String(b.requestDate || "").trim();
 
+    // مين طلب العملية دى؟ من op_intents (اتسجّلت وقت الضغط على «غيّر البورت»/«تحديث البورت»)
+    // — نفس أسلوب القياس ورفع السرعة، لأن السكربت مابيعرفش مين ضغط الزر.
+    let reqBy: string | null = null;
+    if (phone) {
+      try {
+        const { rows: oi } = await pool.query(
+          `SELECT username FROM op_intents WHERE account = $1 AND op_type IN ('portchange','portcheck')
+            ORDER BY created_at DESC LIMIT 1`,
+          [String(phone).replace(/^88/, "")]);
+        reqBy = oi[0]?.username || null;
+      } catch { /* التسجيل إضافى — لو فشل نكمّل عادى */ }
+    }
     // كان DO NOTHING — فلو رفعة قديمة خزّنت قيمة غلط مكانش فيه أى طريقة لتصحيحها.
     // دلوقتى بنحدّث القيم عند إعادة الرفع. (xmax = 0 معناها الصف اتضاف دلوقتى مش اتحدّث.)
     const ins = await pool.query(
-      `INSERT INTO port_change_requests (request_id, phone_number, old_msan, new_msan, new_frame, port_type, status, reservation_code, request_date, completed)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO port_change_requests (request_id, phone_number, old_msan, new_msan, new_frame, port_type, status, reservation_code, request_date, completed, requested_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (request_id) DO UPDATE SET
+         requested_by = COALESCE(EXCLUDED.requested_by, port_change_requests.requested_by),
          phone_number = EXCLUDED.phone_number,
          old_msan = COALESCE(NULLIF(EXCLUDED.old_msan,''), port_change_requests.old_msan),
          new_msan = COALESCE(NULLIF(EXCLUDED.new_msan,''), port_change_requests.new_msan),
@@ -6038,10 +6175,19 @@ export async function registerRoutes(
                  updated_at = now()`,
           [e.fullPhone, e.accountNo],
         );
+        // مين طلب الجلب ده؟ من op_intents (اتسجّلت وقت الضغط على زر «جلب الأكونت») — بيظهر
+        // فى تقرير «تعديلات الأكونت» زى «مين قاس/مين رفع السرعة».
+        let by = "customer360";
+        try {
+          const { rows: oi } = await client.query(
+            `SELECT username FROM op_intents WHERE account = $1 AND op_type = 'c360'
+              ORDER BY created_at DESC LIMIT 1`, [e.fullPhone]);
+          if (oi[0]?.username) by = `customer360 — ${oi[0].username}`;
+        } catch { /* التسجيل إضافى — لو فشل نكمّل عادى */ }
         await client.query(
           `INSERT INTO line_account_edits (full_phone, old_account_no, new_account_no, edited_by_name)
-           VALUES ($1, $2, $3, 'customer360')`,
-          [e.fullPhone, oldNo, e.accountNo],
+           VALUES ($1, $2, $3, $4)`,
+          [e.fullPhone, oldNo, e.accountNo, by],
         );
         saved++;
       }

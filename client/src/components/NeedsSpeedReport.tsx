@@ -357,9 +357,9 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 size="sm"
                 onClick={() => { setShowExcludedCabins((v) => !v); setPage(1); }}
                 className={`gap-1 ${showExcludedCabins ? "bg-slate-700 hover:bg-slate-800 text-white" : "text-slate-700 border-slate-300"}`}
-                title="كباين 11-2-26 (12/13/15/16/19/20/21/24) مستبعدة افتراضياً — اضغط لإظهار خطوطها"
+                title="كباين 11-2-26 (12/13/15/16/19/20/21/24) مستبعدة افتراضياً — اضغط لعرض خطوطها وحدها، واضغط تانى للرجوع لباقى الخطوط"
               >
-                <EyeOff className="w-4 h-4" /> {showExcludedCabins ? "الكباين المستثناة ظاهرة ✓" : "إظهار الكباين المستثناة"}
+                <EyeOff className="w-4 h-4" /> {showExcludedCabins ? "الكباين المستثناة فقط ✓" : "إظهار الكباين المستثناة"}
               </Button>
             )}
             {!requireComplaint && endpoint.includes("needs-speed") && (

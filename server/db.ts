@@ -758,6 +758,8 @@ export async function ensureSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS port_change_requests_phone_idx ON port_change_requests (phone_number)`);
+  // مين طلب تغيير/تحديث البورت — بيتاخد من op_intents وقت وصول نتيجة السكربت (زى القياس ورفع السرعة)
+  await pool.query(`ALTER TABLE port_change_requests ADD COLUMN IF NOT EXISTS requested_by text`);
 
   // app_settings — إعدادات عامة مشتركة (key/value) تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر.
   // تُستخدم مثلاً لقائمة «الكباين المغلقة بورتات» عشان اللى يدخلها يثبت للجميع (مش localStorage محلى).
@@ -824,6 +826,20 @@ export async function ensureSchema() {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+
+  // wfm_task_cancels — سجل إلغاء إسناد المهام على WFM: مين طلبه وإمتى وعلى أى رقم.
+  // بيتملى من سكربت التامبر منكى بعد ما الإلغاء يتم فعلاً (نفس أسلوب تسجيل القياس/رفع السرعة).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS wfm_task_cancels (
+      id serial PRIMARY KEY,
+      phone_number text NOT NULL,
+      work_order_id text,
+      assignment_status text,
+      requested_by text,
+      canceled_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS wfm_task_cancels_phone_idx ON wfm_task_cancels (phone_number)`);
 
   // app_state — key/value عام للحالة (مثلاً وقت اكتمال آخر تشغيل كامل لتحديث البورتات)
   await pool.query(`
@@ -972,10 +988,27 @@ export async function ensureSchema() {
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;
     -- «الموقع» اللى المهمة بتشتغل عليه — الطابور بينفّذ مهمة واحدة لكل موقع فى نفس الوقت،
     -- والمواقع المختلفة بتشتغل بالتوازى (مثلاً قياس DZS مع مراجعة FCC مع بعض).
-    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS site text NOT NULL DEFAULT 'dzs';
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS site text NOT NULL DEFAULT '10.42.187.101';
+    -- بيانات إضافية للمهمة (مش أرقام): مثلاً كود الكابينة القديم/الجديد ونوع البورت لمهمة
+    -- «غيّر البورت» — جهاز التنفيذ بيبنى بيها لينك البوابة الصحيح.
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS params jsonb;
   `);
-  // ضبط الموقع للمهام القديمة اللى اتسجّلت قبل إضافة العمود
-  await pool.query(`UPDATE exec_jobs SET site = 'fcc' WHERE type = 'subinfo' AND site <> 'fcc'`);
+  // ضبط الموقع للمهام القديمة: الموقع بقى **اسم الدومين** نفسه (نفس الدومين = مسار واحد).
+  await pool.query(`
+    UPDATE exec_jobs SET site = CASE type
+      WHEN 'subinfo' THEN 'fcc.te.eg'
+      WHEN 'c360' THEN 'customer360.te.eg'
+      WHEN 'portchange' THEN 'provisioningportal.te.eg'
+      WHEN 'portcheck' THEN 'provisioningportal.te.eg'
+      WHEN 'ports' THEN 'provisioningportal.te.eg'
+      WHEN 'wfmcancel' THEN 'wfm.te.eg'
+      WHEN 'wfmreport' THEN 'wfm.te.eg'
+      WHEN 'wfmdaily' THEN 'wfm.te.eg'
+      WHEN 'fccdaily' THEN 'fcc.te.eg'
+      WHEN 'ossdaily' THEN 'oss.te.eg'
+      WHEN 'weoas' THEN 'we-oas.te.eg'
+      ELSE '10.42.187.101' END
+    WHERE site IN ('dzs', 'fcc', 'c360', 'prov', 'wfm', 'oss', 'weoas')`);
 
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
   // (يُنفَّذ بعد إنشاء cabinet_technicians + technician_names، ولا يستبدل أى إسناد يدوى لاحق.)

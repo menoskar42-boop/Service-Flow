@@ -1,16 +1,19 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.2.8
+// @description  يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.0
+// @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
+// @connect      service-flow-menoskar42.replit.app
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
 
 // ⚠️ ملحوظة عن التعارض: سكربت «WFM Reporting — Voice Installation Raw Data» شغّال على
-// https://wfm.te.eg/WfmReports/* بس. السكربت ده على /Dispatcher/* بس — مسارين مختلفين
-// فمفيش أى تداخل، ومش هيشتغلوا مع بعض على نفس الصفحة أبداً.
+// https://wfm.te.eg/WfmReports/* بس. السكربت ده على /WorkOrder/* و/Dispatcher/* — مسارات
+// مختلفة فمفيش تداخل على نفس الصفحة. وطابور التنفيذ فى Service-Flow بيمنع أصلاً إن أى
+// عمليتين على دومين wfm.te.eg يفتحوا فى نفس الوقت.
 
 (function () {
   "use strict";
@@ -18,7 +21,13 @@
   /* ================== CONFIG ================== */
   const USER = "mina109756";
   const PASS = "Mon_oskar11";
+  // المدخل: WFM العادى. الدخول المباشر على Dispatcher/faces/UIShell كان بيدّى صفحة بيضا،
+  // والطريق الصحيح: WorkOrder/faces/Home ← قائمة المربعات أعلى اليسار ← Assignment and
+  // Dispatch (بتوصّل Dispatcher/faces/Home) ← Tasks Queue.
+  const WFM_HOME_URL = "https://wfm.te.eg/WorkOrder/faces/Home";
   const DISPATCHER_URL = "https://wfm.te.eg/Dispatcher/faces/Home";
+  const SF_API_BASE = "https://service-flow-menoskar42.replit.app"; // دومين Service-Flow
+  const SF_TOKEN = "sf-dzs-138-ingest-2026";                        // = DZS_INGEST_TOKEN فى السيرفر
   // الحالات المقبولة للسطر (مش هناخد Completed أبداً)
   const OK_STATUSES = /^(started|assigned)$/i;
 
@@ -385,8 +394,55 @@
     return false;
   }
 
-  // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue». الصفحة ممكن تفتح على
-  // «Assignment and Dispatch»، فبنعدّى على Home الأول ثم نختار Tasks Queue.
+  // مبدّل التطبيقات = أيقونة المربعات أعلى **يسار** الهيدر (جنب لوجو HIVE WORX). مالهاش
+  // نص ولا aria-label ثابت، فبنجمع العناصر الصغيرة اللى فى الركن الأعلى الأيسر ونجرّبها
+  // واحد ورا التانى، وبعد كل ضغطة بنتأكد هل ظهرت «Assignment and Dispatch» ولا لأ.
+  function topLeftCandidates() {
+    return qAllDocs("a, button, div, span, img, td").filter((el) => {
+      if (!visible(el)) return false;
+      let r; try { r = el.getBoundingClientRect(); } catch (e) { return false; }
+      if (r.top > 140 || r.left > 160) return false;
+      if (r.width < 8 || r.height < 8 || r.width > 90 || r.height > 90) return false;
+      return true;
+    }).sort((a, b) => {
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      return (ra.left + ra.top) - (rb.left + rb.top);
+    }).slice(0, 12);
+  }
+  function describeEl(el) {
+    const r = el.getBoundingClientRect();
+    const cls = el.className && el.className.baseVal !== undefined ? el.className.baseVal : (el.className || "");
+    return el.tagName + (el.id ? "#" + el.id : "") + (cls ? "." + String(cls).split(/\s+/)[0] : "") +
+      " @" + Math.round(r.left) + "," + Math.round(r.top);
+  }
+  const findDispatchEntry = () => findByText("a, span, div, li, td", /assignment\s*and\s*dispatch/i, 60);
+
+  // من WFM العادى لتطبيق Dispatcher. بيرجّع "navigating" لو ضغط ودور التحميل جاى،
+  // و true لو إحنا أصلاً على Dispatcher، و false لو مالقاش الزر.
+  async function gotoDispatcherApp() {
+    if (/\/Dispatcher\//i.test(location.pathname)) return true;
+    let item = findDispatchEntry();
+    if (!item) {
+      const burger = findMenuToggle();
+      if (burger) { logln("☰ بفتح القائمة…"); fireClick(burger); await sleep(1200); item = findDispatchEntry(); }
+    }
+    if (!item) {
+      for (const c of topLeftCandidates()) {
+        logln("🔳 بجرّب زر أعلى اليسار: " + describeEl(c));
+        fireClick(c);
+        await sleep(1200);
+        item = findDispatchEntry();
+        if (item) break;
+      }
+    }
+    if (!item) { logln("❌ مش لاقى «Assignment and Dispatch» فى قائمة المربعات."); return false; }
+    logln("📂 بفتح «Assignment and Dispatch»…");
+    fireClick(menuTarget(item));
+    return "navigating";   // بتحمّل صفحة Dispatcher — السكربت بيكمّل عليها من الأول
+  }
+
+  // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue». على Dispatcher/faces/Home بتبقى
+  // مربّع ظاهر، ولو إحنا على شاشة تانية بنعدّى على Home الأول.
   async function gotoTasksQueue() {
     if (findServiceIdInput()) return true;           // إحنا عليها أصلاً
     await clickMenuEntry(/^\s*home\s*$/i, "Home");
@@ -396,8 +452,27 @@
     return !!(await waitFor(() => findServiceIdInput(), 25000));
   }
 
+  // تبليغ Service-Flow بنتيجة الإلغاء. بنتحقّق من r.ok فعلاً — لو السيرفر رفض بنقول،
+  // مانفترضش النجاح.
+  async function sfReportCancel(phone, status) {
+    try {
+      const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/wfm-tasks/cancel-ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN },
+        body: JSON.stringify({ phone: String(phone || "").replace(/\D/g, ""), status: status || "" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.ok === false) return { ok: false, error: (j && j.message) || ("HTTP " + r.status) };
+      return { ok: true };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
   /* ================== التدفّق الرئيسى ================== */
+  const PENDING_KEY = "sf_wfm_cancel_pending";
   let running = false;
+  // بيتحطّ true لما نكون بننقل لصفحة تانية — ساعتها بنسيب الرقم محفوظ عشان السكربت
+  // يكمّل عليه بعد التحميل بدل ما يضيع.
+  let navigating = false;
   async function runFlow(serviceId) {
     if (running) { banner("⏳ فيه عملية شغّالة بالفعل…", "#ef6c00"); return; }
     running = true;
@@ -411,13 +486,21 @@
         logln("✅ تم تسجيل الدخول.");
       }
 
-      // (2) شاشة «Tasks Queue» هى اللى فيها خانة Service Id — لو مش عليها نفتحها من القائمة
+      // (2) لو إحنا على WFM العادى → قائمة المربعات ← Assignment and Dispatch (بتودّينا
+      //     Dispatcher/faces/Home)، والسكربت بيكمّل بعد ما الصفحة الجديدة تحمّل.
       let sidInput = findServiceIdInput();
+      if (!sidInput && !/\/Dispatcher\//i.test(location.pathname)) {
+        banner("🔳 بفتح Assignment and Dispatch…");
+        const nav = await gotoDispatcherApp();
+        if (nav === "navigating") { navigating = true; return; }   // الرقم محفوظ — نكمّل بعد التحميل
+        if (!nav) { navigating = true; location.href = DISPATCHER_URL; return; }
+      }
+
+      // (3) شاشة «Tasks Queue» هى اللى فيها خانة Service Id — لو مش عليها نفتحها من القائمة
+      sidInput = findServiceIdInput();
       if (!sidInput) {
         banner("📂 بفتح Tasks Queue…");
         if (!(await gotoTasksQueue())) {
-          // مش على تطبيق Dispatcher أصلاً → نفتح الصفحة الرئيسية والسكربت هيكمّل بعد التحميل
-          if (!/\/Dispatcher\//i.test(location.pathname)) { location.href = DISPATCHER_URL; return; }
           banner("❌ تعذّر فتح شاشة Tasks Queue.", "#c62828");
           return;
         }
@@ -522,7 +605,11 @@
       const stillOk = after.filter((r) => OK_STATUSES.test(r.status.trim())).length;
       logln("📋 بعد الإلغاء: " + (after.length ? after.map((r) => r.status).join(" ، ") : "(الجدول فاضى)"));
       if (stillOk < candidates.length) {
-        banner("✅ تم إلغاء المهمة للرقم " + serviceId + ".", "#2e7d32");
+        // بنبلّغ Service-Flow إن الإلغاء اتم — السيرفر بيسجّل «مين طلبه» من op_intents
+        // (نفس أسلوب القياس ورفع السرعة) عشان يظهر فى سجل العمليات.
+        const rep = await sfReportCancel(serviceId, (candidates[0] && candidates[0].status) || "");
+        banner("✅ تم إلغاء المهمة للرقم " + serviceId + "." + (rep.ok ? "" : " (⚠️ التسجيل فى Service-Flow فشل: " + rep.error + ")"),
+               rep.ok ? "#2e7d32" : "#ef6c00");
       } else {
         banner("⚠️ اتضغط Cancel بس حالة السطر ما اتغيّرتش — راجع الشاشة.", "#ef6c00");
       }
@@ -531,6 +618,9 @@
       logln("❌ " + (e && e.stack || e));
     } finally {
       running = false;
+      // خلصنا (نجاح أو فشل) → امسح الرقم المحفوظ عشان مايتنفّذش تانى لوحده عند أى تحميل.
+      // لو إحنا بننقل لصفحة تانية بنسيبه عشان السكربت يكمّل عليه هناك.
+      if (!navigating) { try { sessionStorage.removeItem(PENDING_KEY); } catch (e) {} }
     }
   }
 
@@ -542,13 +632,20 @@
     // تشغيل تلقائى لو الرقم اتبعت فى الهاش: #sf_cancel=2653614
     // ملحوظة: المتصفح/التطبيق ممكن يرمّز علامة «=» لـ «%3D» — فبنقبل الاتنين.
     // وبنخزّن الرقم فى sessionStorage عشان يفضل موجود بعد ما ADF يغيّر الهاش أثناء التنقّل.
-    const KEY = "sf_wfm_cancel_pending";
     const m = (location.hash || "").match(/sf_(?:reassign|cancel)(?:=|%3D)(\d+)/i);
     let pending = m ? m[1] : "";
-    if (pending) { try { sessionStorage.setItem(KEY, pending); } catch (e) {} }
-    else { try { pending = sessionStorage.getItem(KEY) || ""; } catch (e) {} }
+    if (pending) { try { sessionStorage.setItem(PENDING_KEY, pending); } catch (e) {} }
+    else { try { pending = sessionStorage.getItem(PENDING_KEY) || ""; } catch (e) {} }
+    // الرقم بيفضل محفوظ لحد ما التدفّق يخلص فعلاً (runFlow بيمسحه) — عشان يعدّى معانا
+    // من WorkOrder لـ Dispatcher من غير ما يضيع.
+    // صفحة Dispatcher بيضا (بتحصل لو دخلنا عليها مباشرةً من غير ما نعدّى على WFM العادى):
+    // نرجع للمدخل الصحيح والسكربت بيكمّل من هناك بالرقم المحفوظ.
+    if (pending && /\/Dispatcher\//i.test(location.pathname) && txt(document.body).length < 40) {
+      logln("⬜ صفحة Dispatcher فاضية — بأرجع لمدخل WFM العادى.");
+      location.href = WFM_HOME_URL;
+      return;
+    }
     if (pending) {
-      try { sessionStorage.removeItem(KEY); } catch (e) {}
       const inp = panel && panel.querySelector("#sfrsInput");
       if (inp) inp.value = pending;
       setTimeout(() => runFlow(pending), 1800);

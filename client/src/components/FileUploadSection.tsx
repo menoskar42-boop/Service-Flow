@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 import { runDailyUpdate as runDailyUpdateLib } from "@/lib/daily-update";
+import { dispatchSpeedTool, openOpSite, SITE_WIDE_KEY } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -427,6 +428,18 @@ export function FileUploadSection() {
   // (DailyAutoRefresh) بيشتغل على أى تاب — مش بس وإنت فى قسم رفع الملفات.
   const runDailyUpdate = () => runDailyUpdateLib(uploadTimesRef.current);
 
+  // «تحديث منافذ MSAN» و«430D» بيمرّوا بطابور التنفيذ: بوابة البروفيجن مسار واحد مع تغيير/تحديث
+  // البورت (مايفتحوش مع بعض)، وWE OAS مسار مستقل. لو مفيش جهاز تنفيذ مفعّل → فتح محلى زى الأول.
+  const runPortsCapture = async () => {
+    await fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
+    if (await dispatchSpeedTool("ports", [SITE_WIDE_KEY], true)) return;
+    openOpSite("ports", "");
+  };
+  const run430D = async () => {
+    if (await dispatchSpeedTool("weoas", [SITE_WIDE_KEY], true)) return;
+    openOpSite("weoas", "");
+  };
+
   // زر «التحديث كل نص ساعة»: بيقلب العلامة فى localStorage ويبلّغ المكوّن الخلفى (نفس التاب)
   const [hourlyAuto, setHourlyAuto] = useState(() => {
     try { return localStorage.getItem("sf_hourly_auto") === "1"; } catch { return false; }
@@ -638,7 +651,7 @@ export function FileUploadSection() {
           131
         </Button>
         <Button
-          onClick={() => window.open("https://we-oas.te.eg/bi-security-login/login.jsp?msi=false&mt=false&profileMust=true&redirect=L2R2L3VpL2hvbWUuanNwP3BhZ2VpZD1ob21lJmhhc2g9aTRPeDNTVkNPXzVLUUswc2lHUThxUTFNQVp6MGRTLVg5aXgzRGQ5RmlHUVJKd3M5cnNZcGQyaURJRjZUZEZWZQ==", "_blank", "noopener,noreferrer")}
+          onClick={() => { void run430D(); }}
           className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
           title="يفتح WE OAS BI ويسجّل الدخول ويشغّل تقرير 430D تلقائياً"
         >
@@ -646,7 +659,7 @@ export function FileUploadSection() {
           430D
         </Button>
         <Button
-          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto")}
+          onClick={() => { void runPortsCapture(); }}
           className="gap-2 bg-cyan-600 hover:bg-cyan-700 text-white"
           title="يفتح Provisioning Portal ويشغّل سكربت تحديث ملف البورتات تلقائياً لكل أكواد الأمسان المخزّنة"
         >
@@ -786,7 +799,7 @@ export function FileUploadSection() {
         />
         <button
           type="button"
-          onClick={() => window.open("https://provisioningportal.te.eg/provisioningPortal/?sf_ports=1#/login", "sf_ports_auto")}
+          onClick={() => { void runPortsCapture(); }}
           className="w-full flex items-center justify-center gap-2 rounded-md border border-cyan-300 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold py-2.5 transition-colors"
           title="يفتح Provisioning Portal ويشغّل سكربت تحديث ملف البورتات تلقائياً لكل أكواد الأمسان المخزّنة"
         >
