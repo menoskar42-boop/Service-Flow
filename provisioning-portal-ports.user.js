@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.8
+// @version      1.2.9
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -346,6 +346,7 @@
       if (!cabins.length) { banner("⚠️ لا توجد أكواد أمسان مخزّنة فى الموقع.", "#ef6c00"); running = false; return; }
 
       let totalRows = 0, totalUp = 0, okCabins = 0, failCabins = 0;
+      let keysLogged = false; // نطبع أسماء الأعمدة مرة واحدة بس
       const input0 = await gotoGetMsan();
       if (!input0) { banner("❌ لم أجد خانة Cabin Code.", "#c62828"); running = false; return; }
 
@@ -369,15 +370,25 @@
         const rows = await searchAndRead(input, cabin);
         if (rows == null) { failCabins++; logln("⏱️ " + cabin + " — انتهت المهلة بدون بيانات."); await sleep(BETWEEN_CABINS_MS); continue; }
         if (!rows.length) { logln("• " + cabin + " — 0 صف."); okCabins++; await sleep(BETWEEN_CABINS_MS); continue; }
+        // تشخيص (مرة واحدة): أسماء الأعمدة زى ما البوابة بترجّعها بالظبط. لو عمود زى
+        // الشيلف طلع فاضى، من هنا نعرف اسمه الحقيقى ونضيفه للأسماء البديلة فوق.
+        if (!keysLogged && rows[0] && typeof rows[0] === "object") {
+          keysLogged = true;
+          const ks = Object.keys(rows[0]);
+          console.log("[PORTS] أسماء أعمدة البوابة:", ks);
+          logln("🔎 أعمدة البوابة: " + ks.join(" | "));
+        }
         // سجّل كل الأرقام اللى اتلقطت لهذا الأمسان (للتشخيص)
         for (const o of rows) allCaptured.push({
           cabin,
           phone: pickKey(o, "phonenumber", "phone", "msisdn"),
-          frame: pickKey(o, "frame"),
-          row: pickKey(o, "row"),
-          col: pickKey(o, "column", "col"),
-          shelf: pickKey(o, "shelf"),
-          slot: pickKey(o, "slot"),
+          frame: pickKey(o, "frame", "frameno", "framenumber", "frameid"),
+          row: pickKey(o, "row", "rowno", "rownumber"),
+          col: pickKey(o, "column", "col", "columnno", "columnnumber"),
+          // البوابة ممكن تسمّى الشيلف بأى اسم من دول — كانت المطابقة على "shelf" بالظبط
+          // فبيرجع فاضى لو الاسم مختلف (وده اللى كان بيحصل: العمود فاضى فى كل الصفوف).
+          shelf: pickKey(o, "shelf", "shelfno", "shelfnumber", "shelfid", "subrack", "subrackno", "rack", "rackno"),
+          slot: pickKey(o, "slot", "slotno", "slotnumber", "slotid"),
           port: pickKey(o, "portnumber", "port", "portno"),
           ptype: pickKey(o, "porttype"),
           voice: pickKey(o, "voicestatus", "voice"),
