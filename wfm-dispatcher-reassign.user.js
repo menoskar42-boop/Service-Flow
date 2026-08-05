@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.4.1: تصفير عدّاد الدخول المباشر مع كل طلب جديد (كان بيفضل من تشغيلة قديمة فى نفس التاب فيتخطّى الدخول المباشر من غير ما يجرّبه)، ورفع حد تحميلات الصفحة من 8 لـ 25 (كان بيمسح الرقم فى نص الشغل). v1.4.0: وضعان بيتحددوا من Service-Flow قبل الفتح — «إلغاء الاسناد» يضغط Cancel مباشرةً، و«اسناد لفنى آخر» يضغط Re-assign مباشرةً ثم يظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Worker ← Search ← OK) ويضغط Assign. v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.4.1
+// @description  v1.4.2: قراءة كود العامل بقت من الحقل الصح — كان بيرجّع حقل التاريخ لما مايلاقيش عنوان Worker فيفتح نافذة البحث بلا داعى رغم إن الكود مظبوط. v1.4.1: تصفير عدّاد الدخول المباشر مع كل طلب جديد (كان بيفضل من تشغيلة قديمة فى نفس التاب فيتخطّى الدخول المباشر من غير ما يجرّبه)، ورفع حد تحميلات الصفحة من 8 لـ 25 (كان بيمسح الرقم فى نص الشغل). v1.4.0: وضعان بيتحددوا من Service-Flow قبل الفتح — «إلغاء الاسناد» يضغط Cancel مباشرةً، و«اسناد لفنى آخر» يضغط Re-assign مباشرةً ثم يظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Worker ← Search ← OK) ويضغط Assign. v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.4.2
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -733,28 +733,39 @@
     qAll("button, a, input[type='submit'], input[type='button'], span[role='button'], div[role='button'], td", root)
       .find((el) => visible(el) && !isDisabled(el) && re.test(txt(el) || el.value || "")) || null;
 
-  // بندوّر على خانة إدخال جنب عنوان معيّن جوّه نافذة
-  function inputNear(root, labelRe) {
-    const inputs = qAll("input[type='text'], input:not([type]), textarea", root).filter(visible);
-    if (!inputs.length) return null;
-    // العنصر اللى نصه العنوان، وبعدين أقرب input ليه فى الترتيب
-    const labels = qAll("label, span, div, td, th", root).filter((el) => visible(el) && labelRe.test(txt(el)) && txt(el).length <= 30);
-    for (const lab of labels) {
+  // بيقرا حقل جنب عنوان معيّن جوّه نافذة، ويرجّع {input, value, from}.
+  // ⚠️ مافيش fallback بـ «أول input فى النافذة» — ده كان بيرجّع حقل **التاريخ** لما
+  // مايلاقيش عنوان Worker، فنقارن 05-08-2026 بكود العامل ونفتكر إنه غلط ونفتح نافذة
+  // البحث بلا أى داعى. لو مالقيناش الحقل بنرجّع from="none" والمُنادِى يتصرّف بوضوح.
+  // القيمة ممكن تكون فى <input> (والـ textContent مابيشوفش قيم الـ inputs أصلاً)،
+  // أو نص جنب العنوان، أو ملزوقة معاه فى نفس العنصر («Worker 347817»).
+  function fieldNear(root, labelRe, stripRe) {
+    const labs = qAll("label, span, div, td, th", root)
+      .filter((el) => visible(el) && !isOurs(el) && labelRe.test(txt(el)) && txt(el).length <= 40);
+    for (const lab of labs) {
       let box = lab;
       for (let i = 0; i < 4 && box; i++, box = box.parentElement) {
-        const hit = qAll("input[type='text'], input:not([type]), textarea", box).filter(visible)[0];
-        if (hit) return hit;
+        const inp = qAll("input[type='text'], input:not([type]), textarea", box).filter(visible)[0];
+        if (inp) return { input: inp, value: String(inp.value || "").trim(), from: "input" };
       }
+      let sib = lab.nextElementSibling;
+      for (let i = 0; i < 3 && sib; i++, sib = sib.nextElementSibling) {
+        const t = txt(sib);
+        if (t) return { input: null, value: t, from: "sibling" };
+      }
+      const inline = stripRe ? txt(lab).replace(stripRe, "").trim() : "";
+      if (inline) return { input: null, value: inline, from: "inline" };
     }
-    return inputs[0];
+    return { input: null, value: "", from: "none" };
   }
 
   // نافذة «Assign Task to Technician/Team»: نكتب كود العامل ← Search ← نختار السطر ← OK
   async function pickWorkerByCode(code) {
     const dlg = await waitFor(() => dialogByTitle(/assign\s*task\s*to\s*technician/i), 15000);
     if (!dlg) { logln("   ❌ نافذة اختيار العامل مافتحتش."); return false; }
-    const wIn = inputNear(dlg, /^\s*worker\s*$/i);
-    if (!wIn) { logln("   ❌ مش لاقى خانة Worker فى نافذة الاختيار."); return false; }
+    const wf2 = fieldNear(dlg, /^\s*\*?\s*worker\s*:?\s*$/i);
+    const wIn = wf2.input;
+    if (!wIn) { logln("   ❌ مش لاقى خانة Worker فى نافذة الاختيار (" + wf2.from + ")."); return false; }
     setValue(wIn, code);
     logln("   ⌨️ كتبت كود العامل " + code + " فى خانة Worker.");
     const searchBtn = btnIn(dlg, /^\s*search\s*$/i);
@@ -785,22 +796,27 @@
     logln("🪟 اتفتحت نافذة Re-assign.");
 
     // (أ) التاريخ لازم يكون النهاردة
-    const dateIn = inputNear(dlg, /^\s*\*?\s*on\s*$/i);
-    if (dateIn) {
-      const cur = dateIn.value || "";
+    const dateF = fieldNear(dlg, /^\s*\*?\s*on\s*:?\s*$/i, /^\s*\*?\s*on\s*:?\s*/i);
+    if (dateF.input) {
+      const cur = dateF.value;
       if (isToday(cur)) { logln("   📅 التاريخ صح (" + cur + ")."); }
-      else { setValue(dateIn, todayDMY()); logln("   📅 التاريخ كان " + (cur || "فاضى") + " → بقى " + todayDMY() + "."); }
-    } else { logln("   ⚠️ مش لاقى خانة التاريخ — بكمّل."); }
+      else { setValue(dateF.input, todayDMY()); logln("   📅 التاريخ كان " + (cur || "فاضى") + " → بقى " + todayDMY() + "."); }
+    } else { logln("   ⚠️ مش لاقى خانة التاريخ (" + dateF.from + ") — بكمّل."); }
 
     // (ب) كود العامل لازم يكون المطلوب — الحقل ساعات نص مش input، فبنقرا نص النافذة كمان
-    const workerIn = inputNear(dlg, /^\s*worker\s*$/i);
-    const shown = String((workerIn && workerIn.value) || "").trim();
-    const dlgText = txt(dlg);
-    const already = (shown && shown === code) || new RegExp("worker\\s*" + code + "\\b", "i").test(dlgText);
+    const WORKER_LAB = /^\s*\*?\s*worker\s*:?\s*$/i;
+    let wf = fieldNear(dlg, WORKER_LAB, /^\s*\*?\s*worker\s*:?\s*/i);
+    // العنوان ساعات بيبقى ملزوق بالقيمة فى نفس الخلية: «Worker 347817»
+    if (wf.from === "none") wf = fieldNear(dlg, /^\s*\*?\s*worker\b/i, /^\s*\*?\s*worker\s*:?\s*/i);
+    const shown = wf.value;
+    logln("   👷 كود العامل الظاهر: «" + (shown || "—") + "» (من " + wf.from + ") | المطلوب: " + code);
+    // بنقارن بالأرقام بس عشان أى مسافات/رموز حوالين الكود ماتخربش المقارنة
+    const digits = (v) => String(v || "").replace(/\D/g, "");
+    const already = !!shown && digits(shown) === digits(code);
     if (already) {
-      logln("   👷 كود العامل صح (" + code + ").");
+      logln("   ✔ كود العامل مظبوط أصلاً — مش محتاجين نافذة البحث.");
     } else {
-      logln("   👷 كود العامل الظاهر «" + (shown || "؟") + "» مش المطلوب (" + code + ") — بفتح نافذة البحث.");
+      logln("   ↪️ الكود مش المطلوب — بفتح نافذة البحث.");
       // علامة المكبّر جنب خانة Worker
       const mag = qAll("a, img, button, div[role='button'], span[role='button']", dlg)
         .filter((el) => visible(el) && !isDisabled(el))
