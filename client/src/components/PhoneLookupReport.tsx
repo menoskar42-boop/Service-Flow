@@ -779,10 +779,10 @@ export function PhoneLookupReport() {
                   variant="outline"
                   onClick={cancelWfmTask}
                   className="bg-white gap-2 text-rose-700 border-rose-300 hover:bg-rose-50"
-                  title="فتح WFM Dispatcher وإلغاء مهمة الرقم ده (Started/Assigned فقط) — سكربت التامبر منكى بيكمّل تلقائياً"
+                  title="فتح WFM Dispatcher وإلغاء إسناد المهمة للرقم ده (Started/Assigned فقط) — سكربت التامبر منكى بيكمّل تلقائياً"
                 >
                   <Ban className="w-4 h-4" />
-                  إلغاء مهمة WFM
+                  إلغاء الاسناد
                 </Button>
               )}
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
