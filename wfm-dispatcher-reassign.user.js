@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.5
+// @description  v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.6
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -594,16 +594,85 @@
       if (p) { push(p); qAll("a, img, span, div", p).forEach(push); }
     }
     if (!targets.length) { logln("   … مش لاقى أيقونة القائمة."); return null; }
-    for (let i = 0; i < targets.length && i < 14; i++) {
+    // الزر الحقيقى فى ADF menuBar هو <div role="menuitem" tabindex="0"> — نجرّبه الأول.
+    targets.sort((a, b) => menuScore(b) - menuScore(a));
+    // ٤ مرشّحين بس — الترتيب بقى بالأولوية، وكل مرشّح بياخد ٧ محاولات تفعيل
+    for (let i = 0; i < targets.length && i < 4; i++) {
       const el = targets[i];
-      const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
-      logln("   🖱 بجرّب " + (i + 1) + "/" + Math.min(targets.length, 14) + ": " + describeEl(el));
-      fireClick(el);
-      await waitIdle(6000);
-      const item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 3500);
-      if (item) { logln("   ✅ القائمة اتفتحت."); return item; }
+      logln("   🖱 بجرّب " + (i + 1) + "/" + Math.min(targets.length, 4) + ": " + describeEl(el));
+      const item = await activateMenu(el);
+      if (item) return item;
       try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
-      await sleep(400);
+      await sleep(300);
+    }
+    return null;
+  }
+
+  // ترتيب الأولوية: العنصر اللى شكله بند قائمة فعلاً (role=menuitem / tabindex / x17h)
+  function menuScore(el) {
+    let s = 0;
+    try {
+      if (el.getAttribute("role") === "menuitem") s += 5;
+      if (el.getAttribute("data-afr-fcs") === "true") s += 3;
+      if (el.hasAttribute("tabindex")) s += 2;
+      if (el.getAttribute("aria-haspopup") === "true") s += 4;
+      const cls = String(el.className || "");
+      if (/x17h/.test(cls)) s += 3;
+      if (el.tagName === "A" && el.getAttribute("style") && /display:\s*none/i.test(el.getAttribute("style"))) s -= 10;
+    } catch (e) {}
+    return s;
+  }
+
+  function hoverEl(el) {
+    for (const t of ["pointerover", "mouseover", "pointerenter", "mouseenter", "pointermove", "mousemove"]) {
+      try { el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+    }
+  }
+  function keyOn(el, key, code) {
+    for (const t of ["keydown", "keypress", "keyup"]) {
+      try {
+        el.dispatchEvent(new KeyboardEvent(t, {
+          key, code: key === " " ? "Space" : key, keyCode: code, which: code,
+          bubbles: true, cancelable: true, view: window,
+        }));
+      } catch (e) {}
+    }
+  }
+
+  // نفس تسلسل الضغط اللى بيفتح بيه سكربت تصدير WFM قوايم ADF على **نفس الموقع** ده
+  // (te-fcc-wfm-oss-subinfo → realClick): mousedown ثم mouseup ثم click، **من غير** أى
+  // pointer events. الترتيب ده مجرَّب وشغّال على قائمة operations وزر Export.
+  function fireMouse(el, type) {
+    try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
+  }
+  function realClick(el) {
+    try { el.scrollIntoView({ block: "center" }); } catch (e) {}
+    for (const t of ["mousedown", "mouseup", "click"]) fireMouse(el, t);
+  }
+
+  // بنود ADF menuBar (class=af_menuBar_items, role=menuitem, tabindex=0, data-afr-fcs)
+  // مش بتستجيب لنفس الضغطة دايماً — فبنصعّد خطوة خطوة، **وبعد كل خطوة نتأكد** هل
+  // «Cancel» ظهرت فعلاً ولا لأ. الترتيب: الطرق المجرَّبة من سكربت التصدير الأول
+  // (click أصلى ← realClick ← dblclick)، وبعدها التفعيل بالكيبورد (بند role=menuitem
+  // بـ tabindex بيتفتح بـ Enter/سهم لأسفل).
+  async function activateMenu(el) {
+    const CANCEL_RE = /^\s*cancel\s*$/i;
+    const steps = [
+      ["click أصلى", () => { try { el.click(); } catch (e) {} }],
+      ["realClick", () => realClick(el)],
+      ["dblclick", () => fireMouse(el, "dblclick")],
+      ["hover + ضغطة", () => { hoverEl(el); fireClick(el); }],
+      ["Enter", () => { try { el.focus(); } catch (e) {} keyOn(el, "Enter", 13); }],
+      ["سهم لأسفل", () => { try { el.focus(); } catch (e) {} keyOn(el, "ArrowDown", 40); }],
+      ["مسافة", () => { try { el.focus(); } catch (e) {} keyOn(el, " ", 32); }],
+    ];
+    for (const [name, act] of steps) {
+      const before = matchingItems(CANCEL_RE);   // «Cancel» الموجودة قبل المحاولة
+      act();
+      await sleep(1700);                          // نفس مهلة سكربت التصدير المجرَّبة
+      await waitIdle(5000);
+      const hit = await waitFor(() => findNewMenuItem(CANCEL_RE, before), 2000);
+      if (hit) { logln("      ✔ القائمة اتفتحت بـ «" + name + "»."); return hit; }
     }
     return null;
   }
@@ -621,7 +690,29 @@
   }
 
   /* ================== التدفّق الرئيسى ================== */
+  // الرقم المطلوب إلغاؤه بيعيش عبر أكتر من تحميل صفحة (WorkOrder → Dispatcher → Tasks
+  // Queue)، فبنخزّنه فى sessionStorage. القاعدة: **مانمسحوش إلا عند نهاية مؤكّدة** —
+  // المسح على أى فشل مؤقّت كان بيضيّعه وإحنا لسه بننقل الصفحة (الخانة كانت بترجع فاضية).
   const PENDING_KEY = "sf_wfm_cancel_pending";
+  const PENDING_TS_KEY = "sf_wfm_cancel_pending_ts";
+  const PENDING_HOPS_KEY = "sf_wfm_cancel_hops";
+  const PENDING_MAX_AGE = 15 * 60 * 1000;   // رقم قديم مايتنفّذش لوحده بعد ربع ساعة
+  const PENDING_MAX_HOPS = 8;               // حد أقصى لعدد تحميلات الصفحة قبل ما نستسلم
+  function setPending(id) {
+    try { sessionStorage.setItem(PENDING_KEY, String(id)); sessionStorage.setItem(PENDING_TS_KEY, String(Date.now())); } catch (e) {}
+  }
+  function clearPending() {
+    try { sessionStorage.removeItem(PENDING_KEY); sessionStorage.removeItem(PENDING_TS_KEY); sessionStorage.removeItem(PENDING_HOPS_KEY); } catch (e) {}
+  }
+  function getPending() {
+    try {
+      const v = sessionStorage.getItem(PENDING_KEY) || "";
+      if (!v) return "";
+      const ts = Number(sessionStorage.getItem(PENDING_TS_KEY) || 0);
+      if (ts && Date.now() - ts > PENDING_MAX_AGE) { clearPending(); return ""; }
+      return v;
+    } catch (e) { return ""; }
+  }
   let running = false;
   // بيتحطّ true لما نكون بننقل لصفحة تانية — ساعتها بنسيب الرقم محفوظ عشان السكربت
   // يكمّل عليه بعد التحميل بدل ما يضيع.
@@ -635,7 +726,7 @@
 
       // (1) لو شاشة لوجين → ادخل
       if (onLoginPage()) {
-        if (!(await doLogin())) { banner("⛔ تعذّر تسجيل الدخول.", "#c62828"); return; }
+        if (!(await doLogin())) { banner("⛔ تعذّر تسجيل الدخول.", "#c62828"); clearPending(); return; }
         logln("✅ تم تسجيل الدخول.");
       }
 
@@ -691,6 +782,7 @@
       const candidates = rows.filter((r) => OK_STATUSES.test(r.status.trim()));
       if (!candidates.length) {
         banner("• مفيش سطر حالته Started أو Assigned (الموجود: " + rows.map((r) => r.status).join(" ، ") + ").", "#ef6c00");
+        clearPending();   // نهاية مؤكّدة
         return;
       }
       logln("✅ " + candidates.length + " سطر مؤهّل.");
@@ -719,7 +811,7 @@
         opened = true;
         break;
       }
-      if (!opened) { banner("⚠️ Cancel مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); return; }
+      if (!opened) { banner("⚠️ Cancel مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); clearPending(); return; }
 
       // (7) بعض الشاشات بتطلب تأكيد بعد Cancel — لو ظهرت نافذة تأكيد نضغط الموافقة.
       //     مش كل الحالات بتطلبها، فلو مظهرتش نكمّل عادى.
@@ -756,14 +848,15 @@
       } else {
         banner("⚠️ اتضغط Cancel بس حالة السطر ما اتغيّرتش — راجع الشاشة.", "#ef6c00");
       }
+      clearPending();   // نهاية مؤكّدة (نجاح أو ضغطة اتنفّذت) — مايتكررش لوحده
     } catch (e) {
       banner("❌ خطأ: " + (e && e.message || e), "#c62828");
       logln("❌ " + (e && e.stack || e));
     } finally {
       running = false;
-      // خلصنا (نجاح أو فشل) → امسح الرقم المحفوظ عشان مايتنفّذش تانى لوحده عند أى تحميل.
-      // لو إحنا بننقل لصفحة تانية بنسيبه عشان السكربت يكمّل عليه هناك.
-      if (!navigating) { try { sessionStorage.removeItem(PENDING_KEY); } catch (e) {} }
+      // ❗مابنمسحش الرقم هنا. الفشل المؤقّت (شاشة لسه بتحمّل، ADF مشغول، تنقّل جارٍ)
+      // كان بيمسحه وإحنا فى نص النقلة فترجع الخانة فاضية. المسح بقى عند النهايات
+      // المؤكّدة بس (نجاح / مفيش سطر مؤهّل / Cancel مش متاحة / استنفاد المحاولات).
     }
   }
 
@@ -773,7 +866,7 @@
     // التاب ده تاب «تحديث الملفات اليومية» لأوامر الشغل (بيفتحه سكربت TE All-in-One
     // باسم wfm_daily) — مالناش أى شغل عليه، فمانبنيش لوحة ولا نتدخّل أصلاً.
     let wn = ""; try { wn = window.name || ""; } catch (e) {}
-    let pend0 = ""; try { pend0 = sessionStorage.getItem("sf_wfm_cancel_pending") || ""; } catch (e) {}
+    const pend0 = getPending();
     if (/wfm_daily/i.test(wn) && !pend0 && !/sf_cancel/i.test(location.hash || "")) return;
     buildPanel();
     banner("⚙️ Dispatcher Cancel — اكتب Service Id واضغط ابدأ.");
@@ -782,8 +875,15 @@
     // وبنخزّن الرقم فى sessionStorage عشان يفضل موجود بعد ما ADF يغيّر الهاش أثناء التنقّل.
     const m = (location.hash || "").match(/sf_(?:reassign|cancel)(?:=|%3D)(\d+)/i);
     let pending = m ? m[1] : "";
-    if (pending) { try { sessionStorage.setItem(PENDING_KEY, pending); } catch (e) {} }
-    else { try { pending = sessionStorage.getItem(PENDING_KEY) || ""; } catch (e) {} }
+    if (pending) setPending(pending); else pending = getPending();
+    // حد أقصى لعدد تحميلات الصفحة على نفس الطلب — يمنع اللف فى دايرة لو حاجة اتغيّرت
+    if (pending) {
+      let hops = 0; try { hops = Number(sessionStorage.getItem(PENDING_HOPS_KEY)) || 0; } catch (e) {}
+      if (hops >= PENDING_MAX_HOPS) {
+        logln("⛔ استنفدت المحاولات (" + hops + ") للرقم " + pending + " — بوقف.");
+        clearPending(); pending = "";
+      } else { try { sessionStorage.setItem(PENDING_HOPS_KEY, String(hops + 1)); } catch (e) {} }
+    }
     // الرقم بيفضل محفوظ لحد ما التدفّق يخلص فعلاً (runFlow بيمسحه) — عشان يعدّى معانا
     // من WorkOrder لـ Dispatcher من غير ما يضيع.
     // صفحة Dispatcher بيضا (بتحصل لو دخلنا عليها مباشرةً من غير ما نعدّى على WFM العادى):
