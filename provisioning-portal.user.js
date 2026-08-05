@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.3
+// @version      1.5.4
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -552,7 +552,11 @@
       await sleep(400);
       const btn = findSearchButton(dateIn) || findButtonByText(/^\s*search\s*$/i);
       if (btn) clickEl(btn);
-      await sleep(2500); // ننتظر تحميل الجدول
+      // ننتظر الجدول يحمّل فعلاً (صفوف ظهرت أو رسالة «مفيش بيانات») بدل مهلة ثابتة —
+      // المهلة الثابتة كانت ممكن تخلص قبل ما النتايج تترسم فنقرا جدول فاضى.
+      await sleep(600);
+      await waitFor(() => pcReadRequestRows().length > 0
+        || /no\s*data|no\s*matching|0\s*entries|no\s*record|showing\s*0/i.test(document.body.innerText || ""), 12000);
       return true;
     }
     return false;
@@ -563,6 +567,16 @@
     if (!str) return true;
     const s = String(str).trim();
     const now = new Date(); const Y = now.getFullYear(), M = now.getMonth() + 1, D = now.getDate();
+    // (1) البوابة بتعرض التاريخ باسم الشهر بالإنجليزى: "Aug 5, 2026".
+    //     المنطق القديم كان بيدوّر على الشهر **كرقم** (8 أو 08) فمكانش بيلاقيه ويعتبر
+    //     الطلب مش بتاريخ اليوم — فيقول «لا يوجد طلب» رغم إن الطلب ظاهر فى الجدول.
+    //     هنا بنقراه مباشرةً لأن JS بيفهم الصيغة دى.
+    if (/[A-Za-z]{3}/.test(s)) {
+      const t = new Date(s.replace(/,/g, " "));
+      if (!isNaN(t.getTime())) return t.getFullYear() === Y && (t.getMonth() + 1) === M && t.getDate() === D;
+    }
+    // (2) تواريخ رقمية بحتة: نفضل على المنطق القديم — مانحاولش نخمّن dd/mm ولا mm/dd،
+    //     بنتأكد بس إن اليوم والشهر والسنة موجودين فى النص.
     const p2 = (n) => String(n).padStart(2, "0");
     const years = (s.match(/\b\d{4}\b/g) || []).map(Number);
     if (years.length && years.indexOf(Y) < 0) return false;   // سنة تانية → مش النهارده
@@ -596,6 +610,15 @@
       if (!todayRows.length) {
         banner("• لا يوجد للرقم " + phone + " طلب تغيير بورت بتاريخ اليوم.", "#ef6c00");
         logln("• " + phone + " — مفيش طلب تغيير بورت بتاريخ اليوم على البروفيجن.");
+        // تشخيص: نعرض اللى الجدول شايفه فعلاً — لو فيه صفوف للرقم واتفلترت بالتاريخ
+        // يبقى قراءة التاريخ هى المشكلة مش غياب الطلب.
+        const same = rows.filter((r) => r.phone === phone);
+        if (same.length) {
+          logln("🔎 الجدول فيه " + same.length + " طلب للرقم ده بتواريخ: "
+            + same.map((r) => (r.requestDate || "(بدون تاريخ)") + " [" + r.requestId + "]").join(" ، "));
+        } else if (rows.length) {
+          logln("🔎 الجدول فيه " + rows.length + " صف لكن مفيش منهم الرقم " + phone + ".");
+        }
         return;
       }
       // نستبعد المسجّل عندنا قبل كده (اتحدّث/اتسجّل) — عشان الضغط تانى ميعيدش
