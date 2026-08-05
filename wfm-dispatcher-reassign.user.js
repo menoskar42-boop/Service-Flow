@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.4
+// @description  v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.5
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -131,6 +131,11 @@
 
   /* ================== واجهة السكربت ================== */
   let bar, logBox, panel;
+  // عناصر لوحة السكربت نفسها — لازم نستبعدها من أى بحث عن أزرار الصفحة، وإلا بيضغط
+  // زر «ابدأ» بتاعنا على إنه زر من WFM (ظهر فى اللوج كـ BUTTON#sfrsGo).
+  function isOurs(el) {
+    try { return !!((panel && panel.contains(el)) || (bar && bar.contains(el))); } catch (e) { return false; }
+  }
   function banner(msg, color) {
     if (!document.body) return;
     if (!bar) {
@@ -336,7 +341,7 @@
 
   function matchingItems(re) {
     return qAllDocs("[role='menuitem'], a, div, span, li, td").filter((el) => {
-      if (!visible(el)) return false;
+      if (!visible(el) || isOurs(el)) return false;
       const t = txt(el);
       return t && t.length <= 40 && re.test(t);
     });
@@ -399,9 +404,10 @@
   // واحد ورا التانى، وبعد كل ضغطة بنتأكد هل ظهرت «Assignment and Dispatch» ولا لأ.
   function topLeftCandidates() {
     return qAllDocs("a, button, div, span, img, td").filter((el) => {
-      if (!visible(el)) return false;
+      if (!visible(el) || isOurs(el)) return false;
       let r; try { r = el.getBoundingClientRect(); } catch (e) { return false; }
-      if (r.top > 140 || r.left > 160) return false;
+      // إحداثيات سالبة = عنصر برّه الشاشة (أو لوحتنا) — مش زر فى الهيدر
+      if (r.top < 0 || r.left < 0 || r.top > 140 || r.left > 160) return false;
       if (r.width < 8 || r.height < 8 || r.width > 90 || r.height > 90) return false;
       return true;
     }).sort((a, b) => {
@@ -459,15 +465,34 @@
     return !!(await waitFor(() => /\/Dispatcher\//i.test(location.pathname), 6000, 300));
   }
 
-  async function gotoDispatcherApp() {
+  const DIRECT_KEY = "sf_wfm_direct_tries";   // كام مرة جرّبنا الدخول المباشر لـ Dispatcher
+
+  // بنحمل الرقم فى الهاش مع كل نقلة داخلية — كده مايضيعش أبداً حتى لو الصفحة اتفتحت
+  // فى تاب جديد أو sessionStorage اتمسح.
+  function dispatcherUrlFor(serviceId) {
+    return DISPATCHER_URL + (serviceId ? "#sf_cancel=" + encodeURIComponent(serviceId) : "");
+  }
+
+  async function gotoDispatcherApp(serviceId) {
     if (/\/Dispatcher\//i.test(location.pathname)) return true;
 
-    // (1) البند ظاهر أصلاً؟ (بنجرّب كل العناصر المطابقة مش أول واحد بس — فيه عناصر
-    //     بنفس النص مش شايلة الـ handler، وضغطها مابيعملش حاجة.)
+    // (1) **الطريق الأساسى**: الدخول المباشر بلينك Dispatcher. إحنا دلوقتى على WFM
+    //     العادى يعنى الجلسة شغّالة، والدخول المباشر بالجلسة بيفتح عادى. (الصفحة البيضا
+    //     القديمة كانت faces/UIShell من غير جلسة أصلاً.) ده أسرع وأضمن بكتير من محاولة
+    //     ضغط بنود قائمة ADF اللى الـ handler بتاعها مش على العنصر اللى فيه النص.
+    let tries = 0; try { tries = Number(sessionStorage.getItem(DIRECT_KEY)) || 0; } catch (e) {}
+    if (tries < 1) {
+      try { sessionStorage.setItem(DIRECT_KEY, String(tries + 1)); } catch (e) {}
+      logln("↪️ بادخل Dispatcher/faces/Home مباشرةً (الجلسة شغّالة).");
+      location.href = dispatcherUrlFor(serviceId);
+      return "navigating";
+    }
+
+    // (2) الدخول المباشر مانفعش (رجعنا هنا تانى) → نجرّب قائمة المربعات.
+    logln("🔳 الدخول المباشر مانفعش — بجرّب قائمة المربعات.");
     for (const el of matchingItems(DISPATCH_RE)) {
       if (await tryDispatchEntry(el, "بند ظاهر")) return "navigating";
     }
-    // (2) نفتح قائمة المربعات أعلى اليسار ونعيد المحاولة بعد كل زر نجرّبه
     const burger = findMenuToggle();
     if (burger) {
       logln("☰ بفتح القائمة…");
@@ -476,18 +501,19 @@
         if (await tryDispatchEntry(el, "بند بعد فتح القائمة")) return "navigating";
       }
     }
+    // بحد زمنى — من غيره الشاشة بتفضل «معلّقة» دقايق وإحنا بنلفّ على أزرار الركن.
+    const deadline = Date.now() + 40000;
     for (const c of topLeftCandidates()) {
+      if (Date.now() > deadline) { logln("⏱ خلصت مهلة البحث عن زر القائمة."); break; }
       logln("🔳 بجرّب زر أعلى اليسار: " + describeEl(c));
       fireClick(c);
-      await sleep(1200);
+      await sleep(1000);
       for (const el of matchingItems(DISPATCH_RE)) {
         if (await tryDispatchEntry(el, "بند من قائمة المربعات")) return "navigating";
       }
     }
-    // (3) آخر حل: ندخل Dispatcher مباشرةً. الجلسة بقت شغّالة من WFM العادى، وfaces/Home
-    //     بتفتح عادى (اللى كان بيدّى صفحة بيضا هو faces/UIShell من غير جلسة).
-    logln("↪️ زر القائمة مانفعش — بادخل Dispatcher/faces/Home مباشرةً.");
-    location.href = DISPATCHER_URL;
+    logln("↪️ مالقيتش الزر — بادخل Dispatcher مباشرةً تانى.");
+    location.href = dispatcherUrlFor(serviceId);
     return "navigating";
   }
 
@@ -519,7 +545,7 @@
   // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue». على Dispatcher/faces/Home بتبقى
   // بلاطة ظاهرة قدامنا — بنضغطها على طول. (الإصدار القديم كان بيدوّر على بند «Home»
   // فى القائمة الأول ويفضل يلفّ عليه من غير ما يوصل، والبلاطة قدامه.)
-  async function gotoTasksQueue() {
+  async function gotoTasksQueue(serviceId) {
     if (findServiceIdInput()) return true;           // إحنا عليها أصلاً
     for (let attempt = 1; attempt <= 3; attempt++) {
       // matchingItems أصلاً بيستبعد الحاويات الكبيرة (نص أطول من 40 حرف)، فالمطابقة
@@ -529,7 +555,7 @@
       // مش على شاشة البلاطات؟ ندخل Dispatcher/faces/Home ونعيد بعد التحميل
       if (!/\/Dispatcher\/faces\/Home/i.test(location.href)) {
         logln("↪️ مش على شاشة بلاطات Dispatcher — بادخل Dispatcher/faces/Home.");
-        location.href = DISPATCHER_URL;
+        location.href = dispatcherUrlFor(serviceId);   // الرقم ماشى فى الهاش
         return false;
       }
       logln("… محاولة " + attempt + " لفتح Tasks Queue لسه ماوصلتش.");
@@ -613,21 +639,23 @@
         logln("✅ تم تسجيل الدخول.");
       }
 
-      // (2) لو إحنا على WFM العادى → قائمة المربعات ← Assignment and Dispatch (بتودّينا
-      //     Dispatcher/faces/Home)، والسكربت بيكمّل بعد ما الصفحة الجديدة تحمّل.
+      // (2) لو إحنا على WFM العادى → ندخل تطبيق Dispatcher (باللينك مباشرةً، والرقم
+      //     ماشى معانا فى الهاش)، والسكربت بيكمّل بعد ما الصفحة الجديدة تحمّل.
       let sidInput = findServiceIdInput();
       if (!sidInput && !/\/Dispatcher\//i.test(location.pathname)) {
-        banner("🔳 بفتح Assignment and Dispatch…");
-        const nav = await gotoDispatcherApp();
-        if (nav === "navigating") { navigating = true; return; }   // الرقم محفوظ — نكمّل بعد التحميل
-        if (!nav) { navigating = true; location.href = DISPATCHER_URL; return; }
+        banner("↪️ بفتح تطبيق Dispatcher…");
+        const nav = await gotoDispatcherApp(serviceId);
+        if (nav === "navigating") { navigating = true; return; }   // الرقم ماشى فى اللينك
+        if (!nav) { navigating = true; location.href = dispatcherUrlFor(serviceId); return; }
       }
+      // وصلنا Dispatcher → صفّر عدّاد المحاولات عشان الجاى يستخدم اللينك المباشر برضه
+      try { sessionStorage.removeItem(DIRECT_KEY); } catch (e) {}
 
       // (3) شاشة «Tasks Queue» هى اللى فيها خانة Service Id — لو مش عليها نفتحها من القائمة
       sidInput = findServiceIdInput();
       if (!sidInput) {
         banner("📂 بفتح Tasks Queue…");
-        if (!(await gotoTasksQueue())) {
+        if (!(await gotoTasksQueue(serviceId))) {
           banner("❌ تعذّر فتح شاشة Tasks Queue.", "#c62828");
           return;
         }
