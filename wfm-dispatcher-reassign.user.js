@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.3
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.4
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -484,11 +484,47 @@
   }
 
   const DIRECT_KEY = "sf_wfm_direct_tries";   // كام مرة جرّبنا الدخول المباشر لـ Dispatcher
+  const DIRECT_TS_KEY = "sf_wfm_direct_ts";   // إمتى — العدّاد ده **مؤقّت** مش دايم
+  // العدّاد الغرض منه بس نمنع لفّة لا نهائية بين WorkOrder وDispatcher فى نفس اللحظة.
+  // لو عدّى عليه أكتر من دقيقة يبقى من تشغيلة قديمة ومالوش لازمة — نتجاهله ونجرّب
+  // الدخول المباشر من جديد. من غير الحد ده كان بيفضل عالق فى التاب فيتخطّى الدخول
+  // المباشر ويلفّ على قائمة المربعات (والريفريش كان بيحلّها لأنه بيمسح الجلسة).
+  const DIRECT_TTL_MS = 60 * 1000;
+  function directTries() {
+    try {
+      const ts = Number(sessionStorage.getItem(DIRECT_TS_KEY) || 0);
+      if (!ts || Date.now() - ts > DIRECT_TTL_MS) return 0;
+      return Number(sessionStorage.getItem(DIRECT_KEY)) || 0;
+    } catch (e) { return 0; }
+  }
+  function markDirectTry(n) {
+    try { sessionStorage.setItem(DIRECT_KEY, String(n)); sessionStorage.setItem(DIRECT_TS_KEY, String(Date.now())); } catch (e) {}
+  }
+  // بننقل الصفحة **ونتأكد** إن النقل حصل فعلاً. لو فضلنا مكاننا بعد 4 ثوانى بنعيد
+  // المحاولة بـ replace — ده اللى كان بيخلّى الشاشة «معلّقة» لحد ما تعمل ريفريش.
+  async function goTo(url) {
+    logln("↪️ رايح: " + url);
+    try { location.href = url; } catch (e) {}
+    await sleep(4000);
+    try {
+      if (location.href.indexOf(url.split("#")[0]) < 0) {
+        logln("   … التنقّل ماحصلش — بعيد المحاولة.");
+        location.replace(url);
+      }
+    } catch (e) {}
+  }
 
   // بنحمل الرقم فى الهاش مع كل نقلة داخلية — كده مايضيعش أبداً حتى لو الصفحة اتفتحت
   // فى تاب جديد أو sessionStorage اتمسح.
   function dispatcherUrlFor(serviceId) {
-    return DISPATCHER_URL + (serviceId ? "#sf_cancel=" + encodeURIComponent(serviceId) : "");
+    if (!serviceId) return DISPATCHER_URL;
+    // بنحمل الوضع وكود العامل كمان — مش الرقم بس. كده لو sessionStorage ضاع (تاب
+    // جديد/جلسة اتمسحت) الطلب يفضل كامل فى اللينك ومايتحوّلش لوضع cancel بالغلط.
+    let mode = "", worker = "";
+    try { mode = sessionStorage.getItem(MODE_KEY) || ""; worker = sessionStorage.getItem(WORKER_KEY) || ""; } catch (e) {}
+    return DISPATCHER_URL + "#sf_cancel=" + encodeURIComponent(serviceId) +
+      (mode ? "&sf_mode=" + encodeURIComponent(mode) : "") +
+      (worker ? "&sf_worker=" + encodeURIComponent(worker) : "");
   }
 
   async function gotoDispatcherApp(serviceId) {
@@ -498,11 +534,11 @@
     //     العادى يعنى الجلسة شغّالة، والدخول المباشر بالجلسة بيفتح عادى. (الصفحة البيضا
     //     القديمة كانت faces/UIShell من غير جلسة أصلاً.) ده أسرع وأضمن بكتير من محاولة
     //     ضغط بنود قائمة ADF اللى الـ handler بتاعها مش على العنصر اللى فيه النص.
-    let tries = 0; try { tries = Number(sessionStorage.getItem(DIRECT_KEY)) || 0; } catch (e) {}
+    const tries = directTries();
     if (tries < 1) {
-      try { sessionStorage.setItem(DIRECT_KEY, String(tries + 1)); } catch (e) {}
+      markDirectTry(tries + 1);
       logln("↪️ بادخل Dispatcher/faces/Home مباشرةً (الجلسة شغّالة).");
-      location.href = dispatcherUrlFor(serviceId);
+      await goTo(dispatcherUrlFor(serviceId));
       return "navigating";
     }
 
@@ -531,7 +567,8 @@
       }
     }
     logln("↪️ مالقيتش الزر — بادخل Dispatcher مباشرةً تانى.");
-    location.href = dispatcherUrlFor(serviceId);
+    markDirectTry(0);
+    await goTo(dispatcherUrlFor(serviceId));
     return "navigating";
   }
 
@@ -961,7 +998,7 @@
     try { sessionStorage.setItem(PENDING_KEY, String(id)); sessionStorage.setItem(PENDING_TS_KEY, String(Date.now())); } catch (e) {}
   }
   function clearPending() {
-    try { [PENDING_KEY, PENDING_TS_KEY, PENDING_HOPS_KEY, MODE_KEY, WORKER_KEY, DIRECT_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
+    try { [PENDING_KEY, PENDING_TS_KEY, PENDING_HOPS_KEY, MODE_KEY, WORKER_KEY, DIRECT_KEY, DIRECT_TS_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
   }
   function getPending() {
     try {
@@ -1005,7 +1042,7 @@
         if (!nav) { navigating = true; location.href = dispatcherUrlFor(serviceId); return; }
       }
       // وصلنا Dispatcher → صفّر عدّاد المحاولات عشان الجاى يستخدم اللينك المباشر برضه
-      try { sessionStorage.removeItem(DIRECT_KEY); } catch (e) {}
+      try { sessionStorage.removeItem(DIRECT_KEY); sessionStorage.removeItem(DIRECT_TS_KEY); } catch (e) {}
 
       // (3) شاشة «Tasks Queue» هى اللى فيها خانة Service Id — لو مش عليها نفتحها من القائمة
       sidInput = findServiceIdInput();
@@ -1201,7 +1238,7 @@
       // طلب جديد جاى فى الهاش → صفّر عدّاد محاولات الدخول المباشر. العدّاد بيعيش فى
       // sessionStorage بتاع التاب، والتاب بيتعاد استخدامه (sf_wfm)، فمن غير التصفير ده
       // كانت التشغيلة الجديدة بتتخطّى الدخول المباشر بسبب محاولة تشغيلة قديمة.
-      try { sessionStorage.removeItem(DIRECT_KEY); sessionStorage.removeItem(PENDING_HOPS_KEY); } catch (e) {}
+      try { [DIRECT_KEY, DIRECT_TS_KEY, PENDING_HOPS_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
     } else pending = getPending();
     // الوضع وكود العامل بييجوا فى نفس الهاش: #sf_cancel=2746124&sf_mode=reassign&sf_worker=347817
     const mm = (location.hash || "").match(/sf_mode(?:=|%3D)(cancel|reassign)/i);
