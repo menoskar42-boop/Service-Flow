@@ -3351,7 +3351,7 @@ export async function registerRoutes(
   //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).
   // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
   app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", search = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", search = "", includeExcluded = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page));
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
@@ -3421,6 +3421,24 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`COALESCE(pl.central, cpl.central_name) = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`COALESCE(pl.cabin_number, cpl.cabinet_no) = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    // كباين مستثناة من التقرير افتراضياً (بقرار تشغيلى) — خطوطها مابتظهرش إلا لو المستخدم
+    // ضغط زر «إظهار الكباين المستثناة» (includeExcluded=1). الاستثناء بيتم بكود الـ MSAN،
+    // سواء الكود جاى من بيان البورتات للخط نفسه أو من جدول فنيى الكباين (سنترال + كابينة).
+    const SPEED_EXCLUDED_MSAN = [
+      "11-2-26-12", "11-2-26-13", "11-2-26-15", "11-2-26-16",
+      "11-2-26-19", "11-2-26-20", "11-2-26-21", "11-2-26-24",
+    ];
+    if (includeExcluded !== "1" && includeExcluded !== "true") {
+      params.push(SPEED_EXCLUDED_MSAN);
+      const ex = `$${params.length}::text[]`;
+      conds.push(`NOT EXISTS (SELECT 1 FROM phone_ports pxe
+                               WHERE pxe.phone_number = m.full_phone
+                                 AND btrim(pxe.msan_code) = ANY(${ex}))`);
+      conds.push(`NOT EXISTS (SELECT 1 FROM cabinet_technicians ctx
+                               WHERE ctx.central_name = COALESCE(pl.central, cpl.central_name)
+                                 AND ctx.cabin_number = COALESCE(pl.cabin_number, cpl.cabinet_no)
+                                 AND btrim(ctx.cabin_code) = ANY(${ex}))`);
+    }
     // بحث نصّى: رقم التليفون (كامل أو قصير) أو رقم الأكونت أو رقم الشكوى — على مستوى السيرفر
     // علشان يبحث فى كل السجلات مش فى الصفحة المعروضة بس.
     if (search.trim()) {

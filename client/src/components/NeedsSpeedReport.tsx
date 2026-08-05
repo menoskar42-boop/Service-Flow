@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle, Search } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle, Search, EyeOff } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openProfileOptimization } from "@/lib/profile-optimization";
@@ -122,6 +122,10 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // زر «لها شكوى (داخل/خارج الشاشة)» — يفلتر على الأرقام اللى ليها أى شكوى (مفتوحة على الشاشة أو
   // مغلقة/مؤرشفة خارجها). متاح فقط على تقرير «الكل» (مش على تاب «لها شكوى» اللى أصلاً مفلتر بالشهر).
   const [complaintAny, setComplaintAny] = useState(false);
+  // كباين مستثناة من التقرير افتراضياً (قرار تشغيلى) — الزر بيرجّعها لما تحتاجها.
+  // الفلترة على السيرفر فبتسرى على الجدول والعدّاد وتصدير Excel/PDF مع بعض.
+  const [showExcludedCabins, setShowExcludedCabins] = useState(false);
+  const isNeedsSpeed = endpoint.includes("needs-speed");
 
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 400);
@@ -145,6 +149,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
     if (search) params.set("search", search);
+    if (isNeedsSpeed && showExcludedCabins) params.set("includeExcluded", "1");
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
     if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
@@ -152,7 +157,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, search, page, requireComplaint, complaintAny],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, search, page, requireComplaint, complaintAny, showExcludedCabins],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -346,6 +351,17 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             </>)}
+            {isNeedsSpeed && (
+              <Button
+                variant={showExcludedCabins ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setShowExcludedCabins((v) => !v); setPage(1); }}
+                className={`gap-1 ${showExcludedCabins ? "bg-slate-700 hover:bg-slate-800 text-white" : "text-slate-700 border-slate-300"}`}
+                title="كباين 11-2-26 (12/13/15/16/19/20/21/24) مستبعدة افتراضياً — اضغط لإظهار خطوطها"
+              >
+                <EyeOff className="w-4 h-4" /> {showExcludedCabins ? "الكباين المستثناة ظاهرة ✓" : "إظهار الكباين المستثناة"}
+              </Button>
+            )}
             {!requireComplaint && endpoint.includes("needs-speed") && (
               <Button
                 variant={complaintAny ? "default" : "outline"}
