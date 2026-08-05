@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.4
+// @version      1.5.6
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -144,9 +144,14 @@
   function clickEl(el) {
     if (!el) return false;
     try { el.scrollIntoView({ block: "center" }); } catch (e) {}
-    for (const type of ["mousedown", "mouseup", "click"]) {
-      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    // التسلسل قبل الضغطة (بعض مكوّنات Angular بتستنى pointer/mouse الأول)
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup"]) {
+      try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); } catch (e) {}
     }
+    // ضغطة حقيقية واحدة — أقرب لسلوك المستخدم من MouseEvent الصناعى، ومابتتكررش.
+    // (الرابط href="javascript:void(0)" فمفيش تنقّل، Angular هو اللى بيمسك الضغطة.)
+    if (typeof el.click === "function") { try { el.click(); } catch (e) {} }
+    else { try { el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window })); } catch (e) {} }
     const form = el.closest && el.closest("form");
     if (form && typeof form.requestSubmit === "function") { try { form.requestSubmit(el.type === "submit" ? el : undefined); } catch (e) {} }
     return true;
@@ -502,13 +507,56 @@
     } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
   }
   // قراءة قيمة حقل بعنوان محدد داخل نافذة تفاصيل الطلب (label نصّه == العنوان بالظبط → أقرب input)
-  function readLabeledValue(labelText) {
-    const t = norm(labelText);
-    const lbl = [...document.querySelectorAll("label")].find((l) => norm(l.textContent) === t);
-    if (!lbl) return "";
-    const grp = lbl.closest(".col, .form-group, .mb-3, [class*='col']") || lbl.parentElement || document;
-    const inp = grp.querySelector("input, textarea");
-    return inp ? String(inp.value || "").trim() : "";
+  // قراءة قيمة جنب عنوان معيّن. الإصدار القديم كان بيشترط <label> نصه مطابق تماماً
+  // والقيمة داخل <input> — وشاشة تفاصيل الطلب بتعرض العنوان كـ th/span/div (وأحياناً
+  // بنقطتين فى آخره) والقيمة كنص عادى، فكان بيرجع فاضى ويقول «معرفتش أقرأ البورت».
+  // دلوقتى بندوّر فى أى عنصر عنوان، وبنقرا القيمة من input أو من العنصر اللى بعده أو
+  // من باقى نص المجموعة. وبيقبل أكتر من اسم بديل للعنوان.
+  function readLabeledValue() {
+    const targets = [].slice.call(arguments).map(norm).filter(Boolean);
+    const strip = function (x) { return x.replace(/[::]+$/, ""); };
+    const els = document.querySelectorAll("label, th, td, dt, strong, b, span, div, p");
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var txt = strip(norm(el.textContent));
+      if (!txt || txt.length > 40) continue;
+      var hit = false;
+      for (var j = 0; j < targets.length; j++) if (txt === strip(targets[j])) { hit = true; break; }
+      if (!hit) continue;
+      var grp = el.closest(".col, .form-group, .mb-3, .row, [class*='col']") || el.parentElement;
+      if (grp) {
+        var inp = grp.querySelector("input, textarea, select");
+        var v = inp ? String(inp.value || "").trim() : "";
+        if (v) return v;
+      }
+      for (var sib = el.nextElementSibling; sib; sib = sib.nextElementSibling) {
+        var sv = (sib.textContent || "").trim();
+        if (sv) return sv;
+      }
+      if (grp) {
+        var whole = (grp.textContent || "").trim();
+        var raw = (el.textContent || "").trim();
+        var k = whole.indexOf(raw);
+        if (k >= 0) {
+          var after = whole.slice(k + raw.length).replace(/^[\s:\u061B\u066B\-]+/, "").trim();
+          if (after) return after;
+        }
+      }
+    }
+    return "";
+  }
+  // تشخيص: العناوين اللى فيها Frame/Msan/Port على الشاشة دلوقتى — لو القراءة فشلت
+  // نطبعها فى اللوج فنعرف الاسم الحقيقى بدل التخمين.
+  function dumpPortLabels() {
+    var out = [];
+    var els = document.querySelectorAll("label, th, td, dt, strong, b, span, div, p");
+    for (var i = 0; i < els.length && out.length < 25; i++) {
+      var raw = (els[i].textContent || "").trim();
+      if (!raw || raw.length > 40) continue;
+      if (!/frame|msan|port|slot|shelf/i.test(raw)) continue;
+      if (out.indexOf(raw) < 0) out.push(raw);
+    }
+    return out;
   }
   // صفوف جدول Search For My Requests
   function pcReadRequestRows() {
@@ -635,16 +683,35 @@
       const status = (mine.status || "").toUpperCase();
 
       if (/COMPLETED/.test(status)) {
-        if (mine.linkEl) clickEl(mine.linkEl);
-        await waitFor(() => readLabeledValue("New Msan Code") || readLabeledValue("New Frame") || /request details/i.test(document.body.innerText), 12000);
-        const newFrame = readLabeledValue("New Frame");
-        const newMsan = readLabeledValue("New Msan Code");
+        const NEW_FRAME_LABELS = ["New Frame", "New Frame No", "New FrameNo", "New Frame Number", "NewFrame", "Frame New", "New Port"];
+        const NEW_MSAN_LABELS  = ["New Msan Code", "New MSAN", "New Msan", "New MsanCode", "NewMsanCode", "Msan Code New"];
+        const readNew = () => ({
+          frame: readLabeledValue.apply(null, NEW_FRAME_LABELS),
+          msan: readLabeledValue.apply(null, NEW_MSAN_LABELS),
+        });
+        // فتح تفاصيل الطلب = الضغط على رقم Request Id. أحياناً الضغطة الأولى مابتفتحش
+        // (الرابط لسه بيترسم/Angular)، فبنعيد المحاولة لحد ما القيم تظهر فعلاً.
+        let newFrame = "", newMsan = "";
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const link = (mine.linkEl && mine.linkEl.querySelector ? (mine.linkEl.querySelector("a") || mine.linkEl) : mine.linkEl);
+          if (link) clickEl(link);
+          await waitFor(() => { const r = readNew(); return r.frame || r.msan; }, attempt === 1 ? 12000 : 6000);
+          const r = readNew(); newFrame = r.frame; newMsan = r.msan;
+          if (newFrame || newMsan) break;
+          logln("… محاولة " + attempt + ": تفاصيل الطلب مافتحتش/القيم لسه مش ظاهرة.");
+          await sleep(1200);
+        }
         const closeBtn = [...document.querySelectorAll("button, .close, [aria-label='Close']")].find((b) => visible(b) && /×|close/i.test((b.textContent || b.getAttribute("aria-label") || "")));
         // تأكيد أنه تم فعلاً: لازم نكون قرأنا البورت الجديد قبل ما نسجّل/نحدّث
         if (!newFrame && !newMsan) {
           if (closeBtn) clickEl(closeBtn);
           banner("⚠️ الطلب COMPLETED بس معرفتش أقرأ البورت الجديد — جرّب «تحديث البورت» تانى.", "#ef6c00");
           logln("⚠️ " + phone + " — COMPLETED لكن مفيش New Frame/Msan مقروء → مش هنسجّل، جرّب تانى.");
+          const labs = dumpPortLabels();
+          console.log("[PROV] عناوين الشاشة:", labs);
+          logln(labs.length
+            ? ("🔎 العناوين الظاهرة: " + labs.join(" | "))
+            : "🔎 مفيش أى عنوان فيه Frame/Msan على الشاشة — يبدو إن نافذة التفاصيل مافتحتش أصلاً.");
           return;
         }
         logln("✅ COMPLETED " + phone + " — Frame=" + newFrame + " | Msan=" + newMsan);
