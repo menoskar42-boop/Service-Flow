@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch, AlertTriangle, Wrench, History, X, ArrowLeftRight } from "lucide-react";
+import { Loader2, Search, FileSpreadsheet, Printer, Phone, Radar, IdCard, RefreshCw, UserSearch, AlertTriangle, Wrench, History, X, ArrowLeftRight, Ban } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
@@ -385,6 +385,18 @@ export function PhoneLookupReport() {
     finally { setReviewBusy(false); }
   };
 
+  // «إلغاء مهمة WFM»: يفتح Dispatcher ومعاه الرقم فى الهاش، وسكربت التامبر منكى
+  // (wfm-dispatcher-reassign.user.js) بيكمّل: بحث بالـ Service Id ← سطر Started/Assigned
+  // ← Cancel من قائمة السطر. نافذة باسم ثابت للرقم عشان مايتفتحش تابات متكررة.
+  const cancelWfmTask = () => {
+    const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
+    if (!sid) { alert("مفيش رقم للمتابعة"); return; }
+    window.open(
+      "https://wfm.te.eg/Dispatcher/faces/UIShell#sf_cancel=" + encodeURIComponent(sid),
+      "sf_wfm_cancel_" + sid,
+    );
+  };
+
   const canFlagFault = isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL;
   const canRegularize = isSuper || user?.role === ROLES.TECH;
 
@@ -760,6 +772,17 @@ export function PhoneLookupReport() {
                 >
                   <RefreshCw className="w-4 h-4" />
                   تحديث البورت
+                </Button>
+              )}
+              {isSuper && (
+                <Button
+                  variant="outline"
+                  onClick={cancelWfmTask}
+                  className="bg-white gap-2 text-rose-700 border-rose-300 hover:bg-rose-50"
+                  title="فتح WFM Dispatcher وإلغاء مهمة الرقم ده (Started/Assigned فقط) — سكربت التامبر منكى بيكمّل تلقائياً"
+                >
+                  <Ban className="w-4 h-4" />
+                  إلغاء مهمة WFM
                 </Button>
               )}
               <Button variant="outline" onClick={handleExportExcel} className="bg-white gap-2">
