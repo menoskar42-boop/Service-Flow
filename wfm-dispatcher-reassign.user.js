@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher على wfm.te.eg، يسجّل الدخول لو ظهرت شاشة اللوجين، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.1.2
+// @version      1.1.3
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -61,6 +61,25 @@
       const t = txt(el);
       return t && t.length <= lim && re.test(t);
     }) || null;
+  }
+
+  // ADF بيعتّم الشاشة ويقفلها أثناء أى طلب للسيرفر (partial page render). لو قرينا الـ DOM
+  // فى اللحظة دى ممكن نقرا حالة قديمة أو نضغط زر متقفل. بنستنى لحد ما يخلّص:
+  //   (1) واجهة ADF نفسها لو متاحة (isSynchronizedWithServer)
+  //   (2) وإلا وجود طبقة الحجب (BlockingGlass) الظاهرة
+  function adfBusy() {
+    try {
+      const P = window.AdfPage && window.AdfPage.PAGE;
+      if (P && typeof P.isSynchronizedWithServer === "function") return !P.isSynchronizedWithServer();
+    } catch (e) {}
+    return qAllDocs("[class*='BlockingGlass'], .AFBlockingGlassPane").some(visible);
+  }
+  async function waitIdle(ms) {
+    const end = Date.now() + (ms || 20000);
+    // نستنى شوية الأول عشان الطلب يكون بدأ فعلاً قبل ما نتأكد إنه خلص
+    await sleep(300);
+    while (Date.now() < end && adfBusy()) await sleep(250);
+    await sleep(200);
   }
 
   // نوافذ ADF المنبثقة بترسم جوّه طبقة مخصوصة (dataForm::_af_Z_window / AFZOrderLayer)
@@ -313,6 +332,7 @@
       if (!searchBtn) { banner("❌ مش لاقى زر Search.", "#c62828"); return; }
       fireClick(searchBtn);
       logln("🔍 اتضغط Search…");
+      await waitIdle(25000);   // ADF بيعتّم الشاشة لحد ما النتايج ترجع
 
       // (4) استنى النتائج تظهر (صفوف فيها حالة) — مش مهلة ثابتة
       banner("⏳ فى انتظار النتائج…");
@@ -340,6 +360,7 @@
         if (!menuBtn) { logln("   … مش لاقى سهم القائمة."); continue; }
         const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
         fireClick(menuBtn);
+        await waitIdle(8000);
         const item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 6000);
         if (!item) { logln("   … القائمة مافتحتش أو مفيش Cancel."); continue; }
         if (isDisabled(item)) {
@@ -349,6 +370,7 @@
           continue;
         }
         fireClick(item);
+        await waitIdle(15000);
         logln("   ✅ اتضغط Cancel.");
         opened = true;
         break;
@@ -374,6 +396,7 @@
       }
 
       // (8) نتأكد إن الحالة اتغيّرت فعلاً بدل ما نفترض النجاح: نعيد قراءة الجدول
+      await waitIdle(15000);
       const after = await waitFor(() => {
         const r = readResultRows();
         return r.length ? r : null;
