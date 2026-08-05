@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.7: ممنوع أى ريفريش بعد تنفيذ Cancel/Assign — التحقق بضغطة Search بس. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.7
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.8: الريفريش بقى بيحافظ على الهاش (كان بيتمسح فالعدّادات مابتتصفّرش والريفريش مايفيدش)، وأى تحميل جديد على صفحة الدخول بيصفّر عدّادات التنقّل. v1.5.7: ممنوع أى ريفريش بعد تنفيذ Cancel/Assign — التحقق بضغطة Search بس. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.8
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -513,7 +513,16 @@
     if (n >= MAX_RELOADS) { logln("⛔ عملت ريفريش " + n + " مرة خلاص — مش هكرّر."); return false; }
     try { sessionStorage.setItem(RELOAD_KEY, String(n + 1)); } catch (e) {}
     logln("🔄 " + why + " — بعمل ريفريش للصفحة (" + (n + 1) + "/" + MAX_RELOADS + ").");
-    setTimeout(() => { try { location.reload(); } catch (e) {} }, 400);
+    // ⚠️ location.reload() لوحده بيرجّع الصفحة **من غير الهاش** (ADF بيشيله)، فالتحميل
+    // الجديد مايعرفش إن ده طلب جديد ومايصفّرش العدّادات — وده اللى كان بيخلّى الريفريش
+    // بتاعنا مايفيدش والريفريش اليدوى بتاعك يفيد. فبنعيد التحميل **بالهاش كامل**.
+    const target = entryUrlFor(pendingId());
+    setTimeout(() => {
+      try {
+        if (location.href === target) location.reload();
+        else location.replace(target);
+      } catch (e) { try { location.reload(); } catch (e2) {} }
+    }, 400);
     return true;
   }
 
@@ -534,15 +543,25 @@
 
   // بنحمل الرقم فى الهاش مع كل نقلة داخلية — كده مايضيعش أبداً حتى لو الصفحة اتفتحت
   // فى تاب جديد أو sessionStorage اتمسح.
-  function dispatcherUrlFor(serviceId) {
-    if (!serviceId) return DISPATCHER_URL;
-    // بنحمل الوضع وكود العامل كمان — مش الرقم بس. كده لو sessionStorage ضاع (تاب
-    // جديد/جلسة اتمسحت) الطلب يفضل كامل فى اللينك ومايتحوّلش لوضع cancel بالغلط.
+  // الرقم المحفوظ حالياً (من غير اعتماد على متغيّر التدفّق) — عشان نبنى بيه اللينكات
+  function pendingId() {
+    try { return sessionStorage.getItem(PENDING_KEY) || ""; } catch (e) { return ""; }
+  }
+  // لينك صفحة الدخول ومعاه الطلب كامل فى الهاش
+  function entryUrlFor(serviceId) {
+    return serviceId ? WFM_HOME_URL + hashFor(serviceId) : WFM_HOME_URL;
+  }
+  function hashFor(serviceId) {
     let mode = "", worker = "";
     try { mode = sessionStorage.getItem(MODE_KEY) || ""; worker = sessionStorage.getItem(WORKER_KEY) || ""; } catch (e) {}
-    return DISPATCHER_URL + "#sf_cancel=" + encodeURIComponent(serviceId) +
+    return "#sf_cancel=" + encodeURIComponent(serviceId) +
       (mode ? "&sf_mode=" + encodeURIComponent(mode) : "") +
       (worker ? "&sf_worker=" + encodeURIComponent(worker) : "");
+  }
+  function dispatcherUrlFor(serviceId) {
+    // بنحمل الوضع وكود العامل كمان — مش الرقم بس. كده لو sessionStorage ضاع (تاب
+    // جديد/جلسة اتمسحت) الطلب يفضل كامل فى اللينك ومايتحوّلش لوضع cancel بالغلط.
+    return serviceId ? DISPATCHER_URL + hashFor(serviceId) : DISPATCHER_URL;
   }
 
   async function gotoDispatcherApp(serviceId) {
@@ -1288,7 +1307,17 @@
       // sessionStorage بتاع التاب، والتاب بيتعاد استخدامه (sf_wfm)، فمن غير التصفير ده
       // كانت التشغيلة الجديدة بتتخطّى الدخول المباشر بسبب محاولة تشغيلة قديمة.
       try { [DIRECT_KEY, DIRECT_TS_KEY, PENDING_HOPS_KEY, RELOAD_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
-    } else pending = getPending();
+    } else {
+      pending = getPending();
+      // تحميل جديد على **صفحة الدخول** ومعانا طلب شغّال = محاولة نضيفة، حتى لو الهاش
+      // اتمسح. من غير ده كان الريفريش بتاعنا مايفيدش (العدّادات فاضلة زى ما هى)
+      // بينما الريفريش اليدوى بتاعك بيفيد لأن الوقت بيعدّى وتنتهى مهلة العدّاد.
+      // عدّاد الـ hops فاضل هو الحد الأقصى الحقيقى للمحاولات.
+      if (pending && !/\/Dispatcher\//i.test(location.pathname)) {
+        try { [DIRECT_KEY, DIRECT_TS_KEY, RELOAD_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
+        logln("🧹 تحميل جديد على صفحة الدخول — صفّرت عدّادات التنقّل.");
+      }
+    }
     // الوضع وكود العامل بييجوا فى نفس الهاش: #sf_cancel=2746124&sf_mode=reassign&sf_worker=347817
     const mm = (location.hash || "").match(/sf_mode(?:=|%3D)(cancel|reassign)/i);
     const mw = (location.hash || "").match(/sf_worker(?:=|%3D)(\d+)/i);
