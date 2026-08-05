@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.7
+// @description  v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.8
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -239,11 +239,22 @@
   // (العنوان فى جدول والبيانات فى جدول تانى) ويفضل السكربت مستنى النتايج للأبد.
   // الحل: ندوّر على **نص الحالة نفسه** فى أى خلية، ونرجع الصف اللى هى فيه.
   const STATUS_RE = /^(started|assigned|completed|dispatched|cancell?ed|partial completed|blocked|escalated)$/i;
+  // الصف لازم يكون جوّه جدول نتائج Tasks Queue فعلاً. من غير الشرط ده كنا بنلقط قيم
+  // من قائمة Status المنسدلة ومن نوافذ الرسايل، فبعد الإلغاء كان بيطلع 7 حالات
+  // (Started ، Dispatched ، … ، Completed) لجدول فيه صف واحد — والحكم على النتيجة يبقى غلط.
+  function inTasksQueue(tr) {
+    let n = tr;
+    for (let i = 0; i < 8 && n; i++, n = n.parentElement) {
+      const id = String((n.id || ""));
+      if (/TasksQueue/i.test(id)) return true;
+    }
+    return false;
+  }
   function readResultRows() {
     const seen = [];
     const rows = [];
     for (const el of qAllDocs("td, div, span")) {
-      if (!visible(el)) continue;
+      if (!visible(el) || isOurs(el)) continue;
       const t = txt(el);
       if (!t || !STATUS_RE.test(t)) continue;
       let tr = null;
@@ -252,9 +263,11 @@
       // نتأكد إنه صف بيانات فعلاً (فيه كذا خلية) مش عنصر فى مفتاح الألوان
       if (qAll("td", tr).length < 3) continue;
       seen.push(tr);
-      rows.push({ tr, status: t, workOrderId: "" });
+      rows.push({ tr, status: t, workOrderId: "", inTQ: inTasksQueue(tr) });
     }
-    return rows;
+    // لو لقينا صفوف من جدول Tasks Queue نفسه → نعتمد عليها وحدها ونتجاهل الباقى
+    const real = rows.filter((r) => r.inTQ);
+    return real.length ? real : rows;
   }
 
   // زر قائمة السطر.
@@ -817,22 +830,20 @@
       }
       if (!opened) { banner("⚠️ Cancel مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); clearPending(); return; }
 
-      // (7) بعض الشاشات بتطلب تأكيد بعد Cancel — لو ظهرت نافذة تأكيد نضغط الموافقة.
-      //     مش كل الحالات بتطلبها، فلو مظهرتش نكمّل عادى.
-      await sleep(1200);
-      const dlg = adfDialogRoot();
-      const CONFIRM_RE = /^\s*(yes|ok|confirm|submit|نعم|موافق|تأكيد)\s*$/i;
-      const confirmBtn = dlg
-        ? qAll("button, a, input[type='submit'], span[role='button'], [role='menuitem']", dlg)
-            .find((el) => visible(el) && CONFIRM_RE.test(txt(el)))
-        : findByText("button, a, input[type='submit'], span[role='button']", CONFIRM_RE, 20);
-      if (dlg) logln("🪟 اتفتحت نافذة تأكيد.");
-      if (confirmBtn && !isDisabled(confirmBtn)) {
-        fireClick(confirmBtn);
-        logln("✅ اتضغط زر التأكيد (" + txt(confirmBtn) + ").");
-        await sleep(1200);
-      } else {
-        logln("ℹ️ مفيش نافذة تأكيد — الإلغاء اتنفّذ مباشرةً.");
+      // (7) بعد Cancel ممكن تظهر نافذة تأكيد وممكن تظهر نافذة رسالة من WFM — بنضغط
+      //     زر الموافقة (OK/Yes/موافق) وخلاص، من غير ما نقرا نص الرسالة. وممكن تظهر
+      //     نافذتين ورا بعض (تأكيد ثم رسالة) فبنلفّ مرتين.
+      for (let d = 1; d <= 2; d++) {
+        const dlg = await waitFor(() => adfDialogRoot(), d === 1 ? 8000 : 3000);
+        if (!dlg) { if (d === 1) logln("ℹ️ مفيش نافذة — الإلغاء اتنفّذ مباشرةً."); break; }
+        const CONFIRM_RE = /^\s*(yes|ok|confirm|submit|close|نعم|موافق|تأكيد|إغلاق)\s*$/i;
+        const okBtn = qAll("button, a, input[type='submit'], span[role='button'], [role='menuitem'], td, div", dlg)
+          .find((el) => visible(el) && !isDisabled(el) && CONFIRM_RE.test(txt(el)));
+        if (!okBtn) { logln("🪟 نافذة ظهرت بس مفيش فيها زر موافقة."); break; }
+        logln("🪟 نافذة " + d + " — بضغط «" + txt(okBtn) + "».");
+        fireClick(okBtn);
+        await waitIdle(10000);
+        await sleep(800);
       }
 
       // (8) نتأكد إن الحالة اتغيّرت فعلاً بدل ما نفترض النجاح: نعيد قراءة الجدول
