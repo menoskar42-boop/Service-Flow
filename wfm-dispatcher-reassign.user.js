@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.2.1
+// @version      1.2.3
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -26,7 +26,8 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const qAll = (sel, root) => [].slice.call((root || document).querySelectorAll(sel));
   const visible = (el) => { try { return !!el && el.getClientRects().length > 0; } catch (e) { return false; } };
-  const txt = (el) => ((el && el.textContent) || "").replace(/\s+/g, " ").trim();
+  // \u00a0 (nbsp) شائعة فى قوائم ADF ومش بتتطابق مع \s فى بعض الحالات — بنحوّلها مسافة عادية
+  const txt = (el) => ((el && el.textContent) || "").replace(/[\u00a0\u200f\u200e]/g, " ").replace(/\s+/g, " ").trim();
   const norm = (s) => (s || "").toLowerCase().replace(/[\s_:]+/g, "");
 
   async function waitFor(fn, ms, step) {
@@ -242,31 +243,41 @@
     return rows;
   }
 
-  // زر قائمة السطر: مع الأعمدة المجمّدة السهم بيكون فى **جدول تانى** غير جدول الحالة،
-  // فمش ينفع ندوّر جوّه نفس الـ tr. بندوّر بالموضع: أيقونة صغيرة على نفس ارتفاع الصف
-  // وأقصى الشمال.
+  // زر قائمة السطر.
+  // ⚠️ فى أول الصف بيبقى فيه أكتر من أيقونة صغيرة: مثلث **توسيع الصف** (disclosure) وأيقونة
+  // **قائمة الإجراءات**. الأخذ بالأقصى-شمال كان بيضغط على التوسيع فيفتح تفاصيل الصف بدل
+  // القائمة. فبنرتّبهم: اللى شكله قائمة الأول، واللى شكله توسيع/تحديد يتستبعد.
+  const MENU_HINT = /menu|dropdown|action|popup|caret|gear|tool/i;
+  const NOT_MENU_HINT = /expand|collapse|disclos|detail|select|checkbox|sort/i;
+  function iconMeta(el) {
+    const cls = el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className;
+    return [el.id, el.title, el.getAttribute && el.getAttribute("aria-label"),
+      el.getAttribute && el.getAttribute("alt"), el.src, cls].map((x) => String(x || "")).join(" ");
+  }
   function findRowMenuButton(tr) {
-    // (1) المحاولة السهلة: جوّه أول خلايا نفس الصف
-    const inRow = qAll("a, button, img", tr).filter(visible)
-      .filter((el) => { const b = el.getBoundingClientRect(); return b.width <= 60 && b.height <= 40; });
-    if (inRow.length) {
-      inRow.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-      return inRow[0];
-    }
-    // (2) بالموضع عبر الجداول المقسّمة
     let r; try { r = tr.getBoundingClientRect(); } catch (e) { return null; }
     if (!r || !r.height) return null;
     const mid = r.top + r.height / 2;
-    const cands = qAllDocs("a, button, img, [role='button']").filter((el) => {
+    let cands = qAllDocs("a, button, img, [role='button']").filter((el) => {
       if (!visible(el)) return false;
       const b = el.getBoundingClientRect();
-      if (b.width > 60 || b.height > 40) return false;      // أيقونة صغيرة
-      return b.top <= mid && b.bottom >= mid;                // على نفس ارتفاع الصف
+      if (b.width > 60 || b.height > 40) return false;       // أيقونة صغيرة
+      return b.top <= mid && b.bottom >= mid;                 // على نفس ارتفاع الصف
     });
     if (!cands.length) return null;
-    cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-    return cands[0];
+    // تشخيص: لو فشلنا بعدين نبقى عارفين إيه اللى كان موجود
+    lastRowIcons = cands.map((el) => (iconMeta(el).trim() || "(بدون وصف)").slice(0, 60));
+    const scored = cands.map((el) => {
+      const meta = iconMeta(el);
+      let score = 0;
+      if (MENU_HINT.test(meta)) score += 10;
+      if (NOT_MENU_HINT.test(meta)) score -= 10;
+      return { el, score, left: el.getBoundingClientRect().left };
+    });
+    scored.sort((a, b) => (b.score - a.score) || (a.left - b.left));
+    return scored[0] && scored[0].score > -10 ? scored[0].el : null;
   }
+  let lastRowIcons = [];
 
   // هل عنصر القائمة معطّل؟ (ADF بيستخدم كلاس فيه disabled أو aria-disabled)
   function isDisabled(el) {
@@ -319,18 +330,36 @@
     }) || null;
   }
 
-  async function gotoTasksQueue() {
-    if (findServiceIdInput()) return true;          // إحنا عليها أصلاً
-    let item = findByText("a, span, div, li, td", /^\s*tasks\s*queue\s*$/i, 30);
-    if (!item) {
-      const burger = findMenuToggle();
-      if (burger) { logln("☰ بفتح القائمة…"); fireClick(burger); await sleep(1200); }
-      item = await waitFor(() => findByText("a, span, div, li, td", /^\s*tasks\s*queue\s*$/i, 30), 10000);
+  // اختيار عنصر من القائمة العلوية بمحاولات — بنفتح القائمة لو مش مفتوحة.
+  // المطابقة بالاحتواء مش بالتطابق التام: نص العنصر ممكن يجى معاه أيقونة/مسافات.
+  async function clickMenuEntry(re, label) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      let item = findByText("a, span, div, li, td", re, 40);
+      if (!item) {
+        const burger = findMenuToggle();
+        if (burger) { logln("☰ بفتح القائمة…"); fireClick(burger); await sleep(1500); }
+        item = await waitFor(() => findByText("a, span, div, li, td", re, 40), 8000);
+      }
+      if (item) {
+        logln("📂 بفتح «" + label + "»…");
+        fireClick(menuTarget(item));
+        await waitIdle(25000);
+        return true;
+      }
+      logln("… محاولة " + attempt + ": مش لاقى «" + label + "» فى القائمة.");
+      await sleep(1200);
     }
-    if (!item) { logln("❌ مش لاقى «Tasks Queue» فى القائمة."); return false; }
-    logln("📂 بفتح Tasks Queue…");
-    fireClick(menuTarget(item));
-    await waitIdle(25000);
+    return false;
+  }
+
+  // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue». الصفحة ممكن تفتح على
+  // «Assignment and Dispatch»، فبنعدّى على Home الأول ثم نختار Tasks Queue.
+  async function gotoTasksQueue() {
+    if (findServiceIdInput()) return true;           // إحنا عليها أصلاً
+    await clickMenuEntry(/^\s*home\s*$/i, "Home");
+    await sleep(1000);
+    if (findServiceIdInput()) return true;
+    if (!(await clickMenuEntry(/tasks\s*queue/i, "Tasks Queue"))) return false;
     return !!(await waitFor(() => findServiceIdInput(), 25000));
   }
 
@@ -406,7 +435,11 @@
         fireClick(menuBtn);
         await waitIdle(8000);
         const item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 6000);
-        if (!item) { logln("   … القائمة مافتحتش أو مفيش Cancel."); continue; }
+        if (!item) {
+          logln("   … القائمة مافتحتش أو مفيش Cancel.");
+          if (lastRowIcons.length) logln("   🔎 أيقونات الصف: " + lastRowIcons.join(" | "));
+          continue;
+        }
         if (isDisabled(item)) {
           logln("   ⚠️ Cancel معطّلة فى السطر ده — بجرّب اللى بعده.");
           try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
