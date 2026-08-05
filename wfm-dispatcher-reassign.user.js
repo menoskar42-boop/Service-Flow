@@ -1055,8 +1055,11 @@
     if (running) { banner("⏳ فيه عملية شغّالة بالفعل…", "#ef6c00"); return; }
     running = true;
     try {
-      banner("🔎 Service Id " + serviceId + " — جارٍ البدء…");
-      logln("▶️ بدء المعالجة للرقم " + serviceId);
+      // الوضع بيتكتب صراحةً فى أول سطر — عشان تعرف من نظرة واحدة إن التشغيلة دى
+      // إلغاء ولا إسناد، من غير ما تستنتج من النتيجة.
+      const modeLabel = MODE === "reassign" ? ("إسناد لفنى (كود " + WORKER + ")") : "إلغاء إسناد";
+      banner("🔎 " + serviceId + " — " + modeLabel + "…");
+      logln("▶️ بدء المعالجة للرقم " + serviceId + " — الوضع: " + modeLabel);
 
       // (1) لو شاشة لوجين → ادخل
       if (onLoginPage()) {
