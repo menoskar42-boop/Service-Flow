@@ -3428,7 +3428,11 @@ export async function registerRoutes(
       "11-2-26-12", "11-2-26-13", "11-2-26-15", "11-2-26-16",
       "11-2-26-19", "11-2-26-20", "11-2-26-21", "11-2-26-24",
     ];
-    if (includeExcluded !== "1" && includeExcluded !== "true") {
+    // إظهار الكباين المستثناة للسوبر أدمن فقط — الزر مخفى عن غيره فى الواجهة، وبنتحقق
+    // هنا كمان عشان مايتعملش تحايل بالباراميتر مباشرةً.
+    const canIncludeExcluded = req.user?.role === ROLES.SUPER_ADMIN
+      && (includeExcluded === "1" || includeExcluded === "true");
+    if (!canIncludeExcluded) {
       params.push(SPEED_EXCLUDED_MSAN);
       const ex = `$${params.length}::text[]`;
       conds.push(`NOT EXISTS (SELECT 1 FROM phone_ports pxe

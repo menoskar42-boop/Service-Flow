@@ -351,7 +351,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             </>)}
-            {isNeedsSpeed && (
+            {isNeedsSpeed && isSuper && (
               <Button
                 variant={showExcludedCabins ? "default" : "outline"}
                 size="sm"
