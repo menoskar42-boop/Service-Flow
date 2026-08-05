@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.9: إصلاح الريفريش نفسه — location.replace لعنوان بيختلف فى الهاش بس مابيعملش إعادة تحميل، فالصفحة كانت بتفضل واقفة. بقى: نحط الهاش ثم reload حقيقى. v1.5.8: الريفريش بقى بيحافظ على الهاش (كان بيتمسح فالعدّادات مابتتصفّرش والريفريش مايفيدش)، وأى تحميل جديد على صفحة الدخول بيصفّر عدّادات التنقّل. v1.5.7: ممنوع أى ريفريش بعد تنفيذ Cancel/Assign — التحقق بضغطة Search بس. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.9
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.6.0: لو سيرفر ADF رمى خطأ (Server Exception during PPR) أثناء تصعيد المحاولات، بيقفل الرسالة ويسيب العنصر ده فوراً وينتقل للى بعده بدل ما يفضل يضرب عليه. v1.5.9: إصلاح الريفريش نفسه — location.replace لعنوان بيختلف فى الهاش بس مابيعملش إعادة تحميل، فالصفحة كانت بتفضل واقفة. بقى: نحط الهاش ثم reload حقيقى. v1.5.8: الريفريش بقى بيحافظ على الهاش (كان بيتمسح فالعدّادات مابتتصفّرش والريفريش مايفيدش)، وأى تحميل جديد على صفحة الدخول بيصفّر عدّادات التنقّل. v1.5.7: ممنوع أى ريفريش بعد تنفيذ Cancel/Assign — التحقق بضغطة Search بس. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.6.0
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -735,6 +735,24 @@
     }
   }
 
+  // نافذة خطأ من سيرفر ADF (ADF_FACES-60096/60097: Server Exception during PPR).
+  // بتظهر لما تصعيد المحاولات يولّد طلب PPR غلط. لو ظهرت: نقفلها ونسيب المرشّح ده
+  // فوراً وننتقل للى بعده — الاستمرار فى الضرب على نفس العنصر بيزوّد الأخطاء بس.
+  function adfErrorDialog() {
+    const d = adfDialogRoot();
+    if (!d) return null;
+    return /ADF_FACES-\d+|Server Exception|server's error log/i.test(txt(d)) ? d : null;
+  }
+  async function dismissAdfError() {
+    const d = adfErrorDialog();
+    if (!d) return false;
+    logln("   ⚠️ خطأ من سيرفر WFM: " + txt(d).replace(/\s+/g, " ").slice(0, 140));
+    const ok = qAll("button, a, input[type='submit'], span[role='button'], div[role='button'], td, div", d)
+      .find((el) => visible(el) && !isOurs(el) && /^\s*(ok|close|موافق|إغلاق)\s*$/i.test(txt(el)));
+    if (ok) { fireClick(ok); await waitIdle(8000); await sleep(500); }
+    return true;
+  }
+
   // نفس تسلسل الضغط اللى بيفتح بيه سكربت تصدير WFM قوايم ADF على **نفس الموقع** ده
   // (te-fcc-wfm-oss-subinfo → realClick): mousedown ثم mouseup ثم click، **من غير** أى
   // pointer events. الترتيب ده مجرَّب وشغّال على قائمة operations وزر Export.
@@ -773,6 +791,8 @@
       await waitIdle(5000);
       const hit = await waitFor(() => findNewMenuItem(CANCEL_RE, before), 2000);
       if (hit) { logln("      ✔ القائمة اتفتحت بـ «" + name + "»."); return hit; }
+      // السيرفر رمى خطأ من كتر المحاولات على نفس العنصر → نقفل ونسيبه للمرشّح اللى بعده
+      if (await dismissAdfError()) { logln("      ↪️ بسيب العنصر ده بعد خطأ السيرفر."); return null; }
       // الخطوة فشلت — نقفل أى أثر قبل الخطوة اللى بعدها عشان مانكدّسش قوايم نصّ مفتوحة
       try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
       await sleep(300);
@@ -796,6 +816,7 @@
       await waitIdle(8000);
       const ok = await waitFor(verify, 3000);
       if (ok) { logln("      ✔ «" + label + "» اتنفّذ بـ «" + name + "»."); return ok; }
+      if (await dismissAdfError()) { logln("      ↪️ خطأ سيرفر — بوقف تصعيد «" + label + "»."); return null; }
     }
     return null;
   }
