@@ -970,7 +970,12 @@ export async function ensureSchema() {
     -- عدد مرات إعادة المحاولة: المهمة اللى بتعلق فى claimed (التاب اتقفل/التنفيذ فشل من غير /done)
     -- بترجع pending وتتعاد لحد 3 مرات، وبعدها تتعلّم stale بدل ما تفضل تتكرر للأبد.
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS attempts integer NOT NULL DEFAULT 0;
+    -- «الموقع» اللى المهمة بتشتغل عليه — الطابور بينفّذ مهمة واحدة لكل موقع فى نفس الوقت،
+    -- والمواقع المختلفة بتشتغل بالتوازى (مثلاً قياس DZS مع مراجعة FCC مع بعض).
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS site text NOT NULL DEFAULT 'dzs';
   `);
+  // ضبط الموقع للمهام القديمة اللى اتسجّلت قبل إضافة العمود
+  await pool.query(`UPDATE exec_jobs SET site = 'fcc' WHERE type = 'subinfo' AND site <> 'fcc'`);
 
   // إسناد ثابت: كود الكابينة 11-2-26-02 يتبع نفس فنى الكابينة 11-2-26-102.
   // (يُنفَّذ بعد إنشاء cabinet_technicians + technician_names، ولا يستبدل أى إسناد يدوى لاحق.)

@@ -632,6 +632,10 @@ export const execJobs = pgTable("exec_jobs", {
   queueOrder: bigint("queue_order", { mode: "number" }).notNull().default(0), // ترتيب يدوى داخل نفس الأولوية (السوبر أدمن)
   pausedAt: timestamp("paused_at"), // إيقاف مؤقت (سوبر أدمن) — جهاز التنفيذ يتخطّى المهام دى ويكمّل التالى
   attempts: integer("attempts").notNull().default(0), // عدد مرات إعادة المحاولة بعد التعليق فى claimed (حد أقصى 3 ثم stale)
+  // «الموقع» اللى المهمة بتشتغل عليه: dzs (القياس/رفع السرعة/الإيقاف) | fcc (مراجعة
+  // الاسم والعنوان) | … — الطابور بينفّذ مهمة واحدة **لكل موقع** فى نفس الوقت، لكن
+  // مواقع مختلفة بتشتغل بالتوازى.
+  site: text("site").notNull().default("dzs"),
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

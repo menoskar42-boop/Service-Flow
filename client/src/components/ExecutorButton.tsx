@@ -147,6 +147,12 @@ export function ExecutorButton() {
       return stopped ? "stopped" : "timeout";
     };
 
+    // الطابور بيشتغل بمسارات: مهمة واحدة لكل **موقع** فى نفس الوقت، ومواقع مختلفة بالتوازى
+    // (السيرفر هو اللى بيضمن ده فى claim). هنا بنمنع بس إن أكتر من طلب claim يتبعت مع بعض،
+    // وبعدها بنشغّل المهمة **من غير انتظار** عشان مسار تانى يقدر يبدأ.
+    const running = new Map<string, string>();   // site → وصف المهمة الجارية
+    const showRunning = () => setCurrent([...running.values()].join(" • "));
+
     const claimAndRun = async () => {
       if (busy.current || stopped) return;
       busy.current = true;
@@ -155,27 +161,34 @@ export function ExecutorButton() {
         const job: ExecJob | null = r.ok ? await r.json() : null;
         if (job && job.id) {
           const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
-          let result: string | null = null;
-          if (accs.length && !stopped) {
-            const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف"
-              : job.type === "subinfo" ? "مراجعة اسم/عنوان" : "رفع سرعة";
-            setCurrent(`${label} (${accs.length} رقم)`);
-            result = await runBatch(job.type, accs, job.id, job.note); // الجوب كله دفعة واحدة
-          }
-          if (result === "preempted") {
-            // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
-            await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});
-          } else if (result === "canceled") {
-            // اتمسحت من الطابور يدوياً (بقت stale أصلاً) → مانعملش حاجة
-          } else {
-            // نبعت نتيجة التنفيذ مع علامة الانتهاء عشان اللوحة تعرف: خلص ولا اتقفل قبل ما يخلص
-            await fetch(`/api/exec-queue/${job.id}/done`, {
-              method: "POST", credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ result }),
-            }).catch(() => {});
-          }
-          setCurrent("");
+          const site = String((job as any).site || (job.type === "subinfo" ? "fcc" : "dzs"));
+          const label = job.type === "measure" ? "قياس" : job.type === "stop" ? "إيقاف"
+            : job.type === "subinfo" ? "مراجعة اسم/عنوان" : "رفع سرعة";
+          running.set(site, `${label} (${accs.length} رقم)`);
+          showRunning();
+          // بدون await — مسار الموقع ده بيشتغل لوحده، وحلقة السحب تقدر تجيب مهمة لموقع تانى
+          void (async () => {
+            let result: string | null = null;
+            try {
+              if (accs.length && !stopped) result = await runBatch(job.type, accs, job.id, job.note);
+              if (result === "preempted") {
+                // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
+                await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});
+              } else if (result === "canceled") {
+                // اتمسحت من الطابور يدوياً (بقت stale أصلاً) → مانعملش حاجة
+              } else {
+                // نبعت نتيجة التنفيذ مع علامة الانتهاء عشان اللوحة تعرف: خلص ولا اتقفل قبل ما يخلص
+                await fetch(`/api/exec-queue/${job.id}/done`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ result }),
+                }).catch(() => {});
+              }
+            } catch {} finally {
+              running.delete(site);
+              showRunning();
+            }
+          })();
         }
       } catch {} finally { busy.current = false; }
     };

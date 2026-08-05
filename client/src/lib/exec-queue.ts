@@ -8,7 +8,7 @@ import { openProfileOptimization } from "./profile-optimization";
 // subinfo = مراجعة اسم/عنوان العميل من FCC (زر «مراجعة» فى بحث برقم التليفون).
 // «الأرقام» فيه أرقام تليفون مش أرقام أكونت.
 export type ExecJobType = "raise" | "stop" | "measure" | "subinfo";
-export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; }
+export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; site?: string | null; }
 
 // مصدر «بحث برقم التليفون» — القياس اللى بييجى منه بيختار «A recent fix (past 24h)» فى شاشة DZS.
 export const PHONE_LOOKUP_SOURCE = "بحث برقم التليفون";

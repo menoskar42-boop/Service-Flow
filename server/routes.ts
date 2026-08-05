@@ -1418,6 +1418,13 @@ export async function registerRoutes(
     if (req.isAuthenticated() && req.user.role === ROLES.SUPER_ADMIN) return next();
     res.status(403).json({ message: "Super admin only" });
   };
+  // «الموقع» اللى كل نوع مهمة بيشتغل عليه. الطابور بينفّذ مهمة واحدة **لكل موقع** فى نفس
+  // الوقت (عشان صفحتين من نفس الموقع مايتعارضوش)، لكن مواقع مختلفة بتشتغل بالتوازى.
+  const SITE_OF_TYPE: Record<string, string> = {
+    measure: "dzs", raise: "dzs", stop: "dzs",   // بوابة DZS/PO الداخلية
+    subinfo: "fcc",                               // FCC Complains
+  };
+
   // نبضة جهاز التنفيذ (كل ~20ث) — تُخزَّن فى app_state
   app.post("/api/exec-queue/heartbeat", requireAuth, requireSuperAdmin, async (req: any, res) => {
     try {
@@ -1460,10 +1467,11 @@ export async function registerRoutes(
       const isNeedsSpeed = /محتاجة رفع سرعة/.test(String(note || ""));
       const priority = uniqAccs.length <= 3 ? 2 : (isNeedsSpeed ? 1 : 0);
       const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-      const params: any[] = [type, user, note || null, priority, batchId];
-      const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4, $5)`; }).join(",");
+      const site = SITE_OF_TYPE[type] || "dzs";
+      const params: any[] = [type, user, note || null, priority, batchId, site];
+      const valueSql = uniqAccs.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4, $5, $6)`; }).join(",");
       const { rows } = await pool.query(
-        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id) VALUES ${valueSql} RETURNING id`,
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site) VALUES ${valueSql} RETURNING id`,
         params);
       res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length, batchId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -1476,12 +1484,17 @@ export async function registerRoutes(
       await expireOrphanedExecJobs();
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
-         WHERE id = (SELECT id FROM exec_jobs WHERE status = 'pending' AND paused_at IS NULL
-                     ORDER BY priority DESC,
-                              CASE WHEN queue_order > 0 THEN queue_order ELSE 9223372036854775807 END ASC,
-                              created_at, id
-                     LIMIT 1 FOR UPDATE SKIP LOCKED)
-         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority`);
+         WHERE id = (SELECT e.id FROM exec_jobs e
+                      WHERE e.status = 'pending' AND e.paused_at IS NULL
+                        -- الموقع لازم يكون فاضى: مفيش مهمة شغّالة عليه دلوقتى
+                        AND NOT EXISTS (SELECT 1 FROM exec_jobs b
+                                         WHERE b.status = 'claimed'
+                                           AND COALESCE(b.site, 'dzs') = COALESCE(e.site, 'dzs'))
+                      ORDER BY e.priority DESC,
+                               CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
+                               e.created_at, e.id
+                      LIMIT 1 FOR UPDATE SKIP LOCKED)
+         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site`);
       res.json(rows[0] || null);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
