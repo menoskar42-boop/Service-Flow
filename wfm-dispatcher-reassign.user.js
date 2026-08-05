@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.2.7
+// @version      1.2.8
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -265,21 +265,31 @@
       const b = el.getBoundingClientRect();
       return b.top <= mid && b.bottom >= mid;                 // على نفس ارتفاع الصف
     };
-    // (1) الأدق: زر قائمة ADF فى شاشة Tasks Queue بياخد id زى
-    //     pt:mr:0:pt:TasksQueuePC:TasksQueueTab:<رقم الصف>:m10 ومعاه aria-haspopup.
-    const byId = qAllDocs("[id*='TasksQueueTab'][aria-haspopup='true'], [id*='TasksQueueTab'][role='menuitem']")
-      .filter((el) => visible(el) && onRow(el));
-    if (byId.length) { lastRowIcons = byId.map((el) => String(el.id || "menuitem").slice(0, 60)); return byId; }
+    // من DevTools: الـ id بتاع TasksQueueTab موجود على العنصر **الأب** (role="presentation")،
+    // و aria-haspopup على العنصر الجوّانى اللى id بتاعه رقم عشوائى. فبندوّر على العنصر
+    // اللى بيفتح قائمة فعلاً، وبنحصره فى أقصى شمال الصف (منطقة الأعمدة المجمّدة).
+    const leftLimit = r.left + 220;
+    const inLeftBand = (el) => el.getBoundingClientRect().left <= leftLimit;
 
-    // (2) وإلا: أيقونات صغيرة على نفس ارتفاع الصف — **وفى أقصى شمال الصف فقط**.
+    // (1) الأدق: عنصر بيفتح قائمة منبثقة، على نفس ارتفاع الصف وفى شماله
+    const popups = qAllDocs("[aria-haspopup='true'], [role='menuitem']")
+      .filter((el) => visible(el) && onRow(el) && inLeftBand(el));
+    if (popups.length) {
+      lastRowIcons = popups.map((el) => {
+        const holder = el.closest ? el.closest("[id*='TasksQueueTab']") : null;
+        return String((holder && holder.id) || el.id || "menuitem").slice(0, 60);
+      });
+      return popups;
+    }
+
+    // (2) وإلا: أيقونات صغيرة على نفس ارتفاع الصف — وفى أقصى شماله برضه.
     //     من غير الحد ده كان بيمسك أيقونة من آخر الصف (زى زر الخريطة فى عمود Longitude)
     //     ويفتح «Organization Location» بدل القائمة.
-    const leftLimit = r.left + 220;
     let cands = qAllDocs("[aria-haspopup='true'], [role='menuitem'], a, button, img, [role='button']").filter((el) => {
       if (!visible(el)) return false;
       const b = el.getBoundingClientRect();
       if (b.width > 80 || b.height > 44) return false;       // أيقونة/زر صغير
-      if (b.left > leftLimit) return false;                   // مش من الأعمدة المجمّدة
+      if (!inLeftBand(el)) return false;                      // مش من الأعمدة المجمّدة
       return onRow(el);
     });
     if (!cands.length) return null;
