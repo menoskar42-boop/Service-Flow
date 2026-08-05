@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.2.3
+// @version      1.2.4
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -254,7 +254,7 @@
     return [el.id, el.title, el.getAttribute && el.getAttribute("aria-label"),
       el.getAttribute && el.getAttribute("alt"), el.src, cls].map((x) => String(x || "")).join(" ");
   }
-  function findRowMenuButton(tr) {
+  function findRowMenuButtons(tr) {
     let r; try { r = tr.getBoundingClientRect(); } catch (e) { return null; }
     if (!r || !r.height) return null;
     const mid = r.top + r.height / 2;
@@ -275,7 +275,9 @@
       return { el, score, left: el.getBoundingClientRect().left };
     });
     scored.sort((a, b) => (b.score - a.score) || (a.left - b.left));
-    return scored[0] && scored[0].score > -10 ? scored[0].el : null;
+    // بنرجّع كل المرشّحين بالترتيب — أيقونة القائمة أحياناً بتبقى أيقونة + سهم صغير جنبها،
+    // فلو الأولى مافتحتش القائمة نجرّب اللى بعدها بدل ما نستسلم.
+    return scored.filter((x) => x.score > -10).map((x) => x.el);
   }
   let lastRowIcons = [];
 
@@ -429,12 +431,20 @@
       for (let i = 0; i < candidates.length; i++) {
         const row = candidates[i];
         logln("↪️ سطر " + (i + 1) + " (" + row.status + (row.workOrderId ? " / WO " + row.workOrderId : "") + ")");
-        const menuBtn = findRowMenuButton(row.tr);
-        if (!menuBtn) { logln("   … مش لاقى سهم القائمة."); continue; }
-        const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
-        fireClick(menuBtn);
-        await waitIdle(8000);
-        const item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 6000);
+        const menuBtns = findRowMenuButtons(row.tr);
+        if (!menuBtns.length) { logln("   … مش لاقى أيقونة القائمة."); continue; }
+        let item = null;
+        for (let k = 0; k < Math.min(menuBtns.length, 3) && !item; k++) {
+          const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
+          fireClick(menuBtns[k]);
+          await waitIdle(8000);
+          item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 5000);
+          if (!item && k + 1 < Math.min(menuBtns.length, 3)) {
+            logln("   … الأيقونة " + (k + 1) + " مافتحتش القائمة — بجرّب اللى بعدها.");
+            try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
+            await sleep(600);
+          }
+        }
         if (!item) {
           logln("   … القائمة مافتحتش أو مفيش Cancel.");
           if (lastRowIcons.length) logln("   🔎 أيقونات الصف: " + lastRowIcons.join(" | "));
