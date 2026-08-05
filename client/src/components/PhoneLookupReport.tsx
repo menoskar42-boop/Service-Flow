@@ -632,7 +632,7 @@ export function PhoneLookupReport() {
               title="جلب اسم وعنوان هذا الرقم من FCC — بيتضاف لطابور التنفيذ زى القياس ورفع السرعة"
             >
               {reviewBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserSearch className="w-4 h-4" />}
-              مراجعة
+              مراجعة البيان الفنى
             </Button>
           )}
           {line && canFlagFault && (
