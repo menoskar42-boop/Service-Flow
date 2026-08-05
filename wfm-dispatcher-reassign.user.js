@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         WFM Dispatcher — Re-assign بتاريخ اليوم
+// @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  يفتح Dispatcher على wfm.te.eg، يسجّل الدخول لو ظهرت شاشة اللوجين، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Re-assign، يضبط التاريخ على تاريخ اليوم، ثم Assign.
-// @version      1.0.0
+// @description  يفتح Dispatcher على wfm.te.eg، يسجّل الدخول لو ظهرت شاشة اللوجين، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.1.0
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -88,23 +88,6 @@
     try { el.blur(); } catch (e) {}
   }
 
-  // تاريخ اليوم بصيغة الشاشة: dd-MM-yyyy (زى 05-08-2026)
-  function todayDDMMYYYY() {
-    const d = new Date(); const p = (n) => String(n).padStart(2, "0");
-    return p(d.getDate()) + "-" + p(d.getMonth() + 1) + "-" + d.getFullYear();
-  }
-  // مقارنة تاريخين مهما كان الفاصل (- أو /) — بنقارن الأرقام نفسها
-  function sameDay(str) {
-    const nums = String(str || "").match(/\d+/g);
-    if (!nums || nums.length < 3) return false;
-    const d = new Date(); const p = (n) => String(n).padStart(2, "0");
-    const want = [p(d.getDate()), p(d.getMonth() + 1), String(d.getFullYear())];
-    const got = nums.map((x) => (x.length === 4 ? x : x.padStart(2, "0")));
-    // نقبل dd-MM-yyyy أو yyyy-MM-dd
-    return (got[0] === want[0] && got[1] === want[1] && got[2] === want[2])
-        || (got[0] === want[2] && got[1] === want[1] && got[2] === want[0]);
-  }
-
   /* ================== واجهة السكربت ================== */
   let bar, logBox, panel;
   function banner(msg, color) {
@@ -117,10 +100,10 @@
     }
     bar.style.background = color || "#0d47a1";
     bar.textContent = msg;
-    console.log("[REASSIGN]", msg);
+    console.log("[WFM-CANCEL]", msg);
   }
   function logln(msg) {
-    console.log("[REASSIGN]", msg);
+    console.log("[WFM-CANCEL]", msg);
     if (!logBox) return;
     const d = document.createElement("div");
     d.textContent = msg;
@@ -135,7 +118,7 @@
       "background:#fff;border:2px solid #0d47a1;border-radius:10px;padding:10px;direction:rtl;" +
       "font:13px Arial;box-shadow:0 4px 16px rgba(0,0,0,.3)";
     panel.innerHTML =
-      '<div style="font-weight:bold;color:#0d47a1;margin-bottom:6px">🔁 إعادة إسناد المهمة (Re-assign)</div>' +
+      '<div style="font-weight:bold;color:#0d47a1;margin-bottom:6px">🚫 إلغاء المهمة (Cancel)</div>' +
       '<div style="display:flex;gap:6px;margin-bottom:6px">' +
       '  <input id="sfrsInput" placeholder="Service Id (مثال: 2653614)" ' +
       '     style="flex:1;padding:6px;border:1px solid #bbb;border-radius:6px;font:13px Arial" />' +
@@ -262,12 +245,17 @@
     return false;
   }
 
-  function findMenuItem(re) {
-    return qAllDocs("a, div, span, li, td").find((el) => {
+  function matchingItems(re) {
+    return qAllDocs("a, div, span, li, td").filter((el) => {
       if (!visible(el)) return false;
       const t = txt(el);
       return t && t.length <= 40 && re.test(t);
-    }) || null;
+    });
+  }
+  // «Cancel» موجودة كمان كزر عادى فى مكان تانى فى الصفحة — فبناخد **اللى ظهر جديد**
+  // بعد فتح قائمة السطر بس، عشان مانضغطش على زر غلط.
+  function findNewMenuItem(re, before) {
+    return matchingItems(re).find((el) => before.indexOf(el) < 0) || null;
   }
 
   /* ================== التدفّق الرئيسى ================== */
@@ -326,63 +314,47 @@
         logln("↪️ سطر " + (i + 1) + " (" + row.status + (row.workOrderId ? " / WO " + row.workOrderId : "") + ")");
         const menuBtn = findRowMenuButton(row.tr);
         if (!menuBtn) { logln("   … مش لاقى سهم القائمة."); continue; }
+        const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
         fireClick(menuBtn);
-        const item = await waitFor(() => findMenuItem(/^\s*re-?\s*assign\s*$/i), 6000);
-        if (!item) { logln("   … القائمة مافتحتش أو مفيش Re-assign."); continue; }
+        const item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 6000);
+        if (!item) { logln("   … القائمة مافتحتش أو مفيش Cancel."); continue; }
         if (isDisabled(item)) {
-          logln("   ⚠️ Re-assign معطّلة فى السطر ده — بجرّب اللى بعده.");
+          logln("   ⚠️ Cancel معطّلة فى السطر ده — بجرّب اللى بعده.");
           try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
           await sleep(600);
           continue;
         }
         fireClick(item);
-        logln("   ✅ اتضغط Re-assign.");
+        logln("   ✅ اتضغط Cancel.");
         opened = true;
         break;
       }
-      if (!opened) { banner("⚠️ Re-assign مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); return; }
+      if (!opened) { banner("⚠️ Cancel مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); return; }
 
-      // (7) نافذة «Cancel Dispatch then Re-assign Task To»
-      banner("⏳ فى انتظار نافذة إعادة الإسناد…");
-      const dlgOk = await waitFor(() => /re-?\s*assign\s+task\s+to/i.test(document.body.innerText || ""), 12000);
-      if (!dlgOk) { banner("❌ نافذة إعادة الإسناد مافتحتش.", "#c62828"); return; }
-
-      // (8) خانة التاريخ (* On) — نتأكد إنها تاريخ اليوم، وإلا نظبطها
-      const dateInp = await waitFor(() => {
-        const cands = qAllDocs("input[type='text'], input:not([type])").filter(visible);
-        // خانة التاريخ = اللى قيمتها على شكل تاريخ
-        return cands.find((i) => /^\s*\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\s*$/.test(String(i.value || ""))) || null;
-      }, 8000);
-      if (dateInp) {
-        const cur = String(dateInp.value || "").trim();
-        if (sameDay(cur)) {
-          logln("📅 التاريخ تاريخ اليوم بالفعل (" + cur + ").");
-        } else {
-          const want = todayDDMMYYYY();
-          logln("📅 التاريخ كان " + cur + " → بغيّره لـ " + want + ".");
-          setValue(dateInp, want);
-          await sleep(600);
-          if (!sameDay(dateInp.value)) logln("⚠️ التاريخ مااتغيّرش (" + dateInp.value + ") — كمّل بحذر.");
-        }
+      // (7) بعض الشاشات بتطلب تأكيد بعد Cancel — لو ظهرت نافذة تأكيد نضغط الموافقة.
+      //     مش كل الحالات بتطلبها، فلو مظهرتش نكمّل عادى.
+      await sleep(1200);
+      const confirmBtn = findByText("button, a, input[type='submit'], span[role='button']",
+        /^\s*(yes|ok|confirm|submit|نعم|موافق|تأكيد)\s*$/i, 20);
+      if (confirmBtn && !isDisabled(confirmBtn)) {
+        fireClick(confirmBtn);
+        logln("✅ اتضغط زر التأكيد (" + txt(confirmBtn) + ").");
+        await sleep(1200);
       } else {
-        logln("⚠️ مش لاقى خانة التاريخ — هكمّل من غير تعديلها.");
+        logln("ℹ️ مفيش نافذة تأكيد — الإلغاء اتنفّذ مباشرةً.");
       }
 
-      // (9) Assign
-      await sleep(400);
-      const assignBtn = findByText("button, a, input[type='submit'], span[role='button']", /^\s*assign\s*$/i, 20);
-      if (!assignBtn) { banner("❌ مش لاقى زر Assign.", "#c62828"); return; }
-      fireClick(assignBtn);
-      logln("🚀 اتضغط Assign.");
-
-      // (10) نتأكد إن النافذة قفلت (علامة نجاح) بدل ما نفترض
-      const closed = await waitFor(() => !/re-?\s*assign\s+task\s+to/i.test(document.body.innerText || ""), 12000);
-      if (closed) {
-        banner("✅ تمت إعادة الإسناد للرقم " + serviceId + " بتاريخ اليوم.", "#2e7d32");
-        logln("✅ خلص — النافذة اتقفلت.");
+      // (8) نتأكد إن الحالة اتغيّرت فعلاً بدل ما نفترض النجاح: نعيد قراءة الجدول
+      const after = await waitFor(() => {
+        const r = readResultRows();
+        return r.length ? r : null;
+      }, 10000) || [];
+      const stillOk = after.filter((r) => OK_STATUSES.test(r.status.trim())).length;
+      logln("📋 بعد الإلغاء: " + (after.length ? after.map((r) => r.status).join(" ، ") : "(الجدول فاضى)"));
+      if (stillOk < candidates.length) {
+        banner("✅ تم إلغاء المهمة للرقم " + serviceId + ".", "#2e7d32");
       } else {
-        banner("⚠️ اتضغط Assign بس النافذة لسه مفتوحة — راجع الشاشة.", "#ef6c00");
-        logln("⚠️ النافذة مااتقفلتش خلال المهلة.");
+        banner("⚠️ اتضغط Cancel بس حالة السطر ما اتغيّرتش — راجع الشاشة.", "#ef6c00");
       }
     } catch (e) {
       banner("❌ خطأ: " + (e && e.message || e), "#c62828");
@@ -396,9 +368,9 @@
   function boot() {
     if (!document.body) { setTimeout(boot, 300); return; }
     buildPanel();
-    banner("⚙️ Dispatcher Re-assign — اكتب Service Id واضغط ابدأ.");
+    banner("⚙️ Dispatcher Cancel — اكتب Service Id واضغط ابدأ.");
     // تشغيل تلقائى لو الرقم اتبعت فى الهاش: #sf_reassign=2653614
-    const m = (location.hash || "").match(/sf_reassign=(\d+)/);
+    const m = (location.hash || "").match(/sf_(?:reassign|cancel)=(\d+)/);
     if (m) {
       const v = m[1];
       const inp = panel && panel.querySelector("#sfrsInput");
