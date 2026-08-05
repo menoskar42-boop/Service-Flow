@@ -388,14 +388,6 @@ export function PhoneLookupReport() {
   // «إلغاء مهمة WFM»: يفتح Dispatcher ومعاه الرقم فى الهاش، وسكربت التامبر منكى
   // (wfm-dispatcher-reassign.user.js) بيكمّل: بحث بالـ Service Id ← سطر Started/Assigned
   // ← Cancel من قائمة السطر. نافذة باسم ثابت للرقم عشان مايتفتحش تابات متكررة.
-  const cancelWfmTask = async () => {
-    const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
-    if (!sid) { alert("مفيش رقم للمتابعة"); return; }
-    // مسار wfm.te.eg واحد: إلغاء الإسناد وتقارير WFM وتحديث ملف أوامر الشغل مايفتحوش مع بعض.
-    if (await dispatchSpeedTool("wfmcancel", [sid], isSuper)) return;
-    openOpSite("wfmcancel", sid);
-  };
-
   const canFlagFault = isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL;
   const canRegularize = isSuper || user?.role === ROLES.TECH;
 
@@ -420,6 +412,40 @@ export function PhoneLookupReport() {
     staleTime: 5 * 60 * 1000,
   });
   const techOptions = Array.from(new Set((techList ?? []).map((t) => (t.techName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));
+
+  // «إلغاء الاسناد»: بنختار الفنى اللى هتتسند عليه المهمة **قبل** ما نفتح WFM. السبب إن
+  // WFM بيرفض إلغاء مهمة حالتها Started («Task already started»)، وساعتها السكربت بيعمل
+  // Re-assign بدل Cancel — وده محتاج كود العامل. الدروب ليست بتعرض اسم الفنى واحنا
+  // بنبعت كود العامل بتاعه للسكربت أوتوماتيك.
+  const [wfmOpen, setWfmOpen] = useState(false);
+  const [wfmMode, setWfmMode] = useState<"cancel" | "reassign">("cancel");
+  const [wfmTech, setWfmTech] = useState("");
+  const techByName = new Map((techList ?? []).map((t) => [(t.techName || "").trim(), (t.workerCode || "").trim()]));
+  const openCancelWfm = () => {
+    const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
+    if (!sid) { alert("مفيش رقم للمتابعة"); return; }
+    setWfmMode("cancel");
+    // الافتراضى للإسناد: فنى الخط نفسه لو معروف
+    const cur = (line?.techName || "").trim();
+    setWfmTech(techByName.has(cur) ? cur : "");
+    setWfmOpen(true);
+  };
+  const submitCancelWfm = async () => {
+    const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
+    const worker = (techByName.get(wfmTech) || "").trim();
+    if (wfmMode === "reassign") {
+      if (!wfmTech) { alert("اختر الفنى اللى هتتسند عليه المهمة"); return; }
+      if (!worker) { alert(`الفنى «${wfmTech}» مالوش كود عامل مسجّل — حدّثه من إدارة البيانات الفنية أولاً`); return; }
+    }
+    setWfmOpen(false);
+    // mode بيحدّد البند اللى السكربت هيضغطه فى قائمة السطر: Cancel أو Re-assign — مباشرةً،
+    // من غير ما يعمل الاتنين.
+    const params = wfmMode === "reassign" ? { mode: "reassign", worker, workerName: wfmTech } : { mode: "cancel" };
+    // مسار wfm.te.eg واحد: إلغاء الإسناد وتقارير WFM وتحديث ملف أوامر الشغل مايفتحوش مع بعض.
+    if (await dispatchSpeedTool("wfmcancel", [sid], isSuper, { params })) return;
+    openOpSite("wfmcancel", sid, params);
+  };
+
 
   const [regOpen, setRegOpen] = useState(false);
   const [regCode, setRegCode] = useState("");
@@ -776,9 +802,9 @@ export function PhoneLookupReport() {
               {isSuper && (
                 <Button
                   variant="outline"
-                  onClick={cancelWfmTask}
+                  onClick={openCancelWfm}
                   className="bg-white gap-2 text-rose-700 border-rose-300 hover:bg-rose-50"
-                  title="فتح WFM Dispatcher وإلغاء إسناد المهمة للرقم ده (Started/Assigned فقط) — سكربت التامبر منكى بيكمّل تلقائياً"
+                  title="إلغاء إسناد المهمة على WFM — تختار الفنى الأول، ولو WFM رفض الإلغاء (Task already started) السكربت يعمل Re-assign عليه"
                 >
                   <Ban className="w-4 h-4" />
                   إلغاء الاسناد
@@ -924,6 +950,61 @@ export function PhoneLookupReport() {
               <Button variant="outline" size="sm" onClick={() => setMsanOpen(false)}>إلغاء</Button>
               <Button size="sm" onClick={submitChangePort} className="bg-cyan-600 hover:bg-cyan-700 gap-1">
                 <ArrowLeftRight className="w-4 h-4" /> افتح البروفيزيونال
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* مودال «إلغاء الاسناد» — اختيار الفنى (وكود العامل بيتبعت للسكربت أوتوماتيك) */}
+      {wfmOpen && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setWfmOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold flex items-center gap-2"><Ban className="w-5 h-5 text-rose-700" /> مهمة WFM — {line?.telNo || phone}</h3>
+              <button onClick={() => setWfmOpen(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="grid gap-1">
+              <label className="text-sm text-muted-foreground">المطلوب</label>
+              <div className="flex flex-col gap-1 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" checked={wfmMode === "cancel"} onChange={() => setWfmMode("cancel")} />
+                  إلغاء الاسناد <span className="text-xs text-muted-foreground">(Cancel مباشرةً)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" checked={wfmMode === "reassign"} onChange={() => setWfmMode("reassign")} />
+                  اسناد لفنى آخر <span className="text-xs text-muted-foreground">(Re-assign مباشرةً)</span>
+                </label>
+              </div>
+            </div>
+            {wfmMode === "reassign" && (
+              <>
+                <div className="grid gap-1">
+                  <label className="text-sm text-muted-foreground">الفنى اللى هتتسند عليه المهمة *</label>
+                  <select value={wfmTech} onChange={(e) => setWfmTech(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
+                    <option value="">— اختر الفنى —</option>
+                    {techOptions.map((t) => (
+                      <option key={t} value={t}>{t}{techByName.get(t) ? ` (${techByName.get(t)})` : " — بدون كود عامل"}</option>
+                    ))}
+                  </select>
+                </div>
+                {wfmTech && <p className="text-xs">كود العامل: <b dir="ltr">{techByName.get(wfmTech) || "غير مسجّل"}</b></p>}
+                <p className="text-xs text-muted-foreground">
+                  السكربت هيضغط <b>Re-assign</b> على السطر، ويتأكد إن التاريخ تاريخ النهاردة وإن كود العامل
+                  هو المختار (ولو غلط بيدوّر عليه بالمكبّر ← Search ← OK) ثم يضغط <b>Assign</b>.
+                </p>
+              </>
+            )}
+            {wfmMode === "cancel" && (
+              <p className="text-xs text-muted-foreground">
+                السكربت هيضغط <b>Cancel</b> على السطر مباشرةً. ملحوظة: WFM بيرفض إلغاء مهمة حالتها
+                <span dir="ltr"> Started</span> — ساعتها استخدم «اسناد لفنى آخر».
+              </p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setWfmOpen(false)}>إلغاء</Button>
+              <Button size="sm" onClick={submitCancelWfm} className="bg-rose-700 hover:bg-rose-800 gap-1">
+                <Ban className="w-4 h-4" /> ابدأ على WFM
               </Button>
             </div>
           </div>

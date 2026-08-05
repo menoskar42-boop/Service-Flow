@@ -19,7 +19,13 @@ export type ExecJobType =
   | "portchange" | "portcheck" | "ports"
   | "wfmcancel" | "wfmreport"
   | "fccdaily" | "wfmdaily" | "ossdaily" | "weoas";
-export interface ExecJobParams { old?: string; new?: string; pt?: string; sp?: string }
+export interface ExecJobParams {
+  old?: string; new?: string; pt?: string; sp?: string;
+  /** مهمة WFM: "cancel" = إلغاء الاسناد | "reassign" = إسناد لفنى آخر */
+  mode?: string;
+  /** كود العامل للفنى المختار (لـ Re-assign) + اسمه للعرض فى السجل */
+  worker?: string; workerName?: string;
+}
 export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; site?: string | null; params?: ExecJobParams | null; }
 
 // مصدر «بحث برقم التليفون» — القياس اللى بييجى منه بيختار «A recent fix (past 24h)» فى شاشة DZS.
@@ -79,9 +85,14 @@ export function openOpSite(type: ExecJobType, key: string, params?: ExecJobParam
     }
     case "ports":
       return window.open(`${PROV_URL}?sf_ports=1#/login`, PROV_TAB);
-    case "wfmcancel":
-      // من WFM العادى: السكربت بيفتح قائمة المربعات ← Assignment and Dispatch ← Tasks Queue.
-      return window.open(`${WFM_HOME_URL}#sf_cancel=${encodeURIComponent(short)}`, WFM_TAB);
+    case "wfmcancel": {
+      // من WFM العادى: السكربت بيدخل Dispatcher ← Tasks Queue ← يبحث بالرقم.
+      // sf_mode بيحدّد البند: cancel أو reassign، وsf_worker كود العامل للإسناد.
+      const mode = String(params?.mode || "cancel");
+      const w = String(params?.worker || "").trim();
+      const extra = "&sf_mode=" + encodeURIComponent(mode) + (w ? "&sf_worker=" + encodeURIComponent(w) : "");
+      return window.open(`${WFM_HOME_URL}#sf_cancel=${encodeURIComponent(short)}${extra}`, WFM_TAB);
+    }
     case "wfmreport":  return window.open(WFM_REPORTS_URL, WFM_TAB);
     case "wfmdaily":   return window.open(WFM_LOGIN_URL, WFM_TAB);
     case "fccdaily":   return window.open(FCC_URL, "fcc_daily");

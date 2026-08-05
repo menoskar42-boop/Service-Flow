@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.8
+// @description  v1.4.0: وضعان بيتحددوا من Service-Flow قبل الفتح — «إلغاء الاسناد» يضغط Cancel مباشرةً، و«اسناد لفنى آخر» يضغط Re-assign مباشرةً ثم يظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Worker ← Search ← OK) ويضغط Assign. v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.4.0
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -595,7 +595,7 @@
   // فتح قائمة السطر. ADF بيرسم زر القائمة كمجموعة عناصر (أيقونة + سهم ▾) والـ handler
   // مش دايماً على العنصر صاحب الـ id — فبنجرّب كل عنصر قابل للضغط جوّه/حوالين الأيقونة،
   // **وبعد كل ضغطة بنتأكد** هل ظهرت «Cancel» جديدة ولا لأ (مش بنفترض إن الضغطة نفعت).
-  async function openRowMenu(tr) {
+  async function openRowMenu(tr, itemRe) {
     const holders = findRowMenuButtons(tr) || [];
     const targets = [];
     const push = (el) => { if (el && visible(el) && targets.indexOf(el) < 0) targets.push(el); };
@@ -613,7 +613,7 @@
     for (let i = 0; i < targets.length && i < 4; i++) {
       const el = targets[i];
       logln("   🖱 بجرّب " + (i + 1) + "/" + Math.min(targets.length, 4) + ": " + describeEl(el));
-      const item = await activateMenu(el);
+      const item = await activateMenu(el, itemRe);
       if (item) return item;
       try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
       await sleep(300);
@@ -668,8 +668,8 @@
   // «Cancel» ظهرت فعلاً ولا لأ. الترتيب: الطرق المجرَّبة من سكربت التصدير الأول
   // (click أصلى ← realClick ← dblclick)، وبعدها التفعيل بالكيبورد (بند role=menuitem
   // بـ tabindex بيتفتح بـ Enter/سهم لأسفل).
-  async function activateMenu(el) {
-    const CANCEL_RE = /^\s*cancel\s*$/i;
+  async function activateMenu(el, itemRe) {
+    const CANCEL_RE = itemRe || /^\s*cancel\s*$/i;
     const steps = [
       // من تسلسل كلاسات ADF فى التشخيص: hover (p_AFHoverTarget) ← mousedown
       // (p_AFDepressed) = القائمة بتفتح. يعنى الفتح على **mousedown بعد hover**، مش
@@ -706,6 +706,130 @@
     } catch (e) { logln("   🧬 تعذّر قراءة ماركب الصف: " + (e && e.message)); }
   }
 
+  /* ================== الإسناد لفنى آخر (Re-assign) ================== */
+  // نافذة WFM بتعرض التاريخ بصيغة DD-MM-YYYY (مثال: 05-08-2026 ليوم 5 أغسطس 2026).
+  function todayDMY() {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    return p(d.getDate()) + "-" + p(d.getMonth() + 1) + "-" + d.getFullYear();
+  }
+  // هل القيمة دى تاريخ النهاردة؟ بنقارن بالأرقام عشان نقبل أى فاصل (- أو /).
+  function isToday(v) {
+    const nums = String(v || "").match(/\d+/g);
+    if (!nums || nums.length < 3) return false;
+    const d = new Date(), dd = d.getDate(), mm = d.getMonth() + 1, yy = d.getFullYear();
+    const [a, b, c] = nums.map(Number);
+    return c === yy && ((a === dd && b === mm) || (a === mm && b === dd));
+  }
+  // نافذة بعنوان معيّن (نص العنوان بيبقى فى أول النافذة)
+  function dialogByTitle(re) {
+    const cands = qAllDocs("[role='dialog'], [id$='::_af_Z_window'], .AFZOrderLayer");
+    for (const el of cands) {
+      if (!visible(el) || isOurs(el)) continue;
+      if (re.test(txt(el))) return el;
+    }
+    return null;
+  }
+  const btnIn = (root, re) =>
+    qAll("button, a, input[type='submit'], input[type='button'], span[role='button'], div[role='button'], td", root)
+      .find((el) => visible(el) && !isDisabled(el) && re.test(txt(el) || el.value || "")) || null;
+
+  // بندوّر على خانة إدخال جنب عنوان معيّن جوّه نافذة
+  function inputNear(root, labelRe) {
+    const inputs = qAll("input[type='text'], input:not([type]), textarea", root).filter(visible);
+    if (!inputs.length) return null;
+    // العنصر اللى نصه العنوان، وبعدين أقرب input ليه فى الترتيب
+    const labels = qAll("label, span, div, td, th", root).filter((el) => visible(el) && labelRe.test(txt(el)) && txt(el).length <= 30);
+    for (const lab of labels) {
+      let box = lab;
+      for (let i = 0; i < 4 && box; i++, box = box.parentElement) {
+        const hit = qAll("input[type='text'], input:not([type]), textarea", box).filter(visible)[0];
+        if (hit) return hit;
+      }
+    }
+    return inputs[0];
+  }
+
+  // نافذة «Assign Task to Technician/Team»: نكتب كود العامل ← Search ← نختار السطر ← OK
+  async function pickWorkerByCode(code) {
+    const dlg = await waitFor(() => dialogByTitle(/assign\s*task\s*to\s*technician/i), 15000);
+    if (!dlg) { logln("   ❌ نافذة اختيار العامل مافتحتش."); return false; }
+    const wIn = inputNear(dlg, /^\s*worker\s*$/i);
+    if (!wIn) { logln("   ❌ مش لاقى خانة Worker فى نافذة الاختيار."); return false; }
+    setValue(wIn, code);
+    logln("   ⌨️ كتبت كود العامل " + code + " فى خانة Worker.");
+    const searchBtn = btnIn(dlg, /^\s*search\s*$/i);
+    if (!searchBtn) { logln("   ❌ مش لاقى زر Search."); return false; }
+    fireClick(searchBtn);
+    await waitIdle(20000);
+    // لازم يظهر سطر نتيجة فعلاً — «No data to display» معناها الكود غلط
+    const row = await waitFor(() => {
+      const t = txt(dlg);
+      if (/no\s*data\s*to\s*display/i.test(t)) return null;
+      return qAll("tr", dlg).find((tr) => visible(tr) && txt(tr).indexOf(code) >= 0) || null;
+    }, 12000);
+    if (!row) { logln("   ❌ البحث مارجّعش عامل بالكود " + code + "."); return false; }
+    fireClick(row);
+    await sleep(700);
+    const okBtn = btnIn(dlg, /^\s*ok\s*$/i);
+    if (!okBtn) { logln("   ❌ مش لاقى زر OK فى نافذة الاختيار."); return false; }
+    fireClick(okBtn);
+    await waitIdle(20000);
+    logln("   ✅ اتاختار العامل " + code + ".");
+    return true;
+  }
+
+  // نافذة «Cancel Dispatch then Re-assign Task To»: تاريخ النهاردة + كود العامل ثم Assign
+  async function doReassign(code) {
+    const dlg = await waitFor(() => dialogByTitle(/re-?assign\s*task\s*to/i), 20000);
+    if (!dlg) { banner("❌ نافذة Re-assign مافتحتش.", "#c62828"); return false; }
+    logln("🪟 اتفتحت نافذة Re-assign.");
+
+    // (أ) التاريخ لازم يكون النهاردة
+    const dateIn = inputNear(dlg, /^\s*\*?\s*on\s*$/i);
+    if (dateIn) {
+      const cur = dateIn.value || "";
+      if (isToday(cur)) { logln("   📅 التاريخ صح (" + cur + ")."); }
+      else { setValue(dateIn, todayDMY()); logln("   📅 التاريخ كان " + (cur || "فاضى") + " → بقى " + todayDMY() + "."); }
+    } else { logln("   ⚠️ مش لاقى خانة التاريخ — بكمّل."); }
+
+    // (ب) كود العامل لازم يكون المطلوب — الحقل ساعات نص مش input، فبنقرا نص النافذة كمان
+    const workerIn = inputNear(dlg, /^\s*worker\s*$/i);
+    const shown = String((workerIn && workerIn.value) || "").trim();
+    const dlgText = txt(dlg);
+    const already = (shown && shown === code) || new RegExp("worker\\s*" + code + "\\b", "i").test(dlgText);
+    if (already) {
+      logln("   👷 كود العامل صح (" + code + ").");
+    } else {
+      logln("   👷 كود العامل الظاهر «" + (shown || "؟") + "» مش المطلوب (" + code + ") — بفتح نافذة البحث.");
+      // علامة المكبّر جنب خانة Worker
+      const mag = qAll("a, img, button, div[role='button'], span[role='button']", dlg)
+        .filter((el) => visible(el) && !isDisabled(el))
+        .filter((el) => {
+          const meta = [el.id, el.title, el.getAttribute && el.getAttribute("aria-label"), el.alt, el.src,
+            String(el.className || "")].map((x) => String(x || "")).join(" ");
+          return /search|lov|magnif|find|بحث/i.test(meta);
+        });
+      let opened = false;
+      for (const m of mag.slice(0, 4)) {
+        logln("   🔍 بجرّب زر البحث: " + describeEl(m));
+        fireClick(m);
+        await waitIdle(10000);
+        if (dialogByTitle(/assign\s*task\s*to\s*technician/i)) { opened = true; break; }
+      }
+      if (!opened) { banner("❌ مش لاقى زر البحث (المكبّر) جنب Worker.", "#c62828"); return false; }
+      if (!(await pickWorkerByCode(code))) { banner("❌ تعذّر اختيار العامل " + code + ".", "#c62828"); return false; }
+    }
+
+    // (ج) Assign
+    const dlg2 = dialogByTitle(/re-?assign\s*task\s*to/i) || dlg;
+    const assignBtn = btnIn(dlg2, /^\s*assign\s*$/i);
+    if (!assignBtn) { banner("❌ مش لاقى زر Assign.", "#c62828"); return false; }
+    fireClick(assignBtn);
+    logln("   ✅ اتضغط Assign.");
+    await waitIdle(25000);
+    return true;
+  }
+
   /* ================== التدفّق الرئيسى ================== */
   // الرقم المطلوب إلغاؤه بيعيش عبر أكتر من تحميل صفحة (WorkOrder → Dispatcher → Tasks
   // Queue)، فبنخزّنه فى sessionStorage. القاعدة: **مانمسحوش إلا عند نهاية مؤكّدة** —
@@ -713,13 +837,15 @@
   const PENDING_KEY = "sf_wfm_cancel_pending";
   const PENDING_TS_KEY = "sf_wfm_cancel_pending_ts";
   const PENDING_HOPS_KEY = "sf_wfm_cancel_hops";
+  const MODE_KEY = "sf_wfm_cancel_mode";       // cancel | reassign
+  const WORKER_KEY = "sf_wfm_cancel_worker";   // كود العامل للإسناد
   const PENDING_MAX_AGE = 15 * 60 * 1000;   // رقم قديم مايتنفّذش لوحده بعد ربع ساعة
   const PENDING_MAX_HOPS = 8;               // حد أقصى لعدد تحميلات الصفحة قبل ما نستسلم
   function setPending(id) {
     try { sessionStorage.setItem(PENDING_KEY, String(id)); sessionStorage.setItem(PENDING_TS_KEY, String(Date.now())); } catch (e) {}
   }
   function clearPending() {
-    try { sessionStorage.removeItem(PENDING_KEY); sessionStorage.removeItem(PENDING_TS_KEY); sessionStorage.removeItem(PENDING_HOPS_KEY); } catch (e) {}
+    try { [PENDING_KEY, PENDING_TS_KEY, PENDING_HOPS_KEY, MODE_KEY, WORKER_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
   }
   function getPending() {
     try {
@@ -735,6 +861,12 @@
   // يكمّل عليه بعد التحميل بدل ما يضيع.
   let navigating = false;
   async function runFlow(serviceId) {
+    // الوضع المطلوب: إلغاء الاسناد (Cancel) أو إسناد لفنى آخر (Re-assign) — بيتحدّد من
+    // موقعنا قبل ما نفتح WFM، فالسكربت بيضغط البند المطلوب مباشرةً من غير ما يعمل الاتنين.
+    let MODE = "cancel", WORKER = "";
+    try { MODE = sessionStorage.getItem(MODE_KEY) || "cancel"; WORKER = sessionStorage.getItem(WORKER_KEY) || ""; } catch (e) {}
+    const WANTED_RE = MODE === "reassign" ? /^\s*re-?\s*assign\s*$/i : /^\s*cancel\s*$/i;
+    const WANTED_LABEL = MODE === "reassign" ? "Re-assign" : "Cancel";
     if (running) { banner("⏳ فيه عملية شغّالة بالفعل…", "#ef6c00"); return; }
     running = true;
     try {
@@ -809,26 +941,32 @@
       for (let i = 0; i < candidates.length; i++) {
         const row = candidates[i];
         logln("↪️ سطر " + (i + 1) + " (" + row.status + (row.workOrderId ? " / WO " + row.workOrderId : "") + ")");
-        const item = await openRowMenu(row.tr);
+        const item = await openRowMenu(row.tr, WANTED_RE);
         if (!item) {
-          logln("   … القائمة مافتحتش أو مفيش Cancel.");
+          logln("   … القائمة مافتحتش أو مفيش «" + WANTED_LABEL + "».");
           if (lastRowIcons.length) logln("   🔎 أيقونات الصف: " + lastRowIcons.join(" | "));
           dumpRowMarkup(row.tr);
           continue;
         }
         if (isDisabled(item)) {
-          logln("   ⚠️ Cancel معطّلة فى السطر ده — بجرّب اللى بعده.");
+          logln("   ⚠️ «" + WANTED_LABEL + "» معطّلة فى السطر ده — بجرّب اللى بعده.");
           try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
           await sleep(600);
           continue;
         }
         fireClick(item);
         await waitIdle(15000);
-        logln("   ✅ اتضغط Cancel.");
+        logln("   ✅ اتضغط «" + WANTED_LABEL + "».");
         opened = true;
         break;
       }
-      if (!opened) { banner("⚠️ Cancel مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); clearPending(); return; }
+      if (!opened) { banner("⚠️ «" + WANTED_LABEL + "» مش متاحة فى أى سطر مؤهّل.", "#ef6c00"); clearPending(); return; }
+
+      // (6ب) وضع الإسناد لفنى آخر: نافذة «Cancel Dispatch then Re-assign Task To»
+      if (MODE === "reassign") {
+        const ok = await doReassign(WORKER);
+        if (!ok) { clearPending(); return; }   // doReassign بيعرض سبب الفشل بنفسه
+      }
 
       // (7) بعد Cancel ممكن تظهر نافذة تأكيد وممكن تظهر نافذة رسالة من WFM — بنضغط
       //     زر الموافقة (OK/Yes/موافق) وخلاص، من غير ما نقرا نص الرسالة. وممكن تظهر
@@ -857,11 +995,14 @@
       if (stillOk < candidates.length) {
         // بنبلّغ Service-Flow إن الإلغاء اتم — السيرفر بيسجّل «مين طلبه» من op_intents
         // (نفس أسلوب القياس ورفع السرعة) عشان يظهر فى سجل العمليات.
-        const rep = await sfReportCancel(serviceId, (candidates[0] && candidates[0].status) || "");
-        banner("✅ تم إلغاء المهمة للرقم " + serviceId + "." + (rep.ok ? "" : " (⚠️ التسجيل فى Service-Flow فشل: " + rep.error + ")"),
+        const st = ((candidates[0] && candidates[0].status) || "") +
+          (MODE === "reassign" ? " → re-assigned to " + WORKER : " → canceled");
+        const rep = await sfReportCancel(serviceId, st);
+        const what = MODE === "reassign" ? "تم إسناد المهمة للعامل " + WORKER : "تم إلغاء إسناد المهمة";
+        banner("✅ " + what + " للرقم " + serviceId + "." + (rep.ok ? "" : " (⚠️ التسجيل فى Service-Flow فشل: " + rep.error + ")"),
                rep.ok ? "#2e7d32" : "#ef6c00");
       } else {
-        banner("⚠️ اتضغط Cancel بس حالة السطر ما اتغيّرتش — راجع الشاشة.", "#ef6c00");
+        banner("⚠️ اتضغط «" + WANTED_LABEL + "» بس حالة السطر ما اتغيّرتش — راجع الشاشة.", "#ef6c00");
       }
       clearPending();   // نهاية مؤكّدة (نجاح أو ضغطة اتنفّذت) — مايتكررش لوحده
     } catch (e) {
@@ -891,6 +1032,13 @@
     const m = (location.hash || "").match(/sf_(?:reassign|cancel)(?:=|%3D)(\d+)/i);
     let pending = m ? m[1] : "";
     if (pending) setPending(pending); else pending = getPending();
+    // الوضع وكود العامل بييجوا فى نفس الهاش: #sf_cancel=2746124&sf_mode=reassign&sf_worker=347817
+    const mm = (location.hash || "").match(/sf_mode(?:=|%3D)(cancel|reassign)/i);
+    const mw = (location.hash || "").match(/sf_worker(?:=|%3D)(\d+)/i);
+    try {
+      if (mm) sessionStorage.setItem(MODE_KEY, mm[1].toLowerCase());
+      if (mw) sessionStorage.setItem(WORKER_KEY, mw[1]);
+    } catch (e) {}
     // حد أقصى لعدد تحميلات الصفحة على نفس الطلب — يمنع اللف فى دايرة لو حاجة اتغيّرت
     if (pending) {
       let hops = 0; try { hops = Number(sessionStorage.getItem(PENDING_HOPS_KEY)) || 0; } catch (e) {}
