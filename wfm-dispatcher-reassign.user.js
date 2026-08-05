@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK — من v1.3.8 كان بيضغط OK فوراً فمابتلحقش تتشاف.
-// @version      1.5.1
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.2: التحقق من النتيجة بيجمّع كل الحالات المميّزة لأمر الشغل بدل أول واحد يقابله (الصف بيتكرّر 6 مرات فى قراءة ADF ونسخة قديمة كانت بتخفى النجاح). v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.2
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -1129,15 +1129,21 @@
         const r = readResultRows();
         return r.length ? r : null;
       }, 10000) || [];
-      logln("📋 بعد التنفيذ: " + (after.length ? after.map((r) => r.workOrderId + "=" + r.status).join(" ، ") : "(الجدول فاضى)"));
-      // التحقق بقى على **نفس الصف** (بصمته رقم أمر الشغل) بدل عدّ كل الصفوف: الصف
-      // اختفى من النتائج، أو حالته اتغيّرت = العملية اتنفّذت.
+      // نفس أمر الشغل بيتكرّر فى القراءة: ADF بيقسّم الجدول لجزء مجمّد وجزء متحرّك
+      // (كل صف بيطلع مرتين)، وبيسيب نسخ قديمة فى الـ DOM. فبنجمّع الحالات المميّزة
+      // لكل أمر شغل بدل ما ناخد أول واحد يقابلنا — اللى كان بيقع على نسخة قديمة.
+      const uniq = [...new Set(after.map((r) => r.workOrderId + "=" + r.status))];
+      logln("📋 بعد التنفيذ: " + (uniq.length ? uniq.join(" ، ") : "(الجدول فاضى)"));
       const wo = (candidates[0] && candidates[0].workOrderId) || "";
       const beforeStatus = ((candidates[0] && candidates[0].status) || "").trim();
-      const same = wo ? after.find((r) => r.workOrderId === wo) : null;
+      const matches = wo ? after.filter((r) => r.workOrderId === wo) : [];
+      const statuses = [...new Set(matches.map((r) => r.status.trim()))];
+      // ظهور **أى** حالة جديدة غير اللى كانت = العملية اتنفّذت. النسخ القديمة بتحمل
+      // الحالة القديمة بس، فمستحيل تخترع حالة جديدة — والاختفاء من النتائج برضه تغيير.
       const changed = !wo ? after.length === 0
-        : (!same || same.status.trim().toLowerCase() !== beforeStatus.toLowerCase());
-      if (wo) logln("🔎 أمر الشغل " + wo + ": كان «" + beforeStatus + "» → " + (same ? "«" + same.status + "»" : "مابقاش فى النتائج"));
+        : (!matches.length || statuses.some((st) => st.toLowerCase() !== beforeStatus.toLowerCase()));
+      if (wo) logln("🔎 أمر الشغل " + wo + ": كان «" + beforeStatus + "» → " +
+        (matches.length ? "«" + statuses.join("» / «") + "»" : "مابقاش فى النتائج"));
       if (changed) {
         // بنبلّغ Service-Flow إن الإلغاء اتم — السيرفر بيسجّل «مين طلبه» من op_intents
         // (نفس أسلوب القياس ورفع السرعة) عشان يظهر فى سجل العمليات.
