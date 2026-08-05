@@ -2,7 +2,7 @@
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
 // @description  يفتح Dispatcher على wfm.te.eg، يسجّل الدخول لو ظهرت شاشة اللوجين، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.1.1
+// @version      1.1.2
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -61,6 +61,18 @@
       const t = txt(el);
       return t && t.length <= lim && re.test(t);
     }) || null;
+  }
+
+  // نوافذ ADF المنبثقة بترسم جوّه طبقة مخصوصة (dataForm::_af_Z_window / AFZOrderLayer)
+  // ومعاها maskingframe لما تكون modal. بنستخدمها عشان نحصر البحث عن أزرار النافذة
+  // جوّاها بس — بدل ما نمسح الصفحة كلها ونضغط زر من الخلفية بالغلط.
+  function adfDialogRoot() {
+    const cands = qAllDocs("[role='dialog'], [id$='::_af_Z_window'], .AFZOrderLayer");
+    for (const el of cands) {
+      if (!visible(el)) continue;
+      if (txt(el)) return el;          // فيه محتوى فعلاً (مش طبقة فاضية)
+    }
+    return null;
   }
 
   function fireClick(el) {
@@ -346,8 +358,13 @@
       // (7) بعض الشاشات بتطلب تأكيد بعد Cancel — لو ظهرت نافذة تأكيد نضغط الموافقة.
       //     مش كل الحالات بتطلبها، فلو مظهرتش نكمّل عادى.
       await sleep(1200);
-      const confirmBtn = findByText("button, a, input[type='submit'], span[role='button']",
-        /^\s*(yes|ok|confirm|submit|نعم|موافق|تأكيد)\s*$/i, 20);
+      const dlg = adfDialogRoot();
+      const CONFIRM_RE = /^\s*(yes|ok|confirm|submit|نعم|موافق|تأكيد)\s*$/i;
+      const confirmBtn = dlg
+        ? qAll("button, a, input[type='submit'], span[role='button'], [role='menuitem']", dlg)
+            .find((el) => visible(el) && CONFIRM_RE.test(txt(el)))
+        : findByText("button, a, input[type='submit'], span[role='button']", CONFIRM_RE, 20);
+      if (dlg) logln("🪟 اتفتحت نافذة تأكيد.");
       if (confirmBtn && !isDisabled(confirmBtn)) {
         fireClick(confirmBtn);
         logln("✅ اتضغط زر التأكيد (" + txt(confirmBtn) + ").");
