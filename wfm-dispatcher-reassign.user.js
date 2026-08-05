@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.3
+// @description  v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.4
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -424,23 +424,29 @@
   // مباشرةً (أضمن من ضغطة على div شكله بند قائمة بس مش شايل الـ handler).
   // ADF بيحط اللينك الحقيقى فى <a> **جوّه** البند/البلاطة (طبقة شفافة فوقها)، مش فوقه.
   // فبندوّر جوّا الأول ثم فوق. بيرجّع الـ <a> أو null.
-  function innerAnchor(el) {
-    let a = null;
-    try { a = el.querySelector && el.querySelector("a"); } catch (e) {}
+  // guardRe = نص البند المطلوب. لازم نتأكد إحنا لسه جوّه **نفس البند** وإحنا بنطلع لفوق:
+  // من غير الحارس ده ممكن نوصل لحاوية القائمة كلها وناخد أول <a> فيها (= بند تانى خالص
+  // زى Dashboard) ونضغطه ونفتكر إننا نجحنا.
+  function innerAnchor(el, guardRe) {
+    const pick = (node) => { try { return node.querySelector && node.querySelector("a"); } catch (e) { return null; } };
+    let a = pick(el);
     if (a) return a;
-    // ندوّر جوّا الحاويات الأعلى شوية (البلاطة = span/gridcell فيها label + طبقة اللينك)
+    // ندوّر جوّا الحاويات الأعلى شوية (البلاطة = gridcell فيها الـ label + طبقة اللينك)
     let node = el;
     for (let up = 0; up < 5 && node; up++) {
       node = node.parentElement;
       if (!node) break;
-      try { a = node.querySelector && node.querySelector("a"); } catch (e) {}
+      const t = txt(node);
+      if (t.length > 40) break;                  // بقينا فى حاوية فيها بنود تانية
+      if (guardRe && !guardRe.test(t)) break;     // مابقاش نص البند المطلوب
+      a = pick(node);
       if (a) return a;
     }
     try { return el.closest && el.closest("a"); } catch (e) { return null; }
   }
 
   async function tryDispatchEntry(el, why) {
-    const a = innerAnchor(el);
+    const a = innerAnchor(el, DISPATCH_RE);
     const href = a && a.getAttribute("href");
     if (href && !/^\s*(#|javascript:)/i.test(href)) {
       logln("🔗 " + why + " — لينك مباشر: " + href);
@@ -494,7 +500,7 @@
     });
     if (!hits.length) { logln("… مش لاقى بلاطة «" + label + "» على الشاشة."); return false; }
     for (const hit of hits.slice(0, 4)) {
-      const a = innerAnchor(hit);
+      const a = innerAnchor(hit, re);
       const href = a && a.getAttribute("href");
       if (href && !/^\s*(#|javascript:)/i.test(href)) {
         logln("🔗 بلاطة «" + label + "» — لينك مباشر: " + href);
