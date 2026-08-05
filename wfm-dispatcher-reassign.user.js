@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.4.3: السطر المؤهّل بقى أى سطر مش Completed (كان Started/Assigned بس، فكان بيتخطّى Dispatched). v1.4.2: قراءة كود العامل بقت من الحقل الصح — كان بيرجّع حقل التاريخ لما مايلاقيش عنوان Worker فيفتح نافذة البحث بلا داعى رغم إن الكود مظبوط. v1.4.1: تصفير عدّاد الدخول المباشر مع كل طلب جديد (كان بيفضل من تشغيلة قديمة فى نفس التاب فيتخطّى الدخول المباشر من غير ما يجرّبه)، ورفع حد تحميلات الصفحة من 8 لـ 25 (كان بيمسح الرقم فى نص الشغل). v1.4.0: وضعان بيتحددوا من Service-Flow قبل الفتح — «إلغاء الاسناد» يضغط Cancel مباشرةً، و«اسناد لفنى آخر» يضغط Re-assign مباشرةً ثم يظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Worker ← Search ← OK) ويضغط Assign. v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.4.3
+// @description  v1.4.4: البحث عن أزرار النوافذ (Assign/Search/OK) بقى بانتظار وإعادة محاولة، وبيدوّر برّه حاوية المحتوى كمان (ADF بيرسم شريط الأزرار برّه)، وبيفرّق بين «مش موجود» و«موجود بس معطّل» ويطبع الأزرار الظاهرة. v1.4.3: السطر المؤهّل بقى أى سطر مش Completed (كان Started/Assigned بس، فكان بيتخطّى Dispatched). v1.4.2: قراءة كود العامل بقت من الحقل الصح — كان بيرجّع حقل التاريخ لما مايلاقيش عنوان Worker فيفتح نافذة البحث بلا داعى رغم إن الكود مظبوط. v1.4.1: تصفير عدّاد الدخول المباشر مع كل طلب جديد (كان بيفضل من تشغيلة قديمة فى نفس التاب فيتخطّى الدخول المباشر من غير ما يجرّبه)، ورفع حد تحميلات الصفحة من 8 لـ 25 (كان بيمسح الرقم فى نص الشغل). v1.4.0: وضعان بيتحددوا من Service-Flow قبل الفتح — «إلغاء الاسناد» يضغط Cancel مباشرةً، و«اسناد لفنى آخر» يضغط Re-assign مباشرةً ثم يظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Worker ← Search ← OK) ويضغط Assign. v1.3.8: بعد Cancel بيضغط زر الموافقة فى أى نافذة تظهر (تأكيد أو رسالة) من غير ما يقرا نصها، ولحد نافذتين ورا بعض. وقراءة حالات الصفوف اتحصرت فى جدول Tasks Queue نفسه. v1.3.7: قائمة السطر بتتفتح بـ hover ثم mousedown (تسلسل كلاسات ADF أثبت إن الفتح على p_AFDepressed بعد p_AFHoverTarget، مش على click كامل). v1.3.6: فتح قائمة السطر بنفس تسلسل الضغط المجرَّب فى سكربت تصدير WFM (click أصلى ← mousedown/mouseup/click ← dblclick) وبعدها تفعيل بالكيبورد (Enter/سهم) — بند ADF menuBar بـ role=menuitem مش بيستجيب لضغطة صناعية عادية. والرقم مابقاش يتمسح إلا عند نهاية مؤكّدة. v1.3.5: الدخول لتطبيق Dispatcher بقى باللينك المباشر (Dispatcher/faces/Home) بدل محاولة ضغط بند القائمة — أسرع وأضمن، والقائمة بقت خطة بديلة. والرقم بيتحمل فى الهاش مع كل نقلة فمايضيعش. واستبعاد لوحة السكربت نفسها من أزرار الصفحة (كان بيضغط زر «ابدأ» بتاعه). v1.3.4: حارس على البحث عن اللينك — وإحنا بنطلع لفوق ندوّر على <a> مانخرجش من نطاق البند نفسه، عشان مانضغطش لينك بند تانى (زى Dashboard) ونفتكر إننا نجحنا. v1.3.3: فتح Tasks Queue بقى بضغط البلاطة اللى قدامنا مباشرةً (اللينك الحقيقى فى <a> جوّه طبقة شفافة فوق البلاطة) بدل الدوران على بند «Home» فى القائمة. v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.4.4
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -732,9 +732,40 @@
     }
     return null;
   }
-  const btnIn = (root, re) =>
-    qAll("button, a, input[type='submit'], input[type='button'], span[role='button'], div[role='button'], td", root)
-      .find((el) => visible(el) && !isDisabled(el) && re.test(txt(el) || el.value || "")) || null;
+  const BTN_SEL = "button, a, input[type='submit'], input[type='button'], span[role='button'], div[role='button'], td, div, span";
+  const btnLabel = (el) => (txt(el) || String(el.value || "")).trim();
+  // كل الأزرار المطابقة (حتى المعطّلة) — عشان نفرّق بين «مش موجود» و«موجود بس معطّل»
+  const btnsIn = (root, re) =>
+    qAll(BTN_SEL, root).filter((el) => visible(el) && !isOurs(el) && btnLabel(el).length <= 30 && re.test(btnLabel(el)));
+  const btnIn = (root, re) => btnsIn(root, re).find((el) => !isDisabled(el)) || null;
+
+  // بيستنى زر يظهر ويبقى مفعّل. بيدوّر جوّه النافذة الأول، وبعدين فى أى نافذة، وبعدين
+  // فى الصفحة كلها — لأن ADF ساعات بيرسم شريط أزرار النافذة **برّه** حاوية المحتوى،
+  // فالبحث جوّه الحاوية وحدها بيرجع فاضى. ولو لقيناه معطّل بنقول كده بالظبط.
+  async function waitForButton(root, re, label, ms) {
+    const deadline = Date.now() + (ms || 15000);
+    let sawDisabled = false;
+    while (Date.now() < deadline) {
+      await waitIdle(6000);
+      for (const scope of [root, dialogByTitle(/.+/), document.body]) {
+        if (!scope) continue;
+        const all = btnsIn(scope, re);
+        if (!all.length) continue;
+        const live = all.find((el) => !isDisabled(el));
+        if (live) return live;
+        sawDisabled = true;
+      }
+      await sleep(700);
+    }
+    if (sawDisabled) logln("   ⛔ زر «" + label + "» موجود بس **معطّل**.");
+    else {
+      // تشخيص: إيه الأزرار الموجودة فعلاً فى النافذة؟
+      const seen = qAll(BTN_SEL, root).filter((el) => visible(el) && !isOurs(el))
+        .map(btnLabel).filter((t) => t && t.length <= 20);
+      logln("   🔎 الأزرار الظاهرة: " + ([...new Set(seen)].join(" | ") || "(مفيش)"));
+    }
+    return null;
+  }
 
   // بيقرا حقل جنب عنوان معيّن جوّه نافذة، ويرجّع {input, value, from}.
   // ⚠️ مافيش fallback بـ «أول input فى النافذة» — ده كان بيرجّع حقل **التاريخ** لما
@@ -771,7 +802,7 @@
     if (!wIn) { logln("   ❌ مش لاقى خانة Worker فى نافذة الاختيار (" + wf2.from + ")."); return false; }
     setValue(wIn, code);
     logln("   ⌨️ كتبت كود العامل " + code + " فى خانة Worker.");
-    const searchBtn = btnIn(dlg, /^\s*search\s*$/i);
+    const searchBtn = await waitForButton(dlg, /^\s*search\s*$/i, "Search", 10000);
     if (!searchBtn) { logln("   ❌ مش لاقى زر Search."); return false; }
     fireClick(searchBtn);
     await waitIdle(20000);
@@ -784,7 +815,7 @@
     if (!row) { logln("   ❌ البحث مارجّعش عامل بالكود " + code + "."); return false; }
     fireClick(row);
     await sleep(700);
-    const okBtn = btnIn(dlg, /^\s*ok\s*$/i);
+    const okBtn = await waitForButton(dlg, /^\s*ok\s*$/i, "OK", 10000);
     if (!okBtn) { logln("   ❌ مش لاقى زر OK فى نافذة الاختيار."); return false; }
     fireClick(okBtn);
     await waitIdle(20000);
@@ -839,10 +870,11 @@
       if (!(await pickWorkerByCode(code))) { banner("❌ تعذّر اختيار العامل " + code + ".", "#c62828"); return false; }
     }
 
-    // (ج) Assign
+    // (ج) Assign — بنستنّاه يظهر ويبقى مفعّل (ADF بيعطّل الأزرار وهو مشغول)
     const dlg2 = dialogByTitle(/re-?assign\s*task\s*to/i) || dlg;
-    const assignBtn = btnIn(dlg2, /^\s*assign\s*$/i);
-    if (!assignBtn) { banner("❌ مش لاقى زر Assign.", "#c62828"); return false; }
+    const assignBtn = await waitForButton(dlg2, /^\s*assign\s*$/i, "Assign", 20000);
+    if (!assignBtn) { banner("❌ مش لاقى زر Assign مفعّل.", "#c62828"); return false; }
+    logln("   🖱 زر Assign: " + describeEl(assignBtn));
     fireClick(assignBtn);
     logln("   ✅ اتضغط Assign.");
     await waitIdle(25000);
