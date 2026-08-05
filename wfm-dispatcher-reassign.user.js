@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.4
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.5
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -500,18 +500,32 @@
   function markDirectTry(n) {
     try { sessionStorage.setItem(DIRECT_KEY, String(n)); sessionStorage.setItem(DIRECT_TS_KEY, String(Date.now())); } catch (e) {}
   }
-  // بننقل الصفحة **ونتأكد** إن النقل حصل فعلاً. لو فضلنا مكاننا بعد 4 ثوانى بنعيد
-  // المحاولة بـ replace — ده اللى كان بيخلّى الشاشة «معلّقة» لحد ما تعمل ريفريش.
+  // ريفريش الصفحة — بحد أقصى مرتين لكل طلب عشان مانلفّش فى دايرة. صفحة WorkOrder
+  // بتعلق أحياناً والريفريش بيحلّها (مجرَّب يدوياً)، فبنعمله إحنا بدل المستخدم.
+  const RELOAD_KEY = "sf_wfm_reloads";
+  const MAX_RELOADS = 2;
+  function reloadOnce(why) {
+    let n = 0; try { n = Number(sessionStorage.getItem(RELOAD_KEY)) || 0; } catch (e) {}
+    if (n >= MAX_RELOADS) { logln("⛔ عملت ريفريش " + n + " مرة خلاص — مش هكرّر."); return false; }
+    try { sessionStorage.setItem(RELOAD_KEY, String(n + 1)); } catch (e) {}
+    logln("🔄 " + why + " — بعمل ريفريش للصفحة (" + (n + 1) + "/" + MAX_RELOADS + ").");
+    setTimeout(() => { try { location.reload(); } catch (e) {} }, 400);
+    return true;
+  }
+
+  // بننقل الصفحة **ونتأكد** إن النقل حصل فعلاً. لو فضلنا مكاننا: نعيد بـ replace،
+  // وبعدين ريفريش — ده اللى كان بيخلّى الشاشة «معلّقة» لحد ما تعمل ريفريش بإيدك.
   async function goTo(url) {
+    const base = url.split("#")[0];
     logln("↪️ رايح: " + url);
     try { location.href = url; } catch (e) {}
     await sleep(4000);
-    try {
-      if (location.href.indexOf(url.split("#")[0]) < 0) {
-        logln("   … التنقّل ماحصلش — بعيد المحاولة.");
-        location.replace(url);
-      }
-    } catch (e) {}
+    if (location.href.indexOf(base) >= 0) return;
+    logln("   … التنقّل ماحصلش — بعيد المحاولة بـ replace.");
+    try { location.replace(url); } catch (e) {}
+    await sleep(4000);
+    if (location.href.indexOf(base) >= 0) return;
+    reloadOnce("التنقّل لـ Dispatcher ماحصلش");
   }
 
   // بنحمل الرقم فى الهاش مع كل نقلة داخلية — كده مايضيعش أبداً حتى لو الصفحة اتفتحت
@@ -542,8 +556,11 @@
       return "navigating";
     }
 
-    // (2) الدخول المباشر مانفعش (رجعنا هنا تانى) → نجرّب قائمة المربعات.
-    logln("🔳 الدخول المباشر مانفعش — بجرّب قائمة المربعات.");
+    // (2) الدخول المباشر مانفعش. **الريفريش بيحلّها** (مجرَّب: الصفحة بتعلق على
+    //     WorkOrder/faces/Home وأول ما تعمل ريفريش بتكمّل) — فنعمله إحنا قبل ما
+    //     نضيّع الوقت فى قائمة المربعات اللى بنودها الـ handler مش عليها.
+    if (reloadOnce("الدخول المباشر ماحصلش")) return "navigating";
+    logln("🔳 الريفريش مانفعش كمان — بجرّب قائمة المربعات.");
     for (const el of matchingItems(DISPATCH_RE)) {
       if (await tryDispatchEntry(el, "بند ظاهر")) return "navigating";
     }
@@ -998,7 +1015,7 @@
     try { sessionStorage.setItem(PENDING_KEY, String(id)); sessionStorage.setItem(PENDING_TS_KEY, String(Date.now())); } catch (e) {}
   }
   function clearPending() {
-    try { [PENDING_KEY, PENDING_TS_KEY, PENDING_HOPS_KEY, MODE_KEY, WORKER_KEY, DIRECT_KEY, DIRECT_TS_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
+    try { [PENDING_KEY, PENDING_TS_KEY, PENDING_HOPS_KEY, MODE_KEY, WORKER_KEY, DIRECT_KEY, DIRECT_TS_KEY, RELOAD_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
   }
   function getPending() {
     try {
@@ -1246,7 +1263,7 @@
       // طلب جديد جاى فى الهاش → صفّر عدّاد محاولات الدخول المباشر. العدّاد بيعيش فى
       // sessionStorage بتاع التاب، والتاب بيتعاد استخدامه (sf_wfm)، فمن غير التصفير ده
       // كانت التشغيلة الجديدة بتتخطّى الدخول المباشر بسبب محاولة تشغيلة قديمة.
-      try { [DIRECT_KEY, DIRECT_TS_KEY, PENDING_HOPS_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
+      try { [DIRECT_KEY, DIRECT_TS_KEY, PENDING_HOPS_KEY, RELOAD_KEY].forEach((k) => sessionStorage.removeItem(k)); } catch (e) {}
     } else pending = getPending();
     // الوضع وكود العامل بييجوا فى نفس الهاش: #sf_cancel=2746124&sf_mode=reassign&sf_worker=347817
     const mm = (location.hash || "").match(/sf_mode(?:=|%3D)(cancel|reassign)/i);
