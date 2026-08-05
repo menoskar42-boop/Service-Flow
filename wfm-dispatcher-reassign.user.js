@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.6
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.7: ممنوع أى ريفريش بعد تنفيذ Cancel/Assign — التحقق بضغطة Search بس. v1.5.6: مافيش افتراض إن الوضع «إلغاء» — لو sf_mode ضاع بيوقف ويقول، بدل ما يحوّل طلب «إسناد لفنى» لـ «إلغاء» فى صمت. v1.5.5: لو صفحة WorkOrder علقت والتنقّل لـ Dispatcher ماحصلش، السكربت بيعمل الريفريش بنفسه (لحد مرتين) بدل ما تعمله بإيدك. v1.5.4: عدّاد الدخول المباشر بقى مؤقّت (دقيقة) بدل ما يعيش طول عمر التاب — كان بيتخطّى الدخول المباشر بسبب تشغيلة قديمة فتعلق الشاشة لحد ما تعمل ريفريش. وأى تنقّل بيتراقب: لو ماحصلش خلال 4 ثوانى بيعيد المحاولة. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.7
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -504,7 +504,11 @@
   // بتعلق أحياناً والريفريش بيحلّها (مجرَّب يدوياً)، فبنعمله إحنا بدل المستخدم.
   const RELOAD_KEY = "sf_wfm_reloads";
   const MAX_RELOADS = 2;
+  // ❗أى ريفريش ممنوع بعد ما ننفّذ Cancel/Assign — التحقق بيتعمل بضغطة Search بس.
+  // الريفريش بعد التنفيذ خطر: بيعيد تشغيل التدفّق من أول وجديد على مهمة اتنفّذت خلاص.
+  let actionDone = false;
   function reloadOnce(why) {
+    if (actionDone) { logln("⛔ مافيش ريفريش بعد التنفيذ — التحقق بـ Search بس."); return false; }
     let n = 0; try { n = Number(sessionStorage.getItem(RELOAD_KEY)) || 0; } catch (e) {}
     if (n >= MAX_RELOADS) { logln("⛔ عملت ريفريش " + n + " مرة خلاص — مش هكرّر."); return false; }
     try { sessionStorage.setItem(RELOAD_KEY, String(n + 1)); } catch (e) {}
@@ -1054,6 +1058,7 @@
     const WANTED_LABEL = MODE === "reassign" ? "Re-assign" : "Cancel";
     if (running) { banner("⏳ فيه عملية شغّالة بالفعل…", "#ef6c00"); return; }
     running = true;
+    actionDone = false;
     try {
       // الوضع بيتكتب صراحةً فى أول سطر — عشان تعرف من نظرة واحدة إن التشغيلة دى
       // إلغاء ولا إسناد، من غير ما تستنتج من النتيجة.
@@ -1160,6 +1165,7 @@
           await waitIdle(15000);
         }
         logln("   ✅ اتضغط «" + WANTED_LABEL + "».");
+        actionDone = true;   // من هنا ورايح: مافيش ريفريش، التحقق بـ Search بس
         opened = true;
         break;
       }
