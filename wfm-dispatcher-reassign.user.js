@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  يفتح Dispatcher على wfm.te.eg، يسجّل الدخول لو ظهرت شاشة اللوجين، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.1.3
+// @description  يفتح Dispatcher/faces/Home على wfm.te.eg، يسجّل الدخول لو لزم، يفتح Tasks Queue من القائمة، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.2.1
 // @match        https://wfm.te.eg/Dispatcher/*
 // @grant        none
 // @run-at       document-idle
@@ -18,7 +18,7 @@
   /* ================== CONFIG ================== */
   const USER = "mina109756";
   const PASS = "Mon_oskar11";
-  const DISPATCHER_URL = "https://wfm.te.eg/Dispatcher/faces/UIShell";
+  const DISPATCHER_URL = "https://wfm.te.eg/Dispatcher/faces/Home";
   // الحالات المقبولة للسطر (مش هناخد Completed أبداً)
   const OK_STATUSES = /^(started|assigned)$/i;
 
@@ -218,49 +218,54 @@
         || null;
   }
 
-  // جدول النتائج + فهارس الأعمدة المهمة
+  // قراءة صفوف النتائج.
+  // ⚠️ ADF بيقسّم الجدول لجدولين لما يكون فيه أعمدة مجمّدة (Columns Frozen): جدول للأعمدة
+  // المجمّدة وجدول للمتحرّكة. فالبحث عن عمود AssignmentStatus بفهرس العناوين كان بيفشل
+  // (العنوان فى جدول والبيانات فى جدول تانى) ويفضل السكربت مستنى النتايج للأبد.
+  // الحل: ندوّر على **نص الحالة نفسه** فى أى خلية، ونرجع الصف اللى هى فيه.
+  const STATUS_RE = /^(started|assigned|completed|dispatched|cancell?ed|partial completed|blocked|escalated)$/i;
   function readResultRows() {
-    for (const d of docs()) {
-      for (const tbl of qAll("table", d)) {
-        const heads = qAll("th", tbl).map((th) => norm(txt(th)));
-        if (!heads.length) continue;
-        const iStatus = heads.findIndex((h) => h.indexOf("assignmentstatus") >= 0);
-        const iWo = heads.findIndex((h) => h.indexOf("workorderid") >= 0);
-        if (iStatus < 0) continue;
-        const rows = [];
-        for (const tr of qAll("tr", tbl)) {
-          const tds = qAll("td", tr);
-          if (!tds.length) continue;
-          const status = tds[iStatus] ? txt(tds[iStatus]) : "";
-          if (!status) continue;
-          rows.push({
-            tr,
-            status,
-            workOrderId: iWo >= 0 && tds[iWo] ? txt(tds[iWo]) : "",
-          });
-        }
-        if (rows.length) return rows;
-      }
+    const seen = [];
+    const rows = [];
+    for (const el of qAllDocs("td, div, span")) {
+      if (!visible(el)) continue;
+      const t = txt(el);
+      if (!t || !STATUS_RE.test(t)) continue;
+      let tr = null;
+      try { tr = el.closest("tr"); } catch (e) {}
+      if (!tr || seen.indexOf(tr) >= 0) continue;
+      // نتأكد إنه صف بيانات فعلاً (فيه كذا خلية) مش عنصر فى مفتاح الألوان
+      if (qAll("td", tr).length < 3) continue;
+      seen.push(tr);
+      rows.push({ tr, status: t, workOrderId: "" });
     }
-    return [];
+    return rows;
   }
 
-  // سهم القائمة فى بداية السطر (ADF بيرسمه كأيقونة/زر صغير فى أول خلية)
+  // زر قائمة السطر: مع الأعمدة المجمّدة السهم بيكون فى **جدول تانى** غير جدول الحالة،
+  // فمش ينفع ندوّر جوّه نفس الـ tr. بندوّر بالموضع: أيقونة صغيرة على نفس ارتفاع الصف
+  // وأقصى الشمال.
   function findRowMenuButton(tr) {
-    const cells = qAll("td", tr).slice(0, 3);
-    for (const td of cells) {
-      const btn = qAll("a, button, img, span, div", td).find((el) => {
-        if (!visible(el)) return false;
-        const cls = (el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className) || "";
-        const t = (el.title || el.getAttribute("aria-label") || "") + " " + cls;
-        return /menu|dropdown|arrow|caret|action|popup/i.test(String(t));
-      });
-      if (btn) return btn;
-      // احتياطى: أول عنصر قابل للضغط فى الخلية
-      const any = qAll("a, button", td).find(visible);
-      if (any) return any;
+    // (1) المحاولة السهلة: جوّه أول خلايا نفس الصف
+    const inRow = qAll("a, button, img", tr).filter(visible)
+      .filter((el) => { const b = el.getBoundingClientRect(); return b.width <= 60 && b.height <= 40; });
+    if (inRow.length) {
+      inRow.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+      return inRow[0];
     }
-    return null;
+    // (2) بالموضع عبر الجداول المقسّمة
+    let r; try { r = tr.getBoundingClientRect(); } catch (e) { return null; }
+    if (!r || !r.height) return null;
+    const mid = r.top + r.height / 2;
+    const cands = qAllDocs("a, button, img, [role='button']").filter((el) => {
+      if (!visible(el)) return false;
+      const b = el.getBoundingClientRect();
+      if (b.width > 60 || b.height > 40) return false;      // أيقونة صغيرة
+      return b.top <= mid && b.bottom >= mid;                // على نفس ارتفاع الصف
+    });
+    if (!cands.length) return null;
+    cands.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    return cands[0];
   }
 
   // هل عنصر القائمة معطّل؟ (ADF بيستخدم كلاس فيه disabled أو aria-disabled)
@@ -301,6 +306,34 @@
     return hit ? menuTarget(hit) : null;
   }
 
+  // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue» — مش الصفحة الافتراضية
+  // (Assignment and Dispatch). بندخل من faces/Home وبعدين نفتح القائمة ونختارها.
+  function findMenuToggle() {
+    return qAllDocs("a, button, div, span, img").find((el) => {
+      if (!visible(el)) return false;
+      const meta = [el.id, el.title, el.getAttribute && el.getAttribute("aria-label"),
+        (el.className && el.className.baseVal !== undefined ? el.className.baseVal : el.className)]
+        .map((x) => String(x || "")).join(" ");
+      if (/menu|hamburger|navigat/i.test(meta)) return true;
+      return /^[\u2630\u2261]$/.test(txt(el));   // ☰ أو ≡
+    }) || null;
+  }
+
+  async function gotoTasksQueue() {
+    if (findServiceIdInput()) return true;          // إحنا عليها أصلاً
+    let item = findByText("a, span, div, li, td", /^\s*tasks\s*queue\s*$/i, 30);
+    if (!item) {
+      const burger = findMenuToggle();
+      if (burger) { logln("☰ بفتح القائمة…"); fireClick(burger); await sleep(1200); }
+      item = await waitFor(() => findByText("a, span, div, li, td", /^\s*tasks\s*queue\s*$/i, 30), 10000);
+    }
+    if (!item) { logln("❌ مش لاقى «Tasks Queue» فى القائمة."); return false; }
+    logln("📂 بفتح Tasks Queue…");
+    fireClick(menuTarget(item));
+    await waitIdle(25000);
+    return !!(await waitFor(() => findServiceIdInput(), 25000));
+  }
+
   /* ================== التدفّق الرئيسى ================== */
   let running = false;
   async function runFlow(serviceId) {
@@ -316,12 +349,18 @@
         logln("✅ تم تسجيل الدخول.");
       }
 
-      // (2) اتأكد إننا على شاشة Dispatcher
+      // (2) شاشة «Tasks Queue» هى اللى فيها خانة Service Id — لو مش عليها نفتحها من القائمة
       let sidInput = findServiceIdInput();
       if (!sidInput) {
-        logln("↪️ مش على شاشة Dispatcher — بفتحها…");
-        location.href = DISPATCHER_URL;
-        return; // الصفحة هتتحمّل من جديد والسكربت هيشتغل تانى
+        banner("📂 بفتح Tasks Queue…");
+        if (!(await gotoTasksQueue())) {
+          // مش على تطبيق Dispatcher أصلاً → نفتح الصفحة الرئيسية والسكربت هيكمّل بعد التحميل
+          if (!/\/Dispatcher\//i.test(location.pathname)) { location.href = DISPATCHER_URL; return; }
+          banner("❌ تعذّر فتح شاشة Tasks Queue.", "#c62828");
+          return;
+        }
+        sidInput = findServiceIdInput();
+        if (!sidInput) { banner("❌ مش لاقى خانة Service Id.", "#c62828"); return; }
       }
 
       // (3) اكتب الرقم فى Service Id واضغط Search
@@ -340,7 +379,12 @@
         const r = readResultRows();
         return r.length ? r : null;
       }, 25000);
-      if (!rows) { banner("• مفيش نتائج للرقم " + serviceId + ".", "#ef6c00"); logln("• الجدول رجع فاضى."); return; }
+      if (!rows) {
+        banner("• مفيش نتائج للرقم " + serviceId + ".", "#ef6c00");
+        const hasNoRows = /no\s*rows\s*found|no\s*data/i.test(document.body.innerText || "");
+        logln(hasNoRows ? "• الجدول رجّع «No rows found»." : "• معرفتش أقرا صفوف النتايج — راجع شكل الجدول.");
+        return;
+      }
       logln("📋 " + rows.length + " سطر: " + rows.map((r) => r.status).join(" ، "));
 
       // (5) الأسطر المقبولة: Started / Assigned فقط (مش Completed)
@@ -421,13 +465,19 @@
     if (!document.body) { setTimeout(boot, 300); return; }
     buildPanel();
     banner("⚙️ Dispatcher Cancel — اكتب Service Id واضغط ابدأ.");
-    // تشغيل تلقائى لو الرقم اتبعت فى الهاش: #sf_reassign=2653614
-    const m = (location.hash || "").match(/sf_(?:reassign|cancel)=(\d+)/);
-    if (m) {
-      const v = m[1];
+    // تشغيل تلقائى لو الرقم اتبعت فى الهاش: #sf_cancel=2653614
+    // ملحوظة: المتصفح/التطبيق ممكن يرمّز علامة «=» لـ «%3D» — فبنقبل الاتنين.
+    // وبنخزّن الرقم فى sessionStorage عشان يفضل موجود بعد ما ADF يغيّر الهاش أثناء التنقّل.
+    const KEY = "sf_wfm_cancel_pending";
+    const m = (location.hash || "").match(/sf_(?:reassign|cancel)(?:=|%3D)(\d+)/i);
+    let pending = m ? m[1] : "";
+    if (pending) { try { sessionStorage.setItem(KEY, pending); } catch (e) {} }
+    else { try { pending = sessionStorage.getItem(KEY) || ""; } catch (e) {} }
+    if (pending) {
+      try { sessionStorage.removeItem(KEY); } catch (e) {}
       const inp = panel && panel.querySelector("#sfrsInput");
-      if (inp) inp.value = v;
-      setTimeout(() => runFlow(v), 1500);
+      if (inp) inp.value = pending;
+      setTimeout(() => runFlow(pending), 1800);
     }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => setTimeout(boot, 800));
