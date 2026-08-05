@@ -392,7 +392,9 @@ export function PhoneLookupReport() {
     const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
     if (!sid) { alert("مفيش رقم للمتابعة"); return; }
     window.open(
-      "https://wfm.te.eg/Dispatcher/faces/UIShell#sf_cancel=" + encodeURIComponent(sid),
+      // faces/Home هى المدخل الصحيح — السكربت بيفتح «Tasks Queue» من القائمة بعدها.
+      // (faces/UIShell كان بيقع على شاشة Assignment and Dispatch اللى مالهاش خانة Service Id.)
+      "https://wfm.te.eg/Dispatcher/faces/Home#sf_cancel=" + encodeURIComponent(sid),
       "sf_wfm_cancel_" + sid,
     );
   };
