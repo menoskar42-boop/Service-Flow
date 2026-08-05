@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
-// @version      1.3.1
+// @description  v1.3.2: فتح قائمة السطر بقى بيجرّب كل عنصر قابل للضغط جوّه أيقونة القائمة (الأيقونة + السهم ▾) ويتأكد بعد كل ضغطة إن Cancel ظهرت فعلاً، ومع الفشل بيطبع ماركب الصف. والانتقال لـ Assignment and Dispatch بيتأكد إن التنقّل حصل، وإلا بيدخل Dispatcher/faces/Home مباشرةً. v1.3.1: منع التعارض مع سكربت التصدير اليومى على نفس الدومين (تاب wfm_daily مالوش لوحة، وتاب الإلغاء بيوقف تدفّق التصدير). يبدأ من WFM العادى (WorkOrder/faces/Home)، يسجّل الدخول لو لزم، يفتح قائمة المربعات أعلى اليسار ويختار Assignment and Dispatch، ومنها Tasks Queue، يبحث بالـ Service Id، يختار سطر حالته Started/Assigned (مش Completed)، يفتح قائمة السطر ويضغط Cancel، ويأكّد لو ظهرت نافذة تأكيد.
+// @version      1.3.2
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -419,26 +419,52 @@
 
   // من WFM العادى لتطبيق Dispatcher. بيرجّع "navigating" لو ضغط ودور التحميل جاى،
   // و true لو إحنا أصلاً على Dispatcher، و false لو مالقاش الزر.
+  const DISPATCH_RE = /assignment\s*and\s*dispatch/i;
+  // بيجرّب عنصر واحد ويتأكد إن التنقّل حصل فعلاً. لو العنصر جوّه <a href> بننقل باللينك
+  // مباشرةً (أضمن من ضغطة على div شكله بند قائمة بس مش شايل الـ handler).
+  async function tryDispatchEntry(el, why) {
+    let a = null; try { a = el.closest && el.closest("a[href]"); } catch (e) {}
+    const href = a && a.getAttribute("href");
+    if (href && !/^\s*(#|javascript:)/i.test(href)) {
+      logln("🔗 " + why + " — لينك مباشر: " + href);
+      try { location.href = new URL(href, location.href).href; return true; } catch (e) {}
+    }
+    logln("📂 " + why + " — بضغط العنصر (" + describeEl(el) + ")…");
+    fireClick(menuTarget(el));
+    // مابنفترضش إن الضغطة نفعت — بنستنى تنقّل فعلى لـ /Dispatcher/
+    return !!(await waitFor(() => /\/Dispatcher\//i.test(location.pathname), 6000, 300));
+  }
+
   async function gotoDispatcherApp() {
     if (/\/Dispatcher\//i.test(location.pathname)) return true;
-    let item = findDispatchEntry();
-    if (!item) {
-      const burger = findMenuToggle();
-      if (burger) { logln("☰ بفتح القائمة…"); fireClick(burger); await sleep(1200); item = findDispatchEntry(); }
+
+    // (1) البند ظاهر أصلاً؟ (بنجرّب كل العناصر المطابقة مش أول واحد بس — فيه عناصر
+    //     بنفس النص مش شايلة الـ handler، وضغطها مابيعملش حاجة.)
+    for (const el of matchingItems(DISPATCH_RE)) {
+      if (await tryDispatchEntry(el, "بند ظاهر")) return "navigating";
     }
-    if (!item) {
-      for (const c of topLeftCandidates()) {
-        logln("🔳 بجرّب زر أعلى اليسار: " + describeEl(c));
-        fireClick(c);
-        await sleep(1200);
-        item = findDispatchEntry();
-        if (item) break;
+    // (2) نفتح قائمة المربعات أعلى اليسار ونعيد المحاولة بعد كل زر نجرّبه
+    const burger = findMenuToggle();
+    if (burger) {
+      logln("☰ بفتح القائمة…");
+      fireClick(burger); await sleep(1200);
+      for (const el of matchingItems(DISPATCH_RE)) {
+        if (await tryDispatchEntry(el, "بند بعد فتح القائمة")) return "navigating";
       }
     }
-    if (!item) { logln("❌ مش لاقى «Assignment and Dispatch» فى قائمة المربعات."); return false; }
-    logln("📂 بفتح «Assignment and Dispatch»…");
-    fireClick(menuTarget(item));
-    return "navigating";   // بتحمّل صفحة Dispatcher — السكربت بيكمّل عليها من الأول
+    for (const c of topLeftCandidates()) {
+      logln("🔳 بجرّب زر أعلى اليسار: " + describeEl(c));
+      fireClick(c);
+      await sleep(1200);
+      for (const el of matchingItems(DISPATCH_RE)) {
+        if (await tryDispatchEntry(el, "بند من قائمة المربعات")) return "navigating";
+      }
+    }
+    // (3) آخر حل: ندخل Dispatcher مباشرةً. الجلسة بقت شغّالة من WFM العادى، وfaces/Home
+    //     بتفتح عادى (اللى كان بيدّى صفحة بيضا هو faces/UIShell من غير جلسة).
+    logln("↪️ زر القائمة مانفعش — بادخل Dispatcher/faces/Home مباشرةً.");
+    location.href = DISPATCHER_URL;
+    return "navigating";
   }
 
   // شاشة البحث اللى بنشتغل عليها هى «Tasks Queue». على Dispatcher/faces/Home بتبقى
@@ -465,6 +491,47 @@
       if (!r.ok || j.ok === false) return { ok: false, error: (j && j.message) || ("HTTP " + r.status) };
       return { ok: true };
     } catch (e) { return { ok: false, error: String((e && e.message) || e) }; }
+  }
+
+  // فتح قائمة السطر. ADF بيرسم زر القائمة كمجموعة عناصر (أيقونة + سهم ▾) والـ handler
+  // مش دايماً على العنصر صاحب الـ id — فبنجرّب كل عنصر قابل للضغط جوّه/حوالين الأيقونة،
+  // **وبعد كل ضغطة بنتأكد** هل ظهرت «Cancel» جديدة ولا لأ (مش بنفترض إن الضغطة نفعت).
+  async function openRowMenu(tr) {
+    const holders = findRowMenuButtons(tr) || [];
+    const targets = [];
+    const push = (el) => { if (el && visible(el) && targets.indexOf(el) < 0) targets.push(el); };
+    for (const h of holders) {
+      push(h);
+      qAll("a, img, span, div, td, button", h).forEach(push);
+      // السهم ▾ ساعات بيبقى **شقيق** الأيقونة مش ابنها
+      let p = null; try { p = h.parentElement; } catch (e) {}
+      if (p) { push(p); qAll("a, img, span, div", p).forEach(push); }
+    }
+    if (!targets.length) { logln("   … مش لاقى أيقونة القائمة."); return null; }
+    for (let i = 0; i < targets.length && i < 14; i++) {
+      const el = targets[i];
+      const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
+      logln("   🖱 بجرّب " + (i + 1) + "/" + Math.min(targets.length, 14) + ": " + describeEl(el));
+      fireClick(el);
+      await waitIdle(6000);
+      const item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 3500);
+      if (item) { logln("   ✅ القائمة اتفتحت."); return item; }
+      try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
+      await sleep(400);
+    }
+    return null;
+  }
+
+  // لو كل المحاولات فشلت: نطبع شكل أول خليتين فى الصف عشان نشوف الماركب الحقيقى
+  // بدل التخمين (بيتنسخ من اللوج).
+  function dumpRowMarkup(tr) {
+    try {
+      const cells = qAll("td, th", tr).slice(0, 2);
+      cells.forEach((c, i) => {
+        const html = (c.innerHTML || "").replace(/\s+/g, " ").slice(0, 700);
+        logln("   🧬 خلية " + (i + 1) + ": " + html);
+      });
+    } catch (e) { logln("   🧬 تعذّر قراءة ماركب الصف: " + (e && e.message)); }
   }
 
   /* ================== التدفّق الرئيسى ================== */
@@ -545,23 +612,11 @@
       for (let i = 0; i < candidates.length; i++) {
         const row = candidates[i];
         logln("↪️ سطر " + (i + 1) + " (" + row.status + (row.workOrderId ? " / WO " + row.workOrderId : "") + ")");
-        const menuBtns = findRowMenuButtons(row.tr);
-        if (!menuBtns.length) { logln("   … مش لاقى أيقونة القائمة."); continue; }
-        let item = null;
-        for (let k = 0; k < Math.min(menuBtns.length, 3) && !item; k++) {
-          const before = matchingItems(/^\s*cancel\s*$/i);   // «Cancel» الموجودة قبل فتح القائمة
-          fireClick(menuBtns[k]);
-          await waitIdle(8000);
-          item = await waitFor(() => findNewMenuItem(/^\s*cancel\s*$/i, before), 5000);
-          if (!item && k + 1 < Math.min(menuBtns.length, 3)) {
-            logln("   … الأيقونة " + (k + 1) + " مافتحتش القائمة — بجرّب اللى بعدها.");
-            try { document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); } catch (e) {}
-            await sleep(600);
-          }
-        }
+        const item = await openRowMenu(row.tr);
         if (!item) {
           logln("   … القائمة مافتحتش أو مفيش Cancel.");
           if (lastRowIcons.length) logln("   🔎 أيقونات الصف: " + lastRowIcons.join(" | "));
+          dumpRowMarkup(row.tr);
           continue;
         }
         if (isDisabled(item)) {
