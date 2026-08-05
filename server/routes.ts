@@ -5456,12 +5456,22 @@ export async function registerRoutes(
     const reservationCode = String(b.reservationCode || "").trim();
     const requestDate = String(b.requestDate || "").trim();
 
+    // كان DO NOTHING — فلو رفعة قديمة خزّنت قيمة غلط مكانش فيه أى طريقة لتصحيحها.
+    // دلوقتى بنحدّث القيم عند إعادة الرفع. (xmax = 0 معناها الصف اتضاف دلوقتى مش اتحدّث.)
     const ins = await pool.query(
       `INSERT INTO port_change_requests (request_id, phone_number, old_msan, new_msan, new_frame, port_type, status, reservation_code, request_date, completed)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT (request_id) DO NOTHING RETURNING request_id`,
+       ON CONFLICT (request_id) DO UPDATE SET
+         phone_number = EXCLUDED.phone_number,
+         old_msan = COALESCE(NULLIF(EXCLUDED.old_msan,''), port_change_requests.old_msan),
+         new_msan = COALESCE(NULLIF(EXCLUDED.new_msan,''), port_change_requests.new_msan),
+         new_frame = COALESCE(NULLIF(EXCLUDED.new_frame,''), port_change_requests.new_frame),
+         port_type = COALESCE(NULLIF(EXCLUDED.port_type,''), port_change_requests.port_type),
+         status = EXCLUDED.status,
+         completed = EXCLUDED.completed
+       RETURNING (xmax = 0) AS inserted`,
       [requestId, phone, oldMsan, newMsan, newFrame, portType, status, reservationCode, requestDate, completed]);
-    const wasNew = (ins.rowCount ?? 0) > 0;
+    const wasNew = ins.rows[0]?.inserted === true;
 
     let updatedPort = false;
     if (completed && phone) {
