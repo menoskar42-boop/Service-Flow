@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         WFM Dispatcher — إلغاء المهمة (Cancel)
 // @namespace    service-flow.wfm.dispatcher-reassign
-// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.2: التحقق من النتيجة بيجمّع كل الحالات المميّزة لأمر الشغل بدل أول واحد يقابله (الصف بيتكرّر 6 مرات فى قراءة ADF ونسخة قديمة كانت بتخفى النجاح). v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
-// @version      1.5.2
+// @description  إلغاء إسناد مهمة WFM أو إسنادها لفنى آخر. يبدأ من WFM العادى، يدخل Dispatcher ← Tasks Queue، يبحث بالـ Service Id، يختار سطر مش Completed، يفتح قائمة السطر ويضغط Cancel أو Re-assign حسب الوضع المطلوب من Service-Flow. فى وضع Re-assign بيظبط تاريخ النهاردة وكود العامل (ولو غلط يفتح المكبّر ← Search ← OK) ويضغط Assign. كل خطوة بتتحقق من نتيجتها قبل اللى بعدها. v1.5.3: بيعيد البحث بنفس الرقم قبل ما يحكم على النتيجة — جدول WFM مابيتحدّثش لوحده بعد Cancel/Assign والحالة الجديدة مابتظهرش غير بعد إعادة تحميل. v1.5.1: رسالة WFM بتفضل ظاهرة 4 ثوانى (DIALOG_SHOW_MS) قبل ضغط OK.
+// @version      1.5.3
 // @match        https://wfm.te.eg/WorkOrder/*
 // @match        https://wfm.te.eg/Dispatcher/*
 // @connect      service-flow-menoskar42.replit.app
@@ -1123,12 +1123,22 @@
         await sleep(800);
       }
 
-      // (8) نتأكد إن الحالة اتغيّرت فعلاً بدل ما نفترض النجاح: نعيد قراءة الجدول
+      // (8) نتأكد إن الحالة اتغيّرت فعلاً. ⚠️ جدول النتائج **مابيتحدّثش لوحده** بعد
+      //     Cancel/Assign — الحالة الجديدة مابتظهرش غير بعد إعادة تحميل/بحث. فقراءة
+      //     الجدول على طول كانت بترجّع الحالة القديمة (وأحياناً نسخ متضاربة من نسخ
+      //     ADF القديمة فى الـ DOM). فبنعيد البحث بنفس الرقم الأول، وبعدين نقرا.
       await waitIdle(15000);
+      logln("🔁 بعيد البحث عشان الجدول يتحدّث…");
+      const sid2 = findServiceIdInput();
+      if (sid2) setValue(sid2, serviceId);
+      const searchBtn2 = findSearchButton();
+      if (searchBtn2) { fireClick(searchBtn2); await waitIdle(25000); }
+      else logln("   ⚠️ مش لاقى زر Search لإعادة البحث — القراءة ممكن تبقى قديمة.");
+      await sleep(1200);
       const after = await waitFor(() => {
         const r = readResultRows();
         return r.length ? r : null;
-      }, 10000) || [];
+      }, 15000) || [];
       // نفس أمر الشغل بيتكرّر فى القراءة: ADF بيقسّم الجدول لجزء مجمّد وجزء متحرّك
       // (كل صف بيطلع مرتين)، وبيسيب نسخ قديمة فى الـ DOM. فبنجمّع الحالات المميّزة
       // لكل أمر شغل بدل ما ناخد أول واحد يقابلنا — اللى كان بيقع على نسخة قديمة.
@@ -1138,8 +1148,8 @@
       const beforeStatus = ((candidates[0] && candidates[0].status) || "").trim();
       const matches = wo ? after.filter((r) => r.workOrderId === wo) : [];
       const statuses = [...new Set(matches.map((r) => r.status.trim()))];
-      // ظهور **أى** حالة جديدة غير اللى كانت = العملية اتنفّذت. النسخ القديمة بتحمل
-      // الحالة القديمة بس، فمستحيل تخترع حالة جديدة — والاختفاء من النتائج برضه تغيير.
+      // بعد إعادة البحث القراءة بقت طازجة: أى حالة غير اللى كانت (أو اختفاء الصف من
+      // النتائج) = العملية اتنفّذت.
       const changed = !wo ? after.length === 0
         : (!matches.length || statuses.some((st) => st.toLowerCase() !== beforeStatus.toLowerCase()));
       if (wo) logln("🔎 أمر الشغل " + wo + ": كان «" + beforeStatus + "» → " +
