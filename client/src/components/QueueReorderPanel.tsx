@@ -42,7 +42,7 @@ export function QueueReorderPanel() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   // silent = تحديث فى الخلفية (التحديث التلقائى): مايوريّش سبينر ولا يمسح الشاشة،
-  // عشان الجدول مايرفرفش كل 15 ثانية.
+  // عشان الجدول مايرفرفش كل 5 ثوانى.
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -68,13 +68,13 @@ export function QueueReorderPanel() {
     busyRef.current = dirty || saving || loading || !!canceling || !!pausing;
   }, [dirty, saving, loading, canceling, pausing]);
 
-  // تحديث تلقائى كل 15 ثانية — بيقف لو التاب مش ظاهر (مافيش داعى نضرب السيرفر فى الخلفية)
+  // تحديث تلقائى كل 5 ثوانى — بيقف لو التاب مش ظاهر (مافيش داعى نضرب السيرفر فى الخلفية)
   useEffect(() => {
     const id = setInterval(() => {
       if (busyRef.current) return;
       if (typeof document !== "undefined" && document.hidden) return;
       load(true);
-    }, 15000);
+    }, 5000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -156,7 +156,7 @@ export function QueueReorderPanel() {
           <span className="text-xs text-muted-foreground">
             {dirty
               ? "⏸ التحديث التلقائى متوقف — فيه ترتيب لسه ماتحفظش"
-              : <>🔄 يتحدّث تلقائياً كل 15 ثانية{lastRefresh ? ` — آخر تحديث ${lastRefresh.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}</>}
+              : <>🔄 يتحدّث تلقائياً كل 5 ثوانى{lastRefresh ? ` — آخر تحديث ${lastRefresh.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}</>}
           </span>
         </div>
         <div className="flex gap-2">
