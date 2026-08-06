@@ -1526,6 +1526,8 @@ export async function registerRoutes(
       // نظّف المهام اليتيمة قبل السحب — عشان أى مهمة عالقة ترجع للطابور وتتنفّذ فى مكانها
       // الصحيح حسب الأولوية، بدل ما الجهاز يعدّيها ويكمّل فى باتشات أقل أولوية.
       await expireOrphanedExecJobs();
+      // وبعدها: رجّع الخطوط اللى قفلت بإيرور من باتشات خلصت (مرة واحدة، أولوية 1)
+      await requeueErroredJobs();
       const { rows } = await pool.query(
         `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
          WHERE id = (SELECT e.id FROM exec_jobs e
@@ -1919,6 +1921,56 @@ export async function registerRoutes(
   // تنظيف المهام اليتيمة (اللى جهاز التنفيذ اتقفل عليها فى نصّها فبتفضل claimed/pending للأبد
   // وتضخّم الترتيب): نعلّمها stale لو (أ) جهاز التنفيذ مقفول (النبضة قديمة) والمهمة عدّى عليها >2 دقيقة،
   // أو (ب) مهمة claimed من أكثر من 5 ساعات (أطول من أقصى تشغيل باتش).
+  // ── إعادة تنفيذ الخطوط اللى رجعت بإيرور ──────────────────────────────────────
+  // الخط اللى قفل من غير نتيجة سليمة (التاب اتقفل / علّق / جهاز التنفيذ اتقفل) بيترجع
+  // للطابور **مرة واحدة بس**، وبأولوية «محتاجة رفع سرعة» (1)، وبعد ما الباتش بتاعه
+  // يخلص بالكامل (مفيش فيه مهمة منتظرة ولا شغّالة) — عشان مايزاحمش الباتش وهو شغّال.
+  // لو رجع بإيرور تانى: خلاص، بيتسجّل بالنتيجة دى ومابيتعادش (retry_round = 1).
+  //
+  // ملحوظات مقصودة:
+  //  - preempted مش فى قايمة الإيرور: دى مقاطعة مقصودة والسيرفر بيرجّع الباقى بنفسه.
+  //  - نافذة 6 ساعات + سقف 200 لكل دورة: يمنع إن أول تشغيل بعد النشر يقلب آلاف
+  //    الأخطاء القديمة للطابور دفعة واحدة.
+  //  - retried_at ختم على المهمة الأصلية عشان مانضيفش نفس الإعادة كل دورة سحب.
+  const RETRY_ERR = `('tab_closed','timeout','stopped')`;
+  const requeueErroredJobs = async () => {
+    try {
+      const { rows } = await pool.query(`
+        WITH picked AS (
+          SELECT e.id, e.type, e.accounts, e.requested_by, e.note, e.batch_id, e.site, e.params
+            FROM exec_jobs e
+           WHERE e.status = 'done'
+             AND e.result IN ${RETRY_ERR}
+             AND e.retry_round = 0
+             AND e.retried_at IS NULL
+             AND e.type IN ('measure','raise','stop')
+             AND e.done_at > now() - interval '6 hours'
+             -- الباتش خلص بالكامل
+             AND NOT EXISTS (SELECT 1 FROM exec_jobs b
+                              WHERE b.batch_id = e.batch_id AND b.status IN ('pending','claimed'))
+             -- ومفيش نفس الرقم مستنى/شغّال دلوقتى (مانكرّرش)
+             AND NOT EXISTS (SELECT 1 FROM exec_jobs a
+                              WHERE a.status IN ('pending','claimed')
+                                AND a.type = e.type AND a.accounts = e.accounts)
+           ORDER BY e.done_at
+           LIMIT 200
+        ), ins AS (
+          INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params, retry_round)
+          SELECT p.type, p.accounts, p.requested_by,
+                 COALESCE(p.note, '') || ' (إعادة تنفيذ بعد إيرور)',
+                 1, COALESCE(p.batch_id, 'b') || '-r1', p.site, p.params, 1
+            FROM picked p
+          RETURNING id
+        )
+        UPDATE exec_jobs SET retried_at = now()
+         WHERE id IN (SELECT id FROM picked)
+        RETURNING id`);
+      if (rows.length) console.log(`[exec-queue] إعادة تنفيذ ${rows.length} خط رجعوا بإيرور (أولوية 1)`);
+    } catch (e: any) {
+      console.error("[exec-queue] فشل إعادة تنفيذ الأخطاء:", e.message);
+    }
+  };
+
   const expireOrphanedExecJobs = async () => {
     try {
       // المهمة بتعلق فى claimed لما التاب يتقفل أو التنفيذ يفشل من غير ما يبعت /done.

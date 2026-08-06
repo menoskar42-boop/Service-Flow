@@ -638,6 +638,10 @@ export const execJobs = pgTable("exec_jobs", {
   site: text("site").notNull().default("dzs"),
   // بيانات إضافية للمهمة (مش أرقام): كود الكابينة القديم/الجديد ونوع البورت لمهمة «غيّر البورت»
   params: jsonb("params"),
+  // إعادة التنفيذ التلقائية بعد الإيرور: 0 = مهمة أصلية، 1 = إعادة تنفيذ (مابتتعادش تانى)
+  retryRound: integer("retry_round").notNull().default(0),
+  // ختم إن المهمة دى اتعمِلها إعادة تنفيذ خلاص — يمنع تكرار الإضافة كل دورة سحب
+  retriedAt: timestamp("retried_at"),
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

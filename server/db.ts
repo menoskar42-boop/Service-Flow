@@ -992,6 +992,11 @@ export async function ensureSchema() {
     -- بيانات إضافية للمهمة (مش أرقام): مثلاً كود الكابينة القديم/الجديد ونوع البورت لمهمة
     -- «غيّر البورت» — جهاز التنفيذ بيبنى بيها لينك البوابة الصحيح.
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS params jsonb;
+    -- إعادة التنفيذ التلقائية للخطوط اللى رجعت بإيرور: المهمة الأصلية retry_round=0،
+    -- وإعادة التنفيذ retry_round=1 — فمابنعيدش تانى لو رجعت بإيرور مرة كمان.
+    -- retried_at = ختم إن المهمة دى اتعمِلها إعادة خلاص (يمنع التكرار كل دورة سحب).
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retry_round integer NOT NULL DEFAULT 0;
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retried_at timestamptz;
   `);
   // ضبط الموقع للمهام القديمة: الموقع بقى **اسم الدومين** نفسه (نفس الدومين = مسار واحد).
   await pool.query(`
