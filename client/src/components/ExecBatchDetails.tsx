@@ -18,6 +18,8 @@ interface Job {
   status: string;
   result: string | null;
   note: string | null;
+  requestedBy: string | null;
+  requestedFrom: string | null;
   executedBy: string | null;
   retryRound: number;
   createdAt: string | null;
@@ -94,7 +96,9 @@ function describe(j: Job): string {
   }
 }
 
-const COLS = ["#", "الرقم", "الحالة", "التفصيلى", "الجهاز المنفّذ", "وقت السحب", "وقت الانتهاء"];
+// «الجهاز الطالب» = الجهاز اللى اتبعت منه العملية (ده اللى الرقابة بتدوّر عليه).
+// «الجهاز المنفّذ» = جهاز التنفيذ اللى سحب المهمة — بيفضل واحد لكل الطابور.
+const COLS = ["#", "الرقم", "الحالة", "التفصيلى", "طلبها", "الجهاز الطالب", "الجهاز المنفّذ", "وقت السحب", "وقت الانتهاء"];
 
 export function ExecBatchDetails({ batchId, typeLabel, onClose }:
   { batchId: string; typeLabel: string; onClose: () => void }) {
@@ -111,7 +115,8 @@ export function ExecBatchDetails({ batchId, typeLabel, onClose }:
   const jobs = data?.data ?? [];
   const asRow = (j: Job, i: number) => [
     i + 1, j.account || "—", statusLabel(j) + (j.retryRound ? " (إعادة تنفيذ)" : ""),
-    describe(j), j.executedBy || "—", fmt(j.claimedAt), fmt(j.doneAt),
+    describe(j), j.requestedBy || "—", j.requestedFrom || "—", j.executedBy || "—",
+    fmt(j.claimedAt), fmt(j.doneAt),
   ];
 
   const handleExcel = () => {
@@ -178,7 +183,11 @@ export function ExecBatchDetails({ batchId, typeLabel, onClose }:
                     <TableCell className="text-sm whitespace-normal break-words max-w-[420px] leading-5">
                       {describe(j)}
                     </TableCell>
-                    <TableCell className="text-[11px] text-muted-foreground whitespace-normal break-words max-w-[220px]">
+                    <TableCell className="whitespace-nowrap text-sm">{j.requestedBy || "—"}</TableCell>
+                    <TableCell className="text-[11px] whitespace-normal break-words max-w-[220px] font-medium">
+                      {j.requestedFrom || "—"}
+                    </TableCell>
+                    <TableCell className="text-[11px] text-muted-foreground whitespace-normal break-words max-w-[200px]">
                       {j.executedBy || "—"}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-xs">{fmt(j.claimedAt)}</TableCell>

@@ -645,6 +645,9 @@ export const execJobs = pgTable("exec_jobs", {
   // الجهاز/المتصفح اللى سحب المهمة ونفّذها — «اسم المستخدم · المتصفح/النظام · معرّف
   // الجهاز». بيتسجّل وقت السحب عشان الرقابة تعرف الطلب اتنفّذ من فين بالظبط.
   executedBy: text("executed_by"),
+  // الجهاز/المتصفح اللى **اتبعت منه الطلب** (وقت الإضافة للطابور) — ده اللى الرقابة
+  // بتدوّر عليه: مين طلب العملية ومن أى جهاز. executed_by بيفضل جهاز التنفيذ نفسه.
+  requestedFrom: text("requested_from"),
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

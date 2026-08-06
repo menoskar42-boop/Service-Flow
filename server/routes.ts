@@ -1546,10 +1546,14 @@ export async function registerRoutes(
       // أنواع NO_SPLIT بتتحوّل لمهمة واحدة بكل الأرقام (السكربت بيلفّ عليها جوّه نفس التاب).
       const groups: string[][] = NO_SPLIT_TYPES.has(type) ? [uniqAccs] : uniqAccs.map((a) => [a]);
       const extra = jobParams && typeof jobParams === "object" ? JSON.stringify(jobParams) : null;
-      const params: any[] = [type, user, note || null, priority, batchId, site, extra];
-      const valueSql = groups.map((g) => { params.push(JSON.stringify(g)); return `($1, $${params.length}::jsonb, $2, $3, $4, $5, $6, $7::jsonb)`; }).join(",");
+      // الجهاز اللى اتبعت منه الطلب — بيتسجّل مع المهمة نفسها عشان الرقابة تعرف
+      // العملية طُلبت من أى جهاز/متصفح (مش جهاز التنفيذ اللى بينفّذها).
+      const from = execIdentity(req);
+      const params: any[] = [type, user, note || null, priority, batchId, site, extra, from];
+      const valueSql = groups.map((g) => { params.push(JSON.stringify(g)); return `($1, $${params.length}::jsonb, $2, $3, $4, $5, $6, $7::jsonb, $8)`; }).join(",");
       const { rows } = await pool.query(
-        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params) VALUES ${valueSql} RETURNING id`,
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params, requested_from)
+         VALUES ${valueSql} RETURNING id`,
         params);
       res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length, batchId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -1909,6 +1913,7 @@ export async function registerRoutes(
 
       const { rows: jobs } = await pool.query(
         `SELECT id, type, accounts, status, result, note, priority, params,
+                requested_by AS "requestedBy", requested_from AS "requestedFrom",
                 executed_by AS "executedBy", retry_round AS "retryRound",
                 (created_at AT TIME ZONE 'Africa/Cairo') AS "createdAt",
                 (claimed_at AT TIME ZONE 'Africa/Cairo') AS "claimedAt",
@@ -6008,12 +6013,13 @@ export async function registerRoutes(
               p.new_msan AS "newMsan", p.new_frame AS "newFrame", p.port_type AS "portType", p.status,
               p.reservation_code AS "reservationCode", p.request_date AS "requestDate", p.completed,
               p.requested_by AS "requestedBy",
+              ej.requested_from AS "requestedFrom",
               ej.executed_by AS "executedBy",
               (ej.done_at AT TIME ZONE 'Africa/Cairo') AS "executedAt",
               (p.recorded_at AT TIME ZONE 'Africa/Cairo') AS "recordedAt"
        FROM port_change_requests p
        LEFT JOIN LATERAL (
-         SELECT e.executed_by, e.done_at
+         SELECT e.executed_by, e.requested_from, e.done_at
            FROM exec_jobs e
           WHERE e.type IN ('portchange','portcheck')
             AND jsonb_exists(e.accounts, regexp_replace(p.phone_number, '^88', ''))

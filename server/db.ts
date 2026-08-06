@@ -1068,6 +1068,8 @@ export async function ensureSchema() {
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retried_at timestamptz;
     -- الجهاز/المتصفح اللى نفّذ المهمة (اسم المستخدم · المتصفح/النظام · معرّف الجهاز)
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS executed_by text;
+    -- الجهاز/المتصفح اللى اتبعت منه الطلب (وقت الإضافة للطابور)
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS requested_from text;
   `);
   // ضبط الموقع للمهام القديمة: الموقع بقى **اسم الدومين** نفسه (نفس الدومين = مسار واحد).
   await pool.query(`

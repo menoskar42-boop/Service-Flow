@@ -264,7 +264,11 @@ export async function enqueueJob(type: ExecJobType, accounts: (string | number)[
     const r = await fetch("/api/exec-queue/enqueue", {
       method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, accounts: accs, note: note || currentSource || null, params: params || null }),
+      // device = الجهاز/المتصفح اللى اتبعت منه الطلب — بيتخزّن على المهمة نفسها للرقابة
+      body: JSON.stringify({
+        type, accounts: accs, note: note || currentSource || null,
+        params: params || null, device: execDeviceLabel(),
+      }),
     });
     const data = await r.json();
     // نبدأ نتتبّع الباتش كامل تلقائياً (يظهر للمستخدم اللى طلبه: تم X من N)
