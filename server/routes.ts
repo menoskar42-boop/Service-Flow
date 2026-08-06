@@ -4823,8 +4823,20 @@ export async function registerRoutes(
     const params: any[] = [];
     const conds: string[] = [];
     if (q && q.trim()) {
-      params.push(arQ(q));
-      conds.push(`(${n("phone_local")} LIKE $${params.length} OR ${n("phone_full")} LIKE $${params.length})`);
+      // البحث برقم التليفون بيقارن **بالأرقام بس** — الرقم مخزّن «2657363» و«88-2657363»،
+      // فالبحث بـ «882657363» أو «88 2657363» أو «88-2657363» كلهم كانوا بيفشلوا قبل كده
+      // لأن المقارنة كانت نصية على الصيغة المخزّنة بالحرف.
+      let digits = q.replace(/\D/g, "");
+      if (digits.startsWith("88") && digits.length > 7) digits = digits.slice(2);  // نفس منطق normalizePhone
+      if (digits) {
+        params.push(`%${digits}%`);
+        const p = `$${params.length}`;
+        conds.push(`(regexp_replace(phone_local, '[^0-9]', '', 'g') LIKE ${p}
+                  OR regexp_replace(phone_full,  '[^0-9]', '', 'g') LIKE ${p})`);
+      } else {
+        params.push(arQ(q));
+        conds.push(`(${n("phone_local")} LIKE $${params.length} OR ${n("phone_full")} LIKE $${params.length})`);
+      }
     }
     // 🆕 الفني يشوف إدخالاته فقط (اللى هو دخلها)؛ الأدمن يشوف الكل
     if (req.user?.role === ROLES.TECH) {
