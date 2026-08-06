@@ -394,9 +394,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     ["تاريخ الإنشاء", (r) => fmtDt(r.orderCreateTime)],
     ["Service Order ID", (r) => r.serviceOrderId],
     ["Customer Order ID", (r) => r.customerOrderId],
+    ["اسم الفنى", (r) => r.techName],
     ["كود MSAN", (r) => r.msanCode],
     ["FCC", (r) => r.fccExchange],
-    ["اسم الفنى", (r) => r.techName],
     ["سبب التعذر", (r) => r.errorName],
     ["الموبايل", (r) => r.customerMobile],
     // رد الفنى وسبب التعذر — للمتعذرات الحالية، وبيظهروا **لكل** من يفتح التقرير
