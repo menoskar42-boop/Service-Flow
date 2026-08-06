@@ -6914,6 +6914,45 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // GET /api/box-lines — الخطوط «الشغّالة» على بكس معيّن، بالاسم والعنوان والموبايل.
+  // «الشغّال» = خط بياناته الفنية على البكس ده **وله بورت** (فريم فى ملف المنافذ) —
+  // الخطوط اللى ملهاش بورت مابتتحسبش. بتُستخدم فى تحذير «بوكس مليان» لما العدد < 10.
+  app.get("/api/box-lines", requireAuth, async (req, res) => {
+    try {
+      const central = String(req.query.central ?? "").trim();
+      const cabinet = String(req.query.cabinet ?? "").trim();
+      const box = String(req.query.box ?? "").trim();
+      if (!central || !box) return res.json({ data: [], total: 0 });
+      const { rows } = await pool.query(
+        `SELECT pl.tel_no AS "telNo", pl.full_phone AS "fullPhone",
+                pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber",
+                si.sub_name AS "subName", si.sub_add AS "subAdd",
+                mb.m AS mobile
+           FROM phone_lines pl
+           LEFT JOIN line_subscriber_info si ON si.phone_number = pl.full_phone
+           LEFT JOIN LATERAL (
+             -- نفس أولوية بحث رقم التليفون: يدوى ← أوامر الشغل ← طلبات FTTH
+             SELECT m FROM (
+               SELECT lm.mobile AS m, 0 AS pr FROM line_mobiles lm WHERE lm.full_phone = pl.full_phone
+               UNION ALL
+               SELECT mo.mobile, 1 FROM maintenance_orders mo
+                 WHERE mo.phone_number IN (pl.tel_no, pl.full_phone)
+                   AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+               UNION ALL
+               SELECT fo.customer_mobile, 2 FROM ftth_orders_current fo
+                 WHERE fo.service_number IN (pl.tel_no, pl.full_phone)
+                   AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+             ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
+           ) mb ON true
+          WHERE btrim(pl.central) = btrim($1)
+            AND ($2 = '' OR btrim(pl.cabin_number) = btrim($2))
+            AND btrim(pl.box_number) = btrim($3)
+            AND ${hasFrameSql("pl.full_phone")}
+          ORDER BY pl.tel_no`, [central, cabinet, box]);
+      res.json({ data: rows, total: rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/box-tickets/repaired — «متعذرات على بكسيات معطلة تم إصلاحها»:
   // التكتات اللى Service-Flow فتحها ومهندس الكوابل نظّمها والشئون الخارجية أكّدتها
   // (يعنى بقت status = 'closed') — مع بيانات الطلب/المتعذر اللى جات منه.

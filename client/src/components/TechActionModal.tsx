@@ -59,8 +59,39 @@ export function TechActionModal({ order, action, onSubmit, submitting, triggerLa
 
   const isFeasible = action === "feasible";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // ── تحذير «بوكس مليان» والعدد أقل من 10 ─────────────────────────────────────
+  // لما الفنى يقول «بوكس مليان» بنجيب الخطوط الشغّالة على البكس (اللى بياناتها الفنية
+  // عليه **وليها بورت**). لو أقل من 10 بنعرضها بالاسم والعنوان والموبايل للتأكيد بس —
+  // **مابنمنعش التسجيل**، الفنى يقدر يكمّل عادى.
+  const [warnLines, setWarnLines] = useState<any[] | null>(null);
+  const [warnChecking, setWarnChecking] = useState(false);
+  const LOW_BOX_THRESHOLD = 10;
+
+  const doSubmit = () => {
+    setWarnLines(null);
+    submitNow();
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // فحص «بوكس مليان» مرة واحدة قبل التسجيل (لو التحذير اتعرض خلاص بنكمّل)
+    if (!isFeasible && reason === REJECTION_REASONS.BOX_FULL && warnLines === null) {
+      const c = centralName, cab = notFeasibleCabin, bx = notFeasibleBox;
+      if (c && bx) {
+        setWarnChecking(true);
+        try {
+          const r = await fetch(`/api/box-lines?central=${encodeURIComponent(c)}&cabinet=${encodeURIComponent(cab || "")}&box=${encodeURIComponent(bx)}`, { credentials: "include" });
+          const d = await r.json();
+          const lines: any[] = Array.isArray(d?.data) ? d.data : [];
+          if (lines.length < LOW_BOX_THRESHOLD) { setWarnLines(lines); setWarnChecking(false); return; }
+        } catch { /* فشل الفحص مايمنعش التسجيل */ }
+        setWarnChecking(false);
+      }
+    }
+    submitNow();
+  };
+
+  const submitNow = () => {
 
     // وضع «استخدام بديل» (متعذرات OM): نبعت القيم لبرّه بدل تحديث الطلب
     if (onSubmit) {
@@ -303,11 +334,55 @@ export function TechActionModal({ order, action, onSubmit, submitting, triggerLa
               } 
               className={isFeasible ? "bg-green-600 hover:bg-green-700" : "bg-destructive hover:bg-destructive/90"}
             >
-              {isUpdating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {(isUpdating || warnChecking) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
               تأكيد
             </Button>
           </div>
         </form>
+
+        {/* تحذير «بوكس مليان» والشغّال عليه أقل من 10 — للتأكيد بس، مش مانع للتسجيل */}
+        {warnLines !== null && (
+          <div className="fixed inset-0 z-[9999] bg-black/50 flex items-center justify-center p-4"
+               onClick={() => setWarnLines(null)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-4 space-y-3 max-h-[85vh] overflow-auto"
+                 dir="rtl" onClick={(e) => e.stopPropagation()}>
+              <h3 className="font-bold text-amber-700 flex items-center gap-2">
+                ⚠️ البكس ده عليه {warnLines.length} مشترك بس (أقل من {LOW_BOX_THRESHOLD})
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                الشغّال = الخطوط اللى بياناتها الفنية على البكس ده وليها بورت. متأكد إنه «بوكس مليان»؟
+              </p>
+              {warnLines.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-4 text-center">مفيش خطوط شغّالة على البكس ده</div>
+              ) : (
+                <div className="border rounded-md divide-y max-h-[45vh] overflow-auto">
+                  {warnLines.map((l: any) => (
+                    <div key={l.fullPhone} className="p-2 text-sm flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold" dir="ltr">{l.telNo || l.fullPhone}</div>
+                        <div className="text-xs">{l.subName || "— بدون اسم —"}</div>
+                        <div className="text-[11px] text-muted-foreground">{l.subAdd || "— بدون عنوان —"}</div>
+                      </div>
+                      {l.mobile ? (
+                        <a href={`tel:${String(l.mobile).replace(/\D/g, "")}`}
+                           className="shrink-0 px-2 py-1 rounded bg-green-600 text-white text-xs font-semibold hover:bg-green-700"
+                           dir="ltr">📞 {l.mobile}</a>
+                      ) : (
+                        <span className="shrink-0 text-[11px] text-muted-foreground">مفيش موبايل</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => setWarnLines(null)}>رجوع وتعديل</Button>
+                <Button size="sm" onClick={doSubmit} className="bg-destructive hover:bg-destructive/90">
+                  متأكد — سجّل «بوكس مليان»
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );
