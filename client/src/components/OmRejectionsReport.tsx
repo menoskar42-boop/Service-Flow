@@ -577,7 +577,12 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             <TableHeader className="bg-muted/50">
               <TableRow>
                 <TableHead className="text-right font-bold w-10">#</TableHead>
-                {cols.map(([h]) => <TableHead key={h} className="text-right font-bold whitespace-nowrap">{h}</TableHead>)}
+                {cols.map(([h]) => (
+                  <TableHead key={h}
+                    className={`text-right font-bold ${h === "عنوان العميل" ? "max-w-[260px] min-w-[180px]" : "whitespace-nowrap"}`}>
+                    {h}
+                  </TableHead>
+                ))}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -592,7 +597,12 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
                   <TableRow key={r.id ?? idx} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
                     {cols.map(([h, f]) => (
-                      <TableCell key={h} className="whitespace-nowrap">
+                      // العنوان بيبقى طويل جداً — بنحدّد عرضه ونخلّيه يلتفّ على أكتر من
+                      // سطر بدل ما يمدّ الجدول ويخفى باقى الأعمدة. باقى الأعمدة سطر واحد.
+                      <TableCell key={h}
+                        className={h === "عنوان العميل"
+                          ? "whitespace-normal break-words align-top max-w-[260px] min-w-[180px] leading-5"
+                          : "whitespace-nowrap"}>
                         {h === "اسم الفنى" ? renderTechCell(r)
                           : h === "الموبايل" ? renderMobileCell(r)
                           : h === "رد الفنى" ? renderRespStatusCell(r)
