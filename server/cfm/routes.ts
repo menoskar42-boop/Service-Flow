@@ -9,6 +9,7 @@ import express from "express";
 import bcrypt from "bcryptjs";  // نسخة JS خالصة — تتحقق من هاش bcrypt ($2b$) بتاع مستخدمى CFM بدون native build
 import { storage } from "./storage";
 import { pool } from "../db";
+import { findOpenTicketCoveringCableBox } from "../box-fault-ticket";
 import { importCfmFromLive } from "./import-from-live";
 import { importCfmFromProdDb } from "./import-from-prod-db";
 import {
@@ -806,6 +807,26 @@ export function registerCfmRoutes(app: Express) {
 
       if (!validation.success) {
         return res.status(400).json({ error: "Invalid ticket data", details: validation.error });
+      }
+
+      // منع تكرار التكت على نفس البكس — نفس السنترال ونفس الكابينة ونفس البكس
+      // (مع فكّ النطاقات: تكت على «1:5» بتغطى بكس 4 ضمنياً).
+      // بيمنع **فقط** لو التكت القديمة لسه «مفتوحة»؛ لو فى انتظار التأكيد أو
+      // مغلقة يبقى الفتح عادى.
+      const dup = await findOpenTicketCoveringCableBox(validation.data.cableId, validation.data.box);
+      if (dup) {
+        const when = dup.createdAt ? new Date(dup.createdAt).toLocaleDateString("ar-EG") : "";
+        const details = [
+          `سنترال ${dup.central}`,
+          `كابينة ${dup.cabinet}`,
+          `بكس ${dup.box}`,
+          dup.faultType ? `نوع العطل ${dup.faultType}` : "",
+          when ? `تاريخ الفتح ${when}` : "",
+        ].filter(Boolean).join(" — ");
+        return res.status(409).json({
+          error: `تعذّر فتح التكت — البكس ${dup.matchedBox} موجود بالفعل فى تكت مفتوحة رقم ${dup.ticketNumber} `
+               + `وبياناتها الفنية: ${details}. لازم التكت دى تتقفل أو تروح لانتظار التأكيد الأول.`,
+        });
       }
 
       // Auto-generate ticket number - find max number to avoid duplicates

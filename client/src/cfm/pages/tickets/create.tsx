@@ -48,6 +48,8 @@ export default function CreateTicket() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [isLocating, setIsLocating] = useState(false);
+  // سبب منع فتح التكت (بكس عليه تكت مفتوحة بالفعل) — بيفضل ظاهر لحد ما يحاول تانى
+  const [blockedMsg, setBlockedMsg] = useState<string | null>(null);
   
   // API-fetched master data for real-time sync
   const [centrals, setCentrals] = useState<Central[]>([]);
@@ -140,6 +142,7 @@ export default function CreateTicket() {
   };
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    setBlockedMsg(null);
     try {
       await ticketsApi.create({
         ...values,
@@ -151,11 +154,11 @@ export default function CreateTicket() {
       });
       setLocation("/tickets");
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message || "Failed to create ticket",
-      });
+      const msg = error?.message || "Failed to create ticket";
+      // رسالة المنع (بكس عليه تكت مفتوحة) طويلة وفيها رقم التكت — بنثبّتها فوق
+      // الفورم كمان مش فى إشعار بيختفى، عشان اللى بيفتح التكت يقراها بالراحة.
+      setBlockedMsg(msg);
+      toast({ variant: "destructive", title: "Error", description: msg });
     }
   };
 
@@ -165,6 +168,14 @@ export default function CreateTicket() {
         <h1 className="text-2xl font-bold tracking-tight">{t.createTicket}</h1>
         <p className="text-sm text-muted-foreground">Register a new underground cable fault</p>
       </div>
+
+      {blockedMsg && (
+        <div dir="rtl" role="alert"
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          data-testid="alert-duplicate-box">
+          {blockedMsg}
+        </div>
+      )}
 
       <Card className="border-t-4 border-t-primary shadow-md">
         <CardContent className="pt-6">

@@ -111,6 +111,64 @@ export async function findCoveringOpenTicket(
 }
 
 /**
+ * نفس منطق التغطية أعلاه لكن بالدخول من **الكابينة (cable_id)** — بيستخدمه برنامج
+ * الكوابل نفسه عشان يمنع فتح تكت لبكس لسه عليه تكت **مفتوحة**.
+ *   • «مفتوحة» فقط هى اللى بتمنع — لو التكت فى انتظار التأكيد (pending_confirmation)
+ *     أو مغلقة (closed) يبقى الفتح عادى.
+ *   • البكس الجديد ممكن يكون نطاق («1:5») — بنمنع لو أى بكس جواه مغطّى.
+ * بيرجّع بيانات التكت المانعة عشان الرسالة تقول للمستخدم هى فين بالظبط.
+ */
+export interface CoveringTicketInfo {
+  ticketNumber: string;
+  central: string;
+  cabinet: string;
+  box: string;
+  faultType: string | null;
+  createdAt: Date | null;
+  matchedBox: string;   // البكس المشترك اللى سبب المنع
+}
+
+export async function findOpenTicketCoveringCableBox(
+  cableId: string, boxStr: string,
+): Promise<CoveringTicketInfo | null> {
+  const wantBoxes = expandBoxes(boxStr);
+  if (!cableId || !wantBoxes.length) return null;
+
+  // الكابينة المطلوبة: بنجيب (اسم السنترال + رقم الكابينة) عشان المطابقة تبقى
+  // بالبيانات مش بالـ id — لو نفس الكابينة متكررة كصفّين تفضل التغطية شغالة.
+  const { rows: tgt } = await pool.query(
+    `SELECT cb.number AS cabinet, c.name AS central
+       FROM cables cb JOIN centrals c ON c.id = cb.central_id
+      WHERE cb.id = $1 LIMIT 1`, [cableId]);
+  if (!tgt.length) return null;
+  const wantCentral = normCentral(tgt[0].central), wantCab = normCab(tgt[0].cabinet);
+
+  const { rows } = await pool.query(
+    `SELECT t.ticket_number AS "ticketNumber", t.box, t.created_at AS "createdAt",
+            c.name AS central, cb.number AS cabinet, ft.name AS "faultType"
+       FROM tickets t
+       JOIN centrals c  ON c.id  = t.central_id
+       JOIN cables   cb ON cb.id = t.cable_id
+       LEFT JOIN fault_types ft ON ft.id = t.fault_type_id
+      WHERE t.status = 'open'
+      ORDER BY t.created_at DESC`);
+  for (const r of rows) {
+    if (normCentral(r.central) !== wantCentral) continue;
+    if (normCab(r.cabinet) !== wantCab) continue;
+    const have = expandBoxes(r.box);
+    const hit = wantBoxes.find((b) => have.includes(b));
+    if (hit) {
+      return {
+        ticketNumber: r.ticketNumber, central: String(r.central), cabinet: String(r.cabinet),
+        box: String(r.box), faultType: r.faultType ?? null,
+        createdAt: r.createdAt ?? null, matchedBox: hit,
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * بيفتح التكت لو مش مغطّاة. بيرجّع نتيجة واضحة فى كل الحالات — مابيرميش استثناء
  * عشان فشل فتح التكت مايمنعش تسجيل رد الفنى نفسه.
  */
