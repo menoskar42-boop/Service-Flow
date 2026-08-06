@@ -667,6 +667,23 @@ export const technicianNames = pgTable("technician_names", {
 
 export type TechnicianName = typeof technicianNames.$inferSelect;
 
+// ربط تكتات «بوكس معطل» اللى اتفتحت تلقائياً بالطلب/المتعذر اللى جات منه
+export const boxFaultTickets = pgTable("box_fault_tickets", {
+  id: serial("id").primaryKey(),
+  source: text("source").notNull(),          // 'طلبات' | 'OM'
+  refKey: text("ref_key").notNull(),
+  centralName: text("central_name"),
+  cabinNumber: text("cabin_number"),
+  boxNumber: text("box_number"),
+  techName: text("tech_name"),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  ticketId: text("ticket_id"),
+  ticketNumber: text("ticket_number"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ uniqSourceRef: unique().on(t.source, t.refKey) }));
+
+export type BoxFaultTicket = typeof boxFaultTickets.$inferSelect;
+
 // «جدول الخطوط المرفوعة» — أرقام كان لها بورت واختفت من الشيت الجديد.
 // بتتنقل هنا ببياناتها بدل ما تتمسح؛ ولو رجعت فى شيت بعدين بتتشال من هنا.
 export const removedPhonePorts = pgTable("removed_phone_ports", {

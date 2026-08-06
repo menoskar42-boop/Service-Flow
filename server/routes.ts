@@ -21,7 +21,7 @@ import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
-import { openBoxFaultTicket } from "./box-fault-ticket";
+import { openBoxFaultTicket, findCoveringOpenTicket } from "./box-fault-ticket";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -6838,6 +6838,110 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
+  });
+
+  // ── تكتات «بوكس معطل»: التشغيل بأثر رجعى على القديم ──────────────────────────
+  // بيجمع كل الطلبات والمتعذرات اللى الفنى سجّل فيها «بوكس معطل» وبيحسب لكل واحد:
+  // اتفتحله تكت خلاص؟ ولا مغطّى بتكت مفتوحة؟ ولا محتاج تكت جديدة؟
+  // الفحص **مايفتحش حاجة** — الفتح بيتم من /run بعد ما تشوف القايمة وتوافق.
+  const collectBoxBrokenCandidates = async () => {
+    const out: any[] = [];
+    const { rows: ord } = await pool.query(
+      `SELECT id::text AS "refKey", central_name AS central, cabin_number AS cabinet,
+              box_number AS box, tech_name AS "techName",
+              (tech_response_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt",
+              customer_name AS "customerName"
+         FROM orders
+        WHERE rejection_reason = $1 AND COALESCE(btrim(box_number),'') <> ''
+        ORDER BY tech_response_at DESC NULLS LAST`, [REJECTION_REASONS.BOX_BROKEN]);
+    for (const r of ord) out.push({ ...r, source: "طلبات", refKey: `طلب #${r.refKey}` });
+    const { rows: om } = await pool.query(
+      `SELECT serial_number AS "refKey", central_name AS central, cabin_number AS cabinet,
+              box_number AS box, tech_name AS "techName",
+              (responded_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt"
+         FROM om_responses
+        WHERE rejection_reason = $1 AND COALESCE(btrim(box_number),'') <> ''
+        ORDER BY responded_at DESC NULLS LAST`, [REJECTION_REASONS.BOX_BROKEN]);
+    for (const r of om) out.push({ ...r, source: "OM", refKey: `متعذر ${r.refKey}` });
+    return out;
+  };
+
+  app.get("/api/box-tickets/backfill-preview", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const cands = await collectBoxBrokenCandidates();
+      const { rows: done } = await pool.query(`SELECT source, ref_key, ticket_number FROM box_fault_tickets`);
+      const doneMap = new Map(done.map((d: any) => [`${d.source}|${d.ref_key}`, d.ticket_number]));
+      const data: any[] = [];
+      for (const c of cands) {
+        const already = doneMap.get(`${c.source}|${c.refKey}`);
+        if (already) { data.push({ ...c, action: "done", ticketNumber: already }); continue; }
+        const cov = await findCoveringOpenTicket(c.central, c.cabinet, c.box);
+        data.push(cov
+          ? { ...c, action: "covered", ticketNumber: cov.ticketNumber, coveringBox: cov.box }
+          : { ...c, action: "will_open" });
+      }
+      res.json({
+        data,
+        counts: {
+          total: data.length,
+          willOpen: data.filter((d) => d.action === "will_open").length,
+          covered: data.filter((d) => d.action === "covered").length,
+          done: data.filter((d) => d.action === "done").length,
+        },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // التنفيذ الفعلى — سوبر أدمن بس، وبيفتح اللى حالته will_open وقت التنفيذ (بيعيد
+  // الفحص لكل واحد لحظتها عشان مايفتحش تكت بقت مغطّاة بين المعاينة والتنفيذ).
+  app.post("/api/box-tickets/backfill-run", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const cands = await collectBoxBrokenCandidates();
+      const { rows: done } = await pool.query(`SELECT source, ref_key FROM box_fault_tickets`);
+      const doneSet = new Set(done.map((d: any) => `${d.source}|${d.ref_key}`));
+      const opened: any[] = [], skipped: any[] = [], failed: any[] = [];
+      for (const c of cands) {
+        if (doneSet.has(`${c.source}|${c.refKey}`)) { skipped.push({ ...c, why: "اتفتحت قبل كده" }); continue; }
+        const r = await openBoxFaultTicket({
+          central: c.central, cabinet: c.cabinet, box: c.box, techName: c.techName || "غير معروف",
+          source: c.source === "OM" ? "OM" : "طلبات", respondedAt: c.respondedAt, refKey: c.refKey,
+        });
+        if (r.ok && (r as any).created) opened.push({ ...c, ticketNumber: (r as any).ticketNumber });
+        else if (r.ok) skipped.push({ ...c, why: `مغطّى بتكت ${(r as any).ticketNumber}` });
+        else failed.push({ ...c, why: (r as any).reason });
+      }
+      res.json({ opened: opened.length, skipped: skipped.length, failed: failed.length, details: { opened, skipped, failed } });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/box-tickets/repaired — «متعذرات على بكسيات معطلة تم إصلاحها»:
+  // التكتات اللى Service-Flow فتحها ومهندس الكوابل نظّمها والشئون الخارجية أكّدتها
+  // (يعنى بقت status = 'closed') — مع بيانات الطلب/المتعذر اللى جات منه.
+  app.get("/api/box-tickets/repaired", requireAuth, async (req, res) => {
+    try {
+      const { from = "", to = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds = [`t.status = 'closed'`];
+      if (from) { params.push(from); conds.push(`t.closed_at >= $${params.length}::date`); }
+      if (to)   { params.push(to);   conds.push(`t.closed_at < ($${params.length}::date + 1)`); }
+      const { rows } = await pool.query(
+        `SELECT b.source, b.ref_key AS "refKey", b.central_name AS central,
+                b.cabin_number AS cabinet, b.box_number AS box, b.tech_name AS "techName",
+                (b.responded_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt",
+                b.ticket_number AS "ticketNumber",
+                (t.created_at AT TIME ZONE 'Africa/Cairo') AS "ticketCreatedAt",
+                (t.closed_at   AT TIME ZONE 'Africa/Cairo') AS "closedAt",
+                t.closed_by AS "closedBy",
+                t.final_repair_description AS "repairDescription",
+                ft.name AS "faultType"
+           FROM box_fault_tickets b
+           JOIN tickets t ON t.id = b.ticket_id
+           LEFT JOIN fault_types ft ON ft.id = t.fault_type_id
+          WHERE ${conds.join(" AND ")}
+          ORDER BY t.closed_at DESC NULLS LAST
+          LIMIT 20000`, params);
+      res.json({ data: rows, total: rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // GET /api/phone-ports/removed — «جدول الخطوط المرفوعة»: أرقام كان لها بورت واختفت

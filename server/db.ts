@@ -739,6 +739,26 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS row_no text`);
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS column_no text`);
 
+  // box_fault_tickets — ربط كل تكت «بوكس معطل» اتفتحت تلقائياً بالطلب/المتعذر اللى
+  // جات منه. بيمنع فتح تكت مرتين لنفس المصدر، وبيغذّى تقرير «تم إصلاحها» بعدين.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS box_fault_tickets (
+      id serial PRIMARY KEY,
+      source text NOT NULL,               -- 'طلبات' | 'OM'
+      ref_key text NOT NULL,              -- رقم الطلب أو مسلسل المتعذر
+      central_name text,
+      cabin_number text,
+      box_number text,
+      tech_name text,
+      responded_at timestamptz,           -- تاريخ رد الفنى (= تاريخ إنشاء التكت)
+      ticket_id text,                     -- id التكت فى برنامج الكوابل
+      ticket_number text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (source, ref_key)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS box_fault_tickets_ticket_idx ON box_fault_tickets (ticket_id)`);
+
   // تكتات الكوابل (جدول tickets بتاع برنامج الكوابل — نفس قاعدة البيانات): خانة اسم
   // معروض بديل لـ «تم الفتح بواسطة»، بتتملى للتكتات اللى Service-Flow بيفتحها تلقائياً
   // بصيغة «اسم الفنى-المصدر» (اسلام-OM / اسلام-طلبات).

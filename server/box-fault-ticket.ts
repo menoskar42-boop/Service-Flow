@@ -136,6 +136,15 @@ export async function openBoxFaultTicket(inp: OpenBoxTicketInput): Promise<OpenB
          RETURNING id, ticket_number AS "ticketNumber"`,
         [String(year), central, cRows[0].central_id, cRows[0].cable_id, cabinet, box,
          fRows[0].id, notes, uRows[0].id, label, createdAt]);
+      // نربط التكت بالطلب/المتعذر — يمنع فتحها مرتين ويغذّى تقرير «تم إصلاحها»
+      await pool.query(
+        `INSERT INTO box_fault_tickets
+           (source, ref_key, central_name, cabin_number, box_number, tech_name, responded_at, ticket_id, ticket_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (source, ref_key) DO UPDATE SET
+           ticket_id = EXCLUDED.ticket_id, ticket_number = EXCLUDED.ticket_number`,
+        [inp.source, inp.refKey || `${central}|${cabinet}|${box}`, central, cabinet, box,
+         inp.techName, createdAt, rows[0].id, rows[0].ticketNumber]).catch(() => {});
       return { ok: true, created: true, ticketNumber: rows[0].ticketNumber, ticketId: rows[0].id };
     } catch (e: any) {
       // 23505 = تعارض على رقم التكت (حد تانى أنشأ فى نفس اللحظة) → نعيد المحاولة
