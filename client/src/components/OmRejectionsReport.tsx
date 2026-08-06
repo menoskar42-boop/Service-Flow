@@ -47,6 +47,8 @@ interface Row {
   respIsFeasibleExternal: boolean | null;
   respExternalRejectionReason: string | null;
   respExternalResponseAt: string | null;
+  /** عدد الخطوط الشغّالة على البكس اللى الفنى كتبه (الشغّال = ليه بورت) */
+  boxWorkingCount: number | null;
 }
 
 // نص حالة رد الفنى على المتعذر (نفس مسمّيات قسم الطلبات)
@@ -148,6 +150,17 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           {RESP_LABEL[st] ?? st}
         </span>
         {detail && <span className="text-[11px] text-muted-foreground">{detail}</span>}
+        {/* الكابينة والبكس اللى الفنى كتبهم فى رده — كانوا بيتخزّنوا ومابيظهروش */}
+        {(r.respCabinNumber || r.respBoxNumber) && (
+          <span className="text-[11px] text-muted-foreground">
+            {r.respCabinNumber ? `كابينة ${r.respCabinNumber}` : ""}
+            {r.respCabinNumber && r.respBoxNumber ? " — " : ""}
+            {r.respBoxNumber ? `بكس ${r.respBoxNumber}` : ""}
+          </span>
+        )}
+        {r.respNearestBoxDistance && (
+          <span className="text-[11px] text-muted-foreground">أقرب بكس: {r.respNearestBoxDistance}</span>
+        )}
         {r.respTechName && <span className="text-[11px] text-muted-foreground">الفنى: {r.respTechName}</span>}
         {r.respExternalName && <span className="text-[11px] text-muted-foreground">خارجية: {r.respExternalName}</span>}
       </span>
@@ -391,6 +404,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       ? ([
           ["رد الفنى", (r: Row) => RESP_LABEL[r.respStatus || "pending"] ?? "-"],
           ["سبب التعذر (الفنى)", (r: Row) => r.respRejectionReason ?? r.respExternalRejectionReason ?? "-"],
+          // عدد الشغّال على البكس اللى الفنى كتبه — الشغّال = الخط اللى ليه بورت (فريم)،
+          // وأى خط من غير بورت مابيتحسبش.
+          ["الشغال على البكس", (r: Row) => (r.boxWorkingCount == null ? "-" : r.boxWorkingCount)],
         ] as [string, (r: Row) => any][])
       : []),
     // عمود «إجراء» بيظهر بس لمين يقدر يعمل حاجة فعلاً — أدمن المبيعات مثلاً بيشوف

@@ -6943,9 +6943,21 @@ export async function registerRoutes(
               orp.external_name AS "respExternalName",
               orp.is_feasible_external AS "respIsFeasibleExternal",
               orp.external_rejection_reason AS "respExternalRejectionReason",
-              (orp.external_response_at AT TIME ZONE 'Africa/Cairo') AS "respExternalResponseAt"
+              (orp.external_response_at AT TIME ZONE 'Africa/Cairo') AS "respExternalResponseAt",
+              -- عدد الخطوط الشغّالة على البكس اللى الفنى كتبه فى رده. «شغّال» = ليه بورت
+              -- (فريم) فى ملف المنافذ؛ أى خط من غير بورت مابيتحسبش.
+              bx.c AS "boxWorkingCount"
        FROM ${table} fo
        LEFT JOIN om_responses orp ON orp.serial_number = fo.serial_number
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS c
+           FROM phone_lines pl2
+          WHERE COALESCE(btrim(orp.box_number), '') <> ''
+            AND btrim(pl2.box_number) = btrim(orp.box_number)
+            AND (COALESCE(btrim(orp.cabin_number), '') = '' OR btrim(pl2.cabin_number) = btrim(orp.cabin_number))
+            AND (COALESCE(btrim(orp.central_name), '') = '' OR btrim(pl2.central) = btrim(orp.central_name))
+            AND ${hasFrameSql("pl2.full_phone")}
+       ) bx ON true
        LEFT JOIN LATERAL (
          SELECT tn.tech_name
          FROM cabinet_technicians ct
