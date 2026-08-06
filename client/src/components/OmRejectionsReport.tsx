@@ -384,20 +384,21 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     );
   };
 
+  // ترتيب الأعمدة: البيانات اللى بيتقرا بيها الصف الأول (المسلسل → العميل → عنوانه →
+  // التاريخ → أرقام الأوردر)، وبعدها البيانات الفنية، و«الحالة» و«النشاط الحالى» فى
+  // الآخر (بيتقروا لما يحتاجهم). «إجراء» بيفضل آخر عمود لأنه أزرار مش بيانات.
   const cols: [string, (r: Row) => any][] = [
     ["المسلسل", (r) => r.serialNumber],
+    ["اسم العميل", (r) => r.customerName],
+    ["عنوان العميل", (r) => r.address],
+    ["تاريخ الإنشاء", (r) => fmtDt(r.orderCreateTime)],
     ["Service Order ID", (r) => r.serviceOrderId],
     ["Customer Order ID", (r) => r.customerOrderId],
-    ["اسم العميل", (r) => r.customerName],
-    ["الحالة", (r) => r.orderStatus],
     ["كود MSAN", (r) => r.msanCode],
     ["FCC", (r) => r.fccExchange],
     ["اسم الفنى", (r) => r.techName],
     ["سبب التعذر", (r) => r.errorName],
-    ["النشاط الحالى", (r) => r.currentActivity],
     ["الموبايل", (r) => r.customerMobile],
-    ["عنوان العميل", (r) => r.address],
-    ["تاريخ الإنشاء", (r) => fmtDt(r.orderCreateTime)],
     // رد الفنى وسبب التعذر — للمتعذرات الحالية، وبيظهروا **لكل** من يفتح التقرير
     // (ومنهم أدمن المبيعات) لأنهم معلومة، مش إجراء.
     ...(bucket === "current"
@@ -409,6 +410,8 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           ["الشغال على البكس", (r: Row) => (r.boxWorkingCount == null ? "-" : r.boxWorkingCount)],
         ] as [string, (r: Row) => any][])
       : []),
+    ["الحالة", (r) => r.orderStatus],
+    ["النشاط الحالى", (r) => r.currentActivity],
     // عمود «إجراء» بيظهر بس لمين يقدر يعمل حاجة فعلاً — أدمن المبيعات مثلاً بيشوف
     // الأسباب من غير عمود فاضى.
     ...(bucket === "current" && (canRespond || canResetResp || isSuperAdmin || isExternal)
