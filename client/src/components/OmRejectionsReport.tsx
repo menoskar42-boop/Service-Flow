@@ -410,8 +410,10 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           ["الشغال على البكس", (r: Row) => (r.boxWorkingCount == null ? "-" : r.boxWorkingCount)],
         ] as [string, (r: Row) => any][])
       : []),
-    ["الحالة", (r) => r.orderStatus],
-    ["النشاط الحالى", (r) => r.currentActivity],
+    // «الحالة» و«النشاط الحالى» متخفيين بطلب المستخدم — البيانات لسه موجودة فى الصف
+    // (r.orderStatus / r.currentActivity)، فرجوعهم = شيل التعليق من السطرين دول.
+    // ["الحالة", (r) => r.orderStatus],
+    // ["النشاط الحالى", (r) => r.currentActivity],
     // عمود «إجراء» بيظهر بس لمين يقدر يعمل حاجة فعلاً — أدمن المبيعات مثلاً بيشوف
     // الأسباب من غير عمود فاضى.
     ...(bucket === "current" && (canRespond || canResetResp || isSuperAdmin || isExternal)

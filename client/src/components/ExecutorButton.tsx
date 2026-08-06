@@ -195,14 +195,22 @@ export function ExecutorButton() {
     // (السيرفر هو اللى بيضمن ده فى claim). هنا بنمنع بس إن أكتر من طلب claim يتبعت مع بعض،
     // وبعدها بنشغّل المهمة **من غير انتظار** عشان مسار تانى يقدر يبدأ.
     const running = new Map<string, string>();   // site → وصف المهمة الجارية
-    const showRunning = () => setCurrent([...running.values()].join(" • "));
+    const showRunning = () => setCurrent(Array.from(running.values()).join(" • "));
+
+    // عدد المواقع المختلفة — سقف عدد المهام اللى ممكن تشتغل مع بعض (مسار لكل موقع).
+    const MAX_LANES = 8;
 
     const claimAndRun = async () => {
       if (busy.current || stopped) return;
       busy.current = true;
       try {
+        // بنفضل نسحب لحد ما السيرفر يقول «مفيش مهمة مؤهّلة» — كده كل المسارات
+        // الفاضية بتشتغل فى نفس اللحظة بدل ما كل مسار يستنى دورة سحب (4 ثوانى).
+        // السيرفر بيضمن مهمة واحدة بس لكل موقع، فالحلقة دى بتقف لوحدها.
+        for (let lane = 0; lane < MAX_LANES && !stopped; lane++) {
         const r = await fetch("/api/exec-queue/claim", { method: "POST", credentials: "include" });
         const job: ExecJob | null = r.ok ? await r.json() : null;
+        if (!job || !job.id) break;
         if (job && job.id) {
           const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
           const site = String((job as any).site || "10.42.187.101");
@@ -232,6 +240,7 @@ export function ExecutorButton() {
               showRunning();
             }
           })();
+        }
         }
       } catch {} finally { busy.current = false; }
     };
