@@ -21,7 +21,7 @@ import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
-import { openBoxFaultTicket, findCoveringOpenTicket } from "./box-fault-ticket";
+import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable } from "./box-fault-ticket";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -6884,9 +6884,13 @@ export async function registerRoutes(
         const already = doneMap.get(`${c.source}|${c.refKey}`);
         if (already) { data.push({ ...c, action: "done", ticketNumber: already }); continue; }
         const cov = await findCoveringOpenTicket(c.central, c.cabinet, c.box);
-        data.push(cov
-          ? { ...c, action: "covered", ticketNumber: cov.ticketNumber, coveringBox: cov.box }
-          : { ...c, action: "will_open" });
+        if (cov) { data.push({ ...c, action: "covered", ticketNumber: cov.ticketNumber, coveringBox: cov.box }); continue; }
+        // بنتأكد من دلوقتى إن الكابينة موجودة فى برنامج الكوابل — عشان السبب
+        // يبان فى المعاينة مش يفضل التكت مش بيتفتح من غير ما حد يعرف ليه.
+        const cab = await resolveCable(c.central, c.cabinet);
+        data.push(cab
+          ? { ...c, action: "will_open" }
+          : { ...c, action: "blocked", why: `الكابينة «${c.cabinet}» فى «${c.central}» مش موجودة فى برنامج الكوابل` });
       }
       res.json({
         data,
@@ -6895,6 +6899,7 @@ export async function registerRoutes(
           willOpen: data.filter((d) => d.action === "will_open").length,
           covered: data.filter((d) => d.action === "covered").length,
           done: data.filter((d) => d.action === "done").length,
+          blocked: data.filter((d) => d.action === "blocked").length,
         },
       });
     } catch (e: any) { res.status(500).json({ message: e.message }); }

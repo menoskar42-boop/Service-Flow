@@ -29,6 +29,7 @@ const ACTION_LABEL: Record<string, { txt: string; cls: string }> = {
   will_open: { txt: "هيتفتحله تكت", cls: "bg-green-100 text-green-800" },
   covered:   { txt: "مغطّى بتكت مفتوحة", cls: "bg-amber-100 text-amber-800" },
   done:      { txt: "اتفتحت قبل كده", cls: "bg-gray-100 text-gray-700" },
+  blocked:   { txt: "متعذّر — شوف السبب", cls: "bg-red-100 text-red-800" },
 };
 
 export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
@@ -93,6 +94,7 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
         ["تاريخ رد الفنى", (r) => fmtDt(r.respondedAt)],
         ["الحالة", (r) => ACTION_LABEL[r.action]?.txt ?? r.action],
         ["التكت", (r) => r.ticketNumber ?? "-"],
+        ["السبب", (r) => r.why ?? "-"],
       ]
     : [
         ["المصدر", (r) => r.source],
@@ -140,7 +142,13 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
       const r = await fetch("/api/box-tickets/backfill-run", { method: "POST", credentials: "include" });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.message || "فشل التنفيذ");
-      toast({ title: `اتفتح ${d.opened} تكت — اتخطّى ${d.skipped}${d.failed ? ` — فشل ${d.failed}` : ""}` });
+      // لو فيه فشل بنعرض سبب أول واحد — عشان مايفضلش الفشل صامت
+      const firstWhy = d?.details?.failed?.[0]?.why;
+      toast({
+        title: `اتفتح ${d.opened} تكت — اتخطّى ${d.skipped}${d.failed ? ` — فشل ${d.failed}` : ""}`,
+        description: firstWhy ? `سبب أول فشل: ${firstWhy}` : undefined,
+        variant: d.failed ? "destructive" : undefined,
+      });
       refetch();
     } catch (e: any) {
       toast({ title: e?.message || "فشل التنفيذ", variant: "destructive" });
@@ -160,7 +168,8 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
                   شوف القايمة الأول وبعدين اضغط «نفّذ».
                   {data?.counts && (
                     <span> {" "}— <b className="text-green-700">{data.counts.willOpen} هيتفتحلهم</b>،
-                      {" "}{data.counts.covered} مغطّى بتكت مفتوحة، {data.counts.done} اتفتح قبل كده.</span>
+                      {" "}{data.counts.covered} مغطّى بتكت مفتوحة، {data.counts.done} اتفتح قبل كده
+                      {data.counts.blocked ? <>، <b className="text-red-700">{data.counts.blocked} متعذّر (شوف عمود السبب)</b></> : null}.</span>
                   )}
                 </>
               ) : (
