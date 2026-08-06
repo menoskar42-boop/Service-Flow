@@ -57,9 +57,11 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 export function registerCfmRoutes(app: Express) {
   // استيراد لمرة واحدة: يسحب كل بيانات الكوابل من التطبيق المنشور ويحمّلها فى قاعدة Service-Flow.
   // محمى بتوكن. يُنفَّذ على السيرفر المنشور فيكتب فى قاعدة الإنتاج. idempotent.
-  const CFM_IMPORT_TOKEN = process.env.CFM_IMPORT_TOKEN || "cfm-import-2026";
+  // من غير CFM_IMPORT_TOKEN فى الـ Secrets المسارات دى متقفلة خالص — التوكن الثابت
+  // القديم كان مكتوب فى الكود، يعنى أى حد شايف السورس يقدر يشغّل استيراد إنتاج كامل.
+  const CFM_IMPORT_TOKEN = process.env.CFM_IMPORT_TOKEN || "";
   app.post("/api/cfm/_import-from-live", async (req, res) => {
-    if ((req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
+    if (!CFM_IMPORT_TOKEN || (req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
       return res.status(401).json({ error: "invalid token" });
     }
     try {
@@ -74,7 +76,7 @@ export function registerCfmRoutes(app: Express) {
   // يقرأ CFM_PROD_DATABASE_URL من Secrets. محمى بنفس التوكن. idempotent.
   // GET و POST الاتنين مدعومين عشان يشتغل من اللينك فى المتصفح مباشرةً.
   const importFromProdDbHandler = async (req: express.Request, res: express.Response) => {
-    if ((req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
+    if (!CFM_IMPORT_TOKEN || (req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
       return res.status(401).json({ error: "invalid token" });
     }
     try {
@@ -772,10 +774,20 @@ export function registerCfmRoutes(app: Express) {
   // ===== TICKET ROUTES ===== //
 
   // GET /api/tickets
+  // بيانات منشئ التكت بترجع مع كل تكت (relations) — لازم نشيل منها الهاش وكل
+  // الحساس قبل الإرسال: كانت بترجع bcrypt hash لكل حساب فتح تكت لأى مستخدم مسجّل.
+  const sanitizeTicket = (t: any) => {
+    if (t?.createdByUser) {
+      const { id, username, name, role, avatar } = t.createdByUser;
+      t.createdByUser = { id, username, name, role, avatar };
+    }
+    return t;
+  };
+
   app.get("/api/cfm/tickets", requireAuth, async (req, res) => {
     try {
       const tickets = await storage.getAllTickets();
-      res.json(tickets);
+      res.json(tickets.map(sanitizeTicket));
     } catch (error) {
       console.error("Get tickets error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -817,7 +829,7 @@ export function registerCfmRoutes(app: Express) {
       if (!ticket) {
         return res.status(404).json({ error: "Ticket not found" });
       }
-      res.json(ticket);
+      res.json(sanitizeTicket(ticket));
     } catch (error) {
       console.error("Get ticket error:", error);
       res.status(500).json({ error: "Internal server error" });
@@ -856,29 +868,25 @@ export function registerCfmRoutes(app: Express) {
         });
       }
 
-      // Auto-generate ticket number - find max number to avoid duplicates
-      const allTickets = await storage.getAllTickets();
+      // رقم التكت: MAX رقمى مباشر من الداتابيز (كان بيجيب **كل** التكتات بعلاقاتها
+      // فى الذاكرة عشان يحسب رقم!) + إعادة محاولة لو اتنين ضغطوا «إنشاء» فى نفس
+      // اللحظة (قيد التفرّد كان بيرجّع 500 والفورم يضيع).
       const currentYear = new Date().getFullYear();
-      const ticketsThisYear = allTickets.filter(t => 
-        t.ticketNumber.startsWith(`TKT-${currentYear}-`)
-      );
-      
-      // Find max ticket number for this year
-      let maxNumber = 0;
-      for (const t of ticketsThisYear) {
-        const numStr = t.ticketNumber.replace(`TKT-${currentYear}-`, '');
-        const num = parseInt(numStr, 10);
-        if (!isNaN(num) && num > maxNumber) {
-          maxNumber = num;
+      let ticket: any = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { rows: mx } = await pool.query(
+          `SELECT COALESCE(MAX(CASE WHEN ticket_number ~ ('^TKT-' || $1 || '-[0-9]+$')
+                     THEN split_part(ticket_number, '-', 3)::int END), 0) + 1 AS next
+             FROM tickets WHERE ticket_number LIKE 'TKT-' || $1 || '-%'`, [String(currentYear)]);
+        const ticketNumber = `TKT-${currentYear}-${String(mx[0].next).padStart(3, '0')}`;
+        try {
+          ticket = await storage.createTicket({ ...validation.data, ticketNumber } as any);
+          break;
+        } catch (e: any) {
+          if (e?.code === "23505" && attempt < 4) continue;  // اتسبق على الرقم → جرّب تانى
+          throw e;
         }
       }
-      const nextNumber = maxNumber + 1;
-      const ticketNumber = `TKT-${currentYear}-${String(nextNumber).padStart(3, '0')}`;
-
-      const ticket = await storage.createTicket({
-        ...validation.data,
-        ticketNumber,
-      } as any);
 
       res.status(201).json(ticket);
     } catch (error) {
@@ -896,6 +904,17 @@ export function registerCfmRoutes(app: Express) {
 
       if (!status) {
         return res.status(400).json({ error: "Status is required" });
+      }
+      // كانت بتقبل أى نص من أى مستخدم: قيمة غريبة بتخرج التكت من كل الفلاتر
+      // (والحالة الوحيدة اللى بيتحسب عليها منع التكرار هى 'open') — فكانت طريقة
+      // لتجاوز منع فتح تكت مكررة على نفس البكس. وأدوار العرض ماينفعش تقفل تكتات.
+      const ALLOWED_STATUS = ["open", "pending_confirmation", "closed", "cancelled"];
+      if (!ALLOWED_STATUS.includes(status)) {
+        return res.status(400).json({ error: "قيمة حالة غير صحيحة" });
+      }
+      const roleSt = req.session.cfmUser!.role;
+      if (roleSt === "splice_tech") {
+        return res.status(403).json({ error: "غير مسموح لهذا الدور بتغيير حالة التكت" });
       }
 
       const ticket = await storage.updateTicket(id, { status });
@@ -1177,6 +1196,16 @@ export function registerCfmRoutes(app: Express) {
     try {
       const id = req.params.id as string;
       const { finalRepairDescription } = req.body;
+      // الفنى المساعد (splice_tech) دور عرض — مايسجّلش تنظيم. والتكت المغلقة
+      // ماينفعش ترجع pending_confirmation وهى محتفظة بـ closed_at (تبان مغلقة ومعلّقة معاً).
+      if (req.session.cfmUser!.role === "splice_tech") {
+        return res.status(403).json({ error: "غير مسموح لهذا الدور بتسجيل التنظيم" });
+      }
+      const cur = await storage.getTicketById(id);
+      if (!cur) return res.status(404).json({ error: "Ticket not found" });
+      if (cur.status === "closed") {
+        return res.status(400).json({ error: "التكت مغلقة — أعد فتحها الأول (revert)" });
+      }
 
       const ticket = await storage.updateTicket(id, {
         finalRepairId: crypto.randomUUID(),
@@ -1213,6 +1242,9 @@ export function registerCfmRoutes(app: Express) {
         finalRepairDescription: null,
         finalRepairRepairedAt: null,
         finalRepairRepairedBy: null,
+        // من غير دول: تكت «مفتوحة» بتاريخ إغلاق قديم — تقارير الإغلاق بتحسبها مغلقة
+        closedAt: null,
+        closedBy: null,
         status: "open",
       });
 
@@ -1231,6 +1263,17 @@ export function registerCfmRoutes(app: Express) {
   app.post("/api/cfm/tickets/:id/confirm", requireAuth, async (req, res) => {
     try {
       const id = req.params.id as string;
+      // التأكيد = إغلاق نهائى — كان مفتوح لأى دور وعلى أى حالة، فكان ممكن يقفل تكت
+      // لسه open من غير تنظيم أصلاً، أو يعيد كتابة closed_by على تكت مغلقة.
+      const roleC = req.session.cfmUser!.role;
+      if (!["admin", "external_affairs", "supervisor"].includes(roleC)) {
+        return res.status(403).json({ error: "غير مسموح لهذا الدور بتأكيد الإغلاق" });
+      }
+      const curC = await storage.getTicketById(id);
+      if (!curC) return res.status(404).json({ error: "Ticket not found" });
+      if (curC.status !== "pending_confirmation") {
+        return res.status(400).json({ error: "التكت مش فى انتظار التأكيد" });
+      }
 
       const ticket = await storage.updateTicket(id, {
         status: "closed",

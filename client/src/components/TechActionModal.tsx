@@ -82,7 +82,10 @@ export function TechActionModal({ order, action, onSubmit, submitting, triggerLa
         try {
           const r = await fetch(`/api/box-lines?central=${encodeURIComponent(c)}&cabinet=${encodeURIComponent(cab || "")}&box=${encodeURIComponent(bx)}`, { credentials: "include" });
           const d = await r.json();
-          const lines: any[] = Array.isArray(d?.data) ? d.data : [];
+          // رد مش سليم (خطأ راجع بجسم JSON) ماينفعش يتحسب «بكس عليه 0 مشترك» —
+          // التحذير الغلط كان ممكن يخلّى الفنى يلغى تسجيل صحيح. فشل الفحص = مافيش تحذير.
+          if (!r.ok || !Array.isArray(d?.data)) { setWarnChecking(false); submitNow(); return; }
+          const lines: any[] = d.data;
           if (lines.length < LOW_BOX_THRESHOLD) { setWarnLines(lines); setWarnChecking(false); return; }
         } catch { /* فشل الفحص مايمنعش التسجيل */ }
         setWarnChecking(false);
@@ -326,7 +329,8 @@ export function TechActionModal({ order, action, onSubmit, submitting, triggerLa
             <Button 
               type="submit" 
               disabled={
-                isUpdating || 
+                isUpdating ||
+                warnChecking ||  // أثناء فحص عدد الشغّال — ضغطة تانية كانت بتعمل تسجيل مزدوج
                 (!isFeasible && !reason) ||
                 (!isFeasible && showCentralAndBoxFields && (!centralName || !notFeasibleCabin || !notFeasibleBox)) ||
                 (!isFeasible && reason === REJECTION_REASONS.BOX_FULL && !distance) ||

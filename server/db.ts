@@ -1039,12 +1039,6 @@ export async function ensureSchema() {
       done_at timestamptz
     );
     CREATE INDEX IF NOT EXISTS exec_jobs_status_idx ON exec_jobs (status, created_at);
-    -- فحص «الباتش خلص؟» بيتنفّذ لكل مرشّح لإعادة التنفيذ — من غير الفهرس ده بيعمل
-    -- مسح كامل للجدول (آلاف الصفوف) لكل صف، وده اللى بيخنق قاعدة البيانات.
-    CREATE INDEX IF NOT EXISTS exec_jobs_batch_idx ON exec_jobs (batch_id);
-    -- done_at DESC: البحث بياخد الأحدث الأول، ولازم يفضل DESC عشان dev/prod
-    -- يفضلوا متطابقين ومايطلعش تحذير إعادة بناء الفهرس فى Publishing.
-    CREATE INDEX IF NOT EXISTS exec_jobs_retry_idx ON exec_jobs (status, result, retry_round, done_at DESC);
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS result text;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS priority integer NOT NULL DEFAULT 0;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS batch_id text;
@@ -1070,6 +1064,15 @@ export async function ensureSchema() {
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS executed_by text;
     -- الجهاز/المتصفح اللى اتبعت منه الطلب (وقت الإضافة للطابور)
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS requested_from text;
+    -- ⚠️ الفهارس دى على أعمدة بتتضاف بالـ ALTERs اللى فوق — لازم تفضل **بعدهم**:
+    -- على قاعدة فاضية CREATE TABLE مافيهوش batch_id/result/retry_round، ولو الفهرس
+    -- اتعمل قبل الـ ALTER البلوك كله بيفشل ويترجع وensureSchema يقع من أوله.
+    -- فحص «الباتش خلص؟» بيتنفّذ لكل مرشّح لإعادة التنفيذ — من غير الفهرس ده بيعمل
+    -- مسح كامل للجدول (آلاف الصفوف) لكل صف، وده اللى بيخنق قاعدة البيانات.
+    CREATE INDEX IF NOT EXISTS exec_jobs_batch_idx ON exec_jobs (batch_id);
+    -- done_at DESC: البحث بياخد الأحدث الأول، ولازم يفضل DESC عشان dev/prod
+    -- يفضلوا متطابقين ومايطلعش تحذير إعادة بناء الفهرس فى Publishing.
+    CREATE INDEX IF NOT EXISTS exec_jobs_retry_idx ON exec_jobs (status, result, retry_round, done_at DESC);
   `);
   // ضبط الموقع للمهام القديمة: الموقع بقى **اسم الدومين** نفسه (نفس الدومين = مسار واحد).
   await pool.query(`
@@ -1367,6 +1370,10 @@ export async function ensureSchema() {
         closed_at timestamp,
         closed_by text,
         created_by varchar NOT NULL REFERENCES cfm_users(id),
+        -- اسم معروض بديل لـ «تم الفتح بواسطة» (اسلام-OM / اسلام-طلبات) — لازم يبقى
+        -- هنا جوّه الـ CREATE: الـ ALTER البدرى فوق بيشتغل قبل إنشاء الجدول على
+        -- قاعدة فاضية (IF EXISTS → لا شىء) وكانت التكتات التلقائية بتقع.
+        opened_by_label text,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );

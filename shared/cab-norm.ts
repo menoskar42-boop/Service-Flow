@@ -26,9 +26,12 @@ export const normCab = (s: unknown): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** رقم البكس كأرقام فقط (بعد تحويل الأرقام العربية) */
-export const normBox = (s: unknown): string =>
-  toAsciiDigits(String(s ?? "")).replace(/[^0-9]/g, "");
+/** رقم البكس كأرقام فقط (بعد تحويل الأرقام العربية) — بدون أصفار بادئة:
+ *  «05» و«5» نفس البكس، ومن غير التوحيد ده التغطية والتطابق كانوا بيفشلوا. */
+export const normBox = (s: unknown): string => {
+  const d = toAsciiDigits(String(s ?? "")).replace(/[^0-9]/g, "");
+  return d ? String(parseInt(d, 10)) : "";
+};
 
 /** فكّ بكسيات التكت: «1:5» → 1..5 | «1&15» → 1,15 | «4» → 4 */
 export function expandBoxes(boxStr: unknown): string[] {
@@ -43,9 +46,10 @@ export function expandBoxes(boxStr: unknown): string[] {
       return out;
     }
   }
-  if (/[&،,]/.test(s)) return s.split(/[&،,]/).map((x) => x.replace(/[^0-9]/g, "")).filter(Boolean);
-  const single = s.replace(/[^0-9]/g, "");
-  return single ? [single] : [];
+  if (/[&،,]/.test(s)) {
+    return s.split(/[&،,]/).map((x) => normBox(x)).filter(Boolean);
+  }
+  return normBox(s) ? [normBox(s)] : [];
 }
 
 /** مفتاح موحّد للبكس: سنترال|كابينة|بكس */

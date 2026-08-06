@@ -1187,7 +1187,7 @@ export async function registerRoutes(
   app.use(
     session({
       store: buildSessionStore(),
-      secret: "super-secret-session-key",
+      secret: process.env.SESSION_SECRET || "super-secret-session-key",
       resave: false,
       saveUninitialized: false,
       rolling: true, // كل طلب (ومنه التحديث التلقائى كل نص ساعة) يمدّد عمر الجلسة
@@ -2345,7 +2345,12 @@ export async function registerRoutes(
       const job = rows[0];
       if (!job) return res.json({ ok: false });
       const remaining = await jobRemainingAccounts(job.accounts, job.type, job.claimed_at);
-      await pool.query(`UPDATE exec_jobs SET status = 'done', done_at = now(), result = 'preempted' WHERE id = $1`, [id]);
+      // حارس التكرار: لو الطلب اتكرر (إعادة محاولة شبكة مثلاً) المهمة مش claimed
+      // خلاص — من غير الحارس كانت بتتضاف مهمة تكملة **تانية** بنفس الأرقام فتتقاس مرتين.
+      const up = await pool.query(
+        `UPDATE exec_jobs SET status = 'done', done_at = now(), result = 'preempted'
+          WHERE id = $1 AND status = 'claimed'`, [id]);
+      if (!up.rowCount) return res.json({ ok: true, remaining: 0, newId: null, duplicate: true });
       let newId: number | null = null;
       if (remaining.length) {
         const note = (job.note ? job.note + " " : "") + "(تكملة)";
@@ -2882,11 +2887,13 @@ export async function registerRoutes(
       
       broadcast({ type: WS_EVENTS.ORDER_CREATE, payload: order });
       res.status(201).json(order);
-    } catch (e) {
+    } catch (e: any) {
       if (e instanceof z.ZodError) {
         res.status(400).json(e.errors);
       } else {
-        throw e;
+        // كان بيرمى الخطأ تانى → unhandled rejection بيوقع السيرفر كله
+        console.error("[orders/create]", e?.stack || e);
+        res.status(500).json({ message: e?.message || "خطأ فى إنشاء الطلب" });
       }
     }
   });
@@ -2931,11 +2938,13 @@ export async function registerRoutes(
         });
       }
       res.json(boxTicket ? { ...order, boxTicket } : order);
-    } catch (e) {
+    } catch (e: any) {
       if (e instanceof z.ZodError) {
         res.status(400).json(e.errors);
       } else {
-        throw e;
+        // ده مسار حفظ رد الفنى — إعادة الرمى كانت بتوقع السيرفر كله عند أى خطأ DB
+        console.error("[orders/update]", e?.stack || e);
+        res.status(500).json({ message: e?.message || "خطأ فى حفظ الرد" });
       }
     }
   });
@@ -3209,8 +3218,8 @@ export async function registerRoutes(
   // GET /api/phone-lines — paginated, with optional central/cabin/box or text search filters
   app.get("/api/phone-lines", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", phoneFrom = "", phoneTo = "", page = "1", limit = "50" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const q = search.trim().toLowerCase();
     // نطاق أرقام: نطابق على الرقم القصير (بدون بادئة 88) كقيمة رقمية. نشيل أى غير أرقام ونشيل 88 لو اتكتبت.
     const digitsOnly = (s: string) => String(s || "").replace(/\D/g, "").replace(/^88/, "");
@@ -3353,8 +3362,8 @@ export async function registerRoutes(
     const { search = "", central = "", cabin = "", box = "", boxFrom = "", boxTo = "",
             page = "1", limit = "50", accountQ = "", staleDays = "", hasComplaint = "",
             scoreGt = "", scoreLt = "", speedGt = "", speedLt = "", neverMeasured = "" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const q = search.trim().toLowerCase();
 
     // التقرير مبنى على line_accounts (الأرقام اللى لها أكونت) وليس phone_lines — علشان
@@ -3384,9 +3393,12 @@ export async function registerRoutes(
     if (box) {
       params.push(box); conds.push(`pl.box_number = $${params.length}`);
     } else {
-      // مدى البكسيات: من boxFrom إلى boxTo (مقارنة رقمية)
-      if (boxFrom.trim()) { params.push(parseInt(boxFrom)); conds.push(`pl.box_number::int >= $${params.length}`); }
-      if (boxTo.trim())   { params.push(parseInt(boxTo));   conds.push(`pl.box_number::int <= $${params.length}`); }
+      // مدى البكسيات: من boxFrom إلى boxTo (مقارنة رقمية).
+      // الإدخال غير الرقمى كان بيبعت NaN لـ Postgres والاستعلام يقع، وأى بكس مخزّن
+      // بحروف كان بيكسّر الـ ::int — فالتحصين من الجهتين (نفس نمط box-summary).
+      const safeBoxInt = `(CASE WHEN pl.box_number ~ '^[0-9]{1,9}$' THEN pl.box_number::int END)`;
+      if (/^\d+$/.test(boxFrom.trim())) { params.push(parseInt(boxFrom)); conds.push(`${safeBoxInt} >= $${params.length}`); }
+      if (/^\d+$/.test(boxTo.trim()))   { params.push(parseInt(boxTo));   conds.push(`${safeBoxInt} <= $${params.length}`); }
     }
     if (q) {
       params.push(arQ(q));
@@ -3475,8 +3487,8 @@ export async function registerRoutes(
   // GET /api/phone-lines/without-account — lines with no entry in line_accounts (paginated, same filters)
   app.get("/api/phone-lines/without-account", requireAuth, async (req, res) => {
     const { search = "", central = "", cabin = "", box = "", page = "1", limit = "50", complaintThisMonth = "" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const q = search.trim().toLowerCase();
 
     const conds: string[] = ["la.full_phone IS NULL"];
@@ -3803,8 +3815,8 @@ export async function registerRoutes(
   // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
   app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
     const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", search = "", includeExcluded = "" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
     // needComplaintAny: لها أى شكوى — داخل الشاشة (ticket_dsl_current المفتوحة) أو خارجها
     //   (complaint_details المغلقة + remaining_complaints)، أو عطل «خارج الشاشة» مسجَّل يدوياً
@@ -3945,8 +3957,8 @@ export async function registerRoutes(
   //   محتاجة رفع سرعة). دى غالباً خطوط اتعملها Profile Optimization ومحتاجة إيقاف الـ nightly PO.
   app.get("/api/phone-lines/needs-po-stop", requireAuth, async (req, res) => {
     const { central = "", cabin = "", box = "", poStoppedBefore = "", page = "1", limit = "50", search = "" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const params: any[] = [];
     // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات
     const conds: string[] = [hasFrameSql("m.full_phone")];
@@ -4175,8 +4187,8 @@ export async function registerRoutes(
   //   مطابقة برقم التليفون مع phone_lines، ثم استبعاد الأرقام التى لها رقم أكونت.
   app.get("/api/reports/regularized-no-account", requireAuth, async (req, res) => {
     const { dateFrom = "", dateTo = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     // افتراضى: من أول الشهر الحالى إلى اليوم
     const today = new Date();
     const from = dateFrom || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
@@ -4235,8 +4247,8 @@ export async function registerRoutes(
   // GET /api/reports/complaint-no-measure — أرقام لها شكوى منتظمة خلال فترة، لها رقم أكونت، وليس لها قياس بعد تاريخ الشكوى (تقرير 5)
   app.get("/api/reports/complaint-no-measure", requireAuth, async (req, res) => {
     const { dateFrom = "", dateTo = "", central = "", cabin = "", box = "", page = "1", limit = "50" } = req.query as Record<string, string>;
-    const pageNum = Math.max(1, parseInt(page));
-    const pageSize = Math.min(20000, Math.max(1, parseInt(limit)));
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const today = new Date();
     const from = dateFrom || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
     const to = dateTo || `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -4403,6 +4415,7 @@ export async function registerRoutes(
        LEFT JOIN LATERAL (
          SELECT ct.cabin_code FROM cabinet_technicians ct
          WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+         ORDER BY (ct.cabin_code IS NOT NULL AND btrim(ct.cabin_code) <> '') DESC
          LIMIT 1
        ) ctm ON true
        LEFT JOIN LATERAL (
@@ -4939,7 +4952,15 @@ export async function registerRoutes(
 
   // POST /api/cable-entries/mark-printed — يُستدعى عند طباعة تقرير أوامر الشغل.
   // يقفل كل الإدخالات غير المطبوعة (printed_at = now). (فنى + أدمن)
-  app.post("/api/cable-entries/mark-printed", requireTechOrAdmin, async (_req, res) => {
+  app.post("/api/cable-entries/mark-printed", requireTechOrAdmin, async (req: any, res) => {
+    // الفنى بيطبع تقريره هو — قفل إدخالاته هو بس. كان بيختم إدخالات كل الفنيين،
+    // فطباعة فنى «أ» كانت بتقفل إدخالات فنى «ب» الجديدة وتبدأ مهلة الـ3 أيام بتاعته.
+    if (req.user?.role === ROLES.TECH) {
+      const r = await pool.query(
+        `UPDATE cable_entries SET printed_at = now() WHERE printed_at IS NULL AND created_by_id = $1`,
+        [req.user.id]);
+      return res.json({ ok: true, locked: r.rowCount ?? 0 });
+    }
     const r = await pool.query(`UPDATE cable_entries SET printed_at = now() WHERE printed_at IS NULL`);
     res.json({ ok: true, locked: r.rowCount ?? 0 });
   });
@@ -5209,7 +5230,11 @@ export async function registerRoutes(
     try {
       const files: any[] = (req.files && req.files.length) ? req.files : (req.file ? [req.file] : []);
       if (!files.length) return res.status(400).json({ message: "لا يوجد ملف" });
-      const userId: number = (req as any).user.id;
+      // مسار X-Upload-Token (الرفع التلقائى من السكربت) مافيهوش req.user — القراءة
+      // المباشرة كانت بترمى TypeError قبل قراءة الشيت، فالرفع التلقائى لـ430D كان
+      // بيفشل بـ500 دايماً بينما اليدوى شغّال. نفس نمط بقية المستوردات.
+      const userId: number = (req as any).user?.id
+        ?? ((await pool.query("SELECT id FROM users WHERE role = $1 LIMIT 1", [ROLES.ADMIN])).rows[0]?.id ?? 1);
 
       let detailsInserted = 0, detailsTotal = 0;
       let remainingInserted = 0, remainingTotal = 0;
@@ -6142,10 +6167,21 @@ export async function registerRoutes(
     const msans = [...new Set(all.map((a) => String(a[2] ?? "").trim()).filter(Boolean))];
     const phones = all.map((a) => String(a[0]));
     if (msans.length && phones.length) {
-      removed = await archiveRemovedPorts(
-        `btrim(COALESCE(msan_code,'')) = ANY($1::text[]) AND phone_number <> ALL($2::text[])`,
-        [msans, phones], "portal");
-      if (removed) console.log(`[ports] اتأرشف ${removed} رقم مابقاش له بورت فى كباين: ${msans.join(", ")}`);
+      // حارس ضد الدفعة الناقصة: لو الدفعة أقل من نص الموجود فى نفس الكباين، فده
+      // غالباً تحميل متقطّع (سيشن وقعت/صفحة ماكملتش) مش حقيقة جديدة — الأرشفة
+      // ساعتها كانت هتشيل نص المسان. بنأرشف بس لما الدفعة تبان كاملة.
+      const { rows: exCnt } = await pool.query(
+        `SELECT COUNT(*)::int AS c FROM phone_ports WHERE btrim(COALESCE(msan_code,'')) = ANY($1::text[])`,
+        [msans]);
+      const existing = exCnt[0]?.c ?? 0;
+      if (existing > 20 && phones.length < existing / 2) {
+        console.warn(`[ports] الدفعة ${phones.length} من ${existing} فى ${msans.join(", ")} — أقل من النص، تخطّى الأرشفة (تحميل ناقص؟)`);
+      } else {
+        removed = await archiveRemovedPorts(
+          `btrim(COALESCE(msan_code,'')) = ANY($1::text[]) AND phone_number <> ALL($2::text[])`,
+          [msans, phones], "portal");
+        if (removed) console.log(`[ports] اتأرشف ${removed} رقم مابقاش له بورت فى كباين: ${msans.join(", ")}`);
+      }
     }
     res.json({ inserted: affected, total: all.length, removed });
   });
@@ -6993,10 +7029,16 @@ export async function registerRoutes(
       const g = (r: any[], i: number) => (i >= 0 ? (r[i] ?? "") : "");
 
       // dedup within file by phone (last occurrence wins)
+      // ⚠️ توحيد الرقم بنفس منطق الرفع التلقائى (ingest): الشيت ساعات بيطلع الرقم
+      // القصير + كود المنطقة عمود منفصل. لو خزّناه قصير زى ما هو: (1) مايتطابقش مع
+      // أى join فى التقارير (pl.full_phone = 88…)، و(2) الأرقام القديمة بصيغة 88
+      // «مش موجودة فى الشيت» فتتأرشف كلها — يعنى رفعة شيت واحدة كانت تفضّى البورتات.
       const byPhone = new Map<string, any[]>();
       for (const r of dataRows) {
-        const phone = String(g(r, iPhone)).trim();
-        if (!phone) continue;
+        const rawPhone = String(g(r, iPhone)).replace(/\D/g, "");
+        if (!rawPhone) continue;
+        const areaDigits = String(g(r, iArea)).replace(/\D/g, "").replace(/^0+/, "");
+        const phone = rawPhone.length >= 9 ? rawPhone : ((areaDigits || "88") + rawPhone);
         byPhone.set(phone, [
           phone,
           String(g(r, iArea)) || null,
@@ -7153,6 +7195,12 @@ export async function registerRoutes(
   //   والأدمن والسوبر أدمن ومهندس الكوابل ومدير السنترال).
   app.post("/api/box-tickets/repair-confirm", requireAuth, async (req: any, res) => {
     try {
+      // نفس أدوار الرد فى الواجهة — كان مفتوح لأى مستخدم مسجّل (حتى المبيعات)،
+      // ورفض الإصلاح هو اللى بيشغّل مسار إعادة فتح التكت فلازم يتقيّد.
+      const roleRC = req.user?.role;
+      if (!([ROLES.TECH, ROLES.EXTERNAL, ROLES.ADMIN, ROLES.SUPER_ADMIN] as string[]).includes(roleRC)) {
+        return res.status(403).json({ message: "غير مسموح" });
+      }
       const { source, refKey, confirm, note } = req.body || {};
       if (!source || !refKey) return res.status(400).json({ message: "المصدر والمرجع مطلوبين" });
       if (confirm !== "confirmed" && confirm !== "rejected") {
@@ -7725,6 +7773,14 @@ export async function registerRoutes(
       const reason = String(b.rejectionReason ?? "").trim();
       if (!isFeasible && !reason) return res.status(400).json({ message: "سبب عدم الإمكانية مطلوب" });
       const status = isFeasible ? ORDER_STATUS.EXTERNAL_FEASIBLE : ORDER_STATUS.EXTERNAL_NOT_FEASIBLE;
+      // زى قسم الطلبات بالظبط: الرد الخارجى مايتقبلش إلا لو المتعذر متحوّل فعلاً
+      // (needs_external) — كان بيكتب فوق رد فنى جديد لمجرد إن الصف لسه على الشاشة.
+      const { rows: curSt } = await pool.query(
+        `SELECT status FROM om_responses WHERE serial_number = $1`, [serialNumber]);
+      if (!curSt.length) return res.status(404).json({ message: "المتعذر مش موجود" });
+      if (curSt[0].status !== ORDER_STATUS.NEEDS_EXTERNAL) {
+        return res.status(400).json({ message: "المتعذر مش محوَّل للشئون الخارجية — اطلب التحويل الأول" });
+      }
       const { rows } = await pool.query(
         `UPDATE om_responses
             SET status = $2, is_feasible_external = $3, external_rejection_reason = $4,
@@ -8445,8 +8501,10 @@ export async function registerRoutes(
   app.get("/api/manual-faults/regularized", requireAuth, async (req, res) => {
     const { from = "", to = "" } = req.query as Record<string, string>;
     const conds = ["status='regularized'"]; const params: any[] = [];
-    if (from) { params.push(from); conds.push(`regularized_at >= $${params.length}`); }
-    if (to) { params.push(to + " 23:59:59"); conds.push(`regularized_at <= $${params.length}`); }
+    // الفلترة بتوقيت القاهرة زى ما التاريخ بيتعرض — المقارنة الخام بـUTC كانت
+    // بتسقط الانتظامات اللى حصلت بين منتصف الليل و2/3 الفجر من المدى المختار.
+    if (from) { params.push(from); conds.push(`(regularized_at AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`); }
+    if (to) { params.push(to); conds.push(`(regularized_at AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`); }
     const { rows } = await pool.query(
       `SELECT id, full_phone AS "fullPhone", phone_short AS "phoneShort", account_no AS "accountNo",
               central, cabin_number AS "cabinNumber", box_number AS "boxNumber", msan_code AS "msanCode",
@@ -8712,12 +8770,12 @@ export async function registerRoutes(
       if (dateFrom) {
         params.push(dateFrom);
         cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
-        rcConds.push(`COALESCE(rc.close_time, rc.complain_time)::date >= $${params.length}::date`);
+        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
       }
       if (dateTo) {
         params.push(dateTo);
         cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
-        rcConds.push(`COALESCE(rc.close_time, rc.complain_time)::date <= $${params.length}::date`);
+        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
       }
       if (q.trim()) {
         params.push(arQ(q));
@@ -9564,8 +9622,11 @@ export async function registerRoutes(
   //   ?category=faults|installations|surveys & ?dateFrom= & ?dateTo= & ?central= & ?q=
   // المصدر جدول regularized_daily الذى يُكتب تلقائياً كل ليلة. يُرجع صفوف التقرير
   // كما حُفظت (نفس شكل التقرير اليومى) مع إضافة snapshotDate لكل صف.
-  app.get("/api/reports/regularized-daily", requireAuth, async (req, res) => {
+  app.get("/api/reports/regularized-daily", requireAuth, async (req: any, res) => {
     try {
+      // الفنى مالوش تاب للتقرير ده أصلاً، والمسار مافيهوش فلترة كباين زى تقارير
+      // الفنى — فكان باب خلفى يشوف منه شغل كل الفنيين بأسماء وعناوين العملاء.
+      if (req.user?.role === ROLES.TECH) return res.status(403).json({ message: "غير مسموح" });
       const { category = "faults", dateFrom = "", dateTo = "", central = "", q = "" } =
         req.query as Record<string, string>;
       // تركيبات/معاينات: تُحسب مباشرة (التاريخى ناقص الحالى) بدل أرشيف الـ11 مساءً.

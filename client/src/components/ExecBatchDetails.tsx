@@ -110,6 +110,10 @@ export function ExecBatchDetails({ batchId, typeLabel, onClose }:
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || "تعذّر التحميل");
       return r.json() as Promise<{ data: Job[] }>;
     },
+    // من غير دول النافذة كانت بتفضل على أول لقطة للأبد (staleTime العام = Infinity)
+    // بينما الجدول ورا بيتحدّث كل 5 ثوانى.
+    refetchOnMount: "always",
+    refetchInterval: 5000,
   });
 
   const jobs = data?.data ?? [];

@@ -5,6 +5,16 @@ import { createServer } from "http";
 import { ensureSchema } from "./db";
 import { createRequire } from "module";
 
+// شبكة أمان: هاندلر async من غير try/catch لما يرمى خطأ، Node بيعتبره unhandled
+// rejection وبيقفل البروسيس كله — يعنى غلطة واحدة فى استعلام كانت بتوقع السيرفر
+// لكل المستخدمين. بنسجّل ونكمّل بدل ما نقع.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", (reason as any)?.stack || reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err?.stack || err);
+});
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -52,7 +62,9 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        // نقتطع الرد فى اللوج: الردود الكبيرة (كل التكتات مثلاً) كانت بتتسلسل كاملة
+        // فى كل طلب — حمل بلا داعى، وكمان ممكن تسرّب بيانات حساسة فى اللوجات.
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse).slice(0, 400)}`;
       }
 
       log(logLine);
@@ -98,7 +110,9 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // ⚠️ ماترميش الخطأ تانى: بعد ما الرد اتبعت، إعادة الرمى كانت بتقطع الاتصال
+    // على العميل (بدل الرسالة) وممكن توقع البروسيس كله.
+    console.error("[api-error]", err?.stack || err);
   });
 
   // importantly only setup vite in development and after

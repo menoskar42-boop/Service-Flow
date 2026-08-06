@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   closed_at timestamp,
   closed_by text,
   created_by varchar NOT NULL REFERENCES cfm_users(id),
+  opened_by_label text,
   created_at timestamp NOT NULL DEFAULT now(),
   updated_at timestamp NOT NULL DEFAULT now()
 );

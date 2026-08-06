@@ -216,10 +216,15 @@ export function ExecutorButton() {
         // الفاضية بتشتغل فى نفس اللحظة بدل ما كل مسار يستنى دورة سحب (4 ثوانى).
         // السيرفر بيضمن مهمة واحدة بس لكل موقع، فالحلقة دى بتقف لوحدها.
         for (let lane = 0; lane < MAX_LANES && !stopped; lane++) {
+        // مهلة 20ث: طلب سحب معلّق (بروكسى واقف/جهاز نايم) كان بيسيب busy مقفول
+        // للأبد — الجهاز يفضل يبعت نبضات «مفعّل» من غير ما يسحب أى مهمة تانى.
+        const ctrl = new AbortController();
+        const tmo = setTimeout(() => ctrl.abort(), 20 * 1000);
         const r = await fetch("/api/exec-queue/claim", {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device }),
-        });
+          signal: ctrl.signal,
+        }).finally(() => clearTimeout(tmo));
         const job: ExecJob | null = r.ok ? await r.json() : null;
         if (!job || !job.id) break;
         if (job && job.id) {
@@ -233,6 +238,12 @@ export function ExecutorButton() {
             let result: string | null = null;
             try {
               if (accs.length && !stopped) result = await runBatch(job.type, accs, job.id, job.note, job.params);
+              if (result === null && stopped) {
+                // الجهاز اتقفل قبل ما المهمة تشتغل أصلاً — ماتتعلّمش done وهى
+                // ماتنفّذتش (كانت بتظهر «تمّت» كذباً). نسيبها claimed وآلية
+                // المهام اليتيمة بترجّعها للطابور لوحدها.
+                return;
+              }
               if (result === "preempted") {
                 // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
                 await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});

@@ -123,6 +123,7 @@ export function ExecBatchesReport() {
     i + 1, typeLabel(r.type), priorityLabel(r.priority), r.note || "غير محدد",
     r.requestedBy || "—", r.state, r.total, r.done, r.doneErr, r.canceled, r.active,
     fmt(r.createdAt), fmt(r.finishedAt), r.batchId,
+    "",  // عمود «تفصيلى» (زر فى الجدول) — من غيره التصدير كان ناقص خلية والأعمدة تتزحزح
   ];
 
   const handleExportExcel = () => {

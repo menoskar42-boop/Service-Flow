@@ -408,7 +408,11 @@ export function PhoneLookupReport() {
   const { data: techList } = useQuery<{ workerCode: string; techName: string }[]>({
     queryKey: ["/api/technician-names"],
     queryFn: async () => { const r = await fetch("/api/technician-names", { credentials: "include" }); return r.ok ? r.json() : []; },
-    enabled: isSuper,
+    // نفس شروط ظهور زر «إلغاء الاسناد» (canCancelWfm بيتعرّف بعدين فى الملف):
+    // القائمة كانت للسوبر أدمن بس، فالأدمن/الشئون الخارجية/الفنى كانوا بيلاقوا
+    // دروب ليست الفنيين فاضية والإسناد مستحيل.
+    enabled: isSuper || user?.role === ROLES.ADMIN || user?.role === ROLES.EXTERNAL ||
+      (user?.role === ROLES.TECH && !!line?.ownedByMe),
     staleTime: 5 * 60 * 1000,
   });
   const techOptions = Array.from(new Set((techList ?? []).map((t) => (t.techName || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, "ar"));

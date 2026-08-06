@@ -18,6 +18,8 @@ export const cfmUsers = pgTable("cfm_users", {
   role: text("role").notNull(), // 'admin' | 'external_affairs' | 'ext_tech' | 'splice_tech' | 'cable_engineer' | 'supervisor'
   avatar: text("avatar"),
   isInitialPassword: boolean("is_initial_password").default(true),
+  // موجود فى ensureSchema من زمان — كان ناقص هنا فيبان كعمود «زايد» فى أى diff
+  suspended: boolean("suspended").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

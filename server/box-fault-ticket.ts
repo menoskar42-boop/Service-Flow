@@ -69,6 +69,8 @@ export async function resolveCable(
     const hit = only(inCentral.filter((r: any) => foldAr(r.cable_number) === wantAr))
       ?? only(inCentral.filter((r: any) => {
         const got = foldAr(r.cable_number);
+        // got فاضى كان بينجح فى wantAr.startsWith("") ويطابق أى كابينة اسمها فاضى
+        if (!got) return false;
         return got.startsWith(wantAr) || wantAr.startsWith(got);
       }));
     if (hit) return hit;
@@ -226,11 +228,15 @@ export async function openBoxFaultTicket(inp: OpenBoxTicketInput): Promise<OpenB
   if (!fRows.length) return { ok: false, reason: "نوع العطل «لا توجد حراره على الخالى» مش موجود فى برنامج الكوابل" };
 
   // حساب الإنشاء: حساب الفنى فى الكوابل لو مربوط، وإلا أى حساب أدمن
+  // UNION بدون ORDER BY مايضمنش إن حساب الفنى المربوط ييجى الأول — كان ممكن
+  // created_by يتسجّل على أدمن عشوائى رغم وجود ربط. pr بيفرض الأولوية.
   const { rows: uRows } = await pool.query(
-    `SELECT id FROM cfm_users
-      WHERE id = (SELECT cfm_user_id FROM users WHERE full_name = $1 OR username = $1 LIMIT 1)
-      UNION ALL SELECT id FROM cfm_users WHERE role = 'admin'
-      LIMIT 1`, [inp.techName]);
+    `SELECT id FROM (
+       SELECT id, 0 AS pr FROM cfm_users
+        WHERE id = (SELECT cfm_user_id FROM users WHERE full_name = $1 OR username = $1 LIMIT 1)
+       UNION ALL
+       SELECT id, 1 AS pr FROM cfm_users WHERE role = 'admin'
+     ) x ORDER BY pr LIMIT 1`, [inp.techName]);
   if (!uRows.length) return { ok: false, reason: "مفيش حساب فى برنامج الكوابل نفتح بيه التكت" };
 
   const at = inp.respondedAt ? new Date(inp.respondedAt) : new Date();
@@ -252,8 +258,15 @@ export async function openBoxFaultTicket(inp: OpenBoxTicketInput): Promise<OpenB
         `INSERT INTO tickets
            (ticket_number, central_department, central_id, cable_id, cabinet, box,
             fault_type_id, notes, status, created_by, opened_by_label, created_at, updated_at)
+         -- GREATEST: lpad بتقصّ اللى أطول من 3 خانات (1001 → '100') مش بس بتحشو
          SELECT 'TKT-' || $1 || '-' || lpad(
-                  (COALESCE(MAX(NULLIF(regexp_replace(ticket_number, '^TKT-' || $1 || '-', ''), '')::int), 0) + 1)::text, 3, '0'),
+                  -- MAX رقمى مش نصى: MAX('999','1000') النصية = '999' فكان الترقيم
+                  -- هيقفل عند 999 ويتصادم للأبد. والـ CASE بيتجاهل أى رقم تكت
+                  -- مكتوب يدوى بصيغة غير رقمية بدل ما يكسّر الـ cast.
+                  (COALESCE(MAX(CASE WHEN ticket_number ~ ('^TKT-' || $1 || '-[0-9]+$')
+                     THEN split_part(ticket_number, '-', 3)::int END), 0) + 1)::text,
+                  GREATEST(3, length((COALESCE(MAX(CASE WHEN ticket_number ~ ('^TKT-' || $1 || '-[0-9]+$')
+                     THEN split_part(ticket_number, '-', 3)::int END), 0) + 1)::text)), '0'),
                 $2, $3, $4, $5, $6, $7, $8, 'open', $9, $10, $11, now()
            FROM tickets WHERE ticket_number LIKE 'TKT-' || $1 || '-%'
          RETURNING id, ticket_number AS "ticketNumber"`,
