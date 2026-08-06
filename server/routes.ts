@@ -2015,22 +2015,33 @@ export async function registerRoutes(
       // العلاج: إعادة محاولة تلقائية لحد 3 مرات، وبعدها بس تتلغى.
       const MAX_ATTEMPTS = 3;
 
-      // (1) الجهاز عدّاها فعلاً (سحب مهمة أحدث منها بعد كده) → يتيمة أكيد، نرجّعها بسرعة (10 دقايق).
-      //     شرط «فيه مهمة اتسحبت بعدها» بيضمن إننا مانرجّعش مهمة الجهاز لسه شغّال عليها.
-      // (2) الجهاز مات عليها هى نفسها (مافيش مهمة أحدث) → مافيش دليل مباشر، فبنستنى أطول
-      //     (45 دقيقة — مهمة الخط الواحد بتاخد دقيقة أو اتنين) وبعدين نرجّعها برضه.
-      //     ده كان الفراغ: الحالة دى كانت بتفضل عالقة 6 ساعات وتتلغى من غير محاولة.
+      // (1) الجهاز عدّاها فعلاً (سحب مهمة أحدث منها **على نفس المسار**) → يتيمة أكيد،
+      //     نرجّعها بسرعة (10 دقايق).
+      //     ⚠️ لازم «على نفس المسار»: المواقع المختلفة بتشتغل بالتوازى، فمهمة قياس اتسحبت
+      //     على DZS مش دليل إطلاقاً إن مهمة تحديث البورتات على بوابة التزويد اتساب.
+      //     الشرط ده لما كان بيقارن كل المهام كان بيرجّع تحديث البورتات للطابور وهو لسه
+      //     شغّال (مهلته 30 دقيقة) → يتسحب تانى → تاب جديد كل 10 دقايق → المتصفح يتخنق
+      //     والقياسات تقف. (اتأكدنا منه بالتجربة قبل الإصلاح.)
+      // (2) الجهاز مات عليها هى نفسها (مافيش مهمة أحدث على نفس المسار) → مافيش دليل مباشر،
+      //     فبنستنى أطول وبعدين نرجّعها برضه.
+      //     المهل بتحترم مهلة العملية نفسها: العمليات الطويلة (تحديث الملفات اليومية —
+      //     لحد 30 دقيقة فى جهاز التنفيذ) بتاخد ضعف المهلة، عشان مانقطعهاش وهى شغّالة.
+      const LONG_TYPES = [...DAILY_TYPES];
       await pool.query(
         `UPDATE exec_jobs e
             SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1
           WHERE e.status = 'claimed'
             AND e.attempts < $1
             AND (
-              (e.claimed_at < now() - interval '10 minutes'
-               AND EXISTS (SELECT 1 FROM exec_jobs j2 WHERE j2.claimed_at > e.claimed_at))
-              OR e.claimed_at < now() - interval '45 minutes'
+              (e.claimed_at < now() - (CASE WHEN e.type = ANY($2::text[])
+                                            THEN interval '45 minutes' ELSE interval '10 minutes' END)
+               AND EXISTS (SELECT 1 FROM exec_jobs j2
+                            WHERE j2.claimed_at > e.claimed_at
+                              AND COALESCE(j2.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101')))
+              OR e.claimed_at < (CASE WHEN e.type = ANY($2::text[])
+                                      THEN now() - interval '90 minutes' ELSE now() - interval '45 minutes' END)
             )`,
-        [MAX_ATTEMPTS],
+        [MAX_ATTEMPTS, LONG_TYPES],
       );
 
       // (3) استنفدت المحاولات ولسه عالقة → نسيبها ساعة كمان ثم نعلّمها stale بنتيجة واضحة
