@@ -173,6 +173,41 @@ export async function latestOpAt(type: ExecJobType, key?: string | number): Prom
   } catch { return 0; }
 }
 
+// ── هوية جهاز التنفيذ ──────────────────────────────────────────────────────
+// الرقابة محتاجة تعرف الطلب اتنفّذ من أى جهاز/متصفح. بنركّب اسم مميّز من:
+//   المتصفح/النظام (من userAgent) + معرّف ثابت للجهاز محفوظ فى localStorage.
+// المعرّف بيتولّد مرة واحدة على الجهاز ويفضل ثابت، فلو نفس المستخدم فتح من
+// كمبيوترين مختلفين نقدر نفرّق بينهم.
+const DEVICE_KEY = "sf_exec_device_id";
+export function execDeviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch { return "unknown"; }
+}
+
+export function execDeviceLabel(): string {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  const browser =
+    /Edg\//.test(ua) ? "Edge"
+    : /OPR\//.test(ua) ? "Opera"
+    : /Firefox\//.test(ua) ? "Firefox"
+    : /Chrome\//.test(ua) ? "Chrome"
+    : /Safari\//.test(ua) ? "Safari" : "متصفح";
+  const os =
+    /Windows NT 10/.test(ua) ? "Windows 10/11"
+    : /Windows/.test(ua) ? "Windows"
+    : /Android/.test(ua) ? "Android"
+    : /iPhone|iPad/.test(ua) ? "iOS"
+    : /Mac OS X/.test(ua) ? "macOS"
+    : /Linux/.test(ua) ? "Linux" : "نظام غير معروف";
+  return `${browser} · ${os} · ${execDeviceId()}`;
+}
+
 // هل فيه جهاز تنفيذ مفعّل حالياً؟
 export async function isExecutorActive(): Promise<boolean> {
   try {

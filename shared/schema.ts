@@ -642,6 +642,9 @@ export const execJobs = pgTable("exec_jobs", {
   retryRound: integer("retry_round").notNull().default(0),
   // ختم إن المهمة دى اتعمِلها إعادة تنفيذ خلاص — يمنع تكرار الإضافة كل دورة سحب
   retriedAt: timestamp("retried_at"),
+  // الجهاز/المتصفح اللى سحب المهمة ونفّذها — «اسم المستخدم · المتصفح/النظام · معرّف
+  // الجهاز». بيتسجّل وقت السحب عشان الرقابة تعرف الطلب اتنفّذ من فين بالظبط.
+  executedBy: text("executed_by"),
 });
 
 export type ExecJob = typeof execJobs.$inferSelect;

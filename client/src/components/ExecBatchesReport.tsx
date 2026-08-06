@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ExecBatchDetails } from "@/components/ExecBatchDetails";
 import { Loader2, RefreshCw, FileSpreadsheet, FileText, Layers, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
@@ -62,6 +63,8 @@ export function ExecBatchesReport() {
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // الباتش المفتوح تفصيله (نافذة منبثقة) — null = مقفولة
+  const [details, setDetails] = useState<{ batchId: string; type: string } | null>(null);
   const [q, setQ] = useState("");            // بحث بالباتش/التقرير/الطالب
   const [stateFilter, setStateFilter] = useState("");
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
@@ -114,7 +117,7 @@ export function ExecBatchesReport() {
     active: a.active + r.active,
   }), { batches: 0, lines: 0, done: 0, canceled: 0, active: 0 }), [shown]);
 
-  const COLS = ["#", "النوع", "الأولوية", "من تقرير", "طلبها", "الحالة", "إجمالى الخطوط", "اتنفّذ", "منها بإيرور", "أُلغِيت", "متبقّى", "وقت الطلب", "آخر تنفيذ", "الباتش"];
+  const COLS = ["#", "النوع", "الأولوية", "من تقرير", "طلبها", "الحالة", "إجمالى الخطوط", "اتنفّذ", "منها بإيرور", "أُلغِيت", "متبقّى", "وقت الطلب", "آخر تنفيذ", "الباتش", "تفصيلى"];
 
   const asRow = (r: BatchRow, i: number) => [
     i + 1, typeLabel(r.type), priorityLabel(r.priority), r.note || "غير محدد",
@@ -251,6 +254,14 @@ export function ExecBatchesReport() {
                     <TableCell className="text-center">{fmt(r.createdAt)}</TableCell>
                     <TableCell className="text-center">{fmt(r.finishedAt)}</TableCell>
                     <TableCell className="text-center font-mono text-[11px] text-muted-foreground">{r.batchId}</TableCell>
+                    <TableCell className="text-center">
+                      {/* التفصيلى: الأثر الفعلى لكل مهمة فى الباتش + الجهاز اللى نفّذها */}
+                      <button
+                        onClick={() => setDetails({ batchId: r.batchId, type: typeLabel(r.type) })}
+                        className="text-xs text-blue-700 hover:text-blue-900 underline whitespace-nowrap"
+                        title="عرض تفصيلى كل مهمة فى الباتش (الأثر الفعلى + الجهاز المنفّذ)"
+                      >تفصيلى</button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -258,6 +269,13 @@ export function ExecBatchesReport() {
           </Table>
         </div>
       </Card>
+
+      {details && (
+        <ExecBatchDetails
+          batchId={details.batchId} typeLabel={details.type}
+          onClose={() => setDetails(null)}
+        />
+      )}
     </div>
   );
 }

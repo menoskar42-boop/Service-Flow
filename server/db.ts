@@ -1066,6 +1066,8 @@ export async function ensureSchema() {
     -- retried_at = ختم إن المهمة دى اتعمِلها إعادة خلاص (يمنع التكرار كل دورة سحب).
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retry_round integer NOT NULL DEFAULT 0;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retried_at timestamptz;
+    -- الجهاز/المتصفح اللى نفّذ المهمة (اسم المستخدم · المتصفح/النظام · معرّف الجهاز)
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS executed_by text;
   `);
   // ضبط الموقع للمهام القديمة: الموقع بقى **اسم الدومين** نفسه (نفس الدومين = مسار واحد).
   await pool.query(`

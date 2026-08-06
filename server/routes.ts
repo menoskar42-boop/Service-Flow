@@ -22,6 +22,7 @@ import { phoneNormSql } from "./phone-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable } from "./box-fault-ticket";
+import { normCab } from "@shared/cab-norm";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -1488,7 +1489,8 @@ export async function registerRoutes(
       await pool.query(
         `INSERT INTO app_state (key, value, updated_at) VALUES ('exec_heartbeat', $1, now())
          ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`,
-        [String(req.user.username || "")],
+        // «اسم المستخدم · المتصفح/النظام · معرّف الجهاز» — عشان يبان الجهاز المفعّل
+        [execIdentity(req)],
       );
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -1545,8 +1547,18 @@ export async function registerRoutes(
       res.json({ ok: true, id: rows[0].id, count: uniqAccs.length, split: rows.length, batchId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
+  // هوية جهاز التنفيذ: «اسم المستخدم · المتصفح/النظام · معرّف الجهاز». الجزء التانى
+  // بيبعته المتصفح نفسه (execDeviceLabel)، ولو مابعتش بنرجع لـ user-agent الخام.
+  const execIdentity = (req: any): string => {
+    const user = String(req?.user?.username || "").trim() || "غير معروف";
+    const dev = String(req?.body?.device || "").trim();
+    if (dev) return `${user} · ${dev}`;
+    const ua = String(req?.headers?.["user-agent"] || "").slice(0, 120).trim();
+    return ua ? `${user} · ${ua}` : user;
+  };
+
   // جهاز التنفيذ يسحب أقدم مهمة (atomic) — SKIP LOCKED
-  app.post("/api/exec-queue/claim", requireAuth, requireSuperAdmin, async (_req, res) => {
+  app.post("/api/exec-queue/claim", requireAuth, requireSuperAdmin, async (req: any, res) => {
     try {
       // نظّف المهام اليتيمة قبل السحب — عشان أى مهمة عالقة ترجع للطابور وتتنفّذ فى مكانها
       // الصحيح حسب الأولوية، بدل ما الجهاز يعدّيها ويكمّل فى باتشات أقل أولوية.
@@ -1554,7 +1566,7 @@ export async function registerRoutes(
       // وبعدها: رجّع الخطوط اللى قفلت بإيرور من باتشات خلصت (مرة واحدة، أولوية 1)
       await requeueErroredJobs();
       const { rows } = await pool.query(
-        `UPDATE exec_jobs SET status = 'claimed', claimed_at = now()
+        `UPDATE exec_jobs SET status = 'claimed', claimed_at = now(), executed_by = $1
          WHERE id = (SELECT e.id FROM exec_jobs e
                       WHERE e.status = 'pending' AND e.paused_at IS NULL
                         -- الدومين لازم يكون فاضى: مفيش مهمة شغّالة على نفس الموقع دلوقتى
@@ -1565,7 +1577,8 @@ export async function registerRoutes(
                                CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
                                e.created_at, e.id
                       LIMIT 1 FOR UPDATE SKIP LOCKED)
-         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site, params`);
+         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site, params`,
+        [execIdentity(req)]);
       res.json(rows[0] || null);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -1868,6 +1881,157 @@ export async function registerRoutes(
         return { ...b, active, state };
       });
       res.json({ data });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/exec-queue/batch-details?batchId=… — التفصيلى للرقابة: كل مهمة فى الباتش
+  // بأثرها الفعلى فى قاعدة البيانات، مش بس «اكتملت/ألغيت»:
+  //   قياس        → الاسكور والسرعة ووقت القياس (واتقاس فعلاً ولا لأ)
+  //   رفع/إيقاف   → وقت آخر رفع/إيقاف ومين طلبه
+  //   تغيير بورت  → من كابينة إيه لإيه (ونفس الكابينة ولا غيرها) + حالة الطلب على
+  //                 البورتال + البورت الجديد لو اكتمل
+  //   تحديث بورت  → البورت قبل وبعد (واتغيّر فعلاً ولا لأ)
+  //   مراجعة FCC  → الاسم والعنوان اللى اتجابوا ووقتهم
+  //   جلب أكونت   → رقم الأكونت ومصدره
+  //   إلغاء إسناد → البند (Cancel / Re-assign) والفنى المُسنَد
+  // وكمان الجهاز اللى نفّذ كل مهمة (executed_by).
+  app.get("/api/exec-queue/batch-details", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const batchId = String(req.query.batchId || "").trim();
+      if (!batchId) return res.status(400).json({ message: "batchId مطلوب" });
+
+      const { rows: jobs } = await pool.query(
+        `SELECT id, type, accounts, status, result, note, priority, params,
+                executed_by AS "executedBy", retry_round AS "retryRound",
+                (created_at AT TIME ZONE 'Africa/Cairo') AS "createdAt",
+                (claimed_at AT TIME ZONE 'Africa/Cairo') AS "claimedAt",
+                (done_at    AT TIME ZONE 'Africa/Cairo') AS "doneAt",
+                claimed_at AS "claimedAtRaw"
+           FROM exec_jobs WHERE batch_id = $1 ORDER BY id`, [batchId]);
+      if (!jobs.length) return res.json({ data: [], batchId });
+
+      const keysOf = (t: string) =>
+        jobs.filter((j: any) => j.type === t)
+            .flatMap((j: any) => (Array.isArray(j.accounts) ? j.accounts : []))
+            .map((a: any) => String(a).trim()).filter((a: string) => a && a !== "-");
+      const short = (a: string) => a.replace(/\D/g, "").replace(/^88/, "");
+      const full  = (a: string) => "88" + short(a);
+      const M = <T,>(rows: any[], key: (r: any) => string) =>
+        new Map<string, T>(rows.map((r) => [key(r), r as T]));
+
+      // القياس — آخر سجل لكل رقم أكونت
+      const measAccs = [...keysOf("measure")];
+      const meas = measAccs.length ? M<any>((await pool.query(
+        `SELECT DISTINCT ON (account_no) account_no, score, current_speed, max_speed,
+                complain_no, measured_by, uploaded_at
+           FROM case_138 WHERE account_no = ANY($1::text[])
+          ORDER BY account_no, id DESC`, [measAccs])).rows, (r) => String(r.account_no)) : new Map();
+
+      // رفع السرعة / الإيقاف
+      const poAccs = [...keysOf("raise"), ...keysOf("stop")];
+      const po = poAccs.length ? M<any>((await pool.query(
+        `SELECT account_no, last_raise_at, last_raise_by, last_stop_at, last_stop_by
+           FROM line_po_events WHERE account_no = ANY($1::text[])`, [poAccs])).rows,
+        (r) => String(r.account_no)) : new Map();
+
+      // البورتات: طلب التغيير على البورتال + البورت الحالى دلوقتى
+      const portKeys = [...keysOf("portchange"), ...keysOf("portcheck")];
+      const pcr = portKeys.length ? M<any>((await pool.query(
+        `SELECT DISTINCT ON (phone_number) phone_number, request_id, old_msan, new_msan,
+                new_frame, port_type, status, completed, request_date, recorded_at
+           FROM port_change_requests
+          WHERE regexp_replace(phone_number, '^88', '') = ANY($1::text[])
+          ORDER BY phone_number, recorded_at DESC`, [portKeys.map(short)])).rows,
+        (r) => short(String(r.phone_number))) : new Map();
+      const nowPorts = portKeys.length ? M<any>((await pool.query(
+        `SELECT phone_number, msan_code, frame, shelf, slot, port_number, port_type
+           FROM phone_ports WHERE phone_number = ANY($1::text[])`, [portKeys.map(full)])).rows,
+        (r) => short(String(r.phone_number))) : new Map();
+
+      // مراجعة الاسم والعنوان من FCC
+      const siKeys = keysOf("subinfo");
+      const si = siKeys.length ? M<any>((await pool.query(
+        `SELECT phone_number, sub_name, sub_add, fetched_at
+           FROM line_subscriber_info
+          WHERE regexp_replace(phone_number, '^88', '') = ANY($1::text[])`, [siKeys.map(short)])).rows,
+        (r) => short(String(r.phone_number))) : new Map();
+
+      // جلب رقم الأكونت من Customer360
+      const c360Keys = keysOf("c360");
+      const accs = c360Keys.length ? M<any>((await pool.query(
+        `SELECT full_phone, account_no, source, updated_at, updated_by_name
+           FROM line_accounts WHERE full_phone = ANY($1::text[])`, [c360Keys.map(full)])).rows,
+        (r) => short(String(r.full_phone))) : new Map();
+
+      const at = (d: any) => (d ? new Date(d).getTime() : 0);
+      const data = jobs.map((j: any) => {
+        const list: string[] = (Array.isArray(j.accounts) ? j.accounts : []).map((a: any) => String(a).trim());
+        const key = list[0] || "";
+        const p = j.params || {};
+        let detail: any = null;
+        if (j.type === "measure") {
+          const m = meas.get(key) as any;
+          // «اتقاس فى المهمة دى» = فيه قياس بعد وقت سحب المهمة
+          const during = !!(m && at(m.uploaded_at) >= at(j.claimedAtRaw));
+          detail = m ? {
+            measuredInThisJob: during, score: m.score,
+            currentSpeed: m.current_speed, maxSpeed: m.max_speed,
+            complainNo: m.complain_no, measuredBy: m.measured_by, at: m.uploaded_at,
+          } : { measuredInThisJob: false };
+        } else if (j.type === "raise" || j.type === "stop") {
+          const e = po.get(key) as any;
+          const isRaise = j.type === "raise";
+          const evAt = isRaise ? e?.last_raise_at : e?.last_stop_at;
+          detail = {
+            doneInThisJob: !!(evAt && at(evAt) >= at(j.claimedAtRaw)),
+            at: evAt ?? null, by: isRaise ? e?.last_raise_by : e?.last_stop_by,
+          };
+        } else if (j.type === "portchange") {
+          const r0 = pcr.get(short(key)) as any;
+          const cur = nowPorts.get(short(key)) as any;
+          const oldC = String(p.old ?? "").trim(), newC = String(p.new ?? "").trim();
+          detail = {
+            requestedOldMsan: oldC, requestedNewMsan: newC,
+            sameCabinet: !!oldC && !!newC && normCab(oldC) === normCab(newC),
+            portType: p.pt ?? null, servicePlan: p.sp ?? null,
+            requestId: r0?.request_id ?? null, portalStatus: r0?.status ?? null,
+            portalCompleted: r0?.completed ?? null, portalNewFrame: r0?.new_frame ?? null,
+            portalRequestDate: r0?.request_date ?? null,
+            currentMsan: cur?.msan_code ?? null, currentFrame: cur?.frame ?? null,
+            currentPortType: cur?.port_type ?? null,
+          };
+        } else if (j.type === "portcheck") {
+          const r0 = pcr.get(short(key)) as any;
+          const cur = nowPorts.get(short(key)) as any;
+          detail = {
+            msanBefore: String(p.old ?? "").trim() || null,
+            frameAfter: cur?.frame ?? null, msanAfter: cur?.msan_code ?? null,
+            portalStatus: r0?.status ?? null, portalCompleted: r0?.completed ?? null,
+            portalNewFrame: r0?.new_frame ?? null, requestId: r0?.request_id ?? null,
+            // اتحدّث فعلاً؟ البورتال قال COMPLETED والفريم الحالى بقى نفس الجديد
+            updated: !!(r0?.completed && cur?.frame && String(cur.frame).trim() === String(r0.new_frame ?? "").trim()),
+          };
+        } else if (j.type === "subinfo") {
+          const s0 = si.get(short(key)) as any;
+          detail = s0 ? {
+            fetchedInThisJob: at(s0.fetched_at) >= at(j.claimedAtRaw),
+            subName: s0.sub_name, subAdd: s0.sub_add, at: s0.fetched_at,
+          } : { fetchedInThisJob: false };
+        } else if (j.type === "c360") {
+          detail = { accounts: list.map((a) => {
+            const a0 = accs.get(short(a)) as any;
+            return { phone: a, accountNo: a0?.account_no ?? null, source: a0?.source ?? null, at: a0?.updated_at ?? null };
+          }) };
+        } else if (j.type === "wfmcancel") {
+          detail = {
+            mode: p.mode === "reassign" ? "إعادة إسناد (Re-assign)" : "إلغاء إسناد (Cancel)",
+            worker: p.worker ?? null, workerName: p.workerName ?? null,
+          };
+        }
+        const { claimedAtRaw, ...rest } = j;
+        return { ...rest, account: key, accountsCount: list.length, detail };
+      });
+      res.json({ data, batchId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

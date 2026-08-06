@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2, Trash2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { executeBatch, latestOpAt, latestPoEventAt, latestSubInfoAt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
+import { execDeviceLabel, executeBatch, latestOpAt, latestPoEventAt, latestSubInfoAt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
 
 // زر «جهاز التنفيذ» — للسوبر أدمن فقط. لما يتفعّل، البراوزر ده يبقى هو المنفّذ:
 // يبعت نبضة كل 20ث، ويسحب المهام من الطابور كل 4ث وينفّذها (رفع سرعة/قياس/إيقاف).
@@ -61,7 +61,15 @@ export function ExecutorButton() {
     // عشان متفضلش عالقة فى الطابور وتضخّم ترتيب المستخدمين. (بنعملها مرة عند بدء التفعيل قبل السحب.)
     fetch("/api/exec-queue/reset-orphaned", { method: "POST", credentials: "include" }).catch(() => {});
 
-    const heartbeat = () => { fetch("/api/exec-queue/heartbeat", { method: "POST", credentials: "include" }).catch(() => {}); };
+    // بنبعت هوية الجهاز مع النبضة ومع كل سحب — عشان يتسجّل على المهمة نفسها
+    // وتعرف الرقابة الطلب اتنفّذ من أى جهاز/متصفح.
+    const device = execDeviceLabel();
+    const heartbeat = () => {
+      fetch("/api/exec-queue/heartbeat", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device }),
+      }).catch(() => {});
+    };
 
     // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
     const MEASURE_MAX_MS = 2.5 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
@@ -208,7 +216,10 @@ export function ExecutorButton() {
         // الفاضية بتشتغل فى نفس اللحظة بدل ما كل مسار يستنى دورة سحب (4 ثوانى).
         // السيرفر بيضمن مهمة واحدة بس لكل موقع، فالحلقة دى بتقف لوحدها.
         for (let lane = 0; lane < MAX_LANES && !stopped; lane++) {
-        const r = await fetch("/api/exec-queue/claim", { method: "POST", credentials: "include" });
+        const r = await fetch("/api/exec-queue/claim", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device }),
+        });
         const job: ExecJob | null = r.ok ? await r.json() : null;
         if (!job || !job.id) break;
         if (job && job.id) {
