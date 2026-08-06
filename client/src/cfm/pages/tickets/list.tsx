@@ -100,6 +100,18 @@ export default function TicketList() {
     }
   };
 
+  // المتعذرات المسجّلة على التكت: Service-Flow بيكتبها فى الملاحظات تحت عنوان
+  // «متعذرات على البكس:» بسطر لكل حالة — «• متعذر OM مسلسل …» أو «• طلب #… ».
+  // بنقراها من هنا ونعرضها فى عمود مستقل عشان تبان من قائمة التكتات على طول.
+  const pendingCases = (notes?: string | null) => {
+    const s = String(notes ?? "");
+    if (!s.includes("متعذرات على البكس:")) return { om: 0, orders: 0, label: "" };
+    const om = (s.match(/^\s*•\s*متعذر OM/gm) || []).length;
+    const orders = (s.match(/^\s*•\s*طلب/gm) || []).length;
+    const parts = [om ? `OM (${om})` : "", orders ? `طلبات (${orders})` : ""].filter(Boolean);
+    return { om, orders, label: parts.join(" + ") };
+  };
+
   const filteredTickets = tickets.filter(ticket => {
     const searchLower = arNorm(search);
     const central = centrals.find(c => c.id === ticket.centralId);
@@ -151,6 +163,7 @@ export default function TicketList() {
       t.faultType,
       t.status,
       t.openedBy,
+      "متعذرات",
       t.created,
       t.hasWorks,
       t.hasTasks,
@@ -164,7 +177,8 @@ export default function TicketList() {
       const central = centrals.find(c => c.id === ticket.centralId)?.name || '';
       const cable = cables.find(c => c.id === ticket.cableId);
       const fault = faultTypes.find(f => f.id === ticket.faultTypeId)?.name || '';
-      const creator = users.find(u => u.id === ticket.createdBy)?.name || ticket.createdBy;
+      const creator = (ticket as any).openedByLabel
+        || users.find(u => u.id === ticket.createdBy)?.name || ticket.createdBy;
       const closer = ticket.closedBy ? (users.find(u => u.id === ticket.closedBy)?.name || ticket.closedBy) : '';
       
       return [
@@ -175,6 +189,7 @@ export default function TicketList() {
         fault,
         t[ticket.status as keyof typeof t] || ticket.status,
         creator,
+        pendingCases(ticket.notes).label,
         new Date(ticket.createdAt).toLocaleDateString(),
         ticket.works && ticket.works.length > 0 ? t.yes : t.no,
         ticket.usedTasks && ticket.usedTasks.length > 0 ? t.yes : t.no,
@@ -269,6 +284,7 @@ export default function TicketList() {
                 <TableHead className="font-semibold hidden md:table-cell">{t.faultType}</TableHead>
                 <TableHead className="font-semibold">{t.status}</TableHead>
                 <TableHead className="font-semibold hidden lg:table-cell">{t.openedBy}</TableHead>
+                <TableHead className="font-semibold whitespace-nowrap">متعذرات</TableHead>
                 <TableHead className="font-semibold text-center text-xs px-1">{t.hasWorks}</TableHead>
                 <TableHead className="font-semibold text-center text-xs px-1">{t.hasTasks}</TableHead>
                 <TableHead className="font-semibold text-center text-xs px-1">{t.hasMeasurements}</TableHead>
@@ -280,7 +296,7 @@ export default function TicketList() {
             <TableBody>
               {filteredTickets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={15} className="h-32 text-center text-muted-foreground">
                     No tickets found.
                   </TableCell>
                 </TableRow>
@@ -294,6 +310,7 @@ export default function TicketList() {
                   const creator = (ticket as any).openedByLabel
                     || users.find(u => u.id === ticket.createdBy)?.name || ticket.createdBy;
                   const closer = ticket.closedBy ? (users.find(u => u.id === ticket.closedBy)?.name || ticket.closedBy) : null;
+                  const cases = pendingCases(ticket.notes);
                   
                   return (
                     <TableRow key={ticket.id} className="group hover:bg-secondary/40 transition-colors">
@@ -318,6 +335,14 @@ export default function TicketList() {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell text-sm text-muted-foreground">
                         {creator}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-sm">
+                        {cases.label
+                          ? <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800 font-medium"
+                                  title="متعذرات مسجّلة على نفس البكس — التفاصيل فى ملاحظات التكت">
+                              {cases.label}
+                            </span>
+                          : <span className="text-muted-foreground">-</span>}
                       </TableCell>
                       <TableCell className="text-center">
                         {(ticket.works?.length ?? 0) > 0 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-muted-foreground">-</span>}
