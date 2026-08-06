@@ -272,7 +272,10 @@ export default function TicketList() {
                   const central = centrals.find(c => c.id === ticket.centralId);
                   const cable = cables.find(c => c.id === ticket.cableId);
                   const fault = faultTypes.find(f => f.id === ticket.faultTypeId);
-                  const creator = users.find(u => u.id === ticket.createdBy)?.name || ticket.createdBy;
+                  // التكتات اللى بتتفتح تلقائياً من Service-Flow بتحط اسم معروض بديل
+                  // (اسم الفنى-المصدر)، وغيرها بياخد اسم الحساب اللى أنشأها.
+                  const creator = (ticket as any).openedByLabel
+                    || users.find(u => u.id === ticket.createdBy)?.name || ticket.createdBy;
                   const closer = ticket.closedBy ? (users.find(u => u.id === ticket.closedBy)?.name || ticket.closedBy) : null;
                   
                   return (

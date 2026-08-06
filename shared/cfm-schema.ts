@@ -99,6 +99,10 @@ export const tickets = pgTable("tickets", {
   closedAt: timestamp("closed_at"),
   closedBy: text("closed_by"),
   createdBy: varchar("created_by").notNull().references(() => cfmUsers.id),
+  // اسم معروض بديل فى خانة «تم الفتح بواسطة» — بتستخدمه التكتات اللى بتتفتح تلقائياً
+  // من Service-Flow، بصيغة «اسم الفنى-المصدر» (مثال: اسلام-OM / اسلام-طلبات).
+  // created_by بيفضل مفتاح أجنبى حقيقى لحساب موجود (للتدقيق)، والعرض بياخد ده لو موجود.
+  openedByLabel: text("opened_by_label"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

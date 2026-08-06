@@ -739,6 +739,11 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS row_no text`);
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS column_no text`);
 
+  // تكتات الكوابل (جدول tickets بتاع برنامج الكوابل — نفس قاعدة البيانات): خانة اسم
+  // معروض بديل لـ «تم الفتح بواسطة»، بتتملى للتكتات اللى Service-Flow بيفتحها تلقائياً
+  // بصيغة «اسم الفنى-المصدر» (اسلام-OM / اسلام-طلبات).
+  await pool.query(`ALTER TABLE IF EXISTS tickets ADD COLUMN IF NOT EXISTS opened_by_label text`);
+
   // removed_phone_ports — «جدول الخطوط المرفوعة»: أى رقم كان له بورت واختفى من الشيت
   // الجديد يتنقل هنا ببياناته كاملة بدل ما يتمسح خالص. لو رجع فى شيت بعدين بيرجع
   // لـ phone_ports ويتشال من هنا — فالجدول ده معناه «المرفوعة حالياً».

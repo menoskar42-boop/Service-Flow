@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
+import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS, REJECTION_REASONS } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import multer from "multer";
@@ -21,6 +21,7 @@ import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
+import { openBoxFaultTicket } from "./box-fault-ticket";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -2722,7 +2723,17 @@ export async function registerRoutes(
       if (status === "feasible") {
         await notifyOrderFeasible(order, "tech");
       }
-      res.json(order);
+      // «بوكس معطل» → تكت تلقائى على برنامج الكوابل (لو البكس مش مغطّى بتكت مفتوحة).
+      // بيتنفّذ بعد حفظ الرد وبيرجّع نتيجته فى الرد — فشل التكت مايمنعش تسجيل الرد.
+      let boxTicket: any = null;
+      if (order && (order as any).rejectionReason === REJECTION_REASONS.BOX_BROKEN) {
+        boxTicket = await openBoxFaultTicket({
+          central: (order as any).centralName, cabinet: (order as any).cabinNumber,
+          box: (order as any).boxNumber, techName: user.username, source: "طلبات",
+          respondedAt: (order as any).techResponseAt, refKey: `طلب #${id}`,
+        });
+      }
+      res.json(boxTicket ? { ...order, boxTicket } : order);
     } catch (e) {
       if (e instanceof z.ZodError) {
         res.status(400).json(e.errors);
@@ -7166,7 +7177,17 @@ export async function registerRoutes(
          clean(b.boxNumber), clean(b.nearestBoxDistance), clean(b.additionalNotes),
          req.user?.id ?? null, String(req.user?.username || "")],
       );
-      res.json({ ok: true, response: rows[0] });
+      // «بوكس معطل» → تكت تلقائى على برنامج الكوابل (نفس منطق قسم الطلبات)
+      let boxTicket: any = null;
+      const r0 = rows[0];
+      if (r0 && r0.rejection_reason === REJECTION_REASONS.BOX_BROKEN) {
+        boxTicket = await openBoxFaultTicket({
+          central: r0.central_name, cabinet: r0.cabin_number, box: r0.box_number,
+          techName: String(req.user?.username || ""), source: "OM",
+          respondedAt: r0.responded_at, refKey: `متعذر ${serialNumber}`,
+        });
+      }
+      res.json({ ok: true, response: r0, boxTicket });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
