@@ -6002,11 +6002,24 @@ export async function registerRoutes(
   // GET /api/port-change/list — تقرير متابعة طلبات تغيير البورت (كل المستخدمين المصرّح لهم)
   app.get("/api/port-change/list", requireAuth, async (_req, res) => {
     const { rows } = await pool.query(
-      `SELECT request_id AS "requestId", phone_number AS "phoneNumber", old_msan AS "oldMsan",
-              new_msan AS "newMsan", new_frame AS "newFrame", port_type AS "portType", status,
-              reservation_code AS "reservationCode", request_date AS "requestDate", completed,
-              (recorded_at AT TIME ZONE 'Africa/Cairo') AS "recordedAt"
-       FROM port_change_requests ORDER BY recorded_at DESC LIMIT 5000`);
+      // «مين نفّذ»: requested_by = اللى ضغط الزر (من op_intents)، وexecuted_by = الجهاز
+      // اللى سحب المهمة من الطابور ونفّذها فعلاً (اسم المستخدم · المتصفح/النظام · معرّف الجهاز).
+      `SELECT p.request_id AS "requestId", p.phone_number AS "phoneNumber", p.old_msan AS "oldMsan",
+              p.new_msan AS "newMsan", p.new_frame AS "newFrame", p.port_type AS "portType", p.status,
+              p.reservation_code AS "reservationCode", p.request_date AS "requestDate", p.completed,
+              p.requested_by AS "requestedBy",
+              ej.executed_by AS "executedBy",
+              (ej.done_at AT TIME ZONE 'Africa/Cairo') AS "executedAt",
+              (p.recorded_at AT TIME ZONE 'Africa/Cairo') AS "recordedAt"
+       FROM port_change_requests p
+       LEFT JOIN LATERAL (
+         SELECT e.executed_by, e.done_at
+           FROM exec_jobs e
+          WHERE e.type IN ('portchange','portcheck')
+            AND jsonb_exists(e.accounts, regexp_replace(p.phone_number, '^88', ''))
+          ORDER BY e.done_at DESC NULLS LAST, e.id DESC LIMIT 1
+       ) ej ON true
+       ORDER BY p.recorded_at DESC LIMIT 5000`);
     res.json(rows);
   });
 
@@ -7279,29 +7292,51 @@ export async function registerRoutes(
   //    بنرجّع العدد كمان عشان الحالة الشاذة دى تبان بدل ما تتخفى.
   app.get("/api/phone-ports/slot-cards", requireAuth, async (req, res) => {
     try {
-      const { q = "", workingLt = "" } = req.query as Record<string, string>;
+      const { q = "", workingLt = "", phone = "" } = req.query as Record<string, string>;
       const params: any[] = [];
-      let where = "";
+      const conds: string[] = [];
       if (q.trim()) {
         params.push(arQ(q));
         const p = `$${params.length}`;
-        where = `WHERE (${n("msan_code")} LIKE ${p} OR ${n("shelf")} LIKE ${p}
-                     OR ${n("slot")} LIKE ${p} OR ${n("port_type")} LIKE ${p})`;
+        conds.push(`(${n("msan_code")} LIKE ${p} OR ${n("shelf")} LIKE ${p}
+                  OR ${n("slot")} LIKE ${p} OR ${n("port_type")} LIKE ${p})`);
       }
+      // بحث برقم التليفون: بيرجّع **السلوت كله** اللى الرقم عليه بعدده الكامل —
+      // مش صف الرقم لوحده (وإلا «عدد الشغال» هيطلع 1 وده غلط).
+      const ph = phone.replace(/\D/g, "").replace(/^88/, "");
+      if (ph) {
+        params.push(ph);
+        conds.push(`(msan_code, COALESCE(shelf,''), COALESCE(slot,'')) IN (
+                      SELECT msan_code, COALESCE(shelf,''), COALESCE(slot,'')
+                        FROM phone_ports
+                       WHERE regexp_replace(phone_number, '^88', '') = $${params.length})`);
+      }
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       let having = "";
       const lim = parseInt(workingLt);
       if (workingLt !== "" && !isNaN(lim)) {
         params.push(lim);
-        having = `HAVING COUNT(*) FILTER (WHERE COALESCE(btrim(frame),'') <> '') < $${params.length}`;
+        having = `HAVING SUM(work) < $${params.length}`;
       }
+      // بنجمّع الأول لكل (سلوت + نوع بورت) عشان نقدر نعرض **كل** الأنواع اللى على
+      // السلوت بعددها («VDSL 64 + SV 64») بدل ما نعرض الغالب ونخفى الباقى — السلوت
+      // الواحد ساعات بيشيل أكتر من كارت/نوع، وده المفروض يبان مش يتخفى.
       const { rows } = await pool.query(
-        `SELECT msan_code AS "msanCode", shelf, slot,
-                COUNT(*) FILTER (WHERE COALESCE(btrim(frame),'') <> '')::int AS "workingCount",
-                COUNT(*)::int AS "portsCount",
-                mode() WITHIN GROUP (ORDER BY NULLIF(btrim(port_type), '')) AS "cardType",
-                COUNT(DISTINCT NULLIF(btrim(port_type), ''))::int AS "cardTypeCount"
-           FROM phone_ports ${where}
-          GROUP BY msan_code, shelf, slot
+        `WITH per_type AS (
+           SELECT msan_code, shelf, slot, NULLIF(btrim(port_type), '') AS pt,
+                  COUNT(*)::int AS ports,
+                  COUNT(*) FILTER (WHERE COALESCE(btrim(frame), '') <> '')::int AS work
+             FROM phone_ports ${where}
+            GROUP BY 1, 2, 3, 4
+         )
+         SELECT msan_code AS "msanCode", shelf, slot,
+                SUM(work)::int  AS "workingCount",
+                SUM(ports)::int AS "portsCount",
+                string_agg(pt || ' ' || work, ' + ' ORDER BY work DESC, pt)
+                  FILTER (WHERE pt IS NOT NULL)          AS "cardType",
+                COUNT(*) FILTER (WHERE pt IS NOT NULL)::int AS "cardTypeCount"
+           FROM per_type
+          GROUP BY 1, 2, 3
           ${having}
           ORDER BY msan_code NULLS LAST,
                    LPAD(COALESCE(shelf, ''), 4, '0'),

@@ -29,15 +29,19 @@ const COLS: [string, (r: Row) => any][] = [
   ["شيلف", (r) => r.shelf],
   ["سلوت", (r) => r.slot],
   ["عدد الشغال", (r) => r.workingCount],
-  ["نوع الكارت", (r) => (r.cardType || "-") + (r.cardTypeCount > 1 ? ` (+${r.cardTypeCount - 1} نوع تانى)` : "")],
+  // النوع بيتعرض بعدده («VDSL 64 + SV 64») — السلوت ساعات فيه أكتر من نوع فبنعرضهم كلهم
+  ["نوع الكارت", (r) => r.cardType || "-"],
 ];
 
 export function SlotCardsReport() {
   const [q, setQ] = useState("");
   // فلتر «الشغال أقل من N» — السلوتات اللى قربت تفضى أو شبه فاضية
   const [workingLt, setWorkingLt] = useState("");
+  // بحث برقم التليفون: بيجيب السلوت اللى الرقم عليه (بعدده الكامل، مش صف الرقم لوحده)
+  const [phone, setPhone] = useState("");
 
-  const url = `/api/phone-ports/slot-cards?q=${encodeURIComponent(q)}&workingLt=${encodeURIComponent(workingLt)}`;
+  const url = `/api/phone-ports/slot-cards?q=${encodeURIComponent(q)}`
+    + `&workingLt=${encodeURIComponent(workingLt)}&phone=${encodeURIComponent(phone)}`;
   const { data, isLoading } = useQuery({
     queryKey: [url],
     queryFn: async () => {
@@ -95,6 +99,22 @@ export function SlotCardsReport() {
               />
               {q && (
                 <button type="button" onClick={() => setQ("")} title="مسح البحث"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="بحث برقم التليفون…"
+                title="يجيب السلوت اللى الرقم ده عليه — بعدده الكامل مش صف الرقم لوحده"
+                className="h-9 w-48 pr-8 text-sm"
+              />
+              {phone && (
+                <button type="button" onClick={() => setPhone("")} title="مسح"
                   className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   <X className="w-4 h-4" />
                 </button>

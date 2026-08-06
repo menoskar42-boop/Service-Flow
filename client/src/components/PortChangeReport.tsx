@@ -18,6 +18,9 @@ interface Row {
   reservationCode: string | null;
   requestDate: string | null;
   completed: boolean;
+  requestedBy: string | null;
+  executedBy: string | null;
+  executedAt: string | null;
   recordedAt: string | null;
 }
 
@@ -53,8 +56,8 @@ export function PortChangeReport() {
   };
 
   const shown = onlyFailed ? rows.filter((r) => !r.completed) : rows;
-  const COLUMNS = ["Request ID", "رقم التليفون", "الحالة", "MSAN القديم", "MSAN الجديد", "Frame الجديد", "نوع البورت", "Reservation Code", "تاريخ الطلب", "وقت التسجيل"];
-  const toRow = (r: Row) => [r.requestId, r.phoneNumber || "-", r.status || "-", r.oldMsan || "-", r.newMsan || "-", r.newFrame || "-", r.portType || "-", r.reservationCode || "-", r.requestDate || "-", fmt(r.recordedAt)];
+  const COLUMNS = ["Request ID", "رقم التليفون", "الحالة", "MSAN القديم", "MSAN الجديد", "Frame الجديد", "نوع البورت", "طلبها", "الجهاز المنفّذ", "وقت التنفيذ", "Reservation Code", "تاريخ الطلب", "وقت التسجيل"];
+  const toRow = (r: Row) => [r.requestId, r.phoneNumber || "-", r.status || "-", r.oldMsan || "-", r.newMsan || "-", r.newFrame || "-", r.portType || "-", r.requestedBy || "-", r.executedBy || "-", fmt(r.executedAt), r.reservationCode || "-", r.requestDate || "-", fmt(r.recordedAt)];
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.aoa_to_sheet([COLUMNS, ...shown.map(toRow)]);
@@ -96,7 +99,9 @@ export function PortChangeReport() {
             ) : shown.map((r, i) => (
               <TableRow key={i} className={r.completed ? "" : "bg-red-50"}>
                 {toRow(r).map((cell, j) => (
-                  <TableCell key={j} className={`whitespace-nowrap ${j === 2 ? (r.completed ? "text-green-700 font-semibold" : "text-red-700 font-semibold") : ""}`}>
+                  <TableCell key={j} className={
+                    j === 8 ? "whitespace-normal break-words max-w-[220px] text-[11px] text-muted-foreground leading-5"
+                    : `whitespace-nowrap ${j === 2 ? (r.completed ? "text-green-700 font-semibold" : "text-red-700 font-semibold") : ""}`}>
                     {j === 1 ? (
                       <span className="inline-flex items-center gap-2 font-medium">
                         {cell}
