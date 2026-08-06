@@ -3464,9 +3464,12 @@ export async function registerRoutes(
   app.get("/api/reports/duplicate-accounts", requireAuth, async (_req, res) => {
     try {
       const { rows } = await pool.query(
+        // أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات —
+        // نفس القاعدة المطبّقة فى باقى تقارير التاب.
         `WITH dup AS (
-           SELECT account_no FROM line_accounts
+           SELECT account_no FROM line_accounts la0
            WHERE account_no IS NOT NULL AND account_no <> ''
+             AND ${hasFrameSql("la0.full_phone")}
            GROUP BY account_no
            HAVING COUNT(DISTINCT full_phone) > 1
          )
@@ -3482,6 +3485,7 @@ export async function registerRoutes(
          FROM line_accounts la
          JOIN dup ON dup.account_no = la.account_no
          LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone
+         WHERE ${hasFrameSql("la.full_phone")}
          ORDER BY la.account_no, la.full_phone`);
       const groups = new Set(rows.map((r) => r.accountNo)).size;
       res.json({ data: rows, groups, lines: rows.length });
@@ -10254,6 +10258,8 @@ export async function registerRoutes(
          ) c138p ON true
          WHERE pl.cabin_number = ANY($1)
            AND NOT EXISTS (SELECT 1 FROM lines_no_account na WHERE na.full_phone = pl.full_phone)
+           -- أى رقم مالوش فريم (مش متركّب على المسان) مايدخلش تقارير القياسات
+           AND ${hasFrameSql("pl.full_phone")}
          ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''),8,'0'),
                   LPAD(COALESCE(pl.box_number,''),8,'0'), pl.full_phone`,
         [cabArr],
