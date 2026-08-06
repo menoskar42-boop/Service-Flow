@@ -2149,7 +2149,7 @@ export async function registerRoutes(
         WITH active AS MATERIALIZED (
           SELECT DISTINCT type, accounts, batch_id FROM exec_jobs WHERE status IN ('pending','claimed')
         ), picked AS (
-          SELECT e.id, e.type, e.accounts, e.requested_by, e.note, e.batch_id, e.site, e.params
+          SELECT e.id, e.type, e.accounts, e.requested_by, e.note, e.batch_id, e.site, e.params, e.requested_from
             FROM exec_jobs e
            WHERE e.status = 'done'
              AND e.result IN ${RETRY_ERR}
@@ -2164,10 +2164,10 @@ export async function registerRoutes(
            ORDER BY e.done_at
            LIMIT 200
         ), ins AS (
-          INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params, retry_round)
+          INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params, retry_round, requested_from)
           SELECT p.type, p.accounts, p.requested_by,
                  COALESCE(p.note, '') || ' (إعادة تنفيذ بعد إيرور)',
-                 1, COALESCE(p.batch_id, 'b') || '-r1', p.site, p.params, 1
+                 1, COALESCE(p.batch_id, 'b') || '-r1', p.site, p.params, 1, p.requested_from
             FROM picked p
           RETURNING id
         )
@@ -2341,7 +2341,7 @@ export async function registerRoutes(
     try {
       const id = parseInt(req.params.id);
       const { rows } = await pool.query(
-        `SELECT type, accounts, claimed_at, note, requested_by, priority, site, batch_id, params FROM exec_jobs WHERE id = $1`, [id]);
+        `SELECT type, accounts, claimed_at, note, requested_by, priority, site, batch_id, params, requested_from FROM exec_jobs WHERE id = $1`, [id]);
       const job = rows[0];
       if (!job) return res.json({ ok: false });
       const remaining = await jobRemainingAccounts(job.accounts, job.type, job.claimed_at);
@@ -2354,10 +2354,11 @@ export async function registerRoutes(
         // الباتش الكبير بينزل لـ 0 زى ما هو عشان مايزاحمش الطلبات العاجلة.
         const newPriority = (job.priority ?? 0) >= 2 ? job.priority : 0;
         const { rows: ins } = await pool.query(
-          `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, site, batch_id, params)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, site, batch_id, params, requested_from)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
           [job.type, JSON.stringify(remaining), job.requested_by || null, note, newPriority,
-           job.site || SITE_OF_TYPE[job.type] || "10.42.187.101", job.batch_id || null, job.params || null]);
+           job.site || SITE_OF_TYPE[job.type] || "10.42.187.101", job.batch_id || null, job.params || null,
+           job.requested_from || null]);
         newId = ins[0].id;
       }
       res.json({ ok: true, remaining: remaining.length, newId });

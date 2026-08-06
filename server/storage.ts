@@ -1,4 +1,4 @@
-import { users, orders, notifications, type User, type InsertUser, type Order, type InsertOrder, type UpdateOrder, type UpdateExternalResponse, type Notification, ORDER_STATUS } from "@shared/schema";
+import { users, orders, notifications, type User, type InsertUser, type Order, type InsertOrder, type UpdateOrder, type UpdateExternal, type Notification, ORDER_STATUS } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, count } from "drizzle-orm";
 
@@ -26,7 +26,7 @@ export interface IStorage {
   resetTechResponse(id: number): Promise<Order>;
   updateContractStatus(id: number, contractStatus: string): Promise<Order>;
   requestExternalReview(id: number): Promise<Order>;
-  updateExternalResponse(id: number, data: UpdateExternalResponse & {
+  updateExternalResponse(id: number, data: UpdateExternal & {
     externalId: number;
     externalName: string;
     externalResponseAt: Date;
@@ -161,7 +161,7 @@ export class DatabaseStorage implements IStorage {
     return order;
   }
 
-  async updateExternalResponse(id: number, data: UpdateExternalResponse & {
+  async updateExternalResponse(id: number, data: UpdateExternal & {
     externalId: number;
     externalName: string;
     externalResponseAt: Date;
