@@ -6415,11 +6415,21 @@ export async function registerRoutes(
             idu_no, odu_no, primary_block_no, cabinet_in, sec_block_no, cabinet_out, fiber_block, fiber_out)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (full_phone) DO UPDATE SET
+            -- COALESCE فى كل الأعمدة: صفحة FCC ناقصة (فورم مختلف/تحميل جزئى) كانت
+            -- بتكتب NULL فوق البيان الفنى المستورد من شيت 131 — فالخط يقع من فلاتر
+            -- الكابينة/البكس ومتوسطات البكس. القيمة الجديدة بتكسب بس لو موجودة فعلاً.
             central = COALESCE(EXCLUDED.central, phone_lines.central),
-            cabin_number = EXCLUDED.cabin_number, box_number = EXCLUDED.box_number, dp_terminal = EXCLUDED.dp_terminal,
-            idu_no = EXCLUDED.idu_no, odu_no = EXCLUDED.odu_no, primary_block_no = EXCLUDED.primary_block_no,
-            cabinet_in = EXCLUDED.cabinet_in, sec_block_no = EXCLUDED.sec_block_no, cabinet_out = EXCLUDED.cabinet_out,
-            fiber_block = EXCLUDED.fiber_block, fiber_out = EXCLUDED.fiber_out`,
+            cabin_number = COALESCE(EXCLUDED.cabin_number, phone_lines.cabin_number),
+            box_number = COALESCE(EXCLUDED.box_number, phone_lines.box_number),
+            dp_terminal = COALESCE(EXCLUDED.dp_terminal, phone_lines.dp_terminal),
+            idu_no = COALESCE(EXCLUDED.idu_no, phone_lines.idu_no),
+            odu_no = COALESCE(EXCLUDED.odu_no, phone_lines.odu_no),
+            primary_block_no = COALESCE(EXCLUDED.primary_block_no, phone_lines.primary_block_no),
+            cabinet_in = COALESCE(EXCLUDED.cabinet_in, phone_lines.cabinet_in),
+            sec_block_no = COALESCE(EXCLUDED.sec_block_no, phone_lines.sec_block_no),
+            cabinet_out = COALESCE(EXCLUDED.cabinet_out, phone_lines.cabinet_out),
+            fiber_block = COALESCE(EXCLUDED.fiber_block, phone_lines.fiber_block),
+            fiber_out = COALESCE(EXCLUDED.fiber_out, phone_lines.fiber_out)`,
         [short, full, central, clean(b.cabinNumber), clean(b.boxNumber), clean(b.dpTerminal),
          clean(b.iduNo), clean(b.oduNo), clean(b.primaryBlock), clean(b.cabinetIn), clean(b.secBlock),
          clean(b.cabinetOut), clean(b.fiberBlock), clean(b.fiberOut)],
