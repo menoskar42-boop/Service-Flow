@@ -3128,12 +3128,26 @@ export async function registerRoutes(
     // baseParams = كل البارامترات ما عدا بارامتر «أقدم من» (لحساب الإجمالى بدون الفلتر)
     const baseParams = staleClause ? params.slice(0, -1) : params.slice();
 
+    // مع فلتر «أقدم من N يوم»: نستبعد الأرقام **اللى فى طابور القياس دلوقتى** (منتظرة أو
+    // شغّالة) — دى هتتقاس خلاص، فلو فضلت ظاهرة هنا هتتبعت للطابور تانى ويتقاس نفس الرقم
+    // مرتين. الاستبعاد مربوط بفلتر «أقدم من» بس لأنه ده تدفّق القياس بالجملة.
+    // (subquery غير مرتبطة عشان تتحسب مرة واحدة بدل مرة لكل صف.)
+    const queuedClause = staleClause ? `
+      AND NOT EXISTS (
+        SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
+         WHERE e.status IN ('pending','claimed') AND e.type = 'measure' AND qa.acc = la.account_no)` : "";
+
     // الإجمالى بدون فلتر «أقدم من» (مع باقى الفلاتر) — للعرض والتشخيص
     const grandRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}`, baseParams);
     const grandTotal = grandRes.rows[0].c as number;
-    // الإجمالى بعد فلتر «أقدم من»
-    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}`, params);
+    // الإجمالى بعد فلتر «أقدم من» **قبل** استبعاد اللى فى الطابور — الفرق بينه وبين
+    // الإجمالى النهائى = عدد الأرقام اللى اتشالت لأنها فى الطابور (بنعرضه للمستخدم).
+    const staleOnlyRes = staleClause
+      ? await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}`, params)
+      : null;
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}${queuedClause}`, params);
     const total = totalRes.rows[0].c as number;
+    const queuedExcluded = staleOnlyRes ? Math.max(0, (staleOnlyRes.rows[0].c as number) - total) : 0;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
@@ -3151,12 +3165,12 @@ export async function registerRoutes(
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
-       ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}
+       ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}${queuedClause}
        ORDER BY pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), la.full_phone
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
-    res.json({ data: dataRes.rows, total, grandTotal, page: pageNum, pageSize });
+    res.json({ data: dataRes.rows, total, grandTotal, queuedExcluded, page: pageNum, pageSize });
   });
 
   // GET /api/phone-lines/without-account — lines with no entry in line_accounts (paginated, same filters)

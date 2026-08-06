@@ -163,7 +163,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (accountQ.trim()) params.set("accountQ", accountQ.trim());
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<{ data: PhoneLine[]; total: number; grandTotal?: number; page: number; pageSize: number }>;
+      return res.json() as Promise<{ data: PhoneLine[]; total: number; grandTotal?: number; queuedExcluded?: number; page: number; pageSize: number }>;
     },
     refetchOnMount: "always",
   });
@@ -409,6 +409,11 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 {data.total.toLocaleString("ar-EG")} سجل
                 {staleOn && data.grandTotal != null && data.grandTotal !== data.total && (
                   <span className="text-purple-600"> {" "}(من إجمالى {data.grandTotal.toLocaleString("ar-EG")} — بعد فلتر «أقدم من {staleDays} يوم»)</span>
+                )}
+                {/* الأرقام اللى فى طابور القياس دلوقتى بتتشال من النتيجة عشان مايتقاسش
+                    نفس الرقم مرتين — بنقول للمستخدم اتشال كام. */}
+                {staleOn && !!data.queuedExcluded && (
+                  <span className="text-amber-700"> {" "}— مستبعَد {data.queuedExcluded.toLocaleString("ar-EG")} رقم موجود فى طابور القياس</span>
                 )}
               </p>
             )}
