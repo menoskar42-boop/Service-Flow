@@ -1042,7 +1042,9 @@ export async function ensureSchema() {
     -- فحص «الباتش خلص؟» بيتنفّذ لكل مرشّح لإعادة التنفيذ — من غير الفهرس ده بيعمل
     -- مسح كامل للجدول (آلاف الصفوف) لكل صف، وده اللى بيخنق قاعدة البيانات.
     CREATE INDEX IF NOT EXISTS exec_jobs_batch_idx ON exec_jobs (batch_id);
-    CREATE INDEX IF NOT EXISTS exec_jobs_retry_idx ON exec_jobs (status, result, retry_round, done_at);
+    -- done_at DESC: البحث بياخد الأحدث الأول، ولازم يفضل DESC عشان dev/prod
+    -- يفضلوا متطابقين ومايطلعش تحذير إعادة بناء الفهرس فى Publishing.
+    CREATE INDEX IF NOT EXISTS exec_jobs_retry_idx ON exec_jobs (status, result, retry_round, done_at DESC);
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS result text;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS priority integer NOT NULL DEFAULT 0;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS batch_id text;
