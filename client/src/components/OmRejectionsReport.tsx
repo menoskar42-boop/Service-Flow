@@ -91,6 +91,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   const [techFilter, setTechFilter] = useState("");
   // فلتر رد الفنى: الكل | قيد الانتظار | يمكن التنفيذ | سبب تعذر محدد
   const [respFilter, setRespFilter] = useState("");
+  // فلتر «الشغال على البكس أقل من N» — بيظهر بس المتعذرات اللى البكس بتاعها عليه
+  // أقل من العدد ده من الخطوط الشغّالة (الشغّال = الخط اللى ليه بورت).
+  const [workingLt, setWorkingLt] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const { user } = useAuth();
@@ -307,6 +310,15 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           if (yearFilter === "current" ? yr !== nowYear : yr >= nowYear) return false;
         }
       }
+      // «الشغال على البكس أقل من N» — الصفوف اللى مالهاش عدد (الفنى ماكتبش بكس)
+      // بتتشال، لأن مافيش أساس نقارن بيه.
+      if (workingLt.trim() !== "") {
+        const lim = parseInt(workingLt, 10);
+        if (!isNaN(lim)) {
+          if (r.boxWorkingCount == null) return false;
+          if (!(r.boxWorkingCount < lim)) return false;
+        }
+      }
       // فلتر رد الفنى / سبب التعذر
       if (respFilter) {
         const st = r.respStatus || "pending";
@@ -318,7 +330,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       }
       return true;
     });
-  }, [rows, yearFilter, respFilter]);
+  }, [rows, yearFilter, respFilter, workingLt]);
 
   const assignTech = async (msanCode: string, techName: string) => {
     try {
@@ -536,6 +548,15 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
               ))}
             </select>
           )}
+          {bucket === "current" && (
+            <input
+              type="number" min={0} value={workingLt}
+              onChange={(e) => setWorkingLt(e.target.value)}
+              placeholder="الشغال أقل من..."
+              title="يعرض المتعذرات اللى البكس بتاعها عليه أقل من العدد ده من الخطوط الشغّالة"
+              className="border rounded-md text-sm px-2 py-2 bg-white w-36"
+            />
+          )}
           <select
             value={yearFilter}
             onChange={(e) => setYearFilter(e.target.value as YearFilter)}
@@ -552,9 +573,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <label className="text-xs text-muted-foreground whitespace-nowrap">إلى:</label>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="border rounded-md text-sm px-2 py-1.5 bg-white" />
-          {(msanFilter || fccFilter || techFilter || respFilter || dateFrom || dateTo) && (
+          {(msanFilter || fccFilter || techFilter || respFilter || workingLt || dateFrom || dateTo) && (
             <button
-              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setRespFilter(""); setDateFrom(""); setDateTo(""); }}
+              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setRespFilter(""); setWorkingLt(""); setDateFrom(""); setDateTo(""); }}
               className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
             >مسح الفلاتر</button>
           )}
