@@ -2026,7 +2026,7 @@ export async function registerRoutes(
       //     فبنستنى أطول وبعدين نرجّعها برضه.
       //     المهل بتحترم مهلة العملية نفسها: العمليات الطويلة (تحديث الملفات اليومية —
       //     لحد 30 دقيقة فى جهاز التنفيذ) بتاخد ضعف المهلة، عشان مانقطعهاش وهى شغّالة.
-      const LONG_TYPES = [...DAILY_TYPES];
+      const LONG_TYPES = Array.from(DAILY_TYPES);
       await pool.query(
         `UPDATE exec_jobs e
             SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1
@@ -8038,7 +8038,27 @@ export async function registerRoutes(
   });
 
   // الأعطال الحالية خارج الشاشة (المفتوحة)
-  app.get("/api/manual-faults/current", requireAuth, async (_req, res) => {
+  app.get("/api/manual-faults/current", requireAuth, async (req: any, res) => {
+    // الفنى يشوف أعطاله هو بس. و«أعطاله» = أعطال كباينه، وكمان أعطال الزميل اللى هو
+    // قائم بالعمل مكانه فى الوردية يوم العطل (نفس منطق areaTechSql المستخدَم فى نسبة
+    // الإزالة والتكرار: صاحب الكابينة، إلا لو كان «راحه/إجازة» فالمسؤول فنى الوردية).
+    // باقى الأدوار بتشوف الكل.
+    const params: any[] = [];
+    let techWhere = "";
+    if (req.user?.role === ROLES.TECH) {
+      const wc = String(req.user.workerCode || "").trim();
+      const { rows: tn } = await pool.query(
+        `SELECT tech_name FROM technician_names WHERE worker_code = $1 LIMIT 1`, [wc]);
+      const techName = String(tn[0]?.tech_name || req.user.fullName || req.user.username || "").trim();
+      // مالوش اسم فنى معروف → مايشوفش حاجة (أأمن من إنه يشوف الكل)
+      if (!techName) return res.json({ data: [] });
+      params.push(techName);
+      techWhere = ` AND btrim(COALESCE(${areaTechSql(
+        "COALESCE(pl.central, mf.central)",
+        "COALESCE(pl.cabin_number, mf.cabin_number)",
+        "mf.flagged_at",
+      )}, '')) = btrim($${params.length})`;
+    }
     // إثراء بنفس بيانات «الأعطال الحالية»: آخر قياس + القياس الحالى (بعد تسجيل العطل) + بيانات
     // البورت + أحداث PO — بالمطابقة بالتليفون الكامل (mf.full_phone = 88+الرقم).
     const { rows } = await pool.query(
@@ -8099,7 +8119,7 @@ export async function registerRoutes(
                AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
          ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
        ) mob ON true
-       WHERE mf.status='open' ORDER BY mf.flagged_at DESC`);
+       WHERE mf.status='open'${techWhere} ORDER BY mf.flagged_at DESC`, params);
     res.json({ data: rows });
   });
 
