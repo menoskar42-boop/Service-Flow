@@ -594,6 +594,30 @@ const notQueuedSql = (accCol: string) => `NOT EXISTS (
      AND e.type IN ('measure','raise','stop')
      AND qa.acc = ${accCol})`;
 
+// «جدول الخطوط المرفوعة»: بدل ما نمسح الرقم اللى اختفى من الشيت، بننقله بكل بياناته
+// لـ removed_phone_ports ثم نشيله من phone_ports. لو رجع فى شيت بعدين بيتشال من هناك
+// تلقائياً (فالجدول معناه «المرفوعة حالياً» مش سجل تاريخى).
+// whereSql بيتنفّذ على phone_ports وبياخد نفس البارامترات.
+async function archiveRemovedPorts(whereSql: string, params: any[], source: string): Promise<number> {
+  await pool.query(
+    `INSERT INTO removed_phone_ports
+       (phone_number, area_code, msan_code, frame, shelf, slot, port_number, port_type,
+        voice_status, data_status, operator, onu, row_no, column_no, last_uploaded_at, removed_at, removed_source)
+     SELECT phone_number, area_code, msan_code, frame, shelf, slot, port_number, port_type,
+            voice_status, data_status, operator, onu, row_no, column_no, uploaded_at, now(), $${params.length + 1}
+       FROM phone_ports WHERE ${whereSql}
+     ON CONFLICT (phone_number) DO UPDATE SET
+       area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code, frame = EXCLUDED.frame,
+       shelf = EXCLUDED.shelf, slot = EXCLUDED.slot, port_number = EXCLUDED.port_number,
+       port_type = EXCLUDED.port_type, voice_status = EXCLUDED.voice_status,
+       data_status = EXCLUDED.data_status, operator = EXCLUDED.operator, onu = EXCLUDED.onu,
+       row_no = EXCLUDED.row_no, column_no = EXCLUDED.column_no,
+       last_uploaded_at = EXCLUDED.last_uploaded_at, removed_at = now(), removed_source = EXCLUDED.removed_source`,
+    [...params, source]);
+  const del = await pool.query(`DELETE FROM phone_ports WHERE ${whereSql}`, params);
+  return del.rowCount ?? 0;
+}
+
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf
      WHERE pf.phone_number = ${fullPhoneExpr}
@@ -5868,6 +5892,11 @@ export async function registerRoutes(
       );
       affected += r.rowCount ?? 0;
     }
+    // رجع فى الشيت تانى؟ يبقى مابقاش «مرفوع» — نشيله من جدول الخطوط المرفوعة
+    if (all.length) {
+      await pool.query(`DELETE FROM removed_phone_ports WHERE phone_number = ANY($1::text[])`,
+        [all.map((a) => String(a[0]))]).catch(() => {});
+    }
     // «الشيت هو الحقيقة»: أى رقم كان متسجّل على **نفس أكواد المسان** دى ومش موجود فى
     // الدفعة الجديدة يبقى بورته اتشال فعلاً → نمسحه. الحذف محصور فى أكواد المسان اللى
     // فى الدفعة بس، لأن السكربت بيرفع كابينة كابينة — حذف شامل هنا كان هيمسح باقى الكباين.
@@ -5875,13 +5904,10 @@ export async function registerRoutes(
     const msans = [...new Set(all.map((a) => String(a[2] ?? "").trim()).filter(Boolean))];
     const phones = all.map((a) => String(a[0]));
     if (msans.length && phones.length) {
-      const del = await pool.query(
-        `DELETE FROM phone_ports
-          WHERE btrim(COALESCE(msan_code,'')) = ANY($1::text[])
-            AND phone_number <> ALL($2::text[])`,
-        [msans, phones]);
-      removed = del.rowCount ?? 0;
-      if (removed) console.log(`[ports] اتشال ${removed} رقم مابقاش له بورت فى كباين: ${msans.join(", ")}`);
+      removed = await archiveRemovedPorts(
+        `btrim(COALESCE(msan_code,'')) = ANY($1::text[]) AND phone_number <> ALL($2::text[])`,
+        [msans, phones], "portal");
+      if (removed) console.log(`[ports] اتأرشف ${removed} رقم مابقاش له بورت فى كباين: ${msans.join(", ")}`);
     }
     res.json({ inserted: affected, total: all.length, removed });
   });
@@ -6773,6 +6799,11 @@ export async function registerRoutes(
         );
         affected += r.rowCount ?? 0;
       }
+      // رجع فى الشيت تانى؟ يبقى مابقاش «مرفوع» — نشيله من جدول الخطوط المرفوعة
+      if (all.length) {
+        await pool.query(`DELETE FROM removed_phone_ports WHERE phone_number = ANY($1::text[])`,
+          [all.map((a) => String(a[0]))]).catch(() => {});
+      }
       // «الشيت هو الحقيقة»: أى رقم متسجّل عندنا ومش فى الشيت الجديد يبقى بورته اتشال
       // → نمسحه، وإلا يفضل ظاهر «شغّال» بالغلط فى كل تقارير القياسات.
       // 🛡️ حارس: لو الشيت المرفوع أقل من نص اللى عندنا يبقى غالباً شيت ناقص/جزئى —
@@ -6785,18 +6816,42 @@ export async function registerRoutes(
         removeSkipped = true;
         console.warn(`[ports] الشيت فيه ${phones.length} رقم والموجود ${before} — اتخطّيت الحذف (شيت ناقص؟)`);
       } else if (phones.length) {
-        const del = await pool.query(`DELETE FROM phone_ports WHERE phone_number <> ALL($1::text[])`, [phones]);
-        removed = del.rowCount ?? 0;
+        removed = await archiveRemovedPorts(`phone_number <> ALL($1::text[])`, [phones], "sheet");
       }
       res.json({
         inserted: affected, total: all.length, removed, removeSkipped,
         message: removeSkipped
-          ? `تم تحديث ${all.length} رقم. ⚠️ الشيت فيه ${phones.length} رقم بس والموجود ${before} — ماتشالش أى رقم قديم (شيت ناقص؟). ارفع الشيت الكامل لو عايز الأرقام اللى اتشالت تتمسح.`
-          : `تم تحديث ${all.length} رقم${removed ? ` واتشال ${removed} رقم مابقاش له بورت` : ""}.`,
+          ? `تم تحديث ${all.length} رقم. ⚠️ الشيت فيه ${phones.length} رقم بس والموجود ${before} — ماتأرشفش أى رقم قديم (شيت ناقص؟). ارفع الشيت الكامل لو عايز الأرقام اللى اتشالت تتمسح.`
+          : `تم تحديث ${all.length} رقم${removed ? ` واتأرشف ${removed} رقم مابقاش له بورت (جدول الخطوط المرفوعة)` : ""}.`,
       });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
+  });
+
+  // GET /api/phone-ports/removed — «جدول الخطوط المرفوعة»: أرقام كان لها بورت واختفت
+  // من الشيت. بياناتها الأخيرة محفوظة كاملة + إمتى اتشالت ومن أى رفعة.
+  app.get("/api/phone-ports/removed", requireAuth, async (req, res) => {
+    const { q = "" } = req.query as Record<string, string>;
+    const params: any[] = [];
+    let where = "";
+    if (q.trim()) {
+      params.push(arQ(q));
+      const p = `$${params.length}`;
+      where = `WHERE (${n("phone_number")} LIKE ${p} OR ${n("msan_code")} LIKE ${p} OR ${n("operator")} LIKE ${p})`;
+    }
+    const { rows } = await pool.query(
+      `SELECT phone_number AS "phoneNumber", area_code AS "areaCode", msan_code AS "msanCode",
+              frame, shelf, slot, port_number AS "portNumber", port_type AS "portType",
+              voice_status AS "voiceStatus", data_status AS "dataStatus", operator, onu,
+              (last_uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastUploadedAt",
+              (removed_at AT TIME ZONE 'Africa/Cairo') AS "removedAt",
+              removed_source AS "removedSource"
+         FROM removed_phone_ports ${where}
+        ORDER BY removed_at DESC, phone_number
+        LIMIT 20000`,
+      params);
+    res.json({ data: rows, total: rows.length });
   });
 
   // GET /api/phone-ports — list with search

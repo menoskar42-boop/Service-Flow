@@ -43,6 +43,7 @@ import { FileUploadSection } from "@/components/FileUploadSection";
 import { DataCompletionSection } from "@/components/DataCompletionSection";
 import { CfmTicketsReport } from "@/components/CfmTicketsReport";
 import { GroundNetworkFaultsTab } from "@/components/GroundNetworkFaultsTab";
+import { RemovedPortsReport } from "@/components/RemovedPortsReport";
 import { MaintenanceComprehensiveReport } from "@/components/MaintenanceComprehensiveReport";
 import { BoxOverlapReport } from "@/components/BoxOverlapReport";
 import { MaintenancePlanH2Report } from "@/components/MaintenancePlanH2Report";
@@ -73,7 +74,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -182,6 +183,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "port-change", label: "متابعة تغيير البورت" },
       { id: "subscriber-info", label: "اسم وعنوان العملاء (البورتات)" },
       { id: "ports-suspend-free", label: "بورتات ALL_SUSPEND / FREE" },
+      { id: "removed-ports", label: "الخطوط المرفوعة" },
       { id: "cabinet-capacity", label: "سعة الكباين (ابتدائى/ثانوى)" },
     ],
   },
@@ -557,6 +559,7 @@ export default function Dashboard() {
               {reportTab === "phone-lines"       && <PhoneLinesReport />}
               {reportTab === "box-summary"       && <BoxLinesSummaryReport />}
               {reportTab === "subscriber-info"   && <SubscriberInfoReport />}
+              {reportTab === "removed-ports"       && <RemovedPortsReport />}
               {reportTab === "ports-suspend-free" && <PortsSuspendFreeReport />}
               {reportTab === "maintenance-comprehensive" && <MaintenanceComprehensiveReport />}
               {reportTab === "box-full"          && <BoxFullRejectionsReport orders={orders || []} />}

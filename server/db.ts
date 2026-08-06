@@ -739,6 +739,34 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS row_no text`);
   await pool.query(`ALTER TABLE phone_ports ADD COLUMN IF NOT EXISTS column_no text`);
 
+  // removed_phone_ports — «جدول الخطوط المرفوعة»: أى رقم كان له بورت واختفى من الشيت
+  // الجديد يتنقل هنا ببياناته كاملة بدل ما يتمسح خالص. لو رجع فى شيت بعدين بيرجع
+  // لـ phone_ports ويتشال من هنا — فالجدول ده معناه «المرفوعة حالياً».
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS removed_phone_ports (
+      id serial PRIMARY KEY,
+      phone_number text NOT NULL UNIQUE,
+      area_code text,
+      msan_code text,
+      frame text,
+      shelf text,
+      slot text,
+      port_number text,
+      port_type text,
+      voice_status text,
+      data_status text,
+      operator text,
+      onu text,
+      row_no text,
+      column_no text,
+      last_uploaded_at timestamptz,          -- آخر مرة كان فيها موجود فى الشيت
+      removed_at timestamptz NOT NULL DEFAULT now(),
+      removed_source text                     -- sheet (رفع يدوى) | portal (رفع تلقائى)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS removed_phone_ports_msan_idx ON removed_phone_ports (msan_code)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS removed_phone_ports_at_idx ON removed_phone_ports (removed_at DESC)`);
+
   // port_change_requests — متابعة طلبات تغيير البورت من Provisioning Portal.
   // كل Request ID يُسجَّل مرة واحدة (PRIMARY KEY). completed=true → اتحدّث بيان البورت من النتيجة؛
   // false → طلب لسه/فشل (زى FAIL_TO_RESERVE) يتعرض فى تقرير المتابعة.

@@ -667,6 +667,31 @@ export const technicianNames = pgTable("technician_names", {
 
 export type TechnicianName = typeof technicianNames.$inferSelect;
 
+// «جدول الخطوط المرفوعة» — أرقام كان لها بورت واختفت من الشيت الجديد.
+// بتتنقل هنا ببياناتها بدل ما تتمسح؛ ولو رجعت فى شيت بعدين بتتشال من هنا.
+export const removedPhonePorts = pgTable("removed_phone_ports", {
+  id: serial("id").primaryKey(),
+  phoneNumber: text("phone_number").notNull().unique(),
+  areaCode: text("area_code"),
+  msanCode: text("msan_code"),
+  frame: text("frame"),
+  shelf: text("shelf"),
+  slot: text("slot"),
+  portNumber: text("port_number"),
+  portType: text("port_type"),
+  voiceStatus: text("voice_status"),
+  dataStatus: text("data_status"),
+  operator: text("operator"),
+  onu: text("onu"),
+  rowNo: text("row_no"),
+  columnNo: text("column_no"),
+  lastUploadedAt: timestamp("last_uploaded_at", { withTimezone: true }),
+  removedAt: timestamp("removed_at", { withTimezone: true }).defaultNow().notNull(),
+  removedSource: text("removed_source"),
+});
+
+export type RemovedPhonePort = typeof removedPhonePorts.$inferSelect;
+
 // منافذ MSAN (phone_ports) — مفتاحها رقم التليفون (upsert على كل رفعة)
 export const phonePorts = pgTable("phone_ports", {
   id: serial("id").primaryKey(),
