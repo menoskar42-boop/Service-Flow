@@ -2739,6 +2739,7 @@ export async function registerRoutes(
           central: (order as any).centralName, cabinet: (order as any).cabinNumber,
           box: (order as any).boxNumber, techName: user.username, source: "طلبات",
           respondedAt: (order as any).techResponseAt, refKey: `طلب #${id}`,
+          customerName: (order as any).customerName, nationalId: (order as any).nationalId,
         });
       }
       res.json(boxTicket ? { ...order, boxTicket } : order);
@@ -6858,13 +6859,14 @@ export async function registerRoutes(
       `SELECT id::text AS "refKey", central_name AS central, cabin_number AS cabinet,
               box_number AS box, tech_name AS "techName",
               (tech_response_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt",
-              customer_name AS "customerName"
+              customer_name AS "customerName", national_id AS "nationalId"
          FROM orders
         WHERE rejection_reason = $1 AND COALESCE(btrim(box_number),'') <> ''
         ORDER BY tech_response_at DESC NULLS LAST`, [REJECTION_REASONS.BOX_BROKEN]);
     for (const r of ord) out.push({ ...r, source: "طلبات", refKey: `طلب #${r.refKey}` });
     const { rows: om } = await pool.query(
-      `SELECT serial_number AS "refKey", central_name AS central, cabin_number AS cabinet,
+      `SELECT serial_number AS "refKey", serial_number AS "serialNumber",
+              central_name AS central, cabin_number AS cabinet,
               box_number AS box, tech_name AS "techName",
               (responded_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt"
          FROM om_responses
@@ -6918,6 +6920,7 @@ export async function registerRoutes(
         const r = await openBoxFaultTicket({
           central: c.central, cabinet: c.cabinet, box: c.box, techName: c.techName || "غير معروف",
           source: c.source === "OM" ? "OM" : "طلبات", respondedAt: c.respondedAt, refKey: c.refKey,
+          serialNumber: c.serialNumber, customerName: c.customerName, nationalId: c.nationalId,
         });
         if (r.ok && (r as any).created) opened.push({ ...c, ticketNumber: (r as any).ticketNumber });
         else if (r.ok) skipped.push({ ...c, why: `مغطّى بتكت ${(r as any).ticketNumber}` });
@@ -7402,6 +7405,7 @@ export async function registerRoutes(
           central: r0.central_name, cabinet: r0.cabin_number, box: r0.box_number,
           techName: String(req.user?.username || ""), source: "OM",
           respondedAt: r0.responded_at, refKey: `متعذر ${serialNumber}`,
+          serialNumber,
         });
       }
       res.json({ ok: true, response: r0, boxTicket });

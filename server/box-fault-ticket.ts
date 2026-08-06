@@ -22,6 +22,9 @@ export interface OpenBoxTicketInput {
   source: "OM" | "طلبات"; // مصدر التسجيل — بيتكتب فى «تم الفتح بواسطة»
   respondedAt: Date | string | null; // تاريخ رد الفنى = تاريخ إنشاء التكت
   refKey?: string;        // مرجع (رقم الطلب / مسلسل المتعذر) للتتبّع فى الملاحظات
+  serialNumber?: string;  // مسلسل المتعذر (مصدر OM)
+  customerName?: string;  // اسم العميل (مصدر الطلبات)
+  nationalId?: string;    // الرقم القومى (مصدر الطلبات)
 }
 
 export type OpenBoxTicketResult =
@@ -61,12 +64,40 @@ export async function resolveCable(
   const { rows } = await pool.query(
     `SELECT c.id AS central_id, c.name AS central_name, cb.id AS cable_id, cb.number AS cable_number
        FROM centrals c JOIN cables cb ON cb.central_id = c.id`);
-  for (const r of rows) {
-    if (normCentral(r.central_name) !== wantCentral) continue;
-    if (normCab(r.cable_number) !== wantCab) continue;
-    // بنرجّع رقم الكابينة **زى ما هو مكتوب فى برنامج الكوابل** عشان التكت تطلع
-    // بنفس الصيغة المعتمدة هناك، مش بصيغة الطلب القديم.
-    return { centralId: r.central_id, cableId: r.cable_id, cableNumber: String(r.cable_number) };
+  const inCentral = rows.filter((r: any) => normCentral(r.central_name) === wantCentral);
+  // بنرجّع رقم الكابينة **زى ما هو مكتوب فى برنامج الكوابل** عشان التكت تطلع
+  // بنفس الصيغة المعتمدة هناك، مش بصيغة الطلب القديم.
+  const pick = (r: any) =>
+    ({ centralId: r.central_id, cableId: r.cable_id, cableNumber: String(r.cable_number) });
+
+  // (1) المطابقة العادية بعد التوحيد: «2/2» = «2-2»
+  const exact = inCentral.find((r: any) => normCab(r.cable_number) === wantCab);
+  if (exact) return pick(exact);
+
+  // المحاولات الاحتياطية كلها بتتقبل **بس** لو رجّعت كابينة واحدة مافيش غيرها؛
+  // لو فيه أكتر من احتمال مابنخمّنش ونسيبها متعذّرة بسببها ظاهر فى التقرير.
+  const only = (list: any[]) => (list.length === 1 ? pick(list[0]) : null);
+
+  // (2) الحروف: «العامر» مقصود بيها «العامرى» — بنوحّد ى/ي وأ/إ/آ→ا وة→ه ونشيل
+  //     المسافات، وبعدين نقبل التطابق أو البداية المشتركة (اسم ناقص آخره).
+  const foldAr = (s: unknown) =>
+    normCab(s).replace(/[ىي]/g, "ي").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/\s+/g, "");
+  const wantAr = foldAr(cabinet);
+  if (wantAr && /[^0-9-]/.test(wantAr)) {
+    const hit = only(inCentral.filter((r: any) => foldAr(r.cable_number) === wantAr))
+      ?? only(inCentral.filter((r: any) => {
+        const got = foldAr(r.cable_number);
+        return got.startsWith(wantAr) || wantAr.startsWith(got);
+      }));
+    if (hit) return hit;
+  }
+
+  // (3) الأرقام: بعض الطلبات القديمة الفاصل نفسه ناقص فيها — «11» مقصود بيها «1-1»
+  const digits = (s: unknown) => normCab(s).replace(/[^0-9]/g, "");
+  const wantDigits = digits(cabinet);
+  if (wantDigits) {
+    const hit = only(inCentral.filter((r: any) => digits(r.cable_number) === wantDigits));
+    if (hit) return hit;
   }
   return null;
 }
@@ -92,20 +123,25 @@ export function expandBoxes(boxStr: unknown): string[] {
 /** التكت المفتوحة اللى بتغطى البكس ده (بعد فكّ النطاقات) — أو null */
 export async function findCoveringOpenTicket(
   central: string, cabinet: string, box: string,
-): Promise<{ ticketNumber: string; box: string } | null> {
+): Promise<{ ticketId: string; ticketNumber: string; box: string } | null> {
   const wantBox = normBox(box);
   if (!wantBox) return null;
   const { rows } = await pool.query(
-    `SELECT t.ticket_number AS "ticketNumber", t.box, c.name AS central, cb.number AS cabinet
+    `SELECT t.id AS "ticketId", t.ticket_number AS "ticketNumber", t.box, c.name AS central, cb.number AS cabinet
        FROM tickets t
        JOIN centrals c ON c.id = t.central_id
        JOIN cables   cb ON cb.id = t.cable_id
       WHERE t.status = 'open'`);
-  const wantCentral = normCentral(central), wantCab = normCab(cabinet);
+  // بنمرّ على نفس مطابقة الكابينة المتسامحة الأول («11» = «1-1»، «العامر» =
+  // «العامرى») — من غير كده ممكن نفتح تكت مكرر على بكس مغطّى بالفعل.
+  const resolved = await resolveCable(central, cabinet);
+  const wantCentral = normCentral(central), wantCab = normCab(resolved?.cableNumber ?? cabinet);
   for (const r of rows) {
     if (normCentral(r.central) !== wantCentral) continue;
     if (normCab(r.cabinet) !== wantCab) continue;
-    if (expandBoxes(r.box).includes(wantBox)) return { ticketNumber: r.ticketNumber, box: String(r.box) };
+    if (expandBoxes(r.box).includes(wantBox)) {
+      return { ticketId: String(r.ticketId), ticketNumber: r.ticketNumber, box: String(r.box) };
+    }
   }
   return null;
 }
@@ -169,6 +205,34 @@ export async function findOpenTicketCoveringCableBox(
 }
 
 /**
+ * لما البكس يبقى مغطّى بتكت **مفتوحة** مابنفتحش تكت جديدة — بس بنسجّل المتعذر
+ * فى ملاحظات التكت المفتوحة عشان مهندس الكوابل يعرف إن عليها متعذر أو أكتر:
+ *   • من متعذرات OM  → مسلسل المتعذر.
+ *   • من الطلبات     → اسم العميل والرقم القومى.
+ * السطر بيتضاف مرة واحدة بس (بنتأكد إنه مش مكتوب قبل كده) عشان إعادة التشغيل
+ * أو إعادة حفظ رد الفنى مايكرّروش نفس السطر.
+ */
+async function appendPendingCaseNote(ticketId: string, inp: OpenBoxTicketInput): Promise<void> {
+  const tech = String(inp.techName ?? "").trim();
+  const line = inp.source === "OM"
+    ? `متعذر OM مسلسل ${String(inp.serialNumber ?? "").trim() || inp.refKey || "غير معروف"}`
+      + (tech ? ` — الفنى: ${tech}` : "")
+    : `طلب${inp.refKey ? ` ${inp.refKey.replace(/^طلب\s*/, "")}` : ""}`
+      + ` — العميل: ${String(inp.customerName ?? "").trim() || "غير معروف"}`
+      + ` — الرقم القومى: ${String(inp.nationalId ?? "").trim() || "غير مسجّل"}`
+      + (tech ? ` — الفنى: ${tech}` : "");
+  const header = "متعذرات على البكس:";
+  const { rows } = await pool.query(`SELECT notes FROM tickets WHERE id = $1`, [ticketId]);
+  if (!rows.length) return;
+  const cur = String(rows[0].notes ?? "");
+  if (cur.includes(line)) return;                       // متسجّل قبل كده
+  const next = cur.includes(header)
+    ? `${cur}\n• ${line}`
+    : `${cur ? cur + "\n" : ""}${header}\n• ${line}`;
+  await pool.query(`UPDATE tickets SET notes = $2, updated_at = now() WHERE id = $1`, [ticketId, next]);
+}
+
+/**
  * بيفتح التكت لو مش مغطّاة. بيرجّع نتيجة واضحة فى كل الحالات — مابيرميش استثناء
  * عشان فشل فتح التكت مايمنعش تسجيل رد الفنى نفسه.
  */
@@ -180,7 +244,11 @@ export async function openBoxFaultTicket(inp: OpenBoxTicketInput): Promise<OpenB
 
   // مغطّاة بتكت مفتوحة؟ (بعد فكّ النطاقات)
   const covering = await findCoveringOpenTicket(central, cabinet, box);
-  if (covering) return { ok: true, created: false, reason: "covered", ticketNumber: covering.ticketNumber };
+  if (covering) {
+    // مابنفتحش تكت جديدة، لكن بنسجّل المتعذر ده فى ملاحظات التكت المفتوحة
+    await appendPendingCaseNote(covering.ticketId, inp).catch(() => {});
+    return { ok: true, created: false, reason: "covered", ticketNumber: covering.ticketNumber };
+  }
 
   // السنترال والكابينة — موحّدين بين النظامين، والمطابقة متسامحة مع شكل الفاصل
   const cab = await resolveCable(central, cabinet);

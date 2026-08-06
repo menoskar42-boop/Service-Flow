@@ -106,16 +106,33 @@ export default function TicketList() {
     const cable = cables.find(c => c.id === ticket.cableId);
     const fault = faultTypes.find(f => f.id === ticket.faultTypeId);
     const creator = users.find(u => u.id === ticket.createdBy);
-    
-    const matchesSearch = 
-      arIncludes(ticket.ticketNumber, searchLower) ||
-      arIncludes((central?.name?.toLowerCase() || ''), searchLower) ||
-      arIncludes((cable?.number?.toLowerCase() || ''), searchLower) ||
-      arIncludes((ticket.box?.toLowerCase() || ''), searchLower) ||
-      arIncludes((fault?.name?.toLowerCase() || ''), searchLower) ||
-      arIncludes((creator?.name?.toLowerCase() || ''), searchLower) ||
-      arIncludes(t[ticket.status as keyof typeof t]?.toString(), searchLower);
-    
+    const closer = ticket.closedBy ? (users.find(u => u.id === ticket.closedBy)?.name || ticket.closedBy) : '';
+
+    // البحث بيشمل **كل** الخانات الظاهرة فى الجدول — مش رقم الكابينة والبكس بس:
+    // رقم التكت، التواريخ، السنترال، الكابينة، البكس، نوع العطل، الحالة،
+    // «تم الفتح بواسطة» (بالاسم البديل اللى بتكتبه التكتات التلقائية زى «سامى-طلبات»)،
+    // «مغلق بواسطة»، والملاحظات (وجواها المتعذرات المسجّلة بالمسلسل/الرقم القومى).
+    const haystack = [
+      ticket.ticketNumber,
+      new Date(ticket.createdAt).toLocaleDateString('ar-EG'),
+      new Date(ticket.createdAt).toLocaleDateString(),
+      central?.name,
+      cable?.number,
+      ticket.cabinet,
+      ticket.box,
+      fault?.name,
+      t[ticket.status as keyof typeof t]?.toString(),
+      ticket.status,
+      (ticket as any).openedByLabel,
+      creator?.name,
+      closer,
+      ticket.notes,
+      ticket.finalRepairDescription,
+      ticket.closedAt ? new Date(ticket.closedAt).toLocaleDateString() : '',
+    ].filter(Boolean).join(" | ").toLowerCase();
+
+    const matchesSearch = !searchLower || arIncludes(haystack, searchLower);
+
     if (activeTab === 'all') return matchesSearch;
     
     return matchesSearch && ticket.status === activeTab;
