@@ -417,6 +417,17 @@ export function PhoneLookupReport() {
   // WFM بيرفض إلغاء مهمة حالتها Started («Task already started»)، وساعتها السكربت بيعمل
   // Re-assign بدل Cancel — وده محتاج كود العامل. الدروب ليست بتعرض اسم الفنى واحنا
   // بنبعت كود العامل بتاعه للسكربت أوتوماتيك.
+  // مين يقدر يعمل «إلغاء الاسناد»:
+  //   • السوبر أدمن + الأدمن (ومنه مدير السنترال) + الشئون الخارجية (ومنها مهندس
+  //     الكوابل) → على أى خط.
+  //   • الفنى → على خطوطه هو بس (ownedByMe = خط فى كباينه، أو خط زميل هو قائم
+  //     بالعمل مكانه وعليه عطل مفتوح — نفس تعريف باقى أزرار الأدوات).
+  const canCancelWfm =
+    isSuper ||
+    user?.role === ROLES.ADMIN ||
+    user?.role === ROLES.EXTERNAL ||
+    (user?.role === ROLES.TECH && !!line?.ownedByMe);
+
   const [wfmOpen, setWfmOpen] = useState(false);
   const [wfmMode, setWfmMode] = useState<"cancel" | "reassign">("cancel");
   const [wfmTech, setWfmTech] = useState("");
@@ -799,7 +810,7 @@ export function PhoneLookupReport() {
                   تحديث البورت
                 </Button>
               )}
-              {isSuper && (
+              {canCancelWfm && (
                 <Button
                   variant="outline"
                   onClick={openCancelWfm}
