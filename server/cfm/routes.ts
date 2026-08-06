@@ -782,6 +782,33 @@ export function registerCfmRoutes(app: Express) {
     }
   });
 
+  // GET /api/cfm/box-cases — عدد المتعذرات «بوكس معطل» على كل بكس (سنترال+كابينة+بكس).
+  // بيغذّى عمود «متعذرات» فى قائمة التكتات: مجموع متعذرات OM + الطلبات المتعذرة على
+  // نفس البكس. المصدر هو بيانات Service-Flow نفسها مش ملاحظات التكت — فالعدد بيبان
+  // حتى لو التكت اتفتحت قبل ما نبدأ نكتب المتعذرات فى الملاحظات.
+  app.get("/api/cfm/box-cases", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT central_name AS central, cabin_number AS cabinet, box_number AS box,
+                COUNT(*) FILTER (WHERE src = 'OM')::int      AS om,
+                COUNT(*) FILTER (WHERE src = 'طلبات')::int   AS orders
+           FROM (
+             SELECT 'طلبات' AS src, central_name, cabin_number, box_number
+               FROM orders
+              WHERE rejection_reason = $1 AND COALESCE(btrim(box_number), '') <> ''
+             UNION ALL
+             SELECT 'OM', central_name, cabin_number, box_number
+               FROM om_responses
+              WHERE rejection_reason = $1 AND COALESCE(btrim(box_number), '') <> ''
+           ) x
+          GROUP BY 1, 2, 3`, ["بوكس معطل"]);
+      res.json(rows);
+    } catch (error) {
+      console.error("Get box cases error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // GET /api/tickets/:id
   app.get("/api/cfm/tickets/:id", requireAuth, async (req, res) => {
     try {

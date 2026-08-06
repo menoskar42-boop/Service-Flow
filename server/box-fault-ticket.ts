@@ -13,6 +13,7 @@
 //    الشبكة الأرضية (parseTicketBoxes).
 // ============================================================================
 import { pool } from "./db";
+import { normCab, normBox, normCentral, expandBoxes, toAsciiDigits } from "@shared/cab-norm";
 
 export interface OpenBoxTicketInput {
   central: string;        // اسم السنترال زى ما الفنى اختاره
@@ -32,28 +33,9 @@ export type OpenBoxTicketResult =
   | { ok: true; created: false; reason: "covered"; ticketNumber: string }
   | { ok: false; reason: string };
 
-// أرقام عربية/فارسية → إنجليزية (نفس اللى فى تقارير «بوكس معطل/مليان»)
-const toAsciiDigits = (s: string) =>
-  s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
-   .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
-
-// رقم البكس: بنحوّل الأرقام العربية الأول عشان مانفضّيهاش بالغلط
-export const normBox = (s: unknown) => toAsciiDigits(String(s ?? "")).replace(/[^0-9]/g, "");
-
-// توحيد اسم السنترال للمطابقة بين النظامين (نفس منطق routes.ts)
-const normCentral = (s: unknown) =>
-  String(s ?? "").replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
-
-// توحيد رقم الكابينة — **نفس مبادئ التقريب المستخدمة فى تقارير «بوكس معطل/مليان»**
-// (BoxBrokenRejectionsReport.norm): أرقام عربية/فارسية → إنجليزية، والشرطة المائلة
-// «/» → شرطة «-»، ثم trim. زوّدنا عليها توحيد باقى أشكال الشرطة والمسافات حواليها،
-// عشان الطلبات القديمة مكتوب فيها «2/2» وبرنامج الكوابل مسجّلها «2-2».
-export const normCab = (s: unknown) =>
-  toAsciiDigits(String(s ?? ""))
-    .replace(/[\\\/_‐‑‒–—―]/g, "-")
-    .replace(/\s*-\s*/g, "-")
-    .replace(/\s+/g, " ")
-    .trim();
+// التوحيد وفكّ النطاقات مصدرهم shared/cab-norm.ts — نفس الحساب بالظبط فى الواجهة
+// (عمود «متعذرات» فى برنامج الكوابل) وفى السيرفر هنا.
+export { normCab, normBox, expandBoxes } from "@shared/cab-norm";
 
 /** بيدوّر على السنترال/الكابينة فى برنامج الكوابل بمطابقة متسامحة مع شكل الفاصل */
 export async function resolveCable(
@@ -100,24 +82,6 @@ export async function resolveCable(
     if (hit) return hit;
   }
   return null;
-}
-
-// فكّ بكسيات التكت: «1:5» → 1..5 | «1&15» → 1,15 | «4» → 4
-export function expandBoxes(boxStr: unknown): string[] {
-  const s = toAsciiDigits(String(boxStr ?? "")).trim();
-  if (!s) return [];
-  if (s.includes(":")) {
-    const [a, b] = s.split(":").map((x) => parseInt(x.replace(/[^0-9]/g, ""), 10));
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      const lo = Math.min(a, b), hi = Math.max(a, b);
-      const out: string[] = [];
-      for (let i = lo; i <= hi && i - lo < 1000; i++) out.push(String(i));
-      return out;
-    }
-  }
-  if (/[&،,]/.test(s)) return s.split(/[&،,]/).map((x) => x.replace(/[^0-9]/g, "")).filter(Boolean);
-  const single = s.replace(/[^0-9]/g, "");
-  return single ? [single] : [];
 }
 
 /** التكت المفتوحة اللى بتغطى البكس ده (بعد فكّ النطاقات) — أو null */

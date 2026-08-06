@@ -18,6 +18,7 @@ import { Plus, Search, Eye, FileSpreadsheet, ArrowDownUp, ArrowDown, ArrowUp } f
 import { useState, useEffect, useCallback } from "react";
 import ExcelJS from 'exceljs';
 import { arNorm, arIncludes } from "@shared/ar-norm";
+import { normCentral, normCab, normBox, expandBoxes } from "@shared/cab-norm";
 
 export default function TicketList() {
   const { language, user } = useStore();
@@ -31,6 +32,8 @@ export default function TicketList() {
   const [cables, setCables] = useState<CableType[]>([]);
   const [faultTypes, setFaultTypes] = useState<FaultType[]>([]);
   const [users, setUsers] = useState<UserType[]>([]);
+  // عدد المتعذرات «بوكس معطل» على كل بكس (من Service-Flow) — سنترال|كابينة|بكس → {om, orders}
+  const [boxCases, setBoxCases] = useState<Map<string, { om: number; orders: number }>>(new Map());
   const [loading, setLoading] = useState(true);
   
   // Sort direction: 'desc' = newest first, 'asc' = oldest first
@@ -72,6 +75,20 @@ export default function TicketList() {
           .filter((u: UserType, i: number, arr: UserType[]) => arr.findIndex(x => x.id === u.id) === i);
         setUsers(usersFromTickets);
       }
+      // عدد المتعذرات على كل بكس — لو فشل مانوقفش القائمة، العمود بس هيبان فاضى
+      try {
+        const r = await fetch('/api/cfm/box-cases', { credentials: 'include' });
+        if (r.ok) {
+          const list: any[] = await r.json();
+          const m = new Map<string, { om: number; orders: number }>();
+          for (const x of list) {
+            const k = `${normCentral(x.central)}|${normCab(x.cabinet)}|${normBox(x.box)}`;
+            const cur = m.get(k) || { om: 0, orders: 0 };
+            m.set(k, { om: cur.om + (x.om || 0), orders: cur.orders + (x.orders || 0) });
+          }
+          setBoxCases(m);
+        }
+      } catch {}
     } catch (error) {
       console.error("Failed to fetch tickets data:", error);
     } finally {
@@ -100,16 +117,20 @@ export default function TicketList() {
     }
   };
 
-  // المتعذرات المسجّلة على التكت: Service-Flow بيكتبها فى الملاحظات تحت عنوان
-  // «متعذرات على البكس:» بسطر لكل حالة — «• متعذر OM مسلسل …» أو «• طلب #… ».
-  // بنقراها من هنا ونعرضها فى عمود مستقل عشان تبان من قائمة التكتات على طول.
-  const pendingCases = (notes?: string | null) => {
-    const s = String(notes ?? "");
-    if (!s.includes("متعذرات على البكس:")) return { om: 0, orders: 0, label: "" };
-    const om = (s.match(/^\s*•\s*متعذر OM/gm) || []).length;
-    const orders = (s.match(/^\s*•\s*طلب/gm) || []).length;
-    const parts = [om ? `OM (${om})` : "", orders ? `طلبات (${orders})` : ""].filter(Boolean);
-    return { om, orders, label: parts.join(" + ") };
+  // عدد المتعذرات «بوكس معطل» على بكس التكت = متعذرات OM + الطلبات المتعذرة، مجموعين.
+  // التكت ممكن تكون على نطاق بكسيات («1:5») فبنجمع كل بكس جوّه النطاق.
+  // العدد بيتحسب من بيانات Service-Flow مباشرةً — مش من ملاحظات التكت.
+  const pendingCases = (ticket: Ticket, centralName?: string, cableNumber?: string) => {
+    const central = normCentral(centralName ?? "");
+    const cab = normCab(cableNumber ?? ticket.cabinet ?? "");
+    let om = 0, orders = 0;
+    for (const b of expandBoxes(ticket.box)) {
+      const hit = boxCases.get(`${central}|${cab}|${b}`);
+      if (hit) { om += hit.om; orders += hit.orders; }
+    }
+    const total = om + orders;
+    const parts = [om ? `OM ${om}` : "", orders ? `طلبات ${orders}` : ""].filter(Boolean);
+    return { om, orders, total, label: total ? `${total}` : "", detail: parts.join(" + ") };
   };
 
   const filteredTickets = tickets.filter(ticket => {
@@ -189,7 +210,7 @@ export default function TicketList() {
         fault,
         t[ticket.status as keyof typeof t] || ticket.status,
         creator,
-        pendingCases(ticket.notes).label,
+        pendingCases(ticket, central, cable?.number).total || '',
         new Date(ticket.createdAt).toLocaleDateString(),
         ticket.works && ticket.works.length > 0 ? t.yes : t.no,
         ticket.usedTasks && ticket.usedTasks.length > 0 ? t.yes : t.no,
@@ -310,7 +331,7 @@ export default function TicketList() {
                   const creator = (ticket as any).openedByLabel
                     || users.find(u => u.id === ticket.createdBy)?.name || ticket.createdBy;
                   const closer = ticket.closedBy ? (users.find(u => u.id === ticket.closedBy)?.name || ticket.closedBy) : null;
-                  const cases = pendingCases(ticket.notes);
+                  const cases = pendingCases(ticket, central?.name, cable?.number);
                   
                   return (
                     <TableRow key={ticket.id} className="group hover:bg-secondary/40 transition-colors">
@@ -337,10 +358,10 @@ export default function TicketList() {
                         {creator}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm">
-                        {cases.label
+                        {cases.total
                           ? <span className="rounded bg-amber-100 px-2 py-0.5 text-amber-800 font-medium"
-                                  title="متعذرات مسجّلة على نفس البكس — التفاصيل فى ملاحظات التكت">
-                              {cases.label}
+                                  title={`متعذرات «بوكس معطل» على نفس البكس: ${cases.detail}`}>
+                              {cases.total}
                             </span>
                           : <span className="text-muted-foreground">-</span>}
                       </TableCell>

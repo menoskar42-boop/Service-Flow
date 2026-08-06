@@ -124,18 +124,20 @@ export function ManualCurrentFaultsReport() {
   // ملاحظة: عمود «رقم التليفون» لازم يفضل index 1 لأن أزرار المعاينة/تسجيل الانتظام
   // بتترسم جوّه الخلية دى (i === 1 فى الـ JSX تحت).
   const COLUMNS = [
-    "تاريخ العطل", "رقم التليفون", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم",
+    // «سجّل العطل» (اسم اللى بلّغ) جنب التاريخ والرقم — كان آخر عمود فمكانش بيبان
+    // للفنى غير بعد تمرير أفقى طويل.
+    "تاريخ العطل", "رقم التليفون", "سجّل العطل", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم",
     "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس", "القياس الحالى",
     "Shelf", "Slot", "Port", "Port Type", "voice", "data", "operator", "ONU",
-    "آخر رفع سرعة", "آخر إيقاف PO", "سجّل العطل",
+    "آخر رفع سرعة", "آخر إيقاف PO",
   ];
   const dash = (v: any) => (v == null || v === "" ? "-" : String(v));
   const toRow = (x: Row) => [
-    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-",
+    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", dash(x.flaggedBy),
     dash(x.central), dash(x.cabinNumber), dash(x.boxNumber), dash(x.msanCode), dash(x.techName), dash(x.frame),
     dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed), dash(x.lastMeasScore), fmt(x.lastMeasTime), dash(x.curMeasScore),
     dash(x.shelf), dash(x.slot), dash(x.portNumber), dash(x.portType),
-    dash(x.voiceStatus), dash(x.dataStatus), dash(x.operator), dash(x.onu), fmt(x.lastPoRaiseAt), fmt(x.lastPoStopAt), dash(x.flaggedBy),
+    dash(x.voiceStatus), dash(x.dataStatus), dash(x.operator), dash(x.onu), fmt(x.lastPoRaiseAt), fmt(x.lastPoStopAt),
   ];
 
   const shown = onlyMine ? rows.filter(isMine) : rows;
