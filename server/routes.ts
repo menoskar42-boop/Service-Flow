@@ -3132,7 +3132,10 @@ export async function registerRoutes(
     // شغّالة) — دى هتتقاس خلاص، فلو فضلت ظاهرة هنا هتتبعت للطابور تانى ويتقاس نفس الرقم
     // مرتين. الاستبعاد مربوط بفلتر «أقدم من» بس لأنه ده تدفّق القياس بالجملة.
     // (subquery غير مرتبطة عشان تتحسب مرة واحدة بدل مرة لكل صف.)
-    const queuedClause = staleClause ? `
+    // نفس الاستبعاد بينطبق كمان على تقرير «لها أكونت ولم تُقَس» — هو التانى اللى
+    // بيتقاس منه بالجملة، ونفس خطر تكرار القياس موجود فيه.
+    const isNeverMeasured = neverMeasured === "1" || neverMeasured === "true";
+    const queuedClause = (staleClause || isNeverMeasured) ? `
       AND NOT EXISTS (
         SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
          WHERE e.status IN ('pending','claimed') AND e.type = 'measure' AND qa.acc = la.account_no)` : "";
@@ -3142,7 +3145,7 @@ export async function registerRoutes(
     const grandTotal = grandRes.rows[0].c as number;
     // الإجمالى بعد فلتر «أقدم من» **قبل** استبعاد اللى فى الطابور — الفرق بينه وبين
     // الإجمالى النهائى = عدد الأرقام اللى اتشالت لأنها فى الطابور (بنعرضه للمستخدم).
-    const staleOnlyRes = staleClause
+    const staleOnlyRes = queuedClause
       ? await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}`, params)
       : null;
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}${queuedClause}`, params);

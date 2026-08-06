@@ -412,7 +412,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 )}
                 {/* الأرقام اللى فى طابور القياس دلوقتى بتتشال من النتيجة عشان مايتقاسش
                     نفس الرقم مرتين — بنقول للمستخدم اتشال كام. */}
-                {staleOn && !!data.queuedExcluded && (
+                {!!data.queuedExcluded && (
                   <span className="text-amber-700"> {" "}— مستبعَد {data.queuedExcluded.toLocaleString("ar-EG")} رقم موجود فى طابور القياس</span>
                 )}
               </p>
