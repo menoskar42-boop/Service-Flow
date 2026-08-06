@@ -5868,7 +5868,22 @@ export async function registerRoutes(
       );
       affected += r.rowCount ?? 0;
     }
-    res.json({ inserted: affected, total: all.length });
+    // «الشيت هو الحقيقة»: أى رقم كان متسجّل على **نفس أكواد المسان** دى ومش موجود فى
+    // الدفعة الجديدة يبقى بورته اتشال فعلاً → نمسحه. الحذف محصور فى أكواد المسان اللى
+    // فى الدفعة بس، لأن السكربت بيرفع كابينة كابينة — حذف شامل هنا كان هيمسح باقى الكباين.
+    let removed = 0;
+    const msans = [...new Set(all.map((a) => String(a[2] ?? "").trim()).filter(Boolean))];
+    const phones = all.map((a) => String(a[0]));
+    if (msans.length && phones.length) {
+      const del = await pool.query(
+        `DELETE FROM phone_ports
+          WHERE btrim(COALESCE(msan_code,'')) = ANY($1::text[])
+            AND phone_number <> ALL($2::text[])`,
+        [msans, phones]);
+      removed = del.rowCount ?? 0;
+      if (removed) console.log(`[ports] اتشال ${removed} رقم مابقاش له بورت فى كباين: ${msans.join(", ")}`);
+    }
+    res.json({ inserted: affected, total: all.length, removed });
   });
 
   // إشارة "اكتمال تشغيل تحديث البورتات": السكربت بيرفع من كذا كابينة، فـ uploaded_at بيتغيّر
@@ -6758,7 +6773,27 @@ export async function registerRoutes(
         );
         affected += r.rowCount ?? 0;
       }
-      res.json({ inserted: affected, total: all.length });
+      // «الشيت هو الحقيقة»: أى رقم متسجّل عندنا ومش فى الشيت الجديد يبقى بورته اتشال
+      // → نمسحه، وإلا يفضل ظاهر «شغّال» بالغلط فى كل تقارير القياسات.
+      // 🛡️ حارس: لو الشيت المرفوع أقل من نص اللى عندنا يبقى غالباً شيت ناقص/جزئى —
+      // مانمسحش حاجة ونقول للمستخدم، بدل ما نمسح آلاف الأرقام بالغلط.
+      let removed = 0, removeSkipped = false;
+      const beforeRes = await pool.query(`SELECT COUNT(*)::int AS c FROM phone_ports`);
+      const before = beforeRes.rows[0].c as number;
+      const phones = all.map((a) => String(a[0]));
+      if (phones.length && before > 0 && phones.length * 2 < before) {
+        removeSkipped = true;
+        console.warn(`[ports] الشيت فيه ${phones.length} رقم والموجود ${before} — اتخطّيت الحذف (شيت ناقص؟)`);
+      } else if (phones.length) {
+        const del = await pool.query(`DELETE FROM phone_ports WHERE phone_number <> ALL($1::text[])`, [phones]);
+        removed = del.rowCount ?? 0;
+      }
+      res.json({
+        inserted: affected, total: all.length, removed, removeSkipped,
+        message: removeSkipped
+          ? `تم تحديث ${all.length} رقم. ⚠️ الشيت فيه ${phones.length} رقم بس والموجود ${before} — ماتشالش أى رقم قديم (شيت ناقص؟). ارفع الشيت الكامل لو عايز الأرقام اللى اتشالت تتمسح.`
+          : `تم تحديث ${all.length} رقم${removed ? ` واتشال ${removed} رقم مابقاش له بورت` : ""}.`,
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
