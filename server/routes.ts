@@ -1958,10 +1958,21 @@ export async function registerRoutes(
   //    الأخطاء القديمة للطابور دفعة واحدة.
   //  - retried_at ختم على المهمة الأصلية عشان مانضيفش نفس الإعادة كل دورة سحب.
   const RETRY_ERR = `('tab_closed','timeout','stopped')`;
+  // ⏱️ بتتنادى من حلقة السحب (كل 4 ثوانى) — لكن بتتنفّذ فعلياً مرة كل دقيقة بس.
+  // من غير الخنق ده الاستعلام التقيل ده كان بيشتغل 15 مرة فى الدقيقة على آلاف
+  // المهام فيخنق قاعدة البيانات وتعلّق باقى الصفحات.
+  let lastRequeueAt = 0;
+  const REQUEUE_EVERY_MS = 60 * 1000;
   const requeueErroredJobs = async () => {
+    if (Date.now() - lastRequeueAt < REQUEUE_EVERY_MS) return;
+    lastRequeueAt = Date.now();
     try {
       const { rows } = await pool.query(`
-        WITH picked AS (
+        -- المهام النشطة بتتقرا **مرة واحدة** فى CTE بدل استعلام لكل صف (كان بيعمل
+        -- ملايين المقارنات كل دورة). MATERIALIZED بتجبر الـ planner يحسبها مرة واحدة.
+        WITH active AS MATERIALIZED (
+          SELECT DISTINCT type, accounts, batch_id FROM exec_jobs WHERE status IN ('pending','claimed')
+        ), picked AS (
           SELECT e.id, e.type, e.accounts, e.requested_by, e.note, e.batch_id, e.site, e.params
             FROM exec_jobs e
            WHERE e.status = 'done'
@@ -1971,12 +1982,9 @@ export async function registerRoutes(
              AND e.type IN ('measure','raise','stop')
              AND e.done_at > now() - interval '6 hours'
              -- الباتش خلص بالكامل
-             AND NOT EXISTS (SELECT 1 FROM exec_jobs b
-                              WHERE b.batch_id = e.batch_id AND b.status IN ('pending','claimed'))
+             AND NOT EXISTS (SELECT 1 FROM active b WHERE b.batch_id = e.batch_id)
              -- ومفيش نفس الرقم مستنى/شغّال دلوقتى (مانكرّرش)
-             AND NOT EXISTS (SELECT 1 FROM exec_jobs a
-                              WHERE a.status IN ('pending','claimed')
-                                AND a.type = e.type AND a.accounts = e.accounts)
+             AND NOT EXISTS (SELECT 1 FROM active a WHERE a.type = e.type AND a.accounts = e.accounts)
            ORDER BY e.done_at
            LIMIT 200
         ), ins AS (

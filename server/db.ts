@@ -1029,6 +1029,10 @@ export async function ensureSchema() {
       done_at timestamptz
     );
     CREATE INDEX IF NOT EXISTS exec_jobs_status_idx ON exec_jobs (status, created_at);
+    -- فحص «الباتش خلص؟» بيتنفّذ لكل مرشّح لإعادة التنفيذ — من غير الفهرس ده بيعمل
+    -- مسح كامل للجدول (آلاف الصفوف) لكل صف، وده اللى بيخنق قاعدة البيانات.
+    CREATE INDEX IF NOT EXISTS exec_jobs_batch_idx ON exec_jobs (batch_id);
+    CREATE INDEX IF NOT EXISTS exec_jobs_retry_idx ON exec_jobs (status, result, retry_round, done_at);
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS result text;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS priority integer NOT NULL DEFAULT 0;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS batch_id text;
