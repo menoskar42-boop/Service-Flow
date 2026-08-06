@@ -38,6 +38,10 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [running, setRunning] = useState(false);
+  const [busyRef, setBusyRef] = useState<string | null>(null);
+  // فلتر «اللى الفنى قال إن الإصلاح ماتمّش» — دى اللى الشئون الخارجية والأدمن
+  // ومهندس الكوابل بيشوفوها عشان يعيدوا فتح التكت.
+  const [onlyRejected, setOnlyRejected] = useState(false);
 
   const url = mode === "backfill"
     ? "/api/box-tickets/backfill-preview"
@@ -53,7 +57,30 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
     refetchOnMount: "always",
   });
 
-  const rows: any[] = data?.data ?? [];
+  const allRows: any[] = data?.data ?? [];
+  const rows: any[] = mode === "repaired" && onlyRejected
+    ? allRows.filter((r) => r.repairConfirm === "rejected")
+    : allRows;
+
+  // ردود الفنى على الإصلاح — الفنى (وكل مين ليه صلاحية) يقدر يقول اتصلح ولا لأ
+  const canRespond = ([ROLES.TECH, ROLES.EXTERNAL, ROLES.ADMIN, ROLES.SUPER_ADMIN] as string[]).includes(user?.role ?? "");
+  const canReopen = ([ROLES.EXTERNAL, ROLES.ADMIN, ROLES.SUPER_ADMIN] as string[]).includes(user?.role ?? "");
+
+  const post = async (path: string, body: any, okMsg: string) => {
+    setBusyRef(`${body.source}|${body.refKey}`);
+    try {
+      const r = await fetch(path, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.message || "فشل الحفظ");
+      toast({ title: d?.message || okMsg });
+      refetch();
+    } catch (e: any) {
+      toast({ title: e?.message || "فشل الحفظ", variant: "destructive" });
+    } finally { setBusyRef(null); }
+  };
 
   const COLS: [string, (r: any) => any][] = mode === "backfill"
     ? [
@@ -80,6 +107,13 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
         ["تاريخ الإغلاق", (r) => fmtDt(r.closedAt)],
         ["أغلقها", (r) => r.closedBy],
         ["وصف الإصلاح", (r) => r.repairDescription],
+        ["رد الفنى على الإصلاح", (r) =>
+          r.repairConfirm === "confirmed" ? `تم الإصلاح — ${r.repairConfirmBy ?? ""}`
+          : r.repairConfirm === "rejected" ? `لسه معطّل — ${r.repairConfirmBy ?? ""}`
+          : "لسه مارّدش"],
+        ["ملاحظة الفنى", (r) => r.repairConfirmNote],
+        ["تكت إعادة الفتح", (r) => r.reopenedTicketNumber],
+        ["إجراء", () => ""],
       ];
 
   const title = mode === "backfill"
@@ -140,6 +174,15 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
               <>
                 <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40 text-sm" />
                 <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-40 text-sm" />
+                {/* اللى الفنى قال إن الإصلاح ماتمّش — دى اللى محتاجة إعادة فتح تكت */}
+                <Button variant={onlyRejected ? "default" : "outline"} size="sm"
+                  onClick={() => setOnlyRejected((v) => !v)}
+                  className={`gap-1 ${onlyRejected ? "bg-red-700 hover:bg-red-800 text-white" : "text-red-700 border-red-300"}`}
+                  title="الأعطال اللى الفنى رد وقال إن الإصلاح ماتمّش">
+                  {onlyRejected
+                    ? `لسه معطّلة فقط ✓ (${allRows.filter((r) => r.repairConfirm === "rejected").length})`
+                    : `لسه معطّلة (${allRows.filter((r) => r.repairConfirm === "rejected").length})`}
+                </Button>
               </>
             )}
             {mode === "backfill" && isSuper && (
@@ -175,7 +218,44 @@ export function BoxFaultTicketsReport({ mode }: { mode: Mode }) {
                 <TableRow key={`${r.source}-${r.refKey}-${i}`}>
                   {COLS.map(([h, f]) => (
                     <TableCell key={h} className="whitespace-nowrap text-sm">
-                      {h === "الحالة" && mode === "backfill" ? (
+                      {h === "إجراء" ? (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {canRespond && r.repairConfirm !== "confirmed" && (
+                            <Button variant="outline" size="sm" disabled={busyRef === `${r.source}|${r.refKey}`}
+                              className="h-7 px-2 text-xs text-green-700 border-green-300"
+                              onClick={() => post("/api/box-tickets/repair-confirm",
+                                { source: r.source, refKey: r.refKey, confirm: "confirmed" }, "اتسجّل: تم الإصلاح")}>
+                              تم الإصلاح
+                            </Button>
+                          )}
+                          {canRespond && r.repairConfirm !== "rejected" && (
+                            <Button variant="outline" size="sm" disabled={busyRef === `${r.source}|${r.refKey}`}
+                              className="h-7 px-2 text-xs text-red-700 border-red-300"
+                              onClick={() => {
+                                const note = window.prompt("ليه لسه معطّل؟ (اختيارى)", "");
+                                if (note === null) return;
+                                post("/api/box-tickets/repair-confirm",
+                                  { source: r.source, refKey: r.refKey, confirm: "rejected", note }, "اتسجّل: لسه معطّل");
+                              }}>
+                              لسه معطّل
+                            </Button>
+                          )}
+                          {/* إعادة فتح التكت — بعد ما الفنى يقول إن الإصلاح ماتمّش */}
+                          {canReopen && r.repairConfirm === "rejected" && !r.reopenedTicketNumber && (
+                            <Button size="sm" disabled={busyRef === `${r.source}|${r.refKey}`}
+                              className="h-7 px-2 text-xs bg-amber-600 hover:bg-amber-700 text-white"
+                              onClick={() => {
+                                if (!window.confirm(`هيتفتح تكت جديدة على كابينة ${r.cabinet} بكس ${r.box}. متأكد؟`)) return;
+                                post("/api/box-tickets/reopen", { source: r.source, refKey: r.refKey }, "اتفتحت تكت جديدة");
+                              }}>
+                              إعادة فتح تكت الكوابل
+                            </Button>
+                          )}
+                          {r.reopenedTicketNumber && (
+                            <span className="text-[11px] text-muted-foreground">اتفتحت: {r.reopenedTicketNumber}</span>
+                          )}
+                        </div>
+                      ) : h === "الحالة" && mode === "backfill" ? (
                         <span className={`px-2 py-0.5 rounded text-xs font-semibold ${ACTION_LABEL[r.action]?.cls ?? ""}`}>
                           {ACTION_LABEL[r.action]?.txt ?? r.action}
                         </span>

@@ -758,6 +758,16 @@ export async function ensureSchema() {
     )
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS box_fault_tickets_ticket_idx ON box_fault_tickets (ticket_id)`);
+  // رد الفنى بعد إغلاق التكت: هل الإصلاح اتم فعلاً؟ (confirmed / rejected / null = لسه)
+  await pool.query(`
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS repair_confirm text;
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS repair_confirm_by text;
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS repair_confirm_at timestamptz;
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS repair_confirm_note text;
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS reopened_ticket_number text;
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS reopened_by text;
+    ALTER TABLE box_fault_tickets ADD COLUMN IF NOT EXISTS reopened_at timestamptz;
+  `);
 
   // تكتات الكوابل (جدول tickets بتاع برنامج الكوابل — نفس قاعدة البيانات): خانة اسم
   // معروض بديل لـ «تم الفتح بواسطة»، بتتملى للتكتات اللى Service-Flow بيفتحها تلقائياً

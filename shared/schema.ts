@@ -680,6 +680,15 @@ export const boxFaultTickets = pgTable("box_fault_tickets", {
   ticketId: text("ticket_id"),
   ticketNumber: text("ticket_number"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  // رد الفنى بعد إغلاق التكت: confirmed = الإصلاح تم | rejected = لسه معطّل
+  repairConfirm: text("repair_confirm"),
+  repairConfirmBy: text("repair_confirm_by"),
+  repairConfirmAt: timestamp("repair_confirm_at", { withTimezone: true }),
+  repairConfirmNote: text("repair_confirm_note"),
+  // لو اتعمل إعادة فتح تكت بعد «عدم التأكيد»
+  reopenedTicketNumber: text("reopened_ticket_number"),
+  reopenedBy: text("reopened_by"),
+  reopenedAt: timestamp("reopened_at", { withTimezone: true }),
 }, (t) => ({ uniqSourceRef: unique().on(t.source, t.refKey) }));
 
 export type BoxFaultTicket = typeof boxFaultTickets.$inferSelect;

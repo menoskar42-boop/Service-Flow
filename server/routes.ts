@@ -6922,6 +6922,61 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // POST /api/box-tickets/repair-confirm — رد الفنى بعد إغلاق التكت:
+  //   confirmed = الإصلاح تم فعلاً | rejected = لسه معطّل (بيظهر للشئون الخارجية
+  //   والأدمن والسوبر أدمن ومهندس الكوابل ومدير السنترال).
+  app.post("/api/box-tickets/repair-confirm", requireAuth, async (req: any, res) => {
+    try {
+      const { source, refKey, confirm, note } = req.body || {};
+      if (!source || !refKey) return res.status(400).json({ message: "المصدر والمرجع مطلوبين" });
+      if (confirm !== "confirmed" && confirm !== "rejected") {
+        return res.status(400).json({ message: "الرد لازم يكون confirmed أو rejected" });
+      }
+      const { rows } = await pool.query(
+        `UPDATE box_fault_tickets
+            SET repair_confirm = $3, repair_confirm_by = $4,
+                repair_confirm_at = now(), repair_confirm_note = $5
+          WHERE source = $1 AND ref_key = $2
+          RETURNING *`,
+        [source, refKey, confirm, String(req.user?.username || ""), String(note ?? "").trim() || null]);
+      if (!rows.length) return res.status(404).json({ message: "المتعذر مش موجود" });
+      res.json({ ok: true, row: rows[0] });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/box-tickets/reopen — إعادة فتح تكت الكوابل بنفس الطريقة (نفس نوع
+  // العطل ونفس البيانات)، بعد ما الفنى قال إن الإصلاح ماتمّش.
+  // متاح لـ: الشئون الخارجية / الأدمن (ومنه مدير السنترال) / السوبر أدمن / مهندس الكوابل.
+  app.post("/api/box-tickets/reopen", requireAuth, async (req: any, res) => {
+    try {
+      const role = req.user?.role;
+      const allowed = ([ROLES.EXTERNAL, ROLES.ADMIN, ROLES.SUPER_ADMIN] as string[]).includes(role);
+      if (!allowed) return res.status(403).json({ message: "غير مسموح" });
+      const { source, refKey } = req.body || {};
+      const { rows } = await pool.query(
+        `SELECT * FROM box_fault_tickets WHERE source = $1 AND ref_key = $2`, [source, refKey]);
+      if (!rows.length) return res.status(404).json({ message: "المتعذر مش موجود" });
+      const b = rows[0];
+      // بنمسح الربط القديم الأول عشان openBoxFaultTicket تقدر تسجّل التكت الجديدة
+      // مكانه (المفتاح UNIQUE على source+ref_key) — وبنسيب سجل إعادة الفتح.
+      const r = await openBoxFaultTicket({
+        central: b.central_name, cabinet: b.cabin_number, box: b.box_number,
+        techName: b.tech_name || "غير معروف", source: b.source === "OM" ? "OM" : "طلبات",
+        respondedAt: new Date(), refKey: b.ref_key,
+      });
+      if (!r.ok) return res.status(400).json({ message: (r as any).reason });
+      if (!(r as any).created) {
+        return res.json({ ok: true, created: false, message: `البكس مغطّى بتكت مفتوحة ${(r as any).ticketNumber}` });
+      }
+      await pool.query(
+        `UPDATE box_fault_tickets
+            SET reopened_ticket_number = $3, reopened_by = $4, reopened_at = now()
+          WHERE source = $1 AND ref_key = $2`,
+        [source, refKey, (r as any).ticketNumber, String(req.user?.username || "")]);
+      res.json({ ok: true, created: true, ticketNumber: (r as any).ticketNumber });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/box-lines — الخطوط «الشغّالة» على بكس معيّن، بالاسم والعنوان والموبايل.
   // «الشغّال» = خط بياناته الفنية على البكس ده **وله بورت** (فريم فى ملف المنافذ) —
   // الخطوط اللى ملهاش بورت مابتتحسبش. بتُستخدم فى تحذير «بوكس مليان» لما العدد < 10.
@@ -6980,7 +7035,13 @@ export async function registerRoutes(
                 (t.closed_at   AT TIME ZONE 'Africa/Cairo') AS "closedAt",
                 t.closed_by AS "closedBy",
                 t.final_repair_description AS "repairDescription",
-                ft.name AS "faultType"
+                ft.name AS "faultType",
+                b.repair_confirm AS "repairConfirm", b.repair_confirm_by AS "repairConfirmBy",
+                (b.repair_confirm_at AT TIME ZONE 'Africa/Cairo') AS "repairConfirmAt",
+                b.repair_confirm_note AS "repairConfirmNote",
+                b.reopened_ticket_number AS "reopenedTicketNumber",
+                b.reopened_by AS "reopenedBy",
+                (b.reopened_at AT TIME ZONE 'Africa/Cairo') AS "reopenedAt"
            FROM box_fault_tickets b
            JOIN tickets t ON t.id = b.ticket_id
            LEFT JOIN fault_types ft ON ft.id = t.fault_type_id
