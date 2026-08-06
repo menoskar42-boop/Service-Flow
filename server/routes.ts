@@ -7100,6 +7100,46 @@ export async function registerRoutes(
     res.json({ data: rows, total: rows.length });
   });
 
+  // GET /api/phone-ports/slot-cards — تقرير الكروت: كل (كابينة MSAN + شيلف + سلوت)
+  // فى سطر، مع عدد الشغّال عليه ونوع الكارت. مصدره ملف البورتات وحده.
+  //  • «الشغّال» = البورت اللى ليه فريم (نفس تعريف الشغّال فى باقى التقارير).
+  //  • «نوع الكارت» = نوع البورت الغالب على السلوت (mode) — لأن الكارت واحد
+  //    للسلوت كله، فأى خط جوّاه بيدلّ على نوعه. لو السلوت فيه أكتر من نوع
+  //    بنرجّع العدد كمان عشان الحالة الشاذة دى تبان بدل ما تتخفى.
+  app.get("/api/phone-ports/slot-cards", requireAuth, async (req, res) => {
+    try {
+      const { q = "", workingLt = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      let where = "";
+      if (q.trim()) {
+        params.push(arQ(q));
+        const p = `$${params.length}`;
+        where = `WHERE (${n("msan_code")} LIKE ${p} OR ${n("shelf")} LIKE ${p}
+                     OR ${n("slot")} LIKE ${p} OR ${n("port_type")} LIKE ${p})`;
+      }
+      let having = "";
+      const lim = parseInt(workingLt);
+      if (workingLt !== "" && !isNaN(lim)) {
+        params.push(lim);
+        having = `HAVING COUNT(*) FILTER (WHERE COALESCE(btrim(frame),'') <> '') < $${params.length}`;
+      }
+      const { rows } = await pool.query(
+        `SELECT msan_code AS "msanCode", shelf, slot,
+                COUNT(*) FILTER (WHERE COALESCE(btrim(frame),'') <> '')::int AS "workingCount",
+                COUNT(*)::int AS "portsCount",
+                mode() WITHIN GROUP (ORDER BY NULLIF(btrim(port_type), '')) AS "cardType",
+                COUNT(DISTINCT NULLIF(btrim(port_type), ''))::int AS "cardTypeCount"
+           FROM phone_ports ${where}
+          GROUP BY msan_code, shelf, slot
+          ${having}
+          ORDER BY msan_code NULLS LAST,
+                   LPAD(COALESCE(shelf, ''), 4, '0'),
+                   LPAD(COALESCE(slot, ''), 4, '0')
+          LIMIT 20000`, params);
+      res.json({ data: rows, total: rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/phone-ports — list with search
   app.get("/api/phone-ports", requireAuth, async (req, res) => {
     const { q } = req.query as Record<string, string>;
