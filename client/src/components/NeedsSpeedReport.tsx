@@ -125,6 +125,9 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // كباين مستثناة من التقرير افتراضياً (قرار تشغيلى) — الزر بيرجّعها لما تحتاجها.
   // الفلترة على السيرفر فبتسرى على الجدول والعدّاد وتصدير Excel/PDF مع بعض.
   const [showExcludedCabins, setShowExcludedCabins] = useState(false);
+  // زر «استبعاد اللى فى الطابور»: بيشيل الأرقام اللى ليها مهمة منتظرة/شغّالة فى طابور
+  // التنفيذ عشان مايتبعتوش تانى ويتكرّر نفس الشغل. مطفى افتراضياً — المستخدم هو اللى يقرّر.
+  const [excludeQueued, setExcludeQueued] = useState(false);
   const isNeedsSpeed = endpoint.includes("needs-speed");
 
   useEffect(() => {
@@ -150,6 +153,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (box) params.set("box", box);
     if (search) params.set("search", search);
     if (isNeedsSpeed && showExcludedCabins) params.set("includeExcluded", "1");
+    if (excludeQueued) params.set("excludeQueued", "1");
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
     if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
@@ -157,11 +161,11 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, search, page, requireComplaint, complaintAny, showExcludedCabins],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, search, page, requireComplaint, complaintAny, showExcludedCabins, excludeQueued],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<{ data: SpeedLine[]; total: number }>;
+      return res.json() as Promise<{ data: SpeedLine[]; total: number; queuedExcluded?: number }>;
     },
     refetchOnMount: "always",
   });
@@ -362,6 +366,19 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 <EyeOff className="w-4 h-4" /> {showExcludedCabins ? "الكباين المستثناة فقط ✓" : "إظهار الكباين المستثناة"}
               </Button>
             )}
+            {/* استبعاد الأرقام اللى فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر الشغل */}
+            <Button
+              variant={excludeQueued ? "default" : "outline"}
+              size="sm"
+              onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
+              className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
+              title="يشيل الأرقام اللى ليها مهمة منتظرة أو شغّالة فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
+            >
+              <EyeOff className="w-4 h-4" />
+              {excludeQueued
+                ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded})` : ""}`
+                : "استبعاد اللى فى الطابور"}
+            </Button>
             {!requireComplaint && endpoint.includes("needs-speed") && (
               <Button
                 variant={complaintAny ? "default" : "outline"}

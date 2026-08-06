@@ -578,6 +578,22 @@ const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
 // يستخدم الفهرس (وإلا الـ LATERAL بتاع الشكاوى يرجع seq scan لكل صف ويعلّق التقارير).
 const sp = phoneNormSql;
 
+// «أى حاجة فى طابور التنفيذ ماتتكررش»: شرط بيستبعد أرقام الأكونت اللى ليها مهمة
+// منتظرة أو شغّالة فى الطابور (قياس/رفع سرعة/إيقاف). بيتحطّ فى تقارير القياسات
+// اللى بتتبعت منها باتشات، عشان الرقم مايتبعتش تانى وهو أصلاً فى الدور.
+// subquery **غير مرتبطة** عن قصد: الـ planner بيعملها Hash Anti Join فبتتحسب مرة
+// واحدة بدل مرة لكل صف (اتقاست: 10 آلاف خط × 6500 مهمة = 15ms).
+// الزر اللى فى الواجهة: ?excludeQueued=1
+const excludeQueuedOn = (req: any) => {
+  const v = String(req?.query?.excludeQueued ?? "");
+  return v === "1" || v === "true";
+};
+const notQueuedSql = (accCol: string) => `NOT EXISTS (
+  SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
+   WHERE e.status IN ('pending','claimed')
+     AND e.type IN ('measure','raise','stop')
+     AND qa.acc = ${accCol})`;
+
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf
      WHERE pf.phone_number = ${fullPhoneExpr}
@@ -3132,25 +3148,21 @@ export async function registerRoutes(
     // شغّالة) — دى هتتقاس خلاص، فلو فضلت ظاهرة هنا هتتبعت للطابور تانى ويتقاس نفس الرقم
     // مرتين. الاستبعاد مربوط بفلتر «أقدم من» بس لأنه ده تدفّق القياس بالجملة.
     // (subquery غير مرتبطة عشان تتحسب مرة واحدة بدل مرة لكل صف.)
-    // نفس الاستبعاد بينطبق كمان على تقرير «لها أكونت ولم تُقَس» — هو التانى اللى
-    // بيتقاس منه بالجملة، ونفس خطر تكرار القياس موجود فيه.
-    const isNeverMeasured = neverMeasured === "1" || neverMeasured === "true";
-    const queuedClause = (staleClause || isNeverMeasured) ? `
-      AND NOT EXISTS (
-        SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
-         WHERE e.status IN ('pending','claimed') AND e.type = 'measure' AND qa.acc = la.account_no)` : "";
+    // بزر من الواجهة (excludeQueued) — مش تلقائى. الاستثناء الوحيد: تقرير «لها أكونت
+    // ولم تُقَس» الواجهة بتبعت الزر مفعّل فيه افتراضياً.
+    const queuedClause = excludeQueuedOn(req) ? ` AND ${notQueuedSql("la.account_no")}` : "";
 
     // الإجمالى بدون فلتر «أقدم من» (مع باقى الفلاتر) — للعرض والتشخيص
     const grandRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}`, baseParams);
     const grandTotal = grandRes.rows[0].c as number;
     // الإجمالى بعد فلتر «أقدم من» **قبل** استبعاد اللى فى الطابور — الفرق بينه وبين
     // الإجمالى النهائى = عدد الأرقام اللى اتشالت لأنها فى الطابور (بنعرضه للمستخدم).
-    const staleOnlyRes = queuedClause
+    const beforeExclRes = queuedClause
       ? await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}`, params)
       : null;
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}${staleClause}${queuedClause}`, params);
     const total = totalRes.rows[0].c as number;
-    const queuedExcluded = staleOnlyRes ? Math.max(0, (staleOnlyRes.rows[0].c as number) - total) : 0;
+    const queuedExcluded = beforeExclRes ? Math.max(0, (beforeExclRes.rows[0].c as number) - total) : 0;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
@@ -3607,9 +3619,15 @@ export async function registerRoutes(
     }
     // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت، ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    // بزر من الواجهة (excludeQueued) — مش تلقائى
+    if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
+    const queuedExcluded = excludeQueuedOn(req)
+      ? Math.max(0, ((await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${whereNoQ}`, params)).rows[0].c as number) - total)
+      : 0;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
@@ -3631,7 +3649,7 @@ export async function registerRoutes(
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
-    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+    res.json({ data: dataRes.rows, total, queuedExcluded, page: pageNum, pageSize });
   });
 
   // GET /api/phone-lines/needs-po-stop — خطوط تحتاج إيقاف PO
@@ -3700,9 +3718,15 @@ export async function registerRoutes(
     // فلتر: يستبعد الخطوط اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت (بتوقيت القاهرة)،
     //        ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف (last_stop_at IS NULL).
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    // بزر من الواجهة (excludeQueued) — مش تلقائى
+    if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
+    const queuedExcluded = excludeQueuedOn(req)
+      ? Math.max(0, ((await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${whereNoQ}`, params)).rows[0].c as number) - total)
+      : 0;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
@@ -3723,7 +3747,7 @@ export async function registerRoutes(
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
-    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+    res.json({ data: dataRes.rows, total, queuedExcluded, page: pageNum, pageSize });
   });
 
   // GET /api/phone-lines/lookup?phone=<رقم> — بحث برقم التليفون → بياناته الفنية + آخر قياس
@@ -3964,10 +3988,16 @@ export async function registerRoutes(
          SELECT c.current_speed, c.max_speed, c.score, c.uploaded_at
          FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1
        ) c138p ON true`;
+    const whereNoQ = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
+    // بزر من الواجهة (excludeQueued) — يشيل اللى فى طابور التنفيذ عشان مايتبعتش تانى
+    if (excludeQueuedOn(req)) plConds.push(notQueuedSql("la.account_no"));
     const where = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
 
     const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT la.full_phone)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
+    const queuedExcluded = excludeQueuedOn(req)
+      ? Math.max(0, ((await pool.query(`${regCte} SELECT COUNT(DISTINCT la.full_phone)::int AS c ${joinClause} ${whereNoQ}`, params)).rows[0].c as number) - total)
+      : 0;
     const offset = (pageNum - 1) * pageSize;
     params.push(pageSize); params.push(offset);
     const dataRes = await pool.query(
@@ -3988,7 +4018,7 @@ export async function registerRoutes(
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
-    res.json({ data: dataRes.rows, total, page: pageNum, pageSize, dateFrom: from, dateTo: to });
+    res.json({ data: dataRes.rows, total, queuedExcluded, page: pageNum, pageSize, dateFrom: from, dateTo: to });
   });
 
   // GET /api/reports/account-edits — سجل تعديلات أرقام الأكونت

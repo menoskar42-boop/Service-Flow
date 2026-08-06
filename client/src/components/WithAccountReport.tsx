@@ -114,6 +114,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   // فلتر "أقدم من N يوم": يعرض فقط الخطوط التى مرّ على آخر قياس لها أكثر من N يوم
   // أو التى لم تُقَس من قبل. عدد الأيام يكتبه المستخدم (افتراضى 7).
   const [staleDays, setStaleDays] = useState(defaultStaleDays);
+  // زر «استبعاد اللى فى الطابور»: بيشيل الأرقام اللى ليها مهمة منتظرة/شغّالة فى طابور
+  // التنفيذ عشان مايتبعتوش تانى. مفعّل افتراضياً فى تقرير «لها أكونت ولم تُقَس» بس —
+  // هو التقرير اللى بيتقاس منه بالجملة دايماً؛ الباقى المستخدم هو اللى يقرّر.
+  const [excludeQueued, setExcludeQueued] = useState(!!neverMeasured);
   const [staleOn, setStaleOn] = useState(false);
   // زر (فى تقرير «لم تُقَس»): يفلتر الأرقام التى لها شكوى
   const [hasComplaintOn, setHasComplaintOn] = useState(false);
@@ -144,7 +148,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, hasComplaintOn],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, hasComplaintOn, excludeQueued],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
@@ -153,6 +157,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
       if (hasComplaintOn) params.set("hasComplaint", "1");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
@@ -258,6 +263,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
       if (hasComplaintOn) params.set("hasComplaint", "1");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
@@ -305,6 +311,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxFrom) params.set("boxFrom", boxFrom);
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
       if (hasComplaintOn) params.set("hasComplaint", "1");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
@@ -333,6 +340,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (!box && boxFrom) params.set("boxFrom", boxFrom);
     if (!box && boxTo)   params.set("boxTo",   boxTo);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
     if (hasComplaintOn) params.set("hasComplaint", "1");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
@@ -377,6 +385,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
     if (hasComplaintOn) params.set("hasComplaint", "1");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
@@ -544,6 +553,19 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
               </Button>
             </div>
             )}
+            {/* استبعاد الأرقام اللى فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر الشغل.
+                مفعّل افتراضياً فى «لها أكونت ولم تُقَس» بس. */}
+            <Button
+              variant={excludeQueued ? "default" : "outline"}
+              size="sm"
+              onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
+              className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
+              title="يشيل الأرقام اللى ليها مهمة منتظرة أو شغّالة فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
+            >
+              {excludeQueued
+                ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded.toLocaleString("ar-EG")})` : ""}`
+                : "استبعاد اللى فى الطابور"}
+            </Button>
             {/* زر «لها شكوى» — يفلتر الأرقام التى لها رقم شكوى (سابقة) — فى كل التقارير */}
             <Button
               variant={hasComplaintOn ? "default" : "outline"}

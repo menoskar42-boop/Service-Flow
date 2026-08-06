@@ -99,6 +99,8 @@ export function ComplaintNoMeasureReport() {
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
   const [page, setPage] = useState(1);
+  // زر «استبعاد اللى فى الطابور» — نفس زر باقى تقارير القياسات. مطفى افتراضياً.
+  const [excludeQueued, setExcludeQueued] = useState(false);
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
 
@@ -120,15 +122,16 @@ export function ComplaintNoMeasureReport() {
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
+    if (excludeQueued) params.set("excludeQueued", "1");
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/reports/complaint-no-measure", dateFrom, dateTo, central, cabin, box, page],
+    queryKey: ["/api/reports/complaint-no-measure", dateFrom, dateTo, central, cabin, box, page, excludeQueued],
     queryFn: async () => {
       const res = await fetch(`/api/reports/complaint-no-measure?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<{ data: Row[]; total: number }>;
+      return res.json() as Promise<{ data: Row[]; total: number; queuedExcluded?: number }>;
     },
     refetchOnMount: "always",
   });
@@ -284,6 +287,18 @@ export function ComplaintNoMeasureReport() {
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             </>)}
+            {/* استبعاد الأرقام اللى فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر الشغل */}
+            <Button
+              variant={excludeQueued ? "default" : "outline"}
+              size="sm"
+              onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
+              className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
+              title="يشيل الأرقام اللى ليها مهمة منتظرة أو شغّالة فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
+            >
+              {excludeQueued
+                ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded.toLocaleString("ar-EG")})` : ""}`
+                : "استبعاد اللى فى الطابور"}
+            </Button>
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
