@@ -30,8 +30,13 @@ export function useWebSocket() {
   useEffect(() => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
-    
+    // بعد ما الصفحة تتشال، onclose كان بيعيد الاتصال برضه — فكل خروج/دخول للوحة
+    // كان بيسيب سلسلة إعادة اتصال زومبى تعمل سوكيتات وإشعارات وتحديثات مكررة.
+    let stopped = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
     const connect = () => {
+      if (stopped) return;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -82,8 +87,9 @@ export function useWebSocket() {
       };
 
       ws.onclose = () => {
+        if (stopped) return;
         console.log("WebSocket disconnected, reconnecting in 3s...");
-        setTimeout(connect, 3000);
+        reconnectTimer = setTimeout(connect, 3000);
       };
       
       ws.onerror = (err) => {
@@ -95,6 +101,8 @@ export function useWebSocket() {
     connect();
 
     return () => {
+      stopped = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       wsRef.current?.close();
     };
   }, [queryClient, toast]);
