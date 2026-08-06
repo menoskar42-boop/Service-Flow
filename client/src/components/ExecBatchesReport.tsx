@@ -64,18 +64,32 @@ export function ExecBatchesReport() {
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");            // بحث بالباتش/التقرير/الطالب
   const [stateFilter, setStateFilter] = useState("");
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  // silent = تحديث خلفى (التلقائى): مايوريّش سبينر ولا يمسح الجدول لو الطلب فشل،
+  // عشان الشاشة ماترفرفش كل 5 ثوانى.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) { setLoading(true); setError(null); }
     try {
       const r = await fetch(`/api/exec-queue/batches?from=${from}&to=${to}`, { credentials: "include" });
       if (!r.ok) throw new Error("تعذّر تحميل التقرير");
       const d = await r.json();
       setRows(Array.isArray(d.data) ? d.data : []);
-    } catch (e: any) { setError(e.message || "خطأ"); setRows([]); }
-    finally { setLoading(false); }
+      setLastRefresh(new Date());
+    } catch (e: any) { if (!silent) { setError(e.message || "خطأ"); setRows([]); } }
+    finally { if (!silent) setLoading(false); }
   }, [from, to]);
   useEffect(() => { load(); }, [load]);
+
+  // تحديث تلقائى كل 5 ثوانى — الباتشات بتتغيّر لحظياً وجهاز التنفيذ شغّال. بيقف لو
+  // التاب مش ظاهر (مافيش داعى نضرب السيرفر فى الخلفية).
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      load(true);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [load]);
 
   const states = useMemo(() => [...new Set(rows.map((r) => r.state))], [rows]);
 
@@ -134,6 +148,9 @@ export function ExecBatchesReport() {
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               كل الباتشات مهما كانت أولويتها — اكتملت أو جزئياً أو أُلغِيت أو لسه فى الطابور.
+              <span className="text-blue-600"> {" "}🔄 يتحدّث تلقائياً كل 5 ثوانى
+                {lastRefresh ? ` — آخر تحديث ${lastRefresh.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
+              </span>
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
@@ -179,7 +196,7 @@ export function ExecBatchesReport() {
           </div>
           {/* «تحديث» جنب البحث (مش فوق مع التواريخ) عشان يفضل قريب من الجدول
               ويبان وانت نازل بالسكرول على الصفوف */}
-          <Button onClick={load} size="sm" variant="outline" className="gap-1 h-9" disabled={loading}>
+          <Button onClick={() => load()} size="sm" variant="outline" className="gap-1 h-9" disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث
           </Button>
         </div>
