@@ -260,8 +260,10 @@ export default function Dashboard() {
   const DM_ALLOWED: ReportTab[] = ["no-account", "ground-network", "work-orders"];
   const DM_ALLOWED_GROUPS = ["القياسات", "تركيبات و نقل و اوامر شغل"];
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech", "shift-schedule"];
-  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "تركيبات و نقل و اوامر شغل", "جدول الورديات"];
+  // «التركيبات والنقل الحالى» و«المعاينات الحالية» بيظهروا للفنى كمان — والسيرفر
+  // بيفلترهم على كباينه هو (worker_code) فكل واحد يشوف اللى يخصه بس.
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech", "shift-schedule", "current-installations", "current-surveys"];
+  const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "تركيبات و نقل و اوامر شغل", "المعاينات", "جدول الورديات"];
   // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
   const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];
   const SALES_ADMIN_ALLOWED_GROUPS = ["متعذرات OM"];

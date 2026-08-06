@@ -842,9 +842,10 @@ const WFM_REPORT_JOINS = `
 
 // تقرير تركيبات/معاينات (حالى أو منتظم اليوم) — يُرجع الصفوف.
 async function queryWfmReport(
-  typesLc: string[], regularized: boolean, opts: { central?: string; q?: string },
+  typesLc: string[], regularized: boolean,
+  opts: { central?: string; q?: string; workerCode?: string },
 ) {
-  const { central = "", q = "" } = opts;
+  const { central = "", q = "", workerCode = "" } = opts;
   const params: any[] = [typesLc];
   const conds: string[] = [
     `lower(trim(t.work_order_type)) = ANY($1::text[])`,
@@ -854,6 +855,12 @@ async function queryWfmReport(
     conds.push(`NOT EXISTS (SELECT 1 FROM wfm_current c WHERE c.central_name = t.central_name AND c.work_order_id = t.work_order_id)`);
   }
   if (central) { params.push(central); conds.push(`t.central_name = $${params.length}`); }
+  // الفنى يشوف أوامر كباينه هو بس — الكابينة بتتحدد من exch_cabinet أو من البيان
+  // الفنى للخط، وصاحبها من cabinet_technicians (نفس الـ join المستخدم فى العرض).
+  if (workerCode.trim()) {
+    params.push(workerCode.trim());
+    conds.push(`btrim(ct.worker_code) = btrim($${params.length})`);
+  }
   if (q.trim()) {
     params.push(arQ(q));
     const p = `$${params.length}`;
@@ -9480,7 +9487,11 @@ export async function registerRoutes(
     async (req: any, res: any) => {
       try {
         const { central = "", q = "" } = req.query as Record<string, string>;
-        const rows = await queryWfmReport(typesLc, regularized, { central, q });
+        // الفنى: أوامر كباينه بس. باقى الأدوار بتشوف الكل.
+        const workerCode = req.user?.role === ROLES.TECH
+          ? String(req.user.workerCode || "").trim() || "__none__"
+          : "";
+        const rows = await queryWfmReport(typesLc, regularized, { central, q, workerCode });
         res.json(rows);
       } catch (e: any) {
         res.status(500).json({ message: e.message });
