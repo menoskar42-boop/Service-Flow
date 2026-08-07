@@ -405,9 +405,17 @@ export function PhoneLookupReport() {
   const lastReg = mfData?.lastRegularization || null;
 
   // قائمة الفنيين (للسوبر أدمن عند الانتظام)
-  const { data: techList } = useQuery<{ workerCode: string; techName: string }[]>({
+  const { data: techList, isLoading: techListLoading, isError: techListError,
+          refetch: refetchTechList } = useQuery<{ workerCode: string; techName: string }[]>({
     queryKey: ["/api/technician-names"],
-    queryFn: async () => { const r = await fetch("/api/technician-names", { credentials: "include" }); return r.ok ? r.json() : []; },
+    // لازم نرمى الخطأ مش نرجّع [] — الرد الفاشل كان بيتخزّن كنجاح بقائمة فاضية
+    // فالدروب ليست تفضل فاضية من غير إعادة محاولة (retry: false عام).
+    queryFn: async () => {
+      const r = await fetch("/api/technician-names", { credentials: "include" });
+      if (!r.ok) throw new Error("تعذّر تحميل قائمة الفنيين");
+      return r.json();
+    },
+    retry: 3, retryDelay: (n: number) => Math.min(1000 * 2 ** n, 8000),
     // نفس شروط ظهور زر «إلغاء الاسناد» (canCancelWfm بيتعرّف بعدين فى الملف):
     // القائمة كانت للسوبر أدمن بس، فالأدمن/الشئون الخارجية/الفنى كانوا بيلاقوا
     // دروب ليست الفنيين فاضية والإسناد مستحيل.
@@ -449,7 +457,12 @@ export function PhoneLookupReport() {
     const sid = String(line?.telNo || phone || "").replace(/\D/g, "").replace(/^88/, "");
     const worker = (techByName.get(wfmTech) || "").trim();
     if (wfmMode === "reassign") {
-      if (!wfmTech) { alert("اختر الفنى اللى هتتسند عليه المهمة"); return; }
+      if (!wfmTech) {
+        alert(techListError
+          ? "قائمة الفنيين ماتحمّلتش — اضغط «إعادة المحاولة» جنب القائمة الأول"
+          : "اختر الفنى اللى هتتسند عليه المهمة");
+        return;
+      }
       if (!worker) { alert(`الفنى «${wfmTech}» مالوش كود عامل مسجّل — حدّثه من إدارة البيانات الفنية أولاً`); return; }
     }
     setWfmOpen(false);
@@ -996,12 +1009,31 @@ export function PhoneLookupReport() {
               <>
                 <div className="grid gap-1">
                   <label className="text-sm text-muted-foreground">الفنى اللى هتتسند عليه المهمة *</label>
-                  <select value={wfmTech} onChange={(e) => setWfmTech(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
-                    <option value="">— اختر الفنى —</option>
+                  <select value={wfmTech} onChange={(e) => setWfmTech(e.target.value)}
+                    disabled={techListLoading || techListError}
+                    className="border rounded-md px-3 py-2 text-sm disabled:bg-muted">
+                    <option value="">
+                      {techListLoading ? "— جارٍ تحميل قائمة الفنيين… —"
+                        : techListError ? "— تعذّر تحميل القائمة —"
+                        : techOptions.length === 0 ? "— مفيش فنيين مسجّلين —"
+                        : "— اختر الفنى —"}
+                    </option>
                     {techOptions.map((t) => (
                       <option key={t} value={t}>{t}{techByName.get(t) ? ` (${techByName.get(t)})` : " — بدون كود عامل"}</option>
                     ))}
                   </select>
+                  {/* القائمة كانت بتفضل فاضية من غير أى تفسير لو الطلب فشل (نت ضعيف /
+                      السيرفر مشغول بجهاز التنفيذ) — دلوقتى بيبان السبب مع زر إعادة محاولة. */}
+                  {techListError && (
+                    <div className="flex items-center gap-2 text-xs text-red-700">
+                      <span>تعذّر تحميل قائمة الفنيين (النت أو السيرفر مشغول).</span>
+                      <button type="button" onClick={() => refetchTechList()}
+                        className="underline hover:text-red-900">إعادة المحاولة</button>
+                    </div>
+                  )}
+                  {!techListError && !techListLoading && techOptions.length === 0 && (
+                    <p className="text-xs text-amber-700">مفيش فنيين مسجّلين — ارفع ملف «أسماء الفنيين» من إدارة البيانات الفنية.</p>
+                  )}
                 </div>
                 {wfmTech && <p className="text-xs">كود العامل: <b dir="ltr">{techByName.get(wfmTech) || "غير مسجّل"}</b></p>}
                 <p className="text-xs text-muted-foreground">

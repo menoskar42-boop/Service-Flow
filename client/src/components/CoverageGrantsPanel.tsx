@@ -20,7 +20,14 @@ export function CoverageGrantsPanel() {
   });
   const { data: techList = [] } = useQuery<{ workerCode: string; techName: string }[]>({
     queryKey: ["/api/technician-names"],
-    queryFn: async () => { const r = await fetch("/api/technician-names", { credentials: "include" }); return r.ok ? r.json() : []; },
+    // لازم نرمى الخطأ مش نرجّع [] — الرد الفاشل كان بيتخزّن كنجاح بقائمة فاضية
+    // فالدروب ليست تفضل فاضية من غير إعادة محاولة (retry: false عام).
+    queryFn: async () => {
+      const r = await fetch("/api/technician-names", { credentials: "include" });
+      if (!r.ok) throw new Error("تعذّر تحميل قائمة الفنيين");
+      return r.json();
+    },
+    retry: 3, retryDelay: (n: number) => Math.min(1000 * 2 ** n, 8000),
     staleTime: 5 * 60 * 1000,
   });
   const techOptions = useMemo(

@@ -16,7 +16,13 @@ export function CreateOrderModal() {
   const [assignedTechId, setAssignedTechId] = useState(""); // "" = الكل (غير مُسنَد)
   const { data: techs = [] } = useQuery<{ id: number; username: string }[]>({
     queryKey: ["/api/techs"],
-    queryFn: () => fetch("/api/techs", { credentials: "include" }).then((r) => (r.ok ? r.json() : [])),
+    // نرمى الخطأ بدل [] — وإلا الطلب الفاشل بيتخزّن كنجاح والقائمة تفضل فاضية
+    queryFn: async () => {
+      const r = await fetch("/api/techs", { credentials: "include" });
+      if (!r.ok) throw new Error("تعذّر تحميل قائمة الفنيين");
+      return r.json();
+    },
+    retry: 3, retryDelay: (n: number) => Math.min(1000 * 2 ** n, 8000),
   });
   const [formData, setFormData] = useState({
     customerName: "",
