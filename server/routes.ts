@@ -2227,19 +2227,35 @@ export async function registerRoutes(
       //     المهل بتحترم مهلة العملية نفسها: العمليات الطويلة (تحديث الملفات اليومية —
       //     لحد 30 دقيقة فى جهاز التنفيذ) بتاخد ضعف المهلة، عشان مانقطعهاش وهى شغّالة.
       const LONG_TYPES = Array.from(DAILY_TYPES);
+      // ⚠️ سقف زمنى **لكل نوع** — لازم يكون هو المُنقِذ الأساسى، مش شرط «فيه مهمة
+      // اتسحبت بعدها». السبب: المهمة العالقة قافلة مسارها بنفسها، فمهمة أحدث على
+      // **نفس المسار** مستحيل تحصل — يبقى الشرط ده مايتحققش أبداً والمهمة تفضل
+      // عالقة لحد السقف المطلق. ده بالظبط اللى كان بيوقّف القياسات: تاب DZS يتقفل
+      // من غير ما يتعلّم done، فالمسار يفضل مقفول والصفحة اللى بعدها ماتفتحش.
+      // القيم أعلى من مهلة كل عملية فى جهاز التنفيذ بهامش كويس:
+      // القياس بيخلص فى ~3 دقايق (مهلة الخط 2.5د + كشف التوقف 2.5د) فـ8 دقايق
+      // سقف آمن وسريع؛ والباقى على نفس القاعدة: ضعف مهلته فى جهاز التنفيذ تقريباً.
+      //   قياس/إيقاف/مراجعة 8د · رفع سرعة/تحديث بورت/إلغاء إسناد 15د
+      //   تغيير بورت/جلب أكونت/تقارير WFM 30د · تحديث الملفات اليومية 60د
+      const maxRunSql = `(CASE
+        WHEN e.type = ANY($2::text[])                              THEN interval '60 minutes'
+        WHEN e.type IN ('portchange','c360','wfmreport')           THEN interval '30 minutes'
+        WHEN e.type IN ('raise','portcheck','wfmcancel')           THEN interval '15 minutes'
+        ELSE interval '8 minutes' END)`;
       await pool.query(
         `UPDATE exec_jobs e
             SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1
           WHERE e.status = 'claimed'
             AND e.attempts < $1
             AND (
+              -- (1) مسار سريع: الجهاز سحب مهمة أحدث على **نفس المسار** = عدّاها أكيد
               (e.claimed_at < now() - (CASE WHEN e.type = ANY($2::text[])
                                             THEN interval '45 minutes' ELSE interval '10 minutes' END)
                AND EXISTS (SELECT 1 FROM exec_jobs j2
                             WHERE j2.claimed_at > e.claimed_at
                               AND COALESCE(j2.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101')))
-              OR e.claimed_at < (CASE WHEN e.type = ANY($2::text[])
-                                      THEN now() - interval '90 minutes' ELSE now() - interval '45 minutes' END)
+              -- (2) المُنقِذ الأساسى: عدّت مهلة نوعها القصوى → عالقة أكيد، رجّعها
+              OR e.claimed_at < now() - ${maxRunSql}
             )`,
         [MAX_ATTEMPTS, LONG_TYPES],
       );

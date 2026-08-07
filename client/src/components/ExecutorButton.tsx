@@ -15,6 +15,8 @@ export function ExecutorButton() {
   });
   const [pending, setPending] = useState(0);
   const [current, setCurrent] = useState<string>("");
+  // آخر خطأ فى سحب المهام — بيتعرض على الزر عشان التوقف مايبقاش صامت
+  const [claimError, setClaimError] = useState<string | null>(null);
   const busy = useRef(false);
   const [clearing, setClearing] = useState(false);
   // تاب القياس الأخير — نقفله أول ما نفتح قياس جديد (يفضل تاب واحد بس مفتوح: الأخير)
@@ -225,7 +227,17 @@ export function ExecutorButton() {
           headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device }),
           signal: ctrl.signal,
         }).finally(() => clearTimeout(tmo));
-        const job: ExecJob | null = r.ok ? await r.json() : null;
+        // ⚠️ لازم نفرّق بين «مفيش مهمة مؤهّلة» و«الطلب فشل»: الاتنين كانوا بيتقروا
+        // نفس القراءة (break صامت)، فأى خطأ فى السحب كان بيوقّف التنفيذ تماماً من
+        // غير أى مؤشر — الموقع شغّال والقياسات واقفة ومحدش يعرف ليه.
+        if (!r.ok) {
+          const why = await r.text().catch(() => "");
+          console.error("[exec] فشل سحب المهمة:", r.status, why.slice(0, 200));
+          setClaimError(`تعذّر سحب المهام من الطابور (خطأ ${r.status}) — التنفيذ متوقف`);
+          break;
+        }
+        setClaimError(null);
+        const job: ExecJob | null = await r.json();
         if (!job || !job.id) break;
         if (job && job.id) {
           const accs = (job.accounts || []).map((a) => String(a).trim()).filter(Boolean);
@@ -290,12 +302,18 @@ export function ExecutorButton() {
         variant={active ? "default" : "outline"}
         size="sm"
         onClick={toggle}
-        className={active ? "bg-indigo-600 hover:bg-indigo-700 gap-1" : "text-indigo-700 border-indigo-200 gap-1"}
-        title="جهاز التنفيذ المركزى: لما يتفعّل، رفع السرعة/القياس/الإيقاف من أى جهاز بيتنفّذ هنا عبر طابور"
+        className={
+          active && claimError ? "bg-red-600 hover:bg-red-700 gap-1"
+          : active ? "bg-indigo-600 hover:bg-indigo-700 gap-1"
+          : "text-indigo-700 border-indigo-200 gap-1"}
+        title={claimError || "جهاز التنفيذ المركزى: لما يتفعّل، رفع السرعة/القياس/الإيقاف من أى جهاز بيتنفّذ هنا عبر طابور"}
       >
         {active ? <Loader2 className="w-4 h-4 animate-spin" /> : <Server className="w-4 h-4" />}
+        {/* لو السحب فاشل الزر بيبقى أحمر ومكتوب عليه السبب — بدل ما التنفيذ يقف بصمت */}
         {active
-          ? (current ? `⏳ ${current}` : `جهاز التنفيذ: مُفعَّل${pending ? ` (${pending})` : ""}`)
+          ? (claimError ? "⚠️ التنفيذ متوقف — خطأ فى الطابور"
+             : current ? `⏳ ${current}`
+             : `جهاز التنفيذ: مُفعَّل${pending ? ` (${pending})` : ""}`)
           : "جهاز التنفيذ"}
       </Button>
       {/* زر مسح الطابور — يظهر للسوبر أدمن لما يكون فيه مهام عالقة */}
