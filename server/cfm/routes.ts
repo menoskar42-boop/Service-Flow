@@ -10,8 +10,6 @@ import bcrypt from "bcryptjs";  // نسخة JS خالصة — تتحقق من ه
 import { storage } from "./storage";
 import { pool } from "../db";
 import { findOpenTicketCoveringCableBox } from "../box-fault-ticket";
-import { importCfmFromLive } from "./import-from-live";
-import { importCfmFromProdDb } from "./import-from-prod-db";
 import {
   insertCfmUserSchema as insertUserSchema,
   insertCentralSchema,
@@ -71,40 +69,8 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
 }
 
 export function registerCfmRoutes(app: Express) {
-  // استيراد لمرة واحدة: يسحب كل بيانات الكوابل من التطبيق المنشور ويحمّلها فى قاعدة Service-Flow.
-  // محمى بتوكن. يُنفَّذ على السيرفر المنشور فيكتب فى قاعدة الإنتاج. idempotent.
-  // من غير CFM_IMPORT_TOKEN فى الـ Secrets المسارات دى متقفلة خالص — التوكن الثابت
-  // القديم كان مكتوب فى الكود، يعنى أى حد شايف السورس يقدر يشغّل استيراد إنتاج كامل.
-  const CFM_IMPORT_TOKEN = process.env.CFM_IMPORT_TOKEN || "";
-  app.post("/api/cfm/_import-from-live", async (req, res) => {
-    if (!CFM_IMPORT_TOKEN || (req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
-      return res.status(401).json({ error: "invalid token" });
-    }
-    try {
-      const imported = await importCfmFromLive();
-      res.json({ ok: true, imported });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message || String(e) });
-    }
-  });
-
-  // استيراد لمرة واحدة من قاعدة الإنتاج مباشرةً (Neon) — يحافظ على كلمات السر الحقيقية.
-  // يقرأ CFM_PROD_DATABASE_URL من Secrets. محمى بنفس التوكن. idempotent.
-  // GET و POST الاتنين مدعومين عشان يشتغل من اللينك فى المتصفح مباشرةً.
-  const importFromProdDbHandler = async (req: express.Request, res: express.Response) => {
-    if (!CFM_IMPORT_TOKEN || (req.query.token || req.headers["x-import-token"]) !== CFM_IMPORT_TOKEN) {
-      return res.status(401).json({ error: "invalid token" });
-    }
-    try {
-      const imported = await importCfmFromProdDb();
-      res.json({ ok: true, imported });
-    } catch (e: any) {
-      res.status(500).json({ ok: false, error: e?.message || String(e) });
-    }
-  };
-  app.get("/api/cfm/_import-from-prod-db", importFromProdDbHandler);
-  app.post("/api/cfm/_import-from-prod-db", importFromProdDbHandler);
-
+  // (مسارات الاستيراد لمرة واحدة _import-from-live و_import-from-prod-db اتشالت —
+  //  كانت أداة نقل بيانات الكوابل وقت الدمج، والنقل خلص والبيانات عايشة هنا.)
 
   // ===== AUTHENTICATION ROUTES ===== //
   
