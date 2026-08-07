@@ -620,6 +620,22 @@ async function archiveRemovedPorts(whereSql: string, params: any[], source: stri
   return del.rowCount ?? 0;
 }
 
+// تنفيذ مجموعة أوامر كوحدة واحدة (BEGIN/COMMIT/ROLLBACK): المستوردات اللى بتمسح
+// قبل ما تدخّل كانت بتسيب الجدول ناقص لو الرفع فشل فى نصه (نت وقع/قيمة بايظة) —
+// جوه الـ transaction الفشل بيرجّع كل حاجة زى ما كانت.
+async function withTx<T>(fn: (tx: { query: (q: string, p?: any[]) => Promise<any> }) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const out = await fn(client as any);
+    await client.query("COMMIT");
+    return out;
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally { client.release(); }
+}
+
 const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
     SELECT 1 FROM phone_ports pf
      WHERE pf.phone_number = ${fullPhoneExpr}
@@ -971,8 +987,16 @@ async function checkAndSnapshot() {
       `SELECT 1 FROM regularized_daily WHERE snapshot_date = $1 LIMIT 1`, [targetDate],
     );
     if (rows.length === 0) {
-      const r = await recordDailySnapshot(targetDate);
-      console.log(`[daily-snapshot] recorded ${targetDate}:`, r);
+      // بنسجّل بس لو احنا لسه فى نفس اليوم المستهدف (الساعة ≥ 23) — الاستعلامات
+      // بتحسب «المنتظم النهارده» من دلوقتى، فتسجيل يوم فات بعد منتصف الليل كان
+      // بيكتب بيانات اليوم الجديد بتاريخ الأمس ويمنع الصح من التسجيل للأبد
+      // (ON CONFLICT DO NOTHING). يوم فات السيرفر نايم فيه مش قابل للاسترجاع.
+      if (hour >= 23) {
+        const r = await recordDailySnapshot(targetDate);
+        console.log(`[daily-snapshot] recorded ${targetDate}:`, r);
+      } else {
+        console.warn(`[daily-snapshot] ${targetDate} مافيهوش لقطة والوقت عدّى — مش هنسجّل بيانات غلط بدلها`);
+      }
     }
     lastSnapshotCheck = targetDate;
   } catch (e: any) {
@@ -3980,13 +4004,16 @@ export async function registerRoutes(
         WHERE latest.score IS NOT NULL
           AND latest.score <= 100                               -- استبعاد الأرقام اللى الاسكور فيها أكبر من 100
           AND latest.uploaded_at >= now() - interval '3 days'   -- آخر قياس مرّ عليه أقل من 3 أيام
-          AND NOT (                                              -- لا تحتاج رفع سرعة (عكس معيار needs-speed)
+          -- COALESCE(…, false): لو السرعة القصوى غير قابلة للقراءة (N/A) التعبير
+          -- الداخلى بيطلع NULL وNOT NULL = NULL فالخط كان بيختفى من التقريرين
+          -- الاتنين (مش محتاج رفع فى الأول، ومش ظاهر هنا) — بقى بيظهر هنا.
+          AND NOT COALESCE((                                     -- لا تحتاج رفع سرعة (عكس معيار needs-speed)
             NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
             AND (
               (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
               OR (latest.score < 16 AND latest.cur_n < 10000)
             )
-          )
+          ), false)
       ) m
       JOIN line_accounts la ON la.full_phone = m.full_phone AND la.account_no IS NOT NULL AND la.account_no <> ''
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
@@ -4204,11 +4231,11 @@ export async function registerRoutes(
     if (box) { params.push(box); plConds.push(`pl.box_number = $${params.length}`); }
 
     const regCte = `WITH reg AS (
-       SELECT cd.phone_number AS short, cd.exchange_name AS ex FROM complaint_details cd
+       SELECT ${sp("cd.phone_number")} AS short, cd.exchange_name AS ex FROM complaint_details cd
          WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
            AND (cd.close_time AT TIME ZONE 'Africa/Cairo')::date BETWEEN $1::date AND $2::date
        UNION
-       SELECT rc.phone_number, rc.exchange_name FROM remaining_complaints rc
+       SELECT ${sp("rc.phone_number")}, rc.exchange_name FROM remaining_complaints rc
          WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
            AND COALESCE(rc.close_time, rc.complain_time)::date BETWEEN $1::date AND $2::date
     ), reg1 AS (
@@ -4265,15 +4292,15 @@ export async function registerRoutes(
     plConds.push(hasFrameSql("la.full_phone"));
 
     const regCte = `WITH reg AS (
-       SELECT cd.phone_number AS short, MAX(cd.close_time) AS ref_time FROM complaint_details cd
+       SELECT ${sp("cd.phone_number")} AS short, MAX(cd.close_time) AS ref_time FROM complaint_details cd
          WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
            AND (cd.close_time AT TIME ZONE 'Africa/Cairo')::date BETWEEN $1::date AND $2::date
-         GROUP BY cd.phone_number
+         GROUP BY ${sp("cd.phone_number")}
        UNION ALL
-       SELECT rc.phone_number, MAX(COALESCE(rc.close_time, rc.complain_time)) FROM remaining_complaints rc
+       SELECT ${sp("rc.phone_number")}, MAX(COALESCE(rc.close_time, rc.complain_time)) FROM remaining_complaints rc
          WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
            AND COALESCE(rc.close_time, rc.complain_time)::date BETWEEN $1::date AND $2::date
-         GROUP BY rc.phone_number
+         GROUP BY ${sp("rc.phone_number")}
     ), regm AS (
        SELECT short, MAX(ref_time) AS ref_time FROM reg GROUP BY short
     )`;
@@ -5571,23 +5598,26 @@ export async function registerRoutes(
         ]);
       }
 
-      await pool.query("DELETE FROM ftth_subscribers");
-      let inserted = 0;
-      const BATCH = 300;
-      for (let s = 0; s < inserts.length; s += BATCH) {
-        const chunk = inserts.slice(s, s + BATCH);
-        const ph = chunk.map((_, ci) => {
-          const o = ci * 9;
-          return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9})`;
-        }).join(",");
-        const r = await pool.query(
-          `INSERT INTO ftth_subscribers
-             (sector, region, main_ex, sub_ex, fcc_code, type, msan_gpon_code, fbb_subs, fv_subs)
-           VALUES ${ph}`,
-          chunk.flat(),
-        );
-        inserted += r.rowCount ?? 0;
-      }
+      const inserted = await withTx(async (tx) => {
+        await tx.query("DELETE FROM ftth_subscribers");
+        let n = 0;
+        const BATCH = 300;
+        for (let s = 0; s < inserts.length; s += BATCH) {
+          const chunk = inserts.slice(s, s + BATCH);
+          const ph = chunk.map((_, ci) => {
+            const o = ci * 9;
+            return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9})`;
+          }).join(",");
+          const r = await tx.query(
+            `INSERT INTO ftth_subscribers
+               (sector, region, main_ex, sub_ex, fcc_code, type, msan_gpon_code, fbb_subs, fv_subs)
+             VALUES ${ph}`,
+            chunk.flat(),
+          );
+          n += r.rowCount ?? 0;
+        }
+        return n;
+      });
       res.json({ inserted, total: inserts.length });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
@@ -5601,10 +5631,14 @@ export async function registerRoutes(
     try {
       const { rows, mode } = req.body as { rows: any[][]; mode: "replace" | "append" };
       if (!Array.isArray(rows)) return res.status(400).json({ message: "لا توجد بيانات" });
-      if (mode === "replace") await pool.query("DELETE FROM ftth_subscribers");
       const toInt = (v: any) => { const n = parseInt(String(v)); return isNaN(n) ? null : n; };
+      // المسح + أول دفعة فى transaction واحدة: فشل الطلب الأول كان بيسيب الجدول
+      // فاضى خالص. (الدفعات التالية طلبات مستقلة — لو النت وقع فى نصها الجدول
+      // بيبقى ناقص وبيتقال للمستخدم فى الرد إن العدد أقل من المتوقع.)
       let inserted = 0;
       const BATCH = 300;
+      await withTx(async (tx) => {
+      if (mode === "replace") await tx.query("DELETE FROM ftth_subscribers");
       for (let s = 0; s < rows.length; s += BATCH) {
         const chunk = rows.slice(s, s + BATCH).map((r) => [
           String(r[0] ?? "") || null,
@@ -5621,7 +5655,7 @@ export async function registerRoutes(
           const o = ci * 9;
           return `($${o+1},$${o+2},$${o+3},$${o+4},$${o+5},$${o+6},$${o+7},$${o+8},$${o+9})`;
         }).join(",");
-        const r2 = await pool.query(
+        const r2 = await tx.query(
           `INSERT INTO ftth_subscribers
              (sector, region, main_ex, sub_ex, fcc_code, type, msan_gpon_code, fbb_subs, fv_subs)
            VALUES ${ph}`,
@@ -5629,6 +5663,7 @@ export async function registerRoutes(
         );
         inserted += r2.rowCount ?? 0;
       }
+      });
       res.json({ inserted });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
@@ -5726,7 +5761,10 @@ export async function registerRoutes(
       }
       const inserts = Array.from(byKey.values());
 
-      // دمج بدل المسح الكامل (complain_no عمود 2، full_phone عمود 6):
+      // دمج بدل المسح الكامل (complain_no عمود 2، full_phone عمود 6).
+      // كله جوه transaction واحدة: فشل فى نص الرفع كان بيمسح قياسات قديمة من غير
+      // ما يدخّل الجديدة — تاريخ القياسات كان بيضيع بصمت.
+      const { inserted } = await withTx(async (tx) => {
       const DEL_BATCH = 1000;
       // (1) امسح الشكاوى الموجودة فى الملف (لتُستبدل بأحدث بياناتها).
       const complainNos = Array.from(
@@ -5735,7 +5773,7 @@ export async function registerRoutes(
       for (let s = 0; s < complainNos.length; s += DEL_BATCH) {
         const chunk = complainNos.slice(s, s + DEL_BATCH);
         const ph = chunk.map((_, i) => `$${i + 1}`).join(",");
-        await pool.query(`DELETE FROM case_138 WHERE complain_no IN (${ph})`, chunk);
+        await tx.query(`DELETE FROM case_138 WHERE complain_no IN (${ph})`, chunk);
       }
       // (2) للصفوف بدون رقم شكوى: امسح صفوف نفس التليفون الكامل التى لا شكوى لها فقط
       //     (حتى لا نمس صفوف الشكاوى لنفس الرقم) — وندخّل القراية الجديدة بدلها.
@@ -5745,12 +5783,12 @@ export async function registerRoutes(
       for (let s = 0; s < noComplainPhones.length; s += DEL_BATCH) {
         const chunk = noComplainPhones.slice(s, s + DEL_BATCH);
         const ph = chunk.map((_, i) => `$${i + 1}`).join(",");
-        await pool.query(
+        await tx.query(
           `DELETE FROM case_138 WHERE full_phone IN (${ph}) AND (complain_no IS NULL OR complain_no = '')`,
           chunk,
         );
       }
-      let inserted = 0;
+      let inserted = 0;  // جوه الـ transaction
       const BATCH = 200;
       for (let s = 0; s < inserts.length; s += BATCH) {
         const chunk = inserts.slice(s, s + BATCH);
@@ -5758,7 +5796,7 @@ export async function registerRoutes(
           const o = ci * 19;
           return "(" + Array.from({ length: 19 }, (_, k) => `$${o+k+1}`).join(",") + ")";
         }).join(",");
-        const r = await pool.query(
+        const r = await tx.query(
           `INSERT INTO case_138
              (central_name, phone_short, complain_no, score, current_speed, max_speed,
               full_phone, account_no, status_code, cabinet_no, box_no, complain_type_name,
@@ -5773,13 +5811,15 @@ export async function registerRoutes(
       for (let s = 0; s < withAccount.length; s += BATCH) {
         const chunk = withAccount.slice(s, s + BATCH);
         const ph = chunk.map((_, ci) => `($${ci*2+1}, $${ci*2+2}, 'case_138')`).join(",");
-        await pool.query(
+        await tx.query(
           `INSERT INTO line_accounts (full_phone, account_no, source)
            VALUES ${ph}
            ON CONFLICT (full_phone) DO NOTHING`,
           chunk.flatMap(r => [String(r[6]).trim(), String(r[7]).trim()])
         );
       }
+      return { inserted };
+      });
       res.json({ inserted, total: inserts.length });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
@@ -6295,7 +6335,7 @@ export async function registerRoutes(
              SELECT pl.central, pl.cabin_number, pl.box_number, pl.tel_no,
                     COUNT(DISTINCT fu.complain_no) AS cnt
              FROM phone_lines pl
-             LEFT JOIN fu ON fu.phone_number = pl.tel_no
+             LEFT JOIN fu ON ${sp("fu.phone_number")} = pl.tel_no
              WHERE COALESCE(pl.box_number, '') <> ''
              GROUP BY pl.central, pl.cabin_number, pl.box_number, pl.tel_no
            )
@@ -6761,7 +6801,10 @@ export async function registerRoutes(
         ]);
       }
 
-      await pool.query("DELETE FROM cabinet_technicians");
+      // transaction: فشل فى النص كان بيسيب فنيى الكباين ناقصين — وده بيكسر
+      // «متعذراتى» وownedByMe وكل نسب الفنيين لحد ما الشيت يترفع تانى.
+      const inserted = await withTx(async (tx) => {
+      await tx.query("DELETE FROM cabinet_technicians");
       let inserted = 0;
       const BATCH = 200;
       for (let s = 0; s < inserts.length; s += BATCH) {
@@ -6770,7 +6813,7 @@ export async function registerRoutes(
           const o = ci * 10;
           return "(" + Array.from({ length: 10 }, (_, k) => `$${o+k+1}`).join(",") + ")";
         }).join(",");
-        const r = await pool.query(
+        const r = await tx.query(
           `INSERT INTO cabinet_technicians
              (central_name, cabin_number, worker_code, haya_karima, region_name,
               active, central_finish, village_code, cabin_code, idu)
@@ -6779,6 +6822,8 @@ export async function registerRoutes(
         );
         inserted += r.rowCount ?? 0;
       }
+      return inserted;
+      });
       res.json({ inserted, total: inserts.length });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
@@ -6827,7 +6872,8 @@ export async function registerRoutes(
         ]);
       }
 
-      await pool.query("DELETE FROM cabinet_capacity");
+      const inserted = await withTx(async (tx) => {
+      await tx.query("DELETE FROM cabinet_capacity");
       let inserted = 0;
       const BATCH = 200;
       for (let s = 0; s < inserts.length; s += BATCH) {
@@ -6836,7 +6882,7 @@ export async function registerRoutes(
           const o = ci * 7;
           return "(" + Array.from({ length: 7 }, (_, k) => `$${o+k+1}`).join(",") + ")";
         }).join(",");
-        const r = await pool.query(
+        const r = await tx.query(
           `INSERT INTO cabinet_capacity
              (central_name, exch_code, exch_name, cabin_number, cabinet_type, primary_capacity, secondary_capacity)
            VALUES ${ph}`,
@@ -6844,6 +6890,8 @@ export async function registerRoutes(
         );
         inserted += r.rowCount ?? 0;
       }
+      return inserted;
+      });
       res.json({ inserted, total: inserts.length });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
@@ -6976,7 +7024,8 @@ export async function registerRoutes(
         inserts.push([workerCode, techName]);
       }
 
-      await pool.query("DELETE FROM technician_names");
+      const inserted = await withTx(async (tx) => {
+      await tx.query("DELETE FROM technician_names");
       let inserted = 0;
       const BATCH = 200;
       for (let s = 0; s < inserts.length; s += BATCH) {
@@ -6985,12 +7034,14 @@ export async function registerRoutes(
         const ph = chunk.map((_, ci) => `($${ci * 2 + 1},$${ci * 2 + 2},$${uidPos})`).join(",");
         const vals: any[] = chunk.flatMap(([code, name]) => [code, name]);
         vals.push(req.user.id);
-        const r = await pool.query(
+        const r = await tx.query(
           `INSERT INTO technician_names (worker_code, tech_name, uploaded_by_id) VALUES ${ph}`,
           vals,
         );
         inserted += r.rowCount ?? 0;
       }
+      return inserted;
+      });
       res.json({ inserted, skipped: inserts.length - inserted });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -9208,7 +9259,7 @@ export async function registerRoutes(
          FROM phone_lines pl
          LEFT JOIN cabinet_technicians ct ON ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
-         LEFT JOIN fault_union fu ON fu.phone_number = pl.tel_no
+         LEFT JOIN fault_union fu ON ${sp("fu.phone_number")} = pl.tel_no
          ${where}
          GROUP BY pl.central, pl.cabin_number, pl.box_number
          ORDER BY pl.central, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0')`,

@@ -40,18 +40,34 @@ function sanitizeUser(user: User) {
   return userWithoutPassword;
 }
 
+// الجلسة كانت بتخزّن صورة كاملة من المستخدم — تنزيل رتبة/إيقاف/حذف حساب ماكانش
+// بيسرى على الجلسات المفتوحة (لحد 7 أيام). هنا بنقرا الحساب طازج من قاعدة
+// البيانات فى كل طلب: المحذوف/الموقوف بيتطرد فوراً، وتغيير الدور بيسرى فوراً.
+async function refreshCfmSession(req: express.Request): Promise<User | null> {
+  const sess = req.session.cfmUser;
+  if (!sess) return null;
+  try {
+    const fresh = await storage.getUser(sess.id);
+    if (!fresh || (fresh as any).suspended) { delete req.session.cfmUser; return null; }
+    req.session.cfmUser = fresh;
+    return fresh;
+  } catch { return sess; /* فشل مؤقت فى القراءة مايطردش مستخدم شغّال */ }
+}
+
 function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!req.session.cfmUser) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
+  refreshCfmSession(req)
+    .then((u) => (u ? next() : res.status(401).json({ error: "Unauthorized" })))
+    .catch(next);
 }
 
 function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!req.session.cfmUser || req.session.cfmUser.role !== "admin") {
-    return res.status(403).json({ error: "Forbidden: Admin access required" });
-  }
-  next();
+  refreshCfmSession(req)
+    .then((u) => {
+      if (!u) return res.status(401).json({ error: "Unauthorized" });
+      if (u.role !== "admin") return res.status(403).json({ error: "Forbidden: Admin access required" });
+      next();
+    })
+    .catch(next);
 }
 
 export function registerCfmRoutes(app: Express) {
@@ -1031,6 +1047,11 @@ export function registerCfmRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid task entry data", details: validation.error });
       }
 
+      // items لازم تكون مصفوفة قبل ما نحفظ أى حاجة — عمود json بيقبل أى شكل،
+      // وكان السطر بيتحفظ وبعدها اللوب يقع فيفضل بند من غير حركات مخزن.
+      if (!Array.isArray(validation.data.items)) {
+        return res.status(400).json({ error: "items لازم تكون مصفوفة بنود" });
+      }
       // Create the used task entry
       const usedTaskEntry = await storage.createUsedTaskEntry(validation.data);
 
@@ -1148,6 +1169,22 @@ export function registerCfmRoutes(app: Express) {
         return res.status(403).json({ error: "Forbidden: Only admin can modify closed tickets" });
       }
       
+      // إرجاع الخامات للمخزن: الحذف كان بيشيل السطر ويسيب حركات الصرف زى ما هى،
+      // فتصحيح كمية غلط (حذف وإعادة إضافة) كان بيخصم الخامة مرتين للأبد.
+      const entryItems = Array.isArray(entry.items)
+        ? (entry.items as Array<{ taskTypeId: string; quantity: number }>)
+        : [];
+      for (const item of entryItems) {
+        if (!item?.taskTypeId || !item?.quantity) continue;
+        await storage.createInventoryTransaction({
+          type: "incoming",
+          taskTypeId: item.taskTypeId,
+          quantity: item.quantity,
+          date: new Date(),
+          ticketId,
+          notes: "إرجاع خامات — حذف بند مهمات من التكت",
+        });
+      }
       await storage.deleteUsedTaskEntry(id);
       res.json({ success: true });
     } catch (error) {

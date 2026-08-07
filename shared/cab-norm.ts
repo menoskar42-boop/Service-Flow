@@ -33,23 +33,28 @@ export const normBox = (s: unknown): string => {
   return d ? String(parseInt(d, 10)) : "";
 };
 
-/** فكّ بكسيات التكت: «1:5» → 1..5 | «1&15» → 1,15 | «4» → 4 */
+/** فكّ بكسيات التكت: «1:5» → 1..5 | «1&15» → 1,15 | «1:5&8» → 1..5,8 | «4» → 4
+ *  الفواصل (& ، ,) بتتفك الأول وبعدين النطاق جوه كل جزء — قبل كده «1:5&8» كانت
+ *  بتتقرا 1..58 فتكت واحدة تمنع 57 بكس ملهومش دعوة. */
 export function expandBoxes(boxStr: unknown): string[] {
   const s = toAsciiDigits(String(boxStr ?? "")).trim();
   if (!s) return [];
-  if (s.includes(":")) {
-    const [a, b] = s.split(":").map((x) => parseInt(x.replace(/[^0-9]/g, ""), 10));
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      const lo = Math.min(a, b), hi = Math.max(a, b);
-      const out: string[] = [];
-      for (let i = lo; i <= hi && i - lo < 1000; i++) out.push(String(i));
-      return out;
+  const out: string[] = [];
+  for (const part of s.split(/[&،,]/)) {
+    const seg = part.trim();
+    if (!seg) continue;
+    if (seg.includes(":")) {
+      const [a, b] = seg.split(":").map((x) => parseInt(x.replace(/[^0-9]/g, ""), 10));
+      if (Number.isFinite(a) && Number.isFinite(b)) {
+        const lo = Math.min(a, b), hi = Math.max(a, b);
+        for (let i = lo; i <= hi && i - lo < 1000; i++) out.push(String(i));
+        continue;
+      }
     }
+    const one = normBox(seg);
+    if (one) out.push(one);
   }
-  if (/[&،,]/.test(s)) {
-    return s.split(/[&،,]/).map((x) => normBox(x)).filter(Boolean);
-  }
-  return normBox(s) ? [normBox(s)] : [];
+  return Array.from(new Set(out));
 }
 
 /** مفتاح موحّد للبكس: سنترال|كابينة|بكس */
