@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.7
+// @version      1.5.8
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -274,7 +274,11 @@
     return input;
   }
 
-  function scrapeDataTable() {
+  // ⚠️ جدول البوابة مقسّم صفحات (٥–٦ صفوف معروضة من ١١١٩). فى DataTables العادى
+  // (client-side) الدالة rows() بترجّع **كل** الصفوف مش المعروض بس — وده المطلوب.
+  // لكن لو البوابة server-side مابيبقاش فى الذاكرة غير الصفحة الحالية، فبنكشف ده
+  // (صفوف الجدول أقل من المتوقّع) ونوسّع الصفحة مؤقتاً ثم نرجّعها زى ما كانت.
+  function scrapeDataTable(minExpected) {
     try {
       const $ = window.jQuery || window.$;
       if (!$ || !$.fn || !$.fn.DataTable) return null;
@@ -282,13 +286,70 @@
       if (!tbl) return null;
       const dt = $(tbl).DataTable();
       const heads = [...tbl.querySelectorAll("thead th")].map((th) => norm(th.textContent));
-      const data = dt.rows().data().toArray();
-      if (!data.length) return null;
-      return data.map((row) => {
+      const toObjs = (data) => data.map((row) => {
         if (Array.isArray(row)) { const o = {}; heads.forEach((h, i) => { o[h] = row[i]; }); return o; }
         return row;
       });
+      let data = dt.rows().data().toArray();
+      if (minExpected && data.length && data.length < minExpected) {
+        let prevLen = null;
+        try {
+          prevLen = dt.page.len();
+          if (prevLen !== -1) {
+            dt.page.len(-1).draw(false);
+            data = dt.rows().data().toArray();
+            console.log("[PORTS] الجدول كان صفحة واحدة (" + prevLen + ") — وسّعناه لـ " + data.length + " صف");
+          }
+        } catch (e) { /* التوسيع مش متاح — نكمّل باللى معانا */ }
+        finally { try { if (prevLen != null && prevLen !== -1) dt.page.len(prevLen).draw(false); } catch (e) {} }
+      }
+      if (!data.length) return null;
+      return toObjs(data);
     } catch (e) { return null; }
+  }
+
+  // بيانات الشبكة (JSON) مابترجّعش عمود Shelf، رغم إن **جدول الصفحة نفسه فيه
+  // عمود Shelf بقيمة**. هنا بنكمّل أى خانة فاضية من صف الجدول المقابل (مطابقة
+  // برقم التليفون). إضافة آمنة: القيمة الموجودة فى الـ JSON بتفضل زى ما هى، ولو
+  // الجدول مش متاح بنرجّع الصفوف من غير تغيير.
+  // ⚠️ خاص بتدفّق تحديث البورتات (sf_ports) بس — مالوش أى علاقة بتغيير البورت.
+  function mergeFromTable(rows) {
+    try {
+      if (!Array.isArray(rows) || !rows.length) return rows;
+      const tbl = scrapeDataTable(rows.length);
+      if (!tbl || !tbl.length) return rows;
+      if (tbl.length < rows.length) {
+        console.warn("[PORTS] جدول الصفحة فيه " + tbl.length + " صف بس مقابل " +
+                     rows.length + " من الشبكة — هنكمّل اللى نقدر عليه.");
+      }
+      const digits = (v) => String(v == null ? "" : v).replace(/\D/g, "");
+      const clean = (v) => String(v == null ? "" : v).replace(/<[^>]*>/g, "").trim();
+      const byPhone = new Map();
+      for (const t of tbl) {
+        const ph = digits(pickKey(t, "phonenumber", "phone", "msisdn"));
+        if (ph && !byPhone.has(ph)) byPhone.set(ph, t);
+      }
+      if (!byPhone.size) return rows;
+      const KEYS = ["areacode", "msancode", "frame", "row", "column", "shelf", "slot",
+                    "portnumber", "porttype", "voicestatus", "datastatus", "operator"];
+      let filled = 0;
+      const out = rows.map((o) => {
+        const ph = digits(pickKey(o, "phonenumber", "phone", "msisdn"));
+        const t = ph && byPhone.get(ph);
+        if (!t) return o;
+        const merged = Object.assign({}, o);
+        for (const k of KEYS) {
+          if (pickKey(merged, k) !== "") continue;   // موجودة خلاص من الـ JSON
+          const v = clean(pickKey(t, k));
+          if (v) { merged[k] = v; filled++; }
+        }
+        return merged;
+      });
+      const withShelf = out.filter((o) => pickKey(o, "shelf") !== "").length;
+      console.log("[PORTS] الدمج: كمّلنا " + filled + " قيمة من الجدول · " +
+                  withShelf + "/" + out.length + " صف بقى ليه شيلف");
+      return out;
+    } catch (e) { return rows; }
   }
 
   async function searchAndRead(input, cabin) {
@@ -301,7 +362,12 @@
     else { logln("⚠️ لم أجد زر Search — أُرسل Enter."); input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); input.dispatchEvent(new KeyboardEvent("keypress", { key: "Enter", keyCode: 13, which: 13, bubbles: true })); }
     const end = Date.now() + SEARCH_WAIT_MS;
     while (Date.now() < end) {
-      if (captures.length > marker) return captures[captures.length - 1].rows;
+      if (captures.length > marker) {
+        // كمّل الأعمدة الناقصة (الشيلف) من جدول الصفحة، بعد مهلة صغيرة يرسم فيها Angular
+        const jsonRows = captures[captures.length - 1].rows;
+        await sleep(900);
+        return mergeFromTable(jsonRows);
+      }
       const scraped = scrapeDataTable();
       if (scraped && scraped.length) return scraped;
       if (/no\s*data|no\s*matching|0\s*entries|no\s*record/i.test((document.body.innerText || ""))) return [];
