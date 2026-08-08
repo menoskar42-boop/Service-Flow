@@ -24,11 +24,31 @@ interface Row {
   cardTypeCount: number;
 }
 
+// ── سعة الكارت والمتبقى ────────────────────────────────────────────────────
+// السعة مش موجودة فى ملف البورتات، فبنستنتجها بقواعد السنترال:
+//  • الأصل إن كل الكروت سعتها 64 بورت.
+//  • كابينة 11-2-76-01 كروتها 32 (استثناء معروف).
+//  • أى سلوت عليه **أكتر من 68** خط شغّال ده كارت 128 — مفيش كارت 64 يشيل العدد ده.
+// المتبقى = السعة − الشغّال، وبيتقفل عند الصفر: السلوت اللى عليه 65 أو 68 على كارت
+// 64 معناه إنه مليان (الزيادة البسيطة دى بتيجى من صفوف مكرّرة/قديمة فى الملف) —
+// من غير القفل ده كان هيطلع رقم سالب.
+const CAB_32 = new Set(["11-2-76-01"]);
+const normCabCode = (s: unknown) => String(s ?? "").replace(/\s+/g, "").trim();
+
+export const cardCapacity = (r: Row): number => {
+  const w = r.workingCount || 0;
+  if (CAB_32.has(normCabCode(r.msanCode)) && w <= 32) return 32;
+  return w > 68 ? 128 : 64;
+};
+export const cardFree = (r: Row): number => Math.max(0, cardCapacity(r) - (r.workingCount || 0));
+
 const COLS: [string, (r: Row) => any][] = [
   ["كود كابينة المسان", (r) => r.msanCode],
   ["شيلف", (r) => r.shelf],
   ["سلوت", (r) => r.slot],
   ["عدد الشغال", (r) => r.workingCount],
+  ["سعة الكارت", (r) => cardCapacity(r)],
+  ["المتبقى", (r) => cardFree(r)],
   // النوع بيتعرض بعدده («VDSL 64 + SV 64») — السلوت ساعات فيه أكتر من نوع فبنعرضهم كلهم
   ["نوع الكارت", (r) => r.cardType || "-"],
 ];
@@ -54,6 +74,8 @@ export function SlotCardsReport() {
 
   const rows = data?.data ?? [];
   const totalWorking = rows.reduce((s, r) => s + (r.workingCount || 0), 0);
+  const totalCapacity = rows.reduce((s, r) => s + cardCapacity(r), 0);
+  const totalFree = rows.reduce((s, r) => s + cardFree(r), 0);
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
@@ -83,9 +105,18 @@ export function SlotCardsReport() {
               لأى خط جوّه السلوت). الشغّال = الخط اللى ليه فريم.
               {data && (
                 <span className="text-purple-600">
-                  {" "}({data.total.toLocaleString("ar-EG")} سلوت — {totalWorking.toLocaleString("ar-EG")} خط شغّال)
+                  {" "}({data.total.toLocaleString("ar-EG")} سلوت — {totalWorking.toLocaleString("ar-EG")} خط شغّال
+                  {" "}من سعة {totalCapacity.toLocaleString("ar-EG")} —{" "}
+                  <span className="text-green-700 font-semibold">
+                    متبقى {totalFree.toLocaleString("ar-EG")} بورت
+                  </span>)
                 </span>
               )}
+              <br />
+              <span className="text-[11px]">
+                سعة الكارت: 64 بورت للكل، ما عدا كابينة 11-2-76-01 (32)، وأى سلوت عليه أكتر من
+                68 خط شغّال بيتحسب كارت 128.
+              </span>
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -155,9 +186,15 @@ export function SlotCardsReport() {
                 <TableRow key={`${r.msanCode}|${r.shelf}|${r.slot}|${i}`}>
                   {COLS.map(([h, f]) => (
                     <TableCell key={h} className="whitespace-nowrap text-sm">
-                      {h === "عدد الشغال"
-                        ? <span className="font-semibold">{r.workingCount}</span>
-                        : (f(r) ?? "-")}
+                      {h === "عدد الشغال" ? (
+                        <span className="font-semibold">{r.workingCount}</span>
+                      ) : h === "سعة الكارت" ? (
+                        <span className="text-muted-foreground">{cardCapacity(r)}</span>
+                      ) : h === "المتبقى" ? (
+                        <span className={cardFree(r) > 0 ? "font-bold text-green-700" : "text-red-600"}>
+                          {cardFree(r)}
+                        </span>
+                      ) : (f(r) ?? "-")}
                     </TableCell>
                   ))}
                 </TableRow>
