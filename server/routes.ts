@@ -6200,13 +6200,23 @@ export async function registerRoutes(
            (phone_number, area_code, msan_code, frame, row_no, column_no, shelf, slot, port_number,
             port_type, voice_status, data_status, operator, onu)
          VALUES ${ph}
+         -- ⚠️ القيمة الفاضية ماتمسحش قيمة موجودة: سكربت البورتال مابيرجّعش عمود
+         -- Shelf (فاضى فى كل صفوفه)، فكان بيمسح رقم الشيلف اللى جاى من ملف
+         -- MSANData_export كل نص ساعة. الجديد بيكسب **بس** لو فيه قيمة فعلاً.
          ON CONFLICT (phone_number) DO UPDATE SET
-           area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code,
-           frame = EXCLUDED.frame, row_no = EXCLUDED.row_no, column_no = EXCLUDED.column_no,
-           shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
-           port_number = EXCLUDED.port_number, port_type = EXCLUDED.port_type,
-           voice_status = EXCLUDED.voice_status, data_status = EXCLUDED.data_status,
-           operator = EXCLUDED.operator, onu = EXCLUDED.onu, uploaded_at = now()`,
+           area_code = COALESCE(NULLIF(btrim(EXCLUDED.area_code), ''), phone_ports.area_code),
+           msan_code = COALESCE(NULLIF(btrim(EXCLUDED.msan_code), ''), phone_ports.msan_code),
+           frame = COALESCE(NULLIF(btrim(EXCLUDED.frame), ''), phone_ports.frame),
+           row_no = COALESCE(NULLIF(btrim(EXCLUDED.row_no), ''), phone_ports.row_no),
+           column_no = COALESCE(NULLIF(btrim(EXCLUDED.column_no), ''), phone_ports.column_no),
+           shelf = COALESCE(NULLIF(btrim(EXCLUDED.shelf), ''), phone_ports.shelf),
+           slot = COALESCE(NULLIF(btrim(EXCLUDED.slot), ''), phone_ports.slot),
+           port_number = COALESCE(NULLIF(btrim(EXCLUDED.port_number), ''), phone_ports.port_number),
+           port_type = COALESCE(NULLIF(btrim(EXCLUDED.port_type), ''), phone_ports.port_type),
+           voice_status = COALESCE(NULLIF(btrim(EXCLUDED.voice_status), ''), phone_ports.voice_status),
+           data_status = COALESCE(NULLIF(btrim(EXCLUDED.data_status), ''), phone_ports.data_status),
+           operator = COALESCE(NULLIF(btrim(EXCLUDED.operator), ''), phone_ports.operator),
+           onu = COALESCE(NULLIF(btrim(EXCLUDED.onu), ''), phone_ports.onu), uploaded_at = now()`,
         chunk.flat(),
       );
       affected += r.rowCount ?? 0;
@@ -7146,12 +7156,19 @@ export async function registerRoutes(
              (phone_number, area_code, msan_code, frame, shelf, slot, port_number,
               port_type, voice_status, data_status, operator, onu)
            VALUES ${ph}
+           -- نفس القاعدة: شيت ناقص عمود مايمسحش القيمة المخزّنة (الشيلف مثلاً)
            ON CONFLICT (phone_number) DO UPDATE SET
-             area_code = EXCLUDED.area_code, msan_code = EXCLUDED.msan_code,
-             frame = EXCLUDED.frame, shelf = EXCLUDED.shelf, slot = EXCLUDED.slot,
-             port_number = EXCLUDED.port_number, port_type = EXCLUDED.port_type,
-             voice_status = EXCLUDED.voice_status, data_status = EXCLUDED.data_status,
-             operator = EXCLUDED.operator, onu = EXCLUDED.onu, uploaded_at = now()`,
+             area_code = COALESCE(NULLIF(btrim(EXCLUDED.area_code), ''), phone_ports.area_code),
+             msan_code = COALESCE(NULLIF(btrim(EXCLUDED.msan_code), ''), phone_ports.msan_code),
+             frame = COALESCE(NULLIF(btrim(EXCLUDED.frame), ''), phone_ports.frame),
+             shelf = COALESCE(NULLIF(btrim(EXCLUDED.shelf), ''), phone_ports.shelf),
+             slot = COALESCE(NULLIF(btrim(EXCLUDED.slot), ''), phone_ports.slot),
+             port_number = COALESCE(NULLIF(btrim(EXCLUDED.port_number), ''), phone_ports.port_number),
+             port_type = COALESCE(NULLIF(btrim(EXCLUDED.port_type), ''), phone_ports.port_type),
+             voice_status = COALESCE(NULLIF(btrim(EXCLUDED.voice_status), ''), phone_ports.voice_status),
+             data_status = COALESCE(NULLIF(btrim(EXCLUDED.data_status), ''), phone_ports.data_status),
+             operator = COALESCE(NULLIF(btrim(EXCLUDED.operator), ''), phone_ports.operator),
+             onu = COALESCE(NULLIF(btrim(EXCLUDED.onu), ''), phone_ports.onu), uploaded_at = now()`,
           chunk.flat(),
         );
         affected += r.rowCount ?? 0;
