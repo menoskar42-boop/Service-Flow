@@ -43,6 +43,10 @@ interface LineData {
   fiberOut: string | null;
   fullPhone: string;
   accountNo: string | null;
+  /** الخط اتفحص واتعلّم «بدون أكونت» من مسئول البيانات = صوت بس مش داتا */
+  markedNoAccount?: boolean | null;
+  noAccountBy?: string | null;
+  noAccountAt?: string | null;
   currentSpeed: string | null;
   maxSpeed: string | null;
   score: number | null;
@@ -536,6 +540,26 @@ export function PhoneLookupReport() {
     } catch { setHistRows([]); }
   };
 
+  // رقم الأكونت: بنفرّق بين حالتين كانوا بيبانوا نفس الشكل («-»):
+  //   • الخط لسه **ماتفحصش** → «-» عادى (يمكن يكون ليه أكونت ولسه ماتسجّلش).
+  //   • الخط **اتفحص** ومسئول البيانات علّمه «بدون أكونت» → يعنى صوت بس مش داتا.
+  const accountCell: ReactNode = line?.accountNo
+    ? dash(line.accountNo)
+    : line?.markedNoAccount
+      ? (
+        <span className="inline-flex flex-col items-start gap-0.5">
+          <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold text-xs">
+            صوت فقط — مافيش داتا
+          </span>
+          <span className="text-[11px] text-muted-foreground">
+            اتفحص واتشال من «بدون أكونت»
+            {line.noAccountBy ? ` — ${line.noAccountBy}` : ""}
+            {line.noAccountAt ? ` · ${fmtDate(line.noAccountAt)}` : ""}
+          </span>
+        </span>
+      )
+      : <span className="text-muted-foreground">— لسه ماتفحصش</span>;
+
   // الترتيب مطابق للإكسيل: الشبكة RTL تملأ الخلية اليمنى ثم اليسرى فى كل صف —
   // فالمصفوفة مرتّبة: (يمين1, شمال1, يمين2, شمال2 …) للصفوف 1–12، ثم الحقول الفنية الباقية كامل العرض (صف لكل حقل).
   const fields: [string, ReactNode][] = line
@@ -544,7 +568,7 @@ export function PhoneLookupReport() {
         ["اسم العميل", dash(line.subName)],             ["رقم الموبايل", mobileCell],
         ["عنوان العميل", dash(line.subAdd)],            ["السنترال", dash(line.central)],
         ["اسم الفنى", dash(line.techName)],             ["رقم الكابينة", dash(line.cabinNumber)],
-        ["رقم الأكونت", dash(line.accountNo)],          ["رقم البكس", dash(line.boxNumber)],
+        ["رقم الأكونت", accountCell],                   ["رقم البكس", dash(line.boxNumber)],
         ["السرعة الحالية", dash(line.currentSpeed)],    ["DP Terminal", dash(line.dpTerminal)],
         ["أقصى سرعة", dash(line.maxSpeed)],             ["كود الكابينة (MSAN)", dash(line.msanCode)],
         ["الاسكور", scoreBadge(line.score)],            ["رقم الفريم", dash(line.frame)],
@@ -596,7 +620,10 @@ export function PhoneLookupReport() {
       "السنترال": line.central,
       "اسم الفنى": line.techName ?? "",
       "رقم الكابينة": line.cabinNumber ?? "",
-      "رقم الأكونت": line.accountNo ?? "",
+      "رقم الأكونت": line.accountNo
+        || (line.markedNoAccount
+            ? `صوت فقط — مافيش داتا (اتفحص${line.noAccountBy ? " — " + line.noAccountBy : ""})`
+            : "لسه ماتفحصش"),
       "رقم الموبايل": line.mobile ?? "",
       "رقم البكس": line.boxNumber ?? "",
       "السرعة الحالية": line.currentSpeed ?? "",

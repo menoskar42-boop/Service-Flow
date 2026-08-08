@@ -4126,6 +4126,12 @@ export async function registerRoutes(
               si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
               COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
+              -- الخط اتفحص واتعلّم «بدون أكونت» (مسئول البيانات شاله من التقرير):
+              -- ده معناه إنه **صوت بس مش داتا** — نفرّق بيه بين اللى لسه ماتفحصش
+              -- (مفيش أكونت ومفيش علامة) واللى اتفحص وثبت إنه مالوش خدمة داتا.
+              (na.full_phone IS NOT NULL)                       AS "markedNoAccount",
+              na.marked_by_name                                  AS "noAccountBy",
+              (na.marked_at AT TIME ZONE 'Africa/Cairo')         AS "noAccountAt",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
               c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               c.measured_by AS "measuredBy",
@@ -4155,6 +4161,7 @@ export async function registerRoutes(
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
        LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
+       LEFT JOIN lines_no_account na ON na.full_phone = COALESCE(pl.full_phone, t.full)
        LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
        LEFT JOIN phone_ports pp ON pp.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
        LEFT JOIN line_subscriber_info si ON si.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
