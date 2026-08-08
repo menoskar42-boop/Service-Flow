@@ -7502,7 +7502,11 @@ export async function registerRoutes(
                 SUM(ports)::int AS "portsCount",
                 string_agg(pt || ' ' || work, ' + ' ORDER BY work DESC, pt)
                   FILTER (WHERE pt IS NOT NULL)          AS "cardType",
-                COUNT(*) FILTER (WHERE pt IS NOT NULL)::int AS "cardTypeCount"
+                COUNT(*) FILTER (WHERE pt IS NOT NULL)::int AS "cardTypeCount",
+                -- النوع الغالب على السلوت (أكبر عدد شغّال) — الكارت واحد للسلوت كله،
+                -- فسعته والفاضى فيه بيتحسبوا على النوع ده لما نجمّع بالكابينة × النوع.
+                (array_agg(pt ORDER BY work DESC, pt)
+                   FILTER (WHERE pt IS NOT NULL))[1]     AS "portType"
            FROM per_type
           GROUP BY 1, 2, 3
           ${having}
