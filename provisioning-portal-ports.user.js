@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.3.0
+// @version      1.3.1
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -263,7 +263,12 @@
 
   /* ================== قراءة صفوف الأمسان بعد Search ================== */
   // مسح احتياطى من جدول DataTables (لو مفيش التقاط شبكة)
-  function scrapeDataTable() {
+  // ⚠️ الجدول مقسّم صفحات (٥–٦ صفوف معروضة من ١١١٩). فى وضع DataTables العادى
+  // (client-side) الدالة rows() بترجّع **كل** الصفوف مش المعروض بس — وده المطلوب.
+  // لكن لو البوابة شغّالة server-side مابيبقاش فى الذاكرة غير الصفحة الحالية،
+  // فبنكشف الحالة دى (عدد صفوف الجدول أقل من المتوقّع) ونوسّع الصفحة مؤقتاً
+  // لكل الصفوف ثم نرجّعها زى ما كانت.
+  function scrapeDataTable(minExpected) {
     try {
       const $ = window.jQuery || window.$;
       if (!$ || !$.fn || !$.fn.DataTable) return null;
@@ -271,13 +276,28 @@
       if (!tbl) return null;
       const dt = $(tbl).DataTable();
       const heads = [...tbl.querySelectorAll("thead th")].map((th) => norm(th.textContent));
-      const data = dt.rows().data().toArray();
-      if (!data.length) return null;
-      // لو العناصر Arrays: حوّلها لكائنات حسب رؤوس الأعمدة
-      return data.map((row) => {
+      const toObjs = (data) => data.map((row) => {
         if (Array.isArray(row)) { const o = {}; heads.forEach((h, i) => { o[h] = row[i]; }); return o; }
         return row;
       });
+      let data = dt.rows().data().toArray();
+      // ناقص عن المتوقّع؟ يبقى إحنا شايفين صفحة واحدة — وسّع لكل الصفوف ثم ارجع
+      if (minExpected && data.length && data.length < minExpected) {
+        let prevLen = null;
+        try {
+          prevLen = dt.page.len();
+          if (prevLen !== -1) {
+            dt.page.len(-1).draw(false);
+            data = dt.rows().data().toArray();
+            console.log("[PORTS] الجدول كان صفحة واحدة (" + prevLen + ") — وسّعناه لـ " + data.length + " صف");
+          }
+        } catch (e) { /* التوسيع مش متاح — نكمّل باللى معانا */ }
+        finally {
+          try { if (prevLen != null && prevLen !== -1) dt.page.len(prevLen).draw(false); } catch (e) {}
+        }
+      }
+      if (!data.length) return null;
+      return toObjs(data);
     } catch (e) { return null; }
   }
 
@@ -288,8 +308,13 @@
   function mergeFromTable(rows) {
     try {
       if (!Array.isArray(rows) || !rows.length) return rows;
-      const tbl = scrapeDataTable();
+      // بنبلّغه بعدد صفوف الشبكة عشان يعرف لو اللى فى الجدول صفحة واحدة بس
+      const tbl = scrapeDataTable(rows.length);
       if (!tbl || !tbl.length) return rows;
+      if (tbl.length < rows.length) {
+        console.warn("[PORTS] جدول الصفحة فيه " + tbl.length + " صف بس مقابل " +
+                     rows.length + " من الشبكة — هنكمّل اللى نقدر عليه.");
+      }
       const digits = (v) => String(v == null ? "" : v).replace(/\D/g, "");
       const clean = (v) => String(v == null ? "" : v).replace(/<[^>]*>/g, "").trim();
       const byPhone = new Map();
@@ -314,7 +339,9 @@
         }
         return merged;
       });
-      if (filled) console.log("[PORTS] كمّلنا " + filled + " قيمة ناقصة من جدول الصفحة (زى الشيلف)");
+      const withShelf = out.filter((o) => pickKey(o, "shelf") !== "").length;
+      console.log("[PORTS] الدمج: كمّلنا " + filled + " قيمة من الجدول · " +
+                  withShelf + "/" + out.length + " صف بقى ليه شيلف");
       return out;
     } catch (e) { return rows; }
   }
