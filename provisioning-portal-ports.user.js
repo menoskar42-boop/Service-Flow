@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → تحديث ملف البورتات (Service-Flow)
 // @namespace    service-flow.provisioning.ports
 // @description  يفتح Get MSAN Data على Provisioning Portal (WE) لكل كود أمسان مخزّن فى Service-Flow، يعمل Search، يقرأ صفوف البورتات (Phone Number/Frame/Slot/…)، ويرفعها لـ Service-Flow فتستبدل نفس أرقام التليفونات فى ملف البورتات وتضيف الجديد. زرّ عائم يبدأ العملية.
-// @version      1.2.9
+// @version      1.3.0
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -281,6 +281,44 @@
     } catch (e) { return null; }
   }
 
+  // بيانات الشبكة (JSON) مش دايماً بتحتوى كل الأعمدة — الشيلف مثلاً بيرجع فاضى
+  // منها، رغم إن **جدول الصفحة نفسه فيه عمود Shelf بقيمة**. هنا بنكمّل أى خانة
+  // فاضية من صف الجدول المقابل (مطابقة برقم التليفون). لو الجدول مش متاح بنرجّع
+  // صفوف الـ JSON زى ما هى — الدمج إضافة آمنة مش استبدال.
+  function mergeFromTable(rows) {
+    try {
+      if (!Array.isArray(rows) || !rows.length) return rows;
+      const tbl = scrapeDataTable();
+      if (!tbl || !tbl.length) return rows;
+      const digits = (v) => String(v == null ? "" : v).replace(/\D/g, "");
+      const clean = (v) => String(v == null ? "" : v).replace(/<[^>]*>/g, "").trim();
+      const byPhone = new Map();
+      for (const t of tbl) {
+        const p = digits(pickKey(t, "phonenumber", "phone", "msisdn"));
+        if (p && !byPhone.has(p)) byPhone.set(p, t);
+      }
+      if (!byPhone.size) return rows;
+      // أسماء الأعمدة مطبَّعة زى ما scrapeDataTable بيرجّعها (lowercase بدون مسافات)
+      const KEYS = ["areacode", "msancode", "frame", "row", "column", "shelf", "slot",
+                    "portnumber", "porttype", "voicestatus", "datastatus", "operator"];
+      let filled = 0;
+      const out = rows.map((o) => {
+        const p = digits(pickKey(o, "phonenumber", "phone", "msisdn"));
+        const t = p && byPhone.get(p);
+        if (!t) return o;
+        const merged = Object.assign({}, o);
+        for (const k of KEYS) {
+          if (pickKey(merged, k) !== "") continue;   // القيمة موجودة خلاص من الـ JSON
+          const v = clean(pickKey(t, k));
+          if (v) { merged[k] = v; filled++; }
+        }
+        return merged;
+      });
+      if (filled) console.log("[PORTS] كمّلنا " + filled + " قيمة ناقصة من جدول الصفحة (زى الشيلف)");
+      return out;
+    } catch (e) { return rows; }
+  }
+
   async function searchAndRead(input, cabin) {
     // حماية أخيرة: لو الصفحة رجعت للوجين بين الفتح والكتابة، ماتكتبش كود الكابينة فى خانة اليوزر
     if (onLoginPage() || !input || !input.isConnected) return null;
@@ -294,8 +332,11 @@
     const end = Date.now() + SEARCH_WAIT_MS;
     while (Date.now() < end) {
       if (captures.length > marker) {
-        // خذ آخر التقاط
-        return captures[captures.length - 1].rows;
+        // خذ آخر التقاط، وكمّل الأعمدة الناقصة منه من جدول الصفحة (الشيلف مثلاً).
+        // مهلة صغيرة عشان Angular يكون خلّص رسم الجدول بعد وصول الرد.
+        const jsonRows = captures[captures.length - 1].rows;
+        await sleep(900);
+        return mergeFromTable(jsonRows);
       }
       const scraped = scrapeDataTable();
       if (scraped && scraped.length) return scraped;
