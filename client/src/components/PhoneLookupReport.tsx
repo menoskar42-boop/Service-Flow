@@ -336,7 +336,8 @@ export function PhoneLookupReport() {
     setMsanMode("same");
     setMsanNew(cur);                  // نفس الكابينة: الوجهة = الحالية
     setMsanOld(defaultOldFor(cur));   // القديم = افتراضى (كابينة مختلفة)
-    setMsanPt("SV");
+    setMsanPt("SV");                  // مبدئى — هيتظبط تلقائياً على الأكتر فاضى
+    ptTouchedFor.current = "";
     setMsanOpen(true);
   };
   // تبديل نوع العملية وملء الحقول: البورتال بيرفض تطابق Old و New.
@@ -344,6 +345,7 @@ export function PhoneLookupReport() {
   const setMsanModeAndFill = (mode: "same" | "other") => {
     const cur = (line?.msanCode ?? "").toString().trim();
     setMsanMode(mode);
+    ptTouchedFor.current = "";  // كابينة الوجهة اتغيّرت → الاختيار التلقائى يشتغل تانى
     if (mode === "same") { setMsanNew(cur); setMsanOld(defaultOldFor(cur)); }
     else { setMsanOld(cur); setMsanNew(""); }
   };
@@ -491,6 +493,38 @@ export function PhoneLookupReport() {
   const [msanOld, setMsanOld] = useState("");
   const [msanNew, setMsanNew] = useState("");
   const [msanPt, setMsanPt] = useState("SV");
+  // لو المستخدم غيّر نوع البورت بإيده مانرجعش نختار له تلقائى — إلا لما كابينة
+  // الوجهة نفسها تتغيّر (ساعتها الاختيار القديم بقى مالوش معنى).
+  const ptTouchedFor = useRef<string>("");
+
+  // ── الفاضى فى كابينة الوجهة مقسّم على نوع البورت ─────────────────────────
+  // الغرض: اللى بينقل خط يشوف قدّامه أنهى نوع بورت لسه فيه مكان، ونختار له
+  // الأكتر فاضى تلقائياً بدل ما يخمّن ويكتشف إن الكارت مليان بعد ما يبعت الطلب.
+  const msanNewKey = msanNew.trim();
+  const { data: cabFree, isFetching: cabFreeLoading } = useQuery({
+    queryKey: ["/api/phone-ports/cabinet-free", msanNewKey],
+    enabled: msanOpen && msanNewKey.length >= 6,
+    queryFn: async () => {
+      const r = await fetch(`/api/phone-ports/cabinet-free?msan=${encodeURIComponent(msanNewKey)}`,
+        { credentials: "include" });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || "تعذّر التحميل");
+      return r.json() as Promise<{
+        msan: string;
+        data: { portType: string; cards: number; capacity: number; working: number; free: number }[];
+        total: { cards: number; capacity: number; working: number; free: number };
+      }>;
+    },
+    retry: 1,
+  });
+  // أكتر نوع فيه فاضى (السيرفر بيرجّعهم مرتّبين بالفاضى تنازلياً)
+  const bestPt = cabFree?.data?.find((g) => g.free > 0 && g.portType !== "غير محدّد")?.portType || "";
+  const freeOfPt = (pt: string) => cabFree?.data?.find((g) => g.portType === pt)?.free;
+
+  useEffect(() => {
+    if (!msanOpen || !bestPt || !msanNewKey) return;
+    if (ptTouchedFor.current === msanNewKey) return;   // المستخدم اختار بإيده لنفس الكابينة
+    setMsanPt(bestPt);
+  }, [msanOpen, msanNewKey, bestPt]);
 
   // تسجيل عطل يدوى (يمنع التكرار)
   const flagFault = async () => {
@@ -991,14 +1025,68 @@ export function PhoneLookupReport() {
               <label className="text-sm text-muted-foreground">الكود الجديد (New Cabin Code) *</label>
               <Input value={msanNew} onChange={(e) => setMsanNew(e.target.value)} placeholder="كود الكابينة" dir="ltr" className="text-left text-sm" />
             </div>
+            {/* الفاضى فى كابينة الوجهة لكل نوع بورت — عشان تختار نوع لسه فيه مكان */}
+            <div className="rounded-md border bg-muted/30 p-2 space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold">الفاضى فى كابينة الوجهة ({msanNewKey || "—"})</span>
+                {cabFreeLoading && <Loader2 className="w-3 h-3 animate-spin" />}
+              </div>
+              {msanNewKey.length < 6 ? (
+                <p className="text-[11px] text-muted-foreground">اكتب كود الكابينة الجديدة الأول</p>
+              ) : cabFreeLoading ? (
+                <p className="text-[11px] text-muted-foreground">جارٍ الحساب…</p>
+              ) : !cabFree?.data?.length ? (
+                <p className="text-[11px] text-red-600">مفيش بورتات مسجّلة للكابينة دى فى ملف البورتات</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {cabFree.data.map((g) => (
+                      <button key={g.portType} type="button"
+                        onClick={() => { ptTouchedFor.current = msanNewKey; setMsanPt(g.portType); }}
+                        disabled={g.portType === "غير محدّد"}
+                        title={`${g.cards} كارت · سعة ${g.capacity} · شغّال ${g.working}`}
+                        className={`px-2 py-1 rounded text-xs border transition
+                          ${msanPt === g.portType ? "bg-cyan-600 text-white border-cyan-600" : "bg-white hover:bg-muted"}
+                          ${g.free === 0 ? "opacity-60" : ""}
+                          ${g.portType === "غير محدّد" ? "cursor-not-allowed" : ""}`}>
+                        <span className="font-mono">{g.portType}</span>
+                        <span className={`mr-1 font-bold ${g.free > 0 ? (msanPt === g.portType ? "" : "text-green-700") : "text-red-600"}`}>
+                          {g.free}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    الرقم جنب النوع = عدد البورتات الفاضية.
+                    إجمالى الفاضى فى الكابينة <b>{cabFree.total.free}</b> من سعة {cabFree.total.capacity}.
+                    {bestPt && <> الأكتر فاضى <b>{bestPt}</b> (اتحدد تلقائياً — تقدر تغيّره).</>}
+                  </p>
+                </>
+              )}
+            </div>
             <div className="grid gap-1">
               <label className="text-sm text-muted-foreground">نوع البورت (PortType) *</label>
-              <select value={msanPt} onChange={(e) => setMsanPt(e.target.value)} className="border rounded-md px-3 py-2 text-sm" dir="ltr">
-                <option value="SV">SV</option>
-                <option value="VDSL">VDSL</option>
-                <option value="ADSL">ADSL</option>
-                <option value="ESL">ESL</option>
+              <select value={msanPt}
+                onChange={(e) => { ptTouchedFor.current = msanNewKey; setMsanPt(e.target.value); }}
+                className="border rounded-md px-3 py-2 text-sm" dir="ltr">
+                {["SV", "VDSL", "ADSL", "ESL"].map((pt) => {
+                  const f = freeOfPt(pt);
+                  return (
+                    <option key={pt} value={pt}>
+                      {pt}{f === undefined ? "" : ` — فاضى ${f}`}
+                    </option>
+                  );
+                })}
+                {/* نوع موجود فى الكابينة بس مش فى القائمة الثابتة — نضيفه عشان مايضيعش */}
+                {cabFree?.data
+                  ?.filter((g) => g.portType !== "غير محدّد" && !["SV", "VDSL", "ADSL", "ESL"].includes(g.portType))
+                  .map((g) => <option key={g.portType} value={g.portType}>{g.portType} — فاضى {g.free}</option>)}
               </select>
+              {msanNewKey.length >= 6 && !cabFreeLoading && freeOfPt(msanPt) === 0 && (
+                <p className="text-[11px] text-red-600 font-semibold">
+                  ⚠️ كروت {msanPt} فى الكابينة دى مليانة — اختر نوع تانى فيه فاضى.
+                </p>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">speed = <b>WE30</b> (ثابت). الكود القديم لازم يختلف عن الجديد (البورتال بيرفض تطابقهما). السكربت بيملأ الفورم ويحقن الملف <b>ويضغط Submit تلقائياً</b> فى البورتال.</p>
             <div className="flex gap-2 justify-end">

@@ -8,6 +8,7 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { Loader2, Search, X, FileSpreadsheet, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
 
 // «الكروت (شيلف/سلوت)» — سطر لكل (كابينة MSAN + شيلف + سلوت) من ملف البورتات:
 // عدد الشغّال عليه ونوع الكارت. مالوش أى علاقة بالمتعذرات — مصدره البورتات وحده.
@@ -24,23 +25,10 @@ interface Row {
   cardTypeCount: number;
 }
 
-// ── سعة الكارت والمتبقى ────────────────────────────────────────────────────
-// السعة مش موجودة فى ملف البورتات، فبنستنتجها بقواعد السنترال:
-//  • الأصل إن كل الكروت سعتها 64 بورت.
-//  • كابينة 11-2-76-01 كروتها 32 (استثناء معروف).
-//  • أى سلوت عليه **أكتر من 68** خط شغّال ده كارت 128 — مفيش كارت 64 يشيل العدد ده.
-// المتبقى = السعة − الشغّال، وبيتقفل عند الصفر: السلوت اللى عليه 65 أو 68 على كارت
-// 64 معناه إنه مليان (الزيادة البسيطة دى بتيجى من صفوف مكرّرة/قديمة فى الملف) —
-// من غير القفل ده كان هيطلع رقم سالب.
-const CAB_32 = new Set(["11-2-76-01"]);
-const normCabCode = (s: unknown) => String(s ?? "").replace(/\s+/g, "").trim();
-
-export const cardCapacity = (r: Row): number => {
-  const w = r.workingCount || 0;
-  if (CAB_32.has(normCabCode(r.msanCode)) && w <= 32) return 32;
-  return w > 68 ? 128 : 64;
-};
-export const cardFree = (r: Row): number => Math.max(0, cardCapacity(r) - (r.workingCount || 0));
+// سعة الكارت والمتبقى — القاعدة نفسها فى shared/card-capacity.ts (مصدر واحد
+// يستخدمه كمان تقرير «الفاضى لكل نوع بورت» وشاشة «غيّر البورت»).
+export const cardCapacity = (r: Row): number => cardCapacityOf(r.msanCode, r.workingCount || 0);
+export const cardFree = (r: Row): number => cardFreeOf(r.msanCode, r.workingCount || 0);
 
 const COLS: [string, (r: Row) => any][] = [
   ["كود كابينة المسان", (r) => r.msanCode],

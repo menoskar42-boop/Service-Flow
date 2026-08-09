@@ -23,6 +23,7 @@ import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable } from "./box-fault-ticket";
 import { normCab } from "@shared/cab-norm";
+import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -7525,6 +7526,50 @@ export async function registerRoutes(
                    LPAD(COALESCE(slot, ''), 4, '0')
           LIMIT 20000`, params);
       res.json({ data: rows, total: rows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/phone-ports/cabinet-free?msan=<كود الكابينة>
+  // الفاضى فى كابينة واحدة مقسّم على نوع البورت — بتستخدمه شاشة «غيّر البورت»
+  // عشان اللى بينقل خط يشوف فوراً أنهى نوع بورت لسه فيه مكان فى كابينة الوجهة.
+  // نفس منطق تقرير «الفاضى لكل نوع بورت» بالحرف (shared/card-capacity).
+  app.get("/api/phone-ports/cabinet-free", requireAuth, async (req, res) => {
+    try {
+      const msan = String((req.query as any).msan || "").trim();
+      if (!msan) return res.json({ msan: "", data: [], total: { cards: 0, capacity: 0, working: 0, free: 0 } });
+      // مطابقة متسامحة مع المسافات (الكود بيتكتب بإيد المستخدم فى النافذة)
+      const { rows } = await pool.query(
+        `WITH per_type AS (
+           SELECT shelf, slot, NULLIF(btrim(port_type), '') AS pt,
+                  COUNT(*) FILTER (WHERE COALESCE(btrim(frame), '') <> '')::int AS work
+             FROM phone_ports
+            WHERE regexp_replace(COALESCE(msan_code, ''), '\\s', '', 'g')
+                = regexp_replace($1, '\\s', '', 'g')
+            GROUP BY 1, 2, 3
+         )
+         SELECT shelf, slot, SUM(work)::int AS work,
+                (array_agg(pt ORDER BY work DESC, pt) FILTER (WHERE pt IS NOT NULL))[1] AS pt
+           FROM per_type GROUP BY 1, 2`,
+        [msan]);
+
+      // التجميع بالنوع فى JS بنفس دوال السعة المشتركة
+      const byType = new Map<string, { portType: string; cards: number; capacity: number; working: number; free: number }>();
+      for (const r of rows) {
+        const portType = String(r.pt || "").trim() || "غير محدّد";
+        const work = Number(r.work) || 0;
+        let g = byType.get(portType);
+        if (!g) { g = { portType, cards: 0, capacity: 0, working: 0, free: 0 }; byType.set(portType, g); }
+        g.cards += 1;
+        g.capacity += cardCapacityOf(msan, work);
+        g.working += work;
+        g.free += cardFreeOf(msan, work);
+      }
+      const data = Array.from(byType.values()).sort((a, b) => b.free - a.free);
+      const total = data.reduce((t, g) => ({
+        cards: t.cards + g.cards, capacity: t.capacity + g.capacity,
+        working: t.working + g.working, free: t.free + g.free,
+      }), { cards: 0, capacity: 0, working: 0, free: 0 });
+      res.json({ msan, data, total });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
