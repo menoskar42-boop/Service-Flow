@@ -1279,6 +1279,9 @@ export async function ensureSchema() {
     ["manual_faults", "phone_short"],
     ["manual_faults", "full_phone"],
     ["line_subscriber_info", "phone_number"],
+    // phone_ports بيخزّن الرقم كامل (88+) والتذاكر قصير — الجوينات بتطبّع الطرفين
+    // بـ phoneNormSql، فمن غير الفهرس ده الجوين بيعمل seq scan على كل البورتات.
+    ["phone_ports", "phone_number"],
   ] as const) {
     try {
       // نشيل النسخة القديمة اللى كانت بتعتمد على sf_phone_norm() — هى سبب فشل النشر

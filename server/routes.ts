@@ -798,7 +798,17 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
            -- الحالات 138/135 حالات وسيطة (قيد التنفيذ) لا تُعتبر "اختفى/منتظم" أبداً
            AND NOT (s.status_code ~ '^(135|138)')
        ) t
-       LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
+       -- ⚠️ phone_ports بيخزّن الرقم **كامل** (88+القصير) وجداول التذاكر بتخزّنه
+       -- **قصير** — فالمقارنة المباشرة كانت مابتطابقش ولا صف واحد، وعمود Frame
+       -- (والشيلف/السلوت/حالة الصوت والداتا) كان بيطلع فاضى دايماً. التطبيع بـ sp()
+       -- بيشيل بادئة 88 من الطرفين فيتطابقوا (وفيه فهرس على نفس التعبير).
+       -- LATERAL + LIMIT 1: لو رفعة قديمة خزّنت نفس الرقم مرتين (قصير + كامل)
+       -- الجوين العادى كان هيكرّر سطر العطل — بنختار الصيغة الكاملة (الأطول).
+       LEFT JOIN LATERAL (
+         SELECT p.* FROM phone_ports p
+          WHERE ${sp("p.phone_number")} = ${sp("t.phone_number")}
+          ORDER BY length(p.phone_number) DESC LIMIT 1
+       ) pp ON true
        LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
        LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
        LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
@@ -8761,7 +8771,13 @@ export async function registerRoutes(
                                      ))
              END                     AS "effectiveFaultHours"
            FROM ticket_dsl_current t
-           LEFT JOIN phone_ports pp ON pp.phone_number = t.phone_number
+           -- التطبيع لازم: phone_ports كامل (88+) وticket_dsl_current قصير (شوف
+           -- الملاحظة فى تقرير المنتظم) — من غيره عمود Frame بيفضل فاضى للكل.
+           LEFT JOIN LATERAL (
+             SELECT p.* FROM phone_ports p
+              WHERE ${sp("p.phone_number")} = ${sp("t.phone_number")}
+              ORDER BY length(p.phone_number) DESC LIMIT 1
+           ) pp ON true
            LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
            LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
            LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
@@ -8959,7 +8975,12 @@ export async function registerRoutes(
              (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
              'تفاصيل'                 AS "dataSource"
            FROM complaint_details cd
-           LEFT JOIN phone_ports pp       ON pp.phone_number = cd.phone_number
+           -- نفس سبب التطبيع: phone_ports كامل (88+) وcomplaint_details قصير
+           LEFT JOIN LATERAL (
+             SELECT p.* FROM phone_ports p
+              WHERE ${sp("p.phone_number")} = ${sp("cd.phone_number")}
+              ORDER BY length(p.phone_number) DESC LIMIT 1
+           ) pp ON true
            LEFT JOIN phone_lines pl       ON pl.tel_no = cd.phone_number
            LEFT JOIN cabinet_technicians ct ON ct.central_name = cd.exchange_name AND ct.cabin_number = cd.cabinet_no
            LEFT JOIN technician_names tn  ON tn.worker_code = ct.worker_code
@@ -9029,7 +9050,12 @@ export async function registerRoutes(
              (rc138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
              'متبقى'                  AS "dataSource"
            FROM remaining_complaints rc
-           LEFT JOIN phone_ports pp2        ON pp2.phone_number = rc.phone_number
+           -- نفس سبب التطبيع: phone_ports كامل (88+) وremaining_complaints قصير
+           LEFT JOIN LATERAL (
+             SELECT p.* FROM phone_ports p
+              WHERE ${sp("p.phone_number")} = ${sp("rc.phone_number")}
+              ORDER BY length(p.phone_number) DESC LIMIT 1
+           ) pp2 ON true
            LEFT JOIN phone_lines pl2        ON pl2.tel_no = rc.phone_number
            LEFT JOIN cabinet_technicians ct2 ON ct2.central_name = rc.exchange_name AND ct2.cabin_number = rc.cabinet_no
            LEFT JOIN technician_names tn2   ON tn2.worker_code = ct2.worker_code
