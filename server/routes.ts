@@ -184,9 +184,18 @@ function toDate(v: any): Date | null {
   if (v == null || v === "") return null;
   if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
   if (typeof v === "number" && v > 1) {
-    const d = XLSX.SSF.parse_date_code(v);
-    if (!d) return null;
-    return new Date(d.y, d.m - 1, d.d, d.H ?? 0, d.M ?? 0, d.S ?? 0);
+    // ⚠️ كان بيستخدم XLSX.SSF.parse_date_code — و`XLSX.SSF` بيطلع undefined فى
+    // تشغيل السيرفر (namespace الـ ESM مابيشوفش الـ named export ده من حزمة CJS)،
+    // فأى خلية تاريخ رقمية (Excel serial) كانت بترمى TypeError وترجّع 500 على
+    // **رفعة 430D كلها**. التحويل هنا يدوى ومالوش أى اعتماد خارجى:
+    //   السيريال 25569 = 1970-01-01، فـ (v − 25569) × 86400000 = ملّى ثانية UTC.
+    // بنقرا المكوّنات بتوقيت UTC وبنبنى بيها Date محلّى — نفس سلوك parse_date_code
+    // بالظبط (بيتعامل مع السيريال كوقت حائط مش كلحظة زمنية).
+    const ms = Math.round((v - 25569) * 86400000);
+    const u = new Date(ms);
+    if (isNaN(u.getTime())) return null;
+    return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(),
+                    u.getUTCHours(), u.getUTCMinutes(), u.getUTCSeconds());
   }
   const s = String(v).trim().replace(" ", "T").replace(/\.0$/, "");
   const d = new Date(s);
@@ -571,6 +580,21 @@ const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
 // على المسان فعلياً، فبيتستبعد من تقارير القياسات ومن بيان التليفونات — حتى لو ليه
 // رقم أكونت أو بيانات فنية (بيان 131). الاستثناء الوحيد: تقرير «بيان فنى بدون بورت»
 // اللى الغرض منه بالظبط إظهار الأرقام دى.
+// ── ساعات العطل المقفول ──
+// المرجع الرسمى هو عمود الشيت «فترة الاستمرار — باستبعاد الحالة 135»
+// (time_till_now)، لأنه بيشيل مدة تعليق الشكوى، وده اللى الشركة بتحاسب عليه.
+// لكنه **مقيّد** بالفرق الفعلى (إغلاق − شكوى): الاستبعاد بيقلّل المدة ومايزوّدهاش،
+// فأى قيمة أكبر من الفرق الفعلى معناها إن اللى اتخزّن هو عمود «Time untill now»
+// (المدة لحد لحظة توليد التقرير، مش لحد الإغلاق) — وده كان بيخلّى عطل اتقفل بعد
+// 23 ساعة يظهر فى «تجاوزت 24 ساعة» بـ29 ساعة.
+const closedHoursSql = (t: string) => `CASE
+  WHEN ${t}.close_time IS NULL THEN ${t}.time_till_now
+  WHEN ${t}.time_till_now IS NULL
+    THEN EXTRACT(EPOCH FROM (${t}.close_time - ${t}.complain_time)) / 3600.0
+  ELSE LEAST(${t}.time_till_now,
+             EXTRACT(EPOCH FROM (${t}.close_time - ${t}.complain_time)) / 3600.0)
+END`;
+
 // ── بحث عربى غير حرفى ──
 // الفكرة: نطبّع الطرفين قبل المقارنة — العمود بدالة sf_ar_norm() فى الداتابيز، وكلمة البحث
 // بدالة arNorm() فى الـ JS (نفس المنطق بالظبط). فـ«ايمن» تلاقى «أيمن» و«فاطمه» تلاقى «فاطمة».
@@ -9873,7 +9897,7 @@ export async function registerRoutes(
             cd.exchange_name                                AS central_name,
             ${effTechSql("cd.complain_no", "cd.close_by", "cd.exchange_name", "cd.cabinet_no", "cd.complain_time")}
                                                             AS tech_name,
-            COALESCE(cd.time_till_now, EXTRACT(EPOCH FROM (cd.close_time - cd.complain_time)) / 3600.0) AS hours
+            ${closedHoursSql('cd')} AS hours
           FROM complaint_details cd
           ${where}
         )
@@ -9953,7 +9977,7 @@ export async function registerRoutes(
               WHEN FLOOR(rc.status_code::numeric)::int = 135
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - rc.complain_time)) / 3600.0
               ELSE
-                COALESCE(rc.time_till_now, EXTRACT(EPOCH FROM (rc.close_time - rc.complain_time)) / 3600.0)
+                ${closedHoursSql('rc')}
             END                                             AS hours
           FROM remaining_complaints_current rc
           ${where}
@@ -10033,7 +10057,7 @@ export async function registerRoutes(
               WHEN src.is_open
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
               ELSE
-                COALESCE(src.time_till_now, EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0)
+                ${closedHoursSql('src')}
             END                                             AS hours
           FROM src
           WHERE TRUE ${dateClause}
@@ -10363,7 +10387,7 @@ export async function registerRoutes(
               WHEN src.is_open
                 THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
               ELSE
-                COALESCE(src.time_till_now, EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0)
+                ${closedHoursSql('src')}
             END, 1)                                                                      AS hours,
             -- الساعات محسوبة من التوقيتين وحدهما (إغلاق − شكوى) — للمقارنة مع
             -- «ساعات» أعلاه اللى بتاخد قيمة الشيت الرسمية «فترة الاستمرار باستبعاد
