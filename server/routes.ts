@@ -153,14 +153,23 @@ function sheetRows(ws: any): any[][] {
 }
 
 // Duration cell → hours (number) | null.
-// Handles two formats found in 430D:
-//   • Numeric fraction-of-day (تفاصيل متبقى): 0.8285 → 19.9 h
+// Handles the formats found in 430D:
+//   • Numeric fraction-of-day (تفاصيل متبقى الملف القومى): 0.8285 → 19.9 h
+//   • **نص** رقم عشرى بنفس المعنى (تصدير الغنايم): "0.39" → 9.4 h
 //   • Text "d:h:m" (التفاصيل):  "0:21:34" → 21.6 h
+// ⚠️ النص العشرى كان بيرجّع null (الكود كان بيطلب ':')، فعمود «فترة الاستمرار»
+// كان بيضيع بالكامل من تصدير الغنايم. إنه أيام مش ساعات مُثبت بالبيانات: لو
+// حسبناه أيام كل صفوف الملف بتشاور على نفس لحظة توليد التقرير (تشتّت 0.2 ساعة)،
+// ولو ساعات بيبقى التشتّت 128 ساعة (يعنى مستحيل).
 function toHours(v: any): number | null {
   if (v == null || v === "") return null;
   if (typeof v === "number" && v > 0) return Math.round(v * 24 * 10) / 10;
   const s = String(v).trim();
   if (!s) return null;
+  if (!s.includes(":")) {
+    const num = parseFloat(s.replace(/[^\d.\-]/g, ""));
+    return Number.isFinite(num) && num > 0 ? Math.round(num * 24 * 10) / 10 : null;
+  }
   const parts = s.split(":");
   if (parts.length < 2) return null;
   const d = parseFloat(parts[0]) || 0;
@@ -10356,6 +10365,12 @@ export async function registerRoutes(
               ELSE
                 COALESCE(src.time_till_now, EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0)
             END, 1)                                                                      AS hours,
+            -- الساعات محسوبة من التوقيتين وحدهما (إغلاق − شكوى) — للمقارنة مع
+            -- «ساعات» أعلاه اللى بتاخد قيمة الشيت الرسمية «فترة الاستمرار باستبعاد
+            -- الحالة 135». الفرق بينهم = مدة تعليق الشكوى (135)، وده اللى بيخلّى
+            -- عطل مقفول بعد 23 ساعة بالتوقيتين يتحسب رسمياً أكتر أو أقل من 24.
+            ROUND(EXTRACT(EPOCH FROM (src.close_time - src.complain_time)) / 3600.0, 1) AS "hoursByStamps",
+            (src.time_till_now IS NOT NULL AND NOT src.is_open)                          AS "hoursFromSheet",
             COALESCE(
               (SELECT mcb.tech_name FROM manual_close_by mcb WHERE mcb.complain_no = src.complain_no LIMIT 1),
               (SELECT tn.tech_name FROM technician_names tn WHERE tn.worker_code = src.close_by LIMIT 1),

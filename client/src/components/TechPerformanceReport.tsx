@@ -24,6 +24,8 @@ interface RepDetailRow {
 interface Beyond24Row {
   complainNo: string; phoneNumber: string; centralName: string; cabinetNo: string;
   complainTime: string; closeTime: string; closeCode: string | null; hours: number;
+  // ساعات محسوبة من (الإغلاق − الشكوى) وحدهما، و«هل الساعات الرسمية جت من الشيت»
+  hoursByStamps: number | null; hoursFromSheet?: boolean;
   closeByName: string; closeByManual?: boolean; areaTechName: string; lineCabin: string | null; lineBox: string | null;
   msanCode: string | null; frame: string | null; subName: string | null; subAdd: string | null;
 }
@@ -499,7 +501,10 @@ export function TechPerformanceReport() {
       "اسم العميل": r.subName ?? "", "العنوان": r.subAdd ?? "", "السنترال": r.centralName,
       "الكابينه": r.lineCabin ?? r.cabinetNo ?? "", "البكس": r.lineBox ?? "", "كود MSAN": r.msanCode ?? "",
       "الفريم": r.frame ?? "", "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
-      "عدد الساعات": Math.round(r.hours), "سبب الإغلاق": r.closeCode ? (closeReason(r.closeCode) || r.closeCode) : "",
+      "عدد الساعات": Math.round(r.hours),
+      "ساعات بالتوقيتين": r.hoursByStamps == null ? "" : Math.round(r.hoursByStamps),
+      "مصدر الساعات": r.hoursFromSheet ? "شيت 430D (باستبعاد 135)" : "محسوبة من التوقيتين",
+      "سبب الإغلاق": r.closeCode ? (closeReason(r.closeCode) || r.closeCode) : "",
       "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
     })));
     const wb = XLSX.utils.book_new();
@@ -739,7 +744,7 @@ export function TechPerformanceReport() {
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-orange-700 hover:bg-orange-700">
-                    {["#", "رقم الشكوى", "رقم التليفون", "اسم العميل", "العنوان", "السنترال", "الكابينة", "البكس", "كود MSAN", "الفريم", "وقت الشكوى", "تاريخ الإغلاق", "ساعات", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                    {["#", "رقم الشكوى", "رقم التليفون", "اسم العميل", "العنوان", "السنترال", "الكابينة", "البكس", "كود MSAN", "الفريم", "وقت الشكوى", "تاريخ الإغلاق", "ساعات", "بالتوقيتين", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
                       <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
                     ))}
                   </TableRow>
@@ -759,7 +764,19 @@ export function TechPerformanceReport() {
                       <TableCell className="text-center">{r.frame ?? "-"}</TableCell>
                       <TableCell className="text-center whitespace-nowrap">{fmtDT(r.complainTime)}</TableCell>
                       <TableCell className="text-center whitespace-nowrap">{fmtDT(r.closeTime)}</TableCell>
-                      <TableCell className="text-center font-bold text-red-600">{Math.round(r.hours)}</TableCell>
+                      <TableCell className="text-center font-bold text-red-600"
+                        title={r.hoursFromSheet ? "القيمة الرسمية من شيت 430D (فترة الاستمرار باستبعاد الحالة 135)" : "محسوبة من الإغلاق − الشكوى"}>
+                        {Math.round(r.hours)}
+                        {r.hoursFromSheet && <span className="text-[9px] text-muted-foreground align-super mr-0.5">شيت</span>}
+                      </TableCell>
+                      {/* الفرق بين العمودين = مدة تعليق الشكوى (135) اللى الشيت بيستبعدها */}
+                      <TableCell className="text-center">
+                        {r.hoursByStamps == null ? "—" : (
+                          <span className={Math.abs(r.hoursByStamps - r.hours) >= 1 ? "text-amber-700 font-semibold" : "text-muted-foreground"}>
+                            {Math.round(r.hoursByStamps)}
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-xs" title={r.closeCode ? `كود ${r.closeCode}` : ""}>
                         {r.closeCode ? (closeReason(r.closeCode) || `كود ${r.closeCode}`) : "-"}
                       </TableCell>
