@@ -1049,9 +1049,13 @@ export function PhoneLookupReport() {
                           ${msanPt === g.portType ? "bg-cyan-600 text-white border-cyan-600" : "bg-white hover:bg-muted"}
                           ${g.free === 0 ? "opacity-60" : ""}
                           ${g.portType === "غير محدّد" ? "cursor-not-allowed" : ""}`}>
-                        <span className="font-mono">{g.portType}</span>
-                        <span className={`mr-1 font-bold ${g.free > 0 ? (msanPt === g.portType ? "" : "text-green-700") : "text-red-600"}`}>
-                          {g.free}
+                        {/* dir=ltr + فاصل: من غيرهم كان بيتقرا «SV24» كأنه اسم نوع البورت */}
+                        <span dir="ltr" className="inline-flex items-center gap-1">
+                          <span className="font-mono">{g.portType}</span>
+                          <span className="opacity-50">·</span>
+                          <span className={`font-bold ${g.free > 0 ? (msanPt === g.portType ? "" : "text-green-700") : "text-red-600"}`}>
+                            {g.free}
+                          </span>
                         </span>
                       </button>
                     ))}
