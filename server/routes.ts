@@ -3454,6 +3454,96 @@ export async function registerRoutes(
     res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
   });
 
+  // GET /api/phone-lines/no-mobile — نفس تقرير بيان التليفونات، بس بس الأرقام اللى
+  // مالهاش رقم موبايل من أى مصدر (يدوى/أوامر شغل/طلبات FTTH — نفس أولوية بحث برقم
+  // التليفون بالظبط)، عشان تتجمّع أرقام الموبايل الناقصة وتتضاف من التقرير نفسه.
+  app.get("/api/phone-lines/no-mobile", requireAuth, async (req, res) => {
+    const { search = "", central = "", cabin = "", box = "", phoneFrom = "", phoneTo = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
+    const q = search.trim().toLowerCase();
+    const digitsOnly = (s: string) => String(s || "").replace(/\D/g, "").replace(/^88/, "");
+    let pFrom = digitsOnly(phoneFrom), pTo = digitsOnly(phoneTo);
+    if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
+
+    const conds: string[] = ["mob.m IS NULL"];
+    const params: any[] = [];
+    if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
+    if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
+    if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
+    if (pFrom || pTo) {
+      const shortExpr = `regexp_replace(regexp_replace(k.full_phone,'[^0-9]','','g'),'^0*88','')`;
+      const numExpr = `(CASE WHEN ${shortExpr} ~ '^[0-9]{1,18}$' THEN ${shortExpr}::bigint END)`;
+      if (pFrom) { params.push(pFrom); conds.push(`${numExpr} >= $${params.length}::bigint`); }
+      if (pTo) { params.push(pTo); conds.push(`${numExpr} <= $${params.length}::bigint`); }
+    }
+    if (q) {
+      params.push(arQ(q));
+      const p = `$${params.length}`;
+      conds.push(`(
+        ${n("k.full_phone")} LIKE ${p} OR ${n("pl.tel_no")} LIKE ${p} OR
+        ${n("pl.central")} LIKE ${p} OR ${n("pl.cabin_number")} LIKE ${p} OR
+        ${n("pl.box_number")} LIKE ${p} OR ${n("si2.sub_name")} LIKE ${p} OR
+        ${n("si2.sub_add")} LIKE ${p} OR ${n("pp.msan_code")} LIKE ${p} OR ${n("pp.frame")} LIKE ${p} OR
+        EXISTS (SELECT 1 FROM cabinet_technicians ct JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                 WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+                   AND ${n("tn.tech_name")} LIKE ${p})
+      )`);
+    }
+    const where = `WHERE ${conds.join(" AND ")}`;
+    // نفس مرساة/أولوية الموبايل المستخدمة فى بحث برقم التليفون بالظبط: يدوى (line_mobiles) أولاً،
+    // بعدين أوامر الشغل (wfm)، بعدين طلبات FTTH — أول قيمة حقيقية (مش مشفّرة) بتكسب.
+    const joinClause = `FROM (SELECT full_phone FROM phone_lines
+            UNION
+            SELECT phone_number AS full_phone FROM phone_ports
+             WHERE regexp_replace(phone_number,'[^0-9]','','g') ~ '^0*88[0-9]{7}$') k
+      LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
+      LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
+      LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone
+      LEFT JOIN removed_phone_ports rpp ON rpp.phone_number = k.full_phone
+      LEFT JOIN LATERAL (
+        SELECT x.m FROM (
+          SELECT lm.mobile AS m, 0 AS pr FROM line_mobiles lm WHERE lm.full_phone = k.full_phone
+          UNION ALL
+          SELECT mo.mobile AS m, 1 AS pr FROM maintenance_orders mo
+            WHERE mo.phone_number IN (COALESCE(pl.tel_no, regexp_replace(k.full_phone,'^88','')), k.full_phone)
+              AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+          UNION ALL
+          SELECT fo.customer_mobile AS m, 2 AS pr FROM ftth_orders_current fo
+            WHERE fo.service_number IN (COALESCE(pl.tel_no, regexp_replace(k.full_phone,'^88','')), k.full_phone)
+              AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+        ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY x.pr LIMIT 1
+      ) mob ON true`;
+
+    const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
+    const total = totalRes.rows[0].c as number;
+
+    const offset = (pageNum - 1) * pageSize;
+    params.push(pageSize); params.push(offset);
+    const dataRes = await pool.query(
+      `SELECT pl.id, COALESCE(pl.tel_no, regexp_replace(k.full_phone, '^88', '')) AS "telNo", pl.central,
+              pl.cabin_number AS "cabinNumber", pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
+              pp.msan_code AS "msanCode", pp.frame AS "frameNo",
+              (CASE
+                 WHEN COALESCE(btrim(pp.frame::text), '') <> '' THEN NULL
+                 WHEN rpp.phone_number IS NOT NULL THEN 'تم رفعه نهائياً'
+                 ELSE 'لم يُفحص بعد'
+               END) AS "frameStatus",
+              (SELECT tn.tech_name FROM cabinet_technicians ct
+                 JOIN technician_names tn ON tn.worker_code = ct.worker_code
+                WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+                LIMIT 1) AS "techName",
+              k.full_phone AS "fullPhone",
+              si2.sub_name AS "subName", si2.sub_add AS "subAdd"
+       ${joinClause} ${where}
+       ORDER BY pl.id NULLS LAST, k.full_phone
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+  });
+
   // GET /api/phone-lines/box-summary — count of lines per box
   app.get("/api/phone-lines/box-summary", requireAuth, async (req, res) => {
     const { search = "" } = req.query as Record<string, string>;
