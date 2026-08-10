@@ -2,7 +2,7 @@
 // @name         WE OAS BI — تقرير 131 أرقام التليفونات على كابينة
 // @namespace    service-flow.we-oas.131
 // @description  يسجّل الدخول على we-oas.te.eg، يفتح تقرير «131»، يجلب كباين النحاس بتوعنا من Service-Flow، يمرّ على كل كابينة (P_CABINET_NO + Apply) ويجمع شيتات نحاسي+فيبر+دوائر فى ملف واحد، ينزّله، ويرفعه لـ Service-Flow (يستبدل رقم التليفون الموجود ويضيف الجديد على بيان التليفونات 131).
-// @version      1.1.1
+// @version      1.1.2
 // @match        *://we-oas.te.eg/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -18,7 +18,6 @@
   const USER = "mena.haleem@te.eg";
   const PASS = "Mon_oskar364";
   const CENTRAL = "ديروط";     // قيمة P_CENTRAL_NAME (غير مستخدمة — بنكتفى برقم الكابينة)
-  const CABINET = "1-1";        // كابينة افتراضية لو تعذّر الجلب
   const SF_URL   = "https://service-flow-menoskar42.replit.app";
   const SF_TOKEN = "sf-auto-upload-2026";
   // التبويبات المطلوبة بالترتيب (نحاسي هو الافتراضى)
@@ -224,15 +223,26 @@
   }
 
   /* ================== Service-Flow: جلب الكباين + الرفع ================== */
+  // بترجّع { data, status, err } — مش الداتا لوحدها. السبب: لما الجلب كان بيفشل
+  // بصمت كان السكربت بيكمّل بكابينة واحدة افتراضية ويقول «تم» — فلازم نعرف السبب.
   function sfGet(path) {
     return new Promise((resolve) => {
       try {
         GM_xmlhttpRequest({
           method: "GET", url: SF_URL + path, headers: { "X-Upload-Token": SF_TOKEN }, timeout: 60000,
-          onload: (r) => { try { resolve(JSON.parse(r.responseText)); } catch (e) { resolve(null); } },
-          onerror: () => resolve(null), ontimeout: () => resolve(null),
+          onload: (r) => {
+            let data = null;
+            try { data = JSON.parse(r.responseText); } catch (e) {}
+            const okHttp = r.status >= 200 && r.status < 300;
+            resolve({
+              data, status: r.status,
+              err: okHttp ? (data ? "" : "رد مش JSON") : ("HTTP " + r.status + " — " + String((data && data.message) || (r.responseText || "").slice(0, 120))),
+            });
+          },
+          onerror: (r) => resolve({ data: null, status: (r && r.status) || 0, err: "تعذّر الاتصال بـ Service-Flow" }),
+          ontimeout: () => resolve({ data: null, status: 0, err: "انتهت مهلة الاتصال بـ Service-Flow" }),
         });
-      } catch (e) { resolve(null); }
+      } catch (e) { resolve({ data: null, status: 0, err: String((e && e.message) || e) }); }
     });
   }
   function sfUpload(content, filename) {
@@ -248,10 +258,16 @@
       } catch (e) { resolve(false); }
     });
   }
+  // ⚠️ ممنوع الرجوع لكابينة افتراضية بصمت. كان لو الجلب فشل بيمشى بـ «1-1» لوحدها
+  // ويرفع ويقول «اتحدّث بيان التليفونات (467 صف)» — فتفتكر إن كل الكباين اتحدّثت
+  // وهى كابينة واحدة. دلوقتى بنرجّع الخطأ والتشغيل بيقف.
   async function getCabinets() {
-    const d = await sfGet("/api/phone-lines/copper-cabinets");
-    const list = (d && Array.isArray(d.cabinets)) ? d.cabinets.map((c) => String(c.cabin || "").trim()).filter(Boolean) : [];
-    return [...new Set(list.length ? list : [CABINET])];
+    const r = await sfGet("/api/phone-lines/copper-cabinets");
+    if (r.err) return { list: [], err: r.err };
+    const arr = r.data && Array.isArray(r.data.cabinets) ? r.data.cabinets : null;
+    if (!arr) return { list: [], err: "الرد مافيهوش قائمة كباين" };
+    const list = [...new Set(arr.map((c) => String((c && c.cabin) || "").trim()).filter(Boolean))];
+    return { list, err: list.length ? "" : "قائمة الكباين رجعت فاضية (مفيش كابينة بصيغة رقم-رقم فى بيان التليفونات ولا فى فنيى الكباين)" };
   }
 
   /* ================== التشغيل الرئيسى: كل الكباين + الرفع ================== */
@@ -266,8 +282,15 @@
     const clear131 = () => { try { localStorage.removeItem("WEOAS_131_RUNNING"); } catch (e) {} };
     mark131();
 
-    const cabinets = await getCabinets();
+    const { list: cabinets, err: cabErr } = await getCabinets();
+    if (cabErr) {
+      clear131();
+      console.error("[131] فشل جلب الكباين:", cabErr);
+      banner("❌ ماقدرتش أجيب قائمة الكباين — " + cabErr + " · وقفت من غير رفع (عشان مايتحدّثش بكابينة واحدة بالغلط).", "#c62828");
+      return;
+    }
     banner("🗄️ هيمرّ على " + cabinets.length + " كابينة…");
+    console.log("[131] الكباين (" + cabinets.length + "):", cabinets.join(", "));
 
     // مجمّع الشيتات: هيدر مرة واحدة لكل شيت + صفوف كل الكباين
     const acc = {}; const headerDone = {};
