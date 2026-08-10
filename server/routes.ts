@@ -10036,7 +10036,7 @@ export async function registerRoutes(
           -- الأعطال المتبقية (135/138): تُقرأ من الجدول التاريخى الدائم remaining_complaints
           -- (وليس _current المتطاير) حتى لا تختفى الأعطال المُزالة عند رفع ملف 430D أحدث.
           SELECT rc.complain_no, rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no,
-                 (FLOOR(rc.status_code::numeric)::int = 135) AS is_open, rc.time_till_now, 2 AS pr
+                 (FLOOR(rc.status_code::numeric)::int = 135 AND rc.close_time IS NULL) AS is_open, rc.time_till_now, 2 AS pr
           FROM remaining_complaints rc
           WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
@@ -10347,7 +10347,7 @@ export async function registerRoutes(
         srcCTE = `
           WITH src AS (
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code,
-                   (FLOOR(status_code::numeric)::int = 135) AS is_open, time_till_now
+                   (FLOOR(status_code::numeric)::int = 135 AND close_time IS NULL) AS is_open, time_till_now
             FROM remaining_complaints_current
             WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
@@ -10361,7 +10361,7 @@ export async function registerRoutes(
             UNION ALL
             -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
             SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 2 AS sp,
-                   (FLOOR(status_code::numeric)::int = 135)::bool AS is_open, time_till_now
+                   (FLOOR(status_code::numeric)::int = 135 AND close_time IS NULL)::bool AS is_open, time_till_now
             FROM remaining_complaints WHERE exchange_name ILIKE '%غنايم%'
               AND FLOOR(status_code::numeric)::int IN (135, 138)
               AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
