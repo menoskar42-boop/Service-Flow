@@ -6988,16 +6988,24 @@ export async function registerRoutes(
   app.get("/api/phone-lines/copper-cabinets", requireAdminOrToken, async (_req, res) => {
     setUploadCors(res);
     try {
+      // ⚠️ كانت SELECT DISTINCT central, cabin ... ORDER BY (split_part(cabin,'-',1))::int
+      // — Postgres بيرفضها بـ 500: "for SELECT DISTINCT, ORDER BY expressions must appear
+      // in select list" لأن تعبيرى الترتيب مش فى قائمة SELECT. الرفض ده كان بيفشّل الـ
+      // endpoint كله، فسكربت 131 كان بياخد فشل الجلب ويرجع لكابينة "1-1" الافتراضية
+      // القديمة (قبل ما نشيلها) — وده أصل مشكلة «كابينة واحدة بس». الحل: DISTINCT فى
+      // subquery داخلى من غير ORDER BY، والترتيب فى الطبقة الخارجية اللى مالهاش قيد DISTINCT.
       const { rows } = await pool.query(
-        `SELECT DISTINCT central, cabin FROM (
-           SELECT central AS central, btrim(cabin_number) AS cabin
-             FROM phone_lines
-            WHERE btrim(coalesce(cabin_number,'')) ~ '^[0-9]+ *- *[0-9]+$'
-           UNION
-           SELECT central_name AS central, btrim(cabin_number) AS cabin
-             FROM cabinet_technicians
-            WHERE btrim(coalesce(cabin_number,'')) ~ '^[0-9]+ *- *[0-9]+$'
-         ) u
+        `SELECT central, cabin FROM (
+           SELECT DISTINCT central, cabin FROM (
+             SELECT central AS central, btrim(cabin_number) AS cabin
+               FROM phone_lines
+              WHERE btrim(coalesce(cabin_number,'')) ~ '^[0-9]+ *- *[0-9]+$'
+             UNION
+             SELECT central_name AS central, btrim(cabin_number) AS cabin
+               FROM cabinet_technicians
+              WHERE btrim(coalesce(cabin_number,'')) ~ '^[0-9]+ *- *[0-9]+$'
+           ) u
+         ) d
          ORDER BY central,
                   (split_part(cabin,'-',1))::int,
                   (split_part(cabin,'-',2))::int`);
