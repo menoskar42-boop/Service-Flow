@@ -6672,10 +6672,40 @@ export async function registerRoutes(
       if (pTo) { params.push(pTo); rc.push(`${numExpr} <= $${params.length}::bigint`); }
       rangeClause = rc.join(" AND ");
     }
-    // بنمسح بيانات الأرقام المفلترة (حسب النطاق) فتبقى «ناقصة» → سكربت FCC يجيبها. الفلتر بيتبعت
-    // لـ /pending كمان (باراميترات) فكل تاب مراجعة يجيب أرقام فلتره بس — يشتغلوا بالتوازى بلا طابور.
+    // قائمة الأرقام اللى محتاجة مراجعة فعلياً — نفس مصدر /pending (بورتات + بيان فنى) عشان
+    // الزر يقدر يبعتها لطابور التنفيذ (subinfo لكل رقم) بدل ما يفتح FCC على متصفح المستخدم
+    // الحالى مباشرة (اللى كان بيقفل لو المتصفح ده مش جهاز التنفيذ ومالوش وصول لـ FCC).
+    const uParams: any[] = [];
+    const uConds: string[] = [scope === "all" ? "TRUE" : "(si.phone_number IS NULL OR TRIM(si.sub_name) = '')"];
+    if (b.central) { uParams.push(String(b.central)); uConds.push(`pl.central = $${uParams.length}`); }
+    if (b.cabin) { uParams.push(String(b.cabin)); uConds.push(`pl.cabin_number = $${uParams.length}`); }
+    if (b.box) { uParams.push(String(b.box)); uConds.push(`pl.box_number = $${uParams.length}`); }
+    if (pFrom || pTo) {
+      const uShort = `regexp_replace(regexp_replace(pp.phone_number,'[^0-9]','','g'),'^0*88','')`;
+      const uNum = `(CASE WHEN ${uShort} ~ '^[0-9]{1,18}$' THEN ${uShort}::bigint END)`;
+      if (pFrom) { uParams.push(pFrom); uConds.push(`${uNum} >= $${uParams.length}::bigint`); }
+      if (pTo) { uParams.push(pTo); uConds.push(`${uNum} <= $${uParams.length}::bigint`); }
+    }
+    const { rows: phoneRows } = await pool.query(
+      `SELECT pp.phone_number FROM (
+         SELECT phone_number FROM phone_ports
+         UNION
+         SELECT full_phone AS phone_number FROM phone_lines
+       ) pp
+       LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
+       LEFT JOIN phone_lines pl ON pl.full_phone = pp.phone_number
+       WHERE ${uConds.join(" AND ")}
+       ORDER BY pp.phone_number
+       LIMIT 20000`,
+      uParams);
+    // بنمسح بيانات الأرقام المفلترة (حسب النطاق) فتبقى «ناقصة» — لازم برضه لمسار «auto» الاحتياطى
+    // (لما مفيش جهاز تنفيذ، سوبر أدمن بيفتح FCC محلياً وسكربته بيعتمد على /pending اللى بتشترط
+    // مافيش صف خالص لا وجود ناقص).
     const r = await pool.query(`DELETE FROM line_subscriber_info WHERE ${filterClause} AND ${scopeClause} AND ${rangeClause}`, params);
-    res.json({ ok: true, requeued: r.rowCount ?? 0, scope, filtered: fconds.length > 0 });
+    res.json({
+      ok: true, requeued: r.rowCount ?? 0, scope, filtered: fconds.length > 0,
+      phones: phoneRows.map((x: any) => x.phone_number),
+    });
   });
 
   // ===== استقبال أرقام الأكونت من سكربت Customer360 (token-based, CORS) =====

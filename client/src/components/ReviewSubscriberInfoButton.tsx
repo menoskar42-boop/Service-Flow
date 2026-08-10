@@ -7,9 +7,16 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { UserSearch, Loader2 } from "lucide-react";
+import { isExecutorActive, enqueueJob, canRunLocalExecutor, NO_EXECUTOR_MSG } from "@/lib/exec-queue";
 
 // زر "مراجعة الاسم والعنوان": يعيد جلب الأسماء/العناوين من FCC لأرقام البورتات.
-// نعم = الأرقام بدون اسم/عنوان فقط. الكل = كل الأرقام. ثم يفتح FCC ويشغّل السكربت تلقائياً.
+// نعم = الأرقام بدون اسم/عنوان فقط. الكل = كل الأرقام.
+// ⚠️ قبل كده كان بيفتح FCC مباشرة على متصفح المستخدم الحالى — فلو ده مش جهاز التنفيذ
+// (مالوش وصول لـ FCC، أو مستخدم من الموبايل) كان التاب بيتفتح وميعملش حاجة. دلوقتى:
+//  • فيه جهاز تنفيذ مفعّل → الأرقام بتتبعت لطابور مراجعة البيان الفنى (subinfo لكل رقم)
+//    زى باقى العمليات، وجهاز التنفيذ هو اللى بيفتح FCC.
+//  • مفيش جهاز تنفيذ وسوبر أدمن على كمبيوتر مكتب → fallback زى القديم بالظبط: يفتح FCC
+//    محلياً بوضع «auto» اللى بيلف على /pending بنفسه.
 // filters: لو اتمرّرت (من بيان التليفونات) → المراجعة بتقتصر على الأرقام المفلترة بس.
 export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: string; cabin?: string; box?: string; phoneFrom?: string; phoneTo?: string } }) {
   const [open, setOpen] = useState(false);
@@ -28,13 +35,34 @@ export function ReviewSubscriberInfoButton({ filters }: { filters?: { central?: 
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "خطأ");
       const j = await res.json();
+      const phones: string[] = Array.isArray(j.phones) ? j.phones : [];
+      if (!phones.length) {
+        toast({ title: "لا يوجد ما يُراجع", description: "كل الأرقام فى هذا النطاق عندها اسم/عنوان بالفعل.", duration: 5000 });
+        return;
+      }
+
+      if (await isExecutorActive()) {
+        const r = await enqueueJob("subinfo", phones);
+        if (!r.ok) throw new Error(r.message || "تعذّر الإضافة لطابور التنفيذ");
+        toast({
+          title: "بدأت المراجعة",
+          description: `${scope === "all" ? "كل الأرقام" : "الأرقام بدون اسم/عنوان"} — ${phones.length} رقم اتضافوا لطابور مراجعة البيان الفنى. هيتنفّذوا على جهاز التنفيذ.`,
+          duration: 6000,
+        });
+        return;
+      }
+      if (!isSuper || !canRunLocalExecutor()) {
+        toast({ variant: "destructive", title: "غير متاح حالياً", description: NO_EXECUTOR_MSG, duration: 6000 });
+        return;
+      }
+
+      // fallback محلى (سوبر أدمن، كمبيوتر مكتب، من غير جهاز تنفيذ): نفس السلوك القديم —
+      // يفتح FCC هنا فيشتغل سكربت الجلب تلقائياً على /pending.
       toast({
         title: "بدأت المراجعة",
-        description: `${scope === "all" ? "كل الأرقام" : "الأرقام بدون اسم/عنوان"} — تم تجهيز ${j.requeued} رقم. سيُفتح FCC لجلب البيانات.`,
+        description: `${scope === "all" ? "كل الأرقام" : "الأرقام بدون اسم/عنوان"} — ${phones.length} رقم. سيُفتح FCC لجلب البيانات على هذا المتصفح.`,
         duration: 5000,
       });
-      // يفتح FCC فيشتغل سكربت الجلب تلقائياً. لو فيه فلتر (سنترال/كابينة/بكس) نبعته فى الهاش (sf_sif)
-      // ونفتح نافذة باسم مستقل لكل فلتر — فتقدر تفتح أكتر من مراجعة بفلاتر مختلفة فى نفس الوقت.
       const f = filters || {};
       const hasF = !!(f.central || f.cabin || f.box || f.phoneFrom || f.phoneTo);
       const fkey = [f.central || "", f.cabin || "", f.box || "", f.phoneFrom || "", f.phoneTo || ""].join("~");
