@@ -19,10 +19,19 @@ interface Batch {
   queueOrder: number;
 }
 
-// الباتش يعتبر «عالق» لو فيه مهمة تحت التنفيذ من أكتر من 15 دقيقة — مهلة أطول
-// عملية عادية (غير تحديث الملفات) 15 دقيقة، فاللى بيعدّيها محتاج تدخّل.
-const STUCK_MINS = 15;
-const isStuck = (b: Batch) => b.claimed > 0 && (b.claimedMins ?? 0) >= STUCK_MINS;
+// الباتش يعتبر «عالق» لو فيه مهمة تحت التنفيذ عدّت مهلتها:
+//   • القياس 5 دقايق — الخط الواحد بيخلص فى ~3 دقايق، فاللى بيعدّى 5 واقف.
+//   • أى عملية تانية 20 دقيقة.
+//   • استثناءات مهلتها الفعلية أطول من 20: تحديث الملفات 60، وc360/wfmreport 45.
+// ⚠️ لازم تفضل مطابقة لـ maxRunSql فى expireOrphanedExecJobs (server/routes.ts)
+// — السيرفر بيرجّع المهمة للطابور تلقائياً بنفس المهل دى، فلو اختلفوا الشارة
+// هتقول «عالق» على حاجة لسه شغّالة أو العكس.
+const DAILY_TYPES = new Set(["ports", "fccdaily", "wfmdaily", "ossdaily", "weoas"]);
+const stuckMinsFor = (type: string) =>
+  DAILY_TYPES.has(type) ? 60
+  : type === "c360" || type === "wfmreport" ? 45
+  : type === "measure" ? 5 : 20;
+const isStuck = (b: Batch) => b.claimed > 0 && (b.claimedMins ?? 0) >= stuckMinsFor(b.type);
 interface PriorityBatch extends Batch {
   priority: number;
 }

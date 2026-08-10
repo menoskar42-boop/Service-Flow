@@ -2302,16 +2302,20 @@ export async function registerRoutes(
       // **نفس المسار** مستحيل تحصل — يبقى الشرط ده مايتحققش أبداً والمهمة تفضل
       // عالقة لحد السقف المطلق. ده بالظبط اللى كان بيوقّف القياسات: تاب DZS يتقفل
       // من غير ما يتعلّم done، فالمسار يفضل مقفول والصفحة اللى بعدها ماتفتحش.
-      // القيم أعلى من مهلة كل عملية فى جهاز التنفيذ بهامش كويس:
-      // القياس بيخلص فى ~3 دقايق (مهلة الخط 2.5د + كشف التوقف 2.5د) فـ8 دقايق
-      // سقف آمن وسريع؛ والباقى على نفس القاعدة: ضعف مهلته فى جهاز التنفيذ تقريباً.
-      //   قياس/إيقاف/مراجعة 8د · رفع سرعة/تحديث بورت/إلغاء إسناد 15د
-      //   تغيير بورت/جلب أكونت/تقارير WFM 30د · تحديث الملفات اليومية 60د
+      // المهل (متطابقة مع شارة «عالق» فى شاشة الطابور — stuckMinsFor):
+      //   • القياس 5 دقايق — مهمة القياس خط واحد (بتتقسّم رقم-رقم) ومهلته فى جهاز
+      //     التنفيذ 2.5 دقيقة، فـ5 ضعف المهلة وسقف آمن وسريع.
+      //   • أى عملية تانية 20 دقيقة.
+      //   • استثناءات لازمة — دول مهلتهم فى جهاز التنفيذ **أطول من 20**، ولو
+      //     رجّعناهم وهم شغّالين هيتسحبوا تانى ويتفتح تاب جديد فوق القديم (ده
+      //     بالظبط اللى كان بيخنق المتصفح ويوقّف القياسات):
+      //       - تحديث الملفات (DAILY_TYPES): 30 دقيقة فعلية → 60.
+      //       - c360 وwfmreport: 20 دقيقة لكل رقم جوّه نفس التاب → 45.
       const maxRunSql = `(CASE
-        WHEN e.type = ANY($2::text[])                              THEN interval '60 minutes'
-        WHEN e.type IN ('portchange','c360','wfmreport')           THEN interval '30 minutes'
-        WHEN e.type IN ('raise','portcheck','wfmcancel')           THEN interval '15 minutes'
-        ELSE interval '8 minutes' END)`;
+        WHEN e.type = ANY($2::text[])          THEN interval '60 minutes'
+        WHEN e.type IN ('c360','wfmreport')    THEN interval '45 minutes'
+        WHEN e.type = 'measure'                THEN interval '5 minutes'
+        ELSE interval '20 minutes' END)`;
       await pool.query(
         `UPDATE exec_jobs e
             SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1
@@ -2330,12 +2334,17 @@ export async function registerRoutes(
         [MAX_ATTEMPTS, LONG_TYPES],
       );
 
-      // (3) استنفدت المحاولات ولسه عالقة → نسيبها ساعة كمان ثم نعلّمها stale بنتيجة واضحة
-      //     تظهر فى تقرير الباتشات (بدل ما تختفى من غير سبب).
+      // (3) استنفدت المحاولات ولسه عالقة → نعلّمها stale بنتيجة واضحة تظهر فى تقرير
+      //     الباتشات (بدل ما تختفى من غير سبب).
+      //     ⚠️ كانت بتستنى **ساعة كاملة** من آخر سحب. النتيجة: بين المحاولة الأخيرة
+      //     والساعة دى الباتش بيقف على «0 من N» — لا إنقاذ تلقائى ولا علامة إلغاء
+      //     ولا أى تفسير. دلوقتى بنستخدم نفس مهلة النوع، فالحالة تتحسم فوراً
+      //     ويقدر المستخدم يضغط «إعادة تشغيل» على باتش باين إنه اتلغى.
       await pool.query(
-        `UPDATE exec_jobs SET status = 'stale', done_at = now(), result = 'stuck_max_attempts'
-          WHERE status = 'claimed' AND attempts >= $1 AND claimed_at < now() - interval '1 hour'`,
-        [MAX_ATTEMPTS],
+        `UPDATE exec_jobs e SET status = 'stale', done_at = now(), result = 'stuck_max_attempts'
+          WHERE e.status = 'claimed' AND e.attempts >= $1
+            AND e.claimed_at < now() - ${maxRunSql}`,
+        [MAX_ATTEMPTS, LONG_TYPES],
       );
 
       // (4) آخر حدّ مطلق: مهمة claimed عدّى عليها >6 ساعات مهما كانت محاولاتها.
