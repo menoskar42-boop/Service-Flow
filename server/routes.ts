@@ -9975,7 +9975,7 @@ export async function registerRoutes(
             -- الـ 138 (أُزيل): المدة من الشكوى حتى وقت الإزالة الفعلى
             CASE
               WHEN FLOOR(rc.status_code::numeric)::int = 135
-                THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - rc.complain_time)) / 3600.0
+                THEN EXTRACT(EPOCH FROM (now() - rc.complain_time)) / 3600.0
               ELSE
                 ${closedHoursSql('rc')}
             END                                             AS hours
@@ -10055,7 +10055,7 @@ export async function registerRoutes(
                                                             AS tech_name,
             CASE
               WHEN src.is_open
-                THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
+                THEN EXTRACT(EPOCH FROM (now() - src.complain_time)) / 3600.0
               ELSE
                 ${closedHoursSql('src')}
             END                                             AS hours
@@ -10385,7 +10385,7 @@ export async function registerRoutes(
             src.close_code                                                               AS "closeCode",
             ROUND(CASE
               WHEN src.is_open
-                THEN EXTRACT(EPOCH FROM (NOW() AT TIME ZONE 'Africa/Cairo' - src.complain_time)) / 3600.0
+                THEN EXTRACT(EPOCH FROM (now() - src.complain_time)) / 3600.0
               ELSE
                 ${closedHoursSql('src')}
             END, 1)                                                                      AS hours,
