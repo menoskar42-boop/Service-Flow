@@ -57,6 +57,11 @@ interface PhoneLine extends Measurement138 {
   subAdd: string | null;
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
+  msanCode: string | null;
+  frameNo: string | null;
+  // مالوش فريم دلوقتى: "تم رفعه نهائياً" (كان ليه بورت وانشال) أو "لم يُفحص بعد" (مالوش بورت من الأساس)
+  frameStatus: string | null;
+  removedAt: string | null;
 }
 
 const fmtPoDt = (d: string | null) => {
@@ -225,6 +230,9 @@ export function PhoneLinesReport() {
       "رقم الكابينه": r.cabinNumber,
       "رقم البكس": r.boxNumber,
       "رقم التليفون": r.telNo,
+      "كود كابينة المسان": r.msanCode ?? "",
+      "رقم الفريم": r.frameNo ?? "",
+      "الحالة": r.frameStatus ?? "",
       "IDU": r.iduNo,
       "ODU": r.oduNo,
       "Primary Block": r.primaryBlockNo,
@@ -260,10 +268,10 @@ export function PhoneLinesReport() {
     printTablePDF({
       title: "تقرير بيان أرقام التليفونات",
       columns: ["#", "التليفون الكامل", "الأكونت", "سرعة حالية", "أقصى سرعة", "السنترال", "اسم العميل", "العنوان", "الكابينه", "البكس", "التليفون",
-        "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN", "الفنى"],
+        "كود المسان", "الفريم", "الحالة", "IDU", "ODU", "Cabinet In", "DP Terminal", "Port", "LEN", "الفنى"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
         r.central, r.subName ?? "", r.subAdd ?? "", r.cabinNumber, r.boxNumber,
-        r.telNo, r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len, r.techName ?? ""]),
+        r.telNo, r.msanCode ?? "", r.frameNo ?? "", r.frameStatus ?? "", r.iduNo, r.oduNo, r.cabinetIn, r.dpTerminal, r.port, r.len, r.techName ?? ""]),
     });
   };
 
@@ -382,6 +390,9 @@ export function PhoneLinesReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">كود كابينة المسان</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">رقم الفريم</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">الحالة</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">IDU</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">ODU</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">Primary Block</TableHead>
@@ -424,6 +435,19 @@ export function PhoneLinesReport() {
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
+                      <TableCell className="font-mono">{r.msanCode || "-"}</TableCell>
+                      <TableCell className="font-mono">{r.frameNo || "-"}</TableCell>
+                      <TableCell>
+                        {r.frameStatus ? (
+                          <span className={`text-[11px] px-2 py-0.5 rounded font-semibold whitespace-nowrap ${
+                            r.frameStatus === "تم رفعه نهائياً" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                          }`} title={r.removedAt ? `اتشال بتاريخ ${new Date(r.removedAt).toLocaleDateString("ar-EG")}` : undefined}>
+                            {r.frameStatus}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-800 whitespace-nowrap">شغّال</span>
+                        )}
+                      </TableCell>
                       <TableCell>{r.iduNo || "-"}</TableCell>
                       <TableCell>{r.oduNo || "-"}</TableCell>
                       <TableCell>{r.primaryBlockNo || "-"}</TableCell>

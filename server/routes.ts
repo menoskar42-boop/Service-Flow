@@ -3347,8 +3347,6 @@ export async function registerRoutes(
     if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
 
     const conds: string[] = [];
-    // بيان التليفونات: أى رقم مالوش فريم مايظهرش (مش متركّب على المسان فعلياً)
-    conds.push(hasFrameSql("k.full_phone"));
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -3397,7 +3395,10 @@ export async function registerRoutes(
              WHERE regexp_replace(phone_number,'[^0-9]','','g') ~ '^0*88[0-9]{7}$') k
       LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
-      LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone`;
+      LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone
+      -- رقم مالوش فريم دلوقتى بس كان ليه بورت قبل كده (موجود فى جدول الخطوط المرفوعة)
+      -- = اتشال من ملف البورتات فعلياً، مش لسه ماتفحصش. الفرق ده بيبان فى عمود «الحالة».
+      LEFT JOIN removed_phone_ports rpp ON rpp.phone_number = k.full_phone`;
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
@@ -3419,6 +3420,16 @@ export async function registerRoutes(
               pl.box_number AS "boxNumber", pl.dp_terminal AS "dpTerminal",
               COALESCE(pp.frame, pl.port) AS port, pl.len,
               pl.fiber_block AS "fiberBlock", pl.fiber_out AS "fiberOut",
+              pp.msan_code AS "msanCode",
+              pp.frame AS "frameNo",
+              -- مالوش فريم دلوقتى: لو كان ليه بورت قبل كده وانمسح (removed_phone_ports) فده
+              -- «تم رفعه نهائياً» فعلاً؛ غير كده لسه ماتفحصش/مالوش بورت من الأساس.
+              (CASE
+                 WHEN COALESCE(btrim(pp.frame::text), '') <> '' THEN NULL
+                 WHEN rpp.phone_number IS NOT NULL THEN 'تم رفعه نهائياً'
+                 ELSE 'لم يُفحص بعد'
+               END) AS "frameStatus",
+              (rpp.removed_at AT TIME ZONE 'Africa/Cairo') AS "removedAt",
               -- فنى المنطقة = صاحب الكابينة (cabinet_technicians) حسب السنترال + رقم الكابينة
               (SELECT tn.tech_name FROM cabinet_technicians ct
                  JOIN technician_names tn ON tn.worker_code = ct.worker_code
