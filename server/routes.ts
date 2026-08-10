@@ -1806,6 +1806,10 @@ export async function registerRoutes(
                 MIN(priority)::int AS priority,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
                 bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
+                -- كام مهمة تحت التنفيذ دلوقتى ومن إمتى — عشان الباتش العالق يبان
+                -- إنه عالق (جارٍ التنفيذ من 40 دقيقة) بدل ما يفضل «0 من 1» بلا سبب
+                COUNT(*) FILTER (WHERE status='claimed')::int AS claimed,
+                ROUND(EXTRACT(EPOCH FROM (now() - MIN(claimed_at) FILTER (WHERE status='claimed'))) / 60.0)::int AS "claimedMins",
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt"
          FROM exec_jobs
          WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority IN (1, 2) AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
@@ -1824,6 +1828,8 @@ export async function registerRoutes(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
                 bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
+                COUNT(*) FILTER (WHERE status='claimed')::int AS claimed,
+                ROUND(EXTRACT(EPOCH FROM (now() - MIN(claimed_at) FILTER (WHERE status='claimed'))) / 60.0)::int AS "claimedMins",
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt", MAX(queue_order) AS "queueOrder"
          FROM exec_jobs
          WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority = 0 AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
@@ -2130,6 +2136,26 @@ export async function registerRoutes(
         params,
       );
       res.json({ ok: true, canceled: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/exec-queue/requeue { batchId } — «إعادة تشغيل» باتش عالق (سوبر أدمن).
+  // الإنقاذ التلقائى (expireOrphanedExecJobs) بيشتغل بعد مهلة النوع وبحدّ 3 محاولات،
+  // وبعد كده المهمة بتبقى stale ومافيش أى طريقة ترجّعها. الزرار ده هو المخرج اليدوى:
+  // بيرجّع كل مهام الباتش (claimed العالقة + stale الملغاة) لـ pending، بيصفّر
+  // العدّاد (قرار صريح من المستخدم مش إعادة محاولة تلقائية) وبيفكّ الإيقاف المؤقت.
+  // اللى اتنفّذ فعلاً (done) مابيتلمسش.
+  app.post("/api/exec-queue/requeue", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const batchId = String(req.body?.batchId || "").trim();
+      if (!batchId) return res.status(400).json({ message: "batchId مطلوب" });
+      const { rowCount } = await pool.query(
+        `UPDATE exec_jobs
+            SET status = 'pending', claimed_at = NULL, done_at = NULL, result = NULL,
+                paused_at = NULL, attempts = 0
+          WHERE batch_id = $1 AND status IN ('claimed', 'stale', 'pending')`,
+        [batchId]);
+      res.json({ ok: true, requeued: rowCount ?? 0 });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

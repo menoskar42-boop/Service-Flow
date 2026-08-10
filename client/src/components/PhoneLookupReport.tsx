@@ -516,9 +516,25 @@ export function PhoneLookupReport() {
     },
     retry: 1,
   });
-  // أكتر نوع فيه فاضى (السيرفر بيرجّعهم مرتّبين بالفاضى تنازلياً)
-  const bestPt = cabFree?.data?.find((g) => g.free > 0 && g.portType !== "غير محدّد")?.portType || "";
-  const freeOfPt = (pt: string) => cabFree?.data?.find((g) => g.portType === pt)?.free;
+  // أنواع البورت المعتمدة فى البورتال — دول بس اللى يتبعتوا فى ملف الـ CSV.
+  // أى نوع تانى ممكن يطلع من ملف البورتات (كتابة مختلفة/نوع غريب) مايبقاش اختيار.
+  const PORT_TYPES = ["SV", "VDSL", "ADSL", "ESL"];
+  // تجميع الفاضى على الأنواع الأربعة (مطابقة بدون حساسية لحالة الحروف)
+  const freeMap = new Map<string, { cards: number; capacity: number; working: number; free: number }>();
+  for (const g of cabFree?.data ?? []) {
+    const key = PORT_TYPES.find((p) => p === String(g.portType || "").trim().toUpperCase());
+    if (!key) continue;
+    const cur = freeMap.get(key) || { cards: 0, capacity: 0, working: 0, free: 0 };
+    freeMap.set(key, {
+      cards: cur.cards + g.cards, capacity: cur.capacity + g.capacity,
+      working: cur.working + g.working, free: cur.free + g.free,
+    });
+  }
+  const freeOfPt = (pt: string) => freeMap.get(pt)?.free;
+  // أكتر نوع فيه فاضى من الأنواع المعتمدة
+  const bestPt = PORT_TYPES
+    .filter((p) => (freeMap.get(p)?.free ?? 0) > 0)
+    .sort((a, b) => (freeMap.get(b)!.free) - (freeMap.get(a)!.free))[0] || "";
 
   useEffect(() => {
     if (!msanOpen || !bestPt || !msanNewKey) return;
@@ -1039,26 +1055,29 @@ export function PhoneLookupReport() {
                 <p className="text-[11px] text-red-600">مفيش بورتات مسجّلة للكابينة دى فى ملف البورتات</p>
               ) : (
                 <>
+                  {/* الأنواع الأربعة المعتمدة بس — دى اللى البورتال بيقبلها */}
                   <div className="flex flex-wrap gap-1.5">
-                    {cabFree.data.map((g) => (
-                      <button key={g.portType} type="button"
-                        onClick={() => { ptTouchedFor.current = msanNewKey; setMsanPt(g.portType); }}
-                        disabled={g.portType === "غير محدّد"}
-                        title={`${g.cards} كارت · سعة ${g.capacity} · شغّال ${g.working}`}
-                        className={`px-2 py-1 rounded text-xs border transition
-                          ${msanPt === g.portType ? "bg-cyan-600 text-white border-cyan-600" : "bg-white hover:bg-muted"}
-                          ${g.free === 0 ? "opacity-60" : ""}
-                          ${g.portType === "غير محدّد" ? "cursor-not-allowed" : ""}`}>
-                        {/* dir=ltr + فاصل: من غيرهم كان بيتقرا «SV24» كأنه اسم نوع البورت */}
-                        <span dir="ltr" className="inline-flex items-center gap-1">
-                          <span className="font-mono">{g.portType}</span>
-                          <span className="opacity-50">·</span>
-                          <span className={`font-bold ${g.free > 0 ? (msanPt === g.portType ? "" : "text-green-700") : "text-red-600"}`}>
-                            {g.free}
+                    {PORT_TYPES.map((pt) => {
+                      const g = freeMap.get(pt);
+                      return (
+                        <button key={pt} type="button"
+                          onClick={() => { ptTouchedFor.current = msanNewKey; setMsanPt(pt); }}
+                          title={g ? `${g.cards} كارت · سعة ${g.capacity} · شغّال ${g.working}`
+                                   : "مافيش كروت من النوع ده فى الكابينة"}
+                          className={`px-2 py-1 rounded text-xs border transition
+                            ${msanPt === pt ? "bg-cyan-600 text-white border-cyan-600" : "bg-white hover:bg-muted"}
+                            ${!g?.free ? "opacity-60" : ""}`}>
+                          {/* dir=ltr + فاصل: من غيرهم كان بيتقرا «SV24» كأنه اسم نوع البورت */}
+                          <span dir="ltr" className="inline-flex items-center gap-1">
+                            <span className="font-mono">{pt}</span>
+                            <span className="opacity-50">·</span>
+                            <span className={`font-bold ${g?.free ? (msanPt === pt ? "" : "text-green-700") : "text-red-600"}`}>
+                              {g ? g.free : "—"}
+                            </span>
                           </span>
-                        </span>
-                      </button>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                   <p className="text-[11px] text-muted-foreground">
                     الرقم جنب النوع = عدد البورتات الفاضية.
@@ -1073,7 +1092,8 @@ export function PhoneLookupReport() {
               <select value={msanPt}
                 onChange={(e) => { ptTouchedFor.current = msanNewKey; setMsanPt(e.target.value); }}
                 className="border rounded-md px-3 py-2 text-sm" dir="ltr">
-                {["SV", "VDSL", "ADSL", "ESL"].map((pt) => {
+                {/* الأنواع الأربعة المعتمدة **فقط** — مفيش أى نوع تانى يتبعت للبورتال */}
+                {PORT_TYPES.map((pt) => {
                   const f = freeOfPt(pt);
                   return (
                     <option key={pt} value={pt}>
@@ -1081,10 +1101,6 @@ export function PhoneLookupReport() {
                     </option>
                   );
                 })}
-                {/* نوع موجود فى الكابينة بس مش فى القائمة الثابتة — نضيفه عشان مايضيعش */}
-                {cabFree?.data
-                  ?.filter((g) => g.portType !== "غير محدّد" && !["SV", "VDSL", "ADSL", "ESL"].includes(g.portType))
-                  .map((g) => <option key={g.portType} value={g.portType}>{g.portType} — فاضى {g.free}</option>)}
               </select>
               {msanNewKey.length >= 6 && !cabFreeLoading && freeOfPt(msanPt) === 0 && (
                 <p className="text-[11px] text-red-600 font-semibold">

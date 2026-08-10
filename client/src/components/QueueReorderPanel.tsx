@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban, Pause, Play } from "lucide-react";
+import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban, Pause, Play, RotateCcw, AlertTriangle } from "lucide-react";
 
 // ترتيب باتشات «الأولوية المتأخرة» (>3 خطوط من غير تقرير محتاجة رفع سرعة) — للسوبر أدمن.
 // الأولويات الأعلى (≤3 خطوط، ثم محتاجة رفع سرعة) بتتنفّذ قبلها دايماً ومش بتتأثر بالترتيب ده.
@@ -13,9 +13,16 @@ interface Batch {
   total: number;
   done: number;
   paused: boolean;
+  claimed: number;          // كام مهمة تحت التنفيذ دلوقتى
+  claimedMins: number | null; // من كام دقيقة بدأ أقدم تنفيذ (null = مفيش شغّال)
   createdAt: string | null;
   queueOrder: number;
 }
+
+// الباتش يعتبر «عالق» لو فيه مهمة تحت التنفيذ من أكتر من 15 دقيقة — مهلة أطول
+// عملية عادية (غير تحديث الملفات) 15 دقيقة، فاللى بيعدّيها محتاج تدخّل.
+const STUCK_MINS = 15;
+const isStuck = (b: Batch) => b.claimed > 0 && (b.claimedMins ?? 0) >= STUCK_MINS;
 interface PriorityBatch extends Batch {
   priority: number;
 }
@@ -39,6 +46,7 @@ export function QueueReorderPanel() {
   const [dirty, setDirty] = useState(false);
   const [canceling, setCanceling] = useState<string | null>(null); // batchId اللى بيتلغى دلوقتى
   const [pausing, setPausing] = useState<string | null>(null); // batchId اللى بيتوقّف/يستأنف دلوقتى ("all" للكل)
+  const [requeuing, setRequeuing] = useState<string | null>(null); // batchId اللى بيتعاد تشغيله
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   // silent = تحديث فى الخلفية (التحديث التلقائى): مايوريّش سبينر ولا يمسح الشاشة،
@@ -65,8 +73,8 @@ export function QueueReorderPanel() {
   // من غير ما نعيد إنشاؤه كل رندر.
   const busyRef = useRef(false);
   useEffect(() => {
-    busyRef.current = dirty || saving || loading || !!canceling || !!pausing;
-  }, [dirty, saving, loading, canceling, pausing]);
+    busyRef.current = dirty || saving || loading || !!canceling || !!pausing || !!requeuing;
+  }, [dirty, saving, loading, canceling, pausing, requeuing]);
 
   // تحديث تلقائى كل 5 ثوانى — بيقف لو التاب مش ظاهر (مافيش داعى نضرب السيرفر فى الخلفية)
   useEffect(() => {
@@ -130,6 +138,26 @@ export function QueueReorderPanel() {
       if (r.ok && d?.ok) await load();
       else alert(d?.message || "تعذّر تنفيذ الطلب");
     } catch { alert("تعذّر تنفيذ الطلب"); } finally { setPausing(null); }
+  };
+
+  // إعادة تشغيل باتش عالق: بيرجّع مهامه (العالقة والملغاة) للطابور من أول وجديد.
+  // ده المخرج اليدوى لما الإنقاذ التلقائى يستنفد محاولاته والباتش يقف من غير رجعة.
+  const requeueBatch = async (batchId: string, b: Batch) => {
+    const msg = isStuck(b)
+      ? `الباتش ده فيه ${b.claimed} مهمة تحت التنفيذ من ${b.claimedMins} دقيقة (يبدو إنها علقت).\nإعادة تشغيله هترجّعها للطابور من أول وجديد. تأكيد؟`
+      : `إعادة تشغيل الباتش (${b.total} خط)؟ اللى اتنفّذ فعلاً مش هيتعاد.`;
+    if (!confirm(msg)) return;
+    setRequeuing(batchId);
+    try {
+      const r = await fetch("/api/exec-queue/requeue", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId }),
+      });
+      const d = await r.json();
+      if (r.ok && d?.ok) { await load(); alert(`تم — رجّعنا ${d.requeued} مهمة للطابور`); }
+      else alert(d?.message || "تعذّر إعادة التشغيل");
+    } catch { alert("تعذّر إعادة التشغيل"); } finally { setRequeuing(null); }
   };
 
   // إيقاف مؤقت/استئناف لكل الباتشات دفعة واحدة
@@ -200,8 +228,23 @@ export function QueueReorderPanel() {
                     <span className="text-xs text-muted-foreground">التوقيت: {fmt(b.createdAt)}</span>
                     <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
                     {b.paused && <span className="text-xs px-2 py-0.5 rounded font-semibold bg-amber-100 text-amber-800">موقَّف مؤقتاً</span>}
+                    {/* الباتش العالق لازم يبان — قبل كده كان بيفضل «0 من N» من غير أى تفسير */}
+                    {b.claimed > 0 && (
+                      <span className={`text-xs px-2 py-0.5 rounded font-semibold inline-flex items-center gap-1 ${isStuck(b) ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}`}>
+                        {isStuck(b) && <AlertTriangle className="w-3 h-3" />}
+                        {isStuck(b) ? `عالق — تحت التنفيذ من ${b.claimedMins} دقيقة` : `جارٍ التنفيذ${b.claimedMins != null ? ` من ${b.claimedMins} دقيقة` : ""}`}
+                      </span>
+                    )}
                   </div>
                 </div>
+                <button
+                  onClick={() => requeueBatch(b.batchId, b)}
+                  disabled={requeuing === b.batchId}
+                  className={`shrink-0 disabled:opacity-30 ${isStuck(b) ? "text-red-600 hover:text-red-800" : "text-blue-600 hover:text-blue-800"}`}
+                  title="إعادة تشغيل — يرجّع مهام الباتش للطابور من أول وجديد"
+                >
+                  {requeuing === b.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                </button>
                 <button
                   onClick={() => togglePauseBatch(b.batchId, b.paused)}
                   disabled={pausing === b.batchId}
@@ -255,8 +298,23 @@ export function QueueReorderPanel() {
                   <span className="text-xs text-muted-foreground">التوقيت: {fmt(b.createdAt)}</span>
                   <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
                   {b.paused && <span className="text-xs px-2 py-0.5 rounded font-semibold bg-amber-100 text-amber-800">موقَّف مؤقتاً</span>}
+                  {/* الباتش العالق لازم يبان — قبل كده كان بيفضل «0 من N» من غير أى تفسير */}
+                  {b.claimed > 0 && (
+                    <span className={`text-xs px-2 py-0.5 rounded font-semibold inline-flex items-center gap-1 ${isStuck(b) ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}`}>
+                      {isStuck(b) && <AlertTriangle className="w-3 h-3" />}
+                      {isStuck(b) ? `عالق — تحت التنفيذ من ${b.claimedMins} دقيقة` : `جارٍ التنفيذ${b.claimedMins != null ? ` من ${b.claimedMins} دقيقة` : ""}`}
+                    </span>
+                  )}
                 </div>
               </div>
+              <button
+                onClick={() => requeueBatch(b.batchId, b)}
+                disabled={requeuing === b.batchId}
+                className={`shrink-0 disabled:opacity-30 ${isStuck(b) ? "text-red-600 hover:text-red-800" : "text-blue-600 hover:text-blue-800"}`}
+                title="إعادة تشغيل — يرجّع مهام الباتش للطابور من أول وجديد"
+              >
+                {requeuing === b.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              </button>
               <button
                 onClick={() => togglePauseBatch(b.batchId, b.paused)}
                 disabled={pausing === b.batchId}
