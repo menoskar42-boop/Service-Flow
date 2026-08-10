@@ -690,6 +690,14 @@ export default function Reports() {
 
   const renderExcavationWorkersReport = () => {
     const data = getExcavationWorkersData();
+    // عدد العمال المختلفين (بالرقم القومي، وإلا بالاسم) وعدد أيام العمل ضمن نتيجة
+    // البحث/الفلتر الحالية — نفس الصفوف المعروضة تحت بالظبط، مش إجمالي كل البيانات.
+    const uniqueWorkersCount = new Set(
+      data.map(row => (row.nationalId && row.nationalId !== '-' ? row.nationalId : row.workerName))
+    ).size;
+    const uniqueDaysCount = new Set(
+      data.map(row => new Date(row.workDate).toISOString().split('T')[0])
+    ).size;
 
     const handleDownloadCertificates = () => {
       // Group rows by work date
@@ -1014,8 +1022,8 @@ export default function Reports() {
         </CardHeader>
         <CardContent>
           <div className="mb-4 space-y-3">
-             <Input 
-               placeholder="بحث بالاسم أو رقم التكت أو الرقم القومي..." 
+             <Input
+               placeholder="بحث بالاسم أو رقم التكت أو الرقم القومي..."
                value={search}
                onChange={(e) => setSearch(e.target.value)}
              />
@@ -1033,6 +1041,19 @@ export default function Reports() {
                    مسح الفلتر
                  </Button>
                )}
+             </div>
+             {/* عدد العمال المختلفين وعدد أيام العمل ضمن نتيجة البحث/الفلتر الحالية —
+                 بتتحدّث لحظياً مع أى تغيير فى البحث أو التاريخ. */}
+             <div className="flex items-center gap-2 flex-wrap text-sm">
+               <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary font-semibold px-3 py-1.5">
+                 عدد العمال: {uniqueWorkersCount}
+               </span>
+               <span className="inline-flex items-center gap-1.5 rounded-md bg-muted text-muted-foreground px-3 py-1.5">
+                 عدد أيام العمل: {uniqueDaysCount}
+               </span>
+               <span className="inline-flex items-center gap-1.5 rounded-md bg-muted text-muted-foreground px-3 py-1.5">
+                 عدد السطور: {data.length}
+               </span>
              </div>
           </div>
           <div className="rounded-md border">
