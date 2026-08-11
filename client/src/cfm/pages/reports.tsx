@@ -707,6 +707,22 @@ export default function Reports() {
     const uniqueWorkersCount = Array.from(workersByDay.values()).reduce((sum, workers) => sum + workers.size, 0);
     const uniqueDaysCount = workersByDay.size;
 
+    // عدد البكسيات: البكس بيتحدّد بالسنترال + الكابينة + رقم البكس (نفس رقم البكس
+    // ممكن يتكرر فى كباين/سناترل مختلفة فهو مش معرّف لوحده) — لو البكس ده اتحفر أكتر
+    // من مرة (أكتر من سطر) بيتحسب مرة واحدة بس. الأسطر اللى مالهاش رقم بكس مستبعدة.
+    const hasBox = (row: typeof data[number]) => !!(row.boxNumber && String(row.boxNumber).trim() && String(row.boxNumber).trim() !== '-');
+    const boxKeyOf = (row: typeof data[number]) => `${row.centralName}|${row.cabinetNumber}|${row.boxNumber}`;
+    const boxesByCentral = new Map<string, Set<string>>();
+    data.filter(hasBox).forEach(row => {
+      const central = row.centralName || '-';
+      if (!boxesByCentral.has(central)) boxesByCentral.set(central, new Set());
+      boxesByCentral.get(central)!.add(boxKeyOf(row));
+    });
+    const totalBoxesCount = Array.from(boxesByCentral.values()).reduce((sum, boxes) => sum + boxes.size, 0);
+    const boxesByCentralSorted = Array.from(boxesByCentral.entries())
+      .map(([central, boxes]) => ({ central, count: boxes.size }))
+      .sort((a, b) => b.count - a.count);
+
     const handleDownloadCertificates = () => {
       // Group rows by work date
       const byDate = new Map<string, typeof data>();
@@ -1063,7 +1079,25 @@ export default function Reports() {
                <span className="inline-flex items-center gap-1.5 rounded-md bg-muted text-muted-foreground px-3 py-1.5">
                  عدد السطور: {data.length}
                </span>
+               <span className="inline-flex items-center gap-1.5 rounded-md bg-indigo-100 text-indigo-800 font-semibold px-3 py-1.5"
+                 title="عدد البكسيات المختلفة (سنترال+كابينة+بكس) — لو نفس البكس اتحفر أكتر من مرة بيتحسب مرة واحدة">
+                 عدد البكسيات: {totalBoxesCount}
+               </span>
              </div>
+             {/* تفصيل عدد البكسيات لكل سنترال — بترتيب الأكتر أولاً */}
+             {boxesByCentralSorted.length > 0 && (
+               <div className="flex items-center gap-2 flex-wrap text-xs">
+                 <span className="text-muted-foreground">البكسيات لكل سنترال:</span>
+                 {boxesByCentralSorted.map(({ central, count }) => (
+                   <span key={central} className="inline-flex items-center gap-1 rounded bg-indigo-50 text-indigo-700 px-2 py-1">
+                     {central}: <b>{count}</b>
+                   </span>
+                 ))}
+                 <span className="inline-flex items-center gap-1 rounded bg-indigo-100 text-indigo-900 font-semibold px-2 py-1">
+                   الإجمالى: {totalBoxesCount}
+                 </span>
+               </div>
+             )}
           </div>
           <div className="rounded-md border">
             <Table>
