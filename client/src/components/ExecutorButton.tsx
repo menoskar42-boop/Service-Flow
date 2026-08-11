@@ -192,11 +192,25 @@ export function ExecutorButton() {
       const before = await latestPoEventAt(last, ev);
       executeBatch(type, accs, raiseWithStop ? { afterStop: true } : undefined); // PO يلفّ على كل الأرقام فى run واحد
       const deadline = Date.now() + Math.min(accs.length * perMax, MAX_TOTAL_MS);
+      // ⚠️ كشف التوقّف: من غيره كان الباتش الكبير (261 رقم مثلاً) اللى بيقف فى نصّه
+      // يفضل «جارٍ التنفيذ» لحد المهلة الكلية (لحد 4 ساعات) — الشاشة واقفة على
+      // «27 من 261» ومحدش يعرف إنها ماتت، والحل الوحيد إعادة تشغيل يدوى.
+      // المهلة هنا **مش** STALL_MS بتاع القياس (2.5 دقيقة): تشغيلة PO للخط الواحد
+      // بتاخد دقايق فعلاً (خطوة «First Realtime Data Collection» لوحدها اتقاست
+      // 214 ثانية)، فلو قطعناها عند 2.5 دقيقة هنقطع خط لسه شغّال. القاعدة: الخط
+      // لازم يخلّص (نجاح أو فشل) قبل ما نعدّيه — فبنستنى مهلة الخط الكاملة
+      // (perMax) + دقيقتين هامش، وأى تقدّم بيصفّر العدّاد من أول وجديد.
+      const poStallMs = perMax + 2 * 60 * 1000;
+      let lastDone = 0, lastProgAt = Date.now();
       while (!stopped && Date.now() < deadline) {
         await sleep(5 * 1000);
         const chk = await jobCheck(jobId);
         if (!chk.active) return "canceled"; // اتمسح من الطابور يدوياً → وقف فوراً
+        if (chk.measured > lastDone) { lastDone = chk.measured; lastProgAt = Date.now(); }
         if ((await latestPoEventAt(last, ev)) > before) return "done"; // آخر رقم اتسجّل → الباتش خلص
+        if (chk.total > 0 && chk.measured >= chk.total) return "done"; // كل الأرقام اتسجّلت
+        if (canPreempt && chk.preempt) return "preempted";             // طلب أعلى أولوية على نفس الدومين
+        if (Date.now() - lastProgAt > poStallMs) return "timeout";     // مافيش تقدّم = وقف
       }
       return stopped ? "stopped" : "timeout";
     };

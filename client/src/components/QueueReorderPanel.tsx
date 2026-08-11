@@ -58,10 +58,18 @@ export function QueueReorderPanel() {
   const [requeuing, setRequeuing] = useState<string | null>(null); // batchId اللى بيتعاد تشغيله
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
+  // ⚠️ عدّاد تعديلات الترتيب المحلّية. المشكلة اللى بيصلّحها: التحديث التلقائى
+  // بيبدأ الـ fetch، والمستخدم بيضغط سهم الترتيب **وهو طائر**، وبعدين الرد بيوصل
+  // ويكتب فوق الترتيب اللى المستخدم لسه عامله (وكمان يمسح علامة dirty) — فالسطر
+  // «بيرجع مكانه» بعد ثوانى. حارس busyRef مابيمنعش غير **بدء** تحديث جديد، مش
+  // اللى بدأ خلاص. فبنقارن العدّاد قبل/بعد: لو اتغيّر يبقى المستخدم عدّل أثناء
+  // الجلب → نتجاهل ترتيب السيرفر ونسيب اللى قدّامه.
+  const reorderSeq = useRef(0);
   // silent = تحديث فى الخلفية (التحديث التلقائى): مايوريّش سبينر ولا يمسح الشاشة،
   // عشان الجدول مايرفرفش كل 5 ثوانى.
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
+    const seqAtStart = reorderSeq.current;
     try {
       const [r, rp] = await Promise.all([
         fetch("/api/exec-queue/reorderable", { credentials: "include" }),
@@ -69,8 +77,10 @@ export function QueueReorderPanel() {
       ]);
       const d = await r.json();
       const dp = await rp.json();
-      setRows(Array.isArray(d.data) ? d.data : []);
+      // الأولوية العليا (للعرض فقط) بتتحدّث دايماً — مفيهاش ترتيب يدوى يضيع.
       setPriorityRows(Array.isArray(dp.data) ? dp.data : []);
+      if (reorderSeq.current !== seqAtStart) return;   // المستخدم رتّب أثناء الجلب → مانكتبش فوقه
+      setRows(Array.isArray(d.data) ? d.data : []);
       setDirty(false);
       setLastRefresh(new Date());
     } catch { if (!silent) { setRows([]); setPriorityRows([]); } } finally { if (!silent) setLoading(false); }
@@ -100,6 +110,7 @@ export function QueueReorderPanel() {
     if (j < 0 || j >= rows.length) return;
     const next = rows.slice();
     [next[i], next[j]] = [next[j], next[i]];
+    reorderSeq.current += 1;   // أى تحديث طائر دلوقتى هيتجاهل ترتيب السيرفر
     setRows(next);
     setDirty(true);
   };

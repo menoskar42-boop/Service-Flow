@@ -6267,7 +6267,14 @@ export async function registerRoutes(
          new_frame = COALESCE(NULLIF(EXCLUDED.new_frame,''), port_change_requests.new_frame),
          port_type = COALESCE(NULLIF(EXCLUDED.port_type,''), port_change_requests.port_type),
          status = EXCLUDED.status,
-         completed = EXCLUDED.completed
+         completed = EXCLUDED.completed,
+         -- ⚠️ لازم يتحدّث: جهاز التنفيذ بيعرف إن «غيّر البورت» خلص لما
+         -- MAX(recorded_at) للرقم يبقى أحدث من وقت سحب المهمة (op-check).
+         -- من غير السطر ده، إعادة رفع **نفس** الـ request_id (وده اللى بيحصل
+         -- لما البورتال يكون مسجّل الطلب من قبل) كانت بتسيب recorded_at على
+         -- وقت أول تسجيل — فالعملية تخلص فعلاً على البورتال والمهمة تفضل
+         -- «جارٍ التنفيذ» لحد ما تعلّق وتتلغى بالمهلة.
+         recorded_at = now()
        RETURNING (xmax = 0) AS inserted`,
       [requestId, phone, oldMsan, newMsan, newFrame, portType, status, reservationCode, requestDate, completed]);
     const wasNew = ins.rows[0]?.inserted === true;
