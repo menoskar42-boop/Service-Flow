@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.8
+// @version      1.5.9
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -565,16 +565,30 @@
     } catch (e) { return []; }
   }
   async function sfIngestResult(payload) {
+    // ⚠️ مهلة إجبارية: من غيرها لو الطلب علّق (شبكة/بروكسى/CORS) الـ fetch مابيرجعش
+    // **أبداً** — فالتدفّق بيقف صامت بعد سطر «COMPLETED … Frame=…» على طول: لا رسالة
+    // نجاح ولا فشل، والبورت اتقرا فعلاً بس ماتسجّلش. دلوقتى بيقطع بعد 30 ثانية
+    // ويرجّع سبب واضح يظهر فى البانر واللوج.
+    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+    const tmo = setTimeout(() => { try { ctrl && ctrl.abort(); } catch (e) {} }, 30000);
     try {
-      const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/port-change/ingest", {
-        method: "POST", headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN }, body: JSON.stringify(payload),
-      });
+      const opts = {
+        method: "POST", headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN },
+        body: JSON.stringify(payload),
+      };
+      if (ctrl) opts.signal = ctrl.signal;
+      const r = await window.fetch(SF_API_BASE.replace(/\/+$/, "") + "/api/port-change/ingest", opts);
       // لازم نتأكد إن السيرفر قبلها فعلاً — قبل كده كنا بنرجّع الـ json مهما كانت الحالة،
       // فأى 401/500 كان بيعدّى وتظهر رسالة نجاح خضراء والبيانات مش متحدّثة.
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.ok === false) return { ok: false, error: (j && j.message) || ("HTTP " + r.status) };
       return Object.assign({ ok: true }, j);
-    } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+    } catch (e) {
+      const msg = (e && e.name === "AbortError")
+        ? "الرفع لـ Service-Flow علّق (عدّى 30 ثانية بلا رد)"
+        : String((e && e.message) || e);
+      return { ok: false, error: msg };
+    } finally { clearTimeout(tmo); }
   }
   // قراءة قيمة حقل بعنوان محدد داخل نافذة تفاصيل الطلب (label نصّه == العنوان بالظبط → أقرب input)
   // قراءة قيمة جنب عنوان معيّن. الإصدار القديم كان بيشترط <label> نصه مطابق تماماً
@@ -795,6 +809,7 @@
           return;
         }
         logln("✅ COMPLETED " + phone + " — Frame=" + newFrame + " | Msan=" + newMsan);
+        logln("📤 بيرفع لـ Service-Flow…");   // لو التدفّق وقف هنا يبقى الرفع هو اللى علّق
         const res = await sfIngestResult({ requestId: mine.requestId, phone, oldMsan: data.old || "", newMsan: newMsan || data.new || "", newFrame, portType: data.pt || "", status: mine.status, reservationCode: mine.reservationCode, requestDate: mine.requestDate });
         if (closeBtn) clickEl(closeBtn);
         if (!res || res.ok === false) {
