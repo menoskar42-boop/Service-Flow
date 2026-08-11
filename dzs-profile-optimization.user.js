@@ -2,7 +2,7 @@
 // @name         DZS Profile Optimization (رفع السرعة) — Service-Flow
 // @namespace    service-flow.dzs.po
 // @description  يشغّل Profile Optimization (Start Realtime PO) على AXON Expresse لمجموعة أرقام أكونت — منفصل تماماً عن سكربت القياس. الوضع الكامل: [لو Nightly PO شغّال أوقفه] ثم Start Realtime PO. وضع «إيقاف PO» (sf_stop=1): يعمل سيكوينس الإيقاف فقط (Stop Nightly PO → Yes) ويرجّع Not Started؛ لو أصلاً Not Started مايعملش حاجة. يُفعَّل فقط عند وجود #sf_po أو علامة PO_ACTIVE. v0.9.6: تسجيل «إيقاف PO» بقى لما الحالة ترجع Not Started فعلاً (وقت الاكتمال) بدل وقت طلب الإيقاف — عشان مايظهرش «تم» قبل ما يخلّص فعلياً. v0.9.5: فى وضع رفع السرعة، إيقاف الـ nightly التمهيدى مايتسجّلش كـ «إيقاف PO».
-// @version      0.9.6
+// @version      0.9.7
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -142,7 +142,10 @@
   if (idx >= ACCOUNTS.length) {
     localStorage.removeItem(PO_ACTIVE_KEY);
     downloadPoCsv();
-    banner("✅ تم إرسال طلب رفع السرعة لكل الأرقام (" + ACCOUNTS.length + "). تقدر تقفل التاب.", "#2e7d32");
+    // نفس سبب القفل فى advance(): قفل التاب هو الإشارة اللى جهاز التنفيذ بيقراها
+    // فوراً (win.closed) فيعدّى للخط اللى بعده بدل ما يستنى المهلة كاملة.
+    banner("✅ تم إرسال طلب رفع السرعة لكل الأرقام (" + ACCOUNTS.length + ") — بيتقفل التاب…", "#2e7d32");
+    setTimeout(() => { try { window.close(); } catch (e) {} }, 4000);
     return;
   }
   const CURRENT = ACCOUNTS[idx];
@@ -238,7 +241,19 @@
 
   function advance() {
     setIndex(idx + 1);
-    if (idx + 1 >= ACCOUNTS.length) { localStorage.removeItem(PO_ACTIVE_KEY); downloadPoCsv(); banner("✅ خلص كل الأرقام. تقدر تقفل التاب.", "#2e7d32"); return; }
+    if (idx + 1 >= ACCOUNTS.length) {
+      localStorage.removeItem(PO_ACTIVE_KEY);
+      downloadPoCsv();
+      // ⚠️ بنقفل التاب بنفسنا. قبل كده كان بيقول «تقدر تقفل التاب» ويسيبه مفتوح،
+      // وجهاز التنفيذ بيعرف إن الخط خلص من أثره فى قاعدة البيانات بس — فلو الخط
+      // فشل (Critical error during profile change) مافيش أثر أصلاً، فيفضل مستنى
+      // مهلة الخط كاملة (8 دقايق) قبل ما يعدّى للى بعده. قفل التاب هو الإشارة
+      // المباشرة اللى بيقراها فوراً (win.closed) فيعدّى من غير انتظار.
+      // مهلة صغيرة عشان تحميل الـ CSV يخلّص والبانر يبان.
+      banner("✅ خلص كل الأرقام — بيتقفل التاب…", "#2e7d32");
+      setTimeout(() => { try { window.close(); } catch (e) {} }, 4000);
+      return;
+    }
     location.href = PO_URL + encodeURIComponent(ACCOUNTS[idx + 1]);
   }
 
