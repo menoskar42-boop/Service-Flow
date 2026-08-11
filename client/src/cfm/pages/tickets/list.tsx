@@ -25,6 +25,8 @@ export default function TicketList() {
   const t = translations[language];
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  // فلتر «به متعذرات» — التكتات اللى على بكسها متعذرات «بوكس معطل» (OM أو طلبات)
+  const [onlyWithCases, setOnlyWithCases] = useState(false);
   
   // API-fetched data
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -165,10 +167,18 @@ export default function TicketList() {
     ].filter(Boolean).join(" | ").toLowerCase();
 
     const matchesSearch = !searchLower || arIncludes(haystack, searchLower);
+    if (!matchesSearch) return false;
 
-    if (activeTab === 'all') return matchesSearch;
-    
-    return matchesSearch && ticket.status === activeTab;
+    // فلتر «به متعذرات»: التكتات اللى على بكسها متعذرات «بوكس معطل» (OM أو طلبات).
+    // العدد من بيانات Service-Flow مباشرةً — نفس مصدر عمود «متعذرات» فى الجدول.
+    if (onlyWithCases) {
+      const central = centrals.find(c => c.id === ticket.centralId);
+      const cable = cables.find(c => c.id === ticket.cableId);
+      if (pendingCases(ticket, central?.name, cable?.number).total <= 0) return false;
+    }
+
+    if (activeTab === 'all') return true;
+    return ticket.status === activeTab;
   }).sort((a, b) => {
     const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     return sortDir === 'desc' ? -diff : diff;
@@ -268,7 +278,18 @@ export default function TicketList() {
               <TabsTrigger value="all">{t.filterAll}</TabsTrigger>
             </TabsList>
           </Tabs>
-          
+
+          {/* فلتر «به متعذرات» — بيشتغل مع أى تبويب حالة ومع البحث */}
+          <Button
+            variant={onlyWithCases ? "default" : "outline"}
+            size="sm"
+            onClick={() => setOnlyWithCases((v) => !v)}
+            title="يعرض التكتات اللى على بكسها متعذرات «بوكس معطل» (OM أو طلبات) فقط"
+            className={onlyWithCases ? "bg-amber-600 hover:bg-amber-700 gap-1" : "gap-1 text-amber-700 border-amber-300"}
+          >
+            به متعذرات
+          </Button>
+
           <div className="flex items-center gap-2 mr-auto">
             <Button
               variant="outline"
