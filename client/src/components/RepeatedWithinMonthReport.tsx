@@ -63,7 +63,10 @@ export function RepeatedWithinMonthReport() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   });
 
-  const { data: rows = [], isFetching } = useQuery<RepeatedRow[]>({
+  // فلتر باسم الفنى — بيتفلتر على النتيجة المحمّلة (مش طلب جديد للسيرفر) فبيشتغل
+  // فوراً، والقايمة نفسها بتتبنى من الأسماء الموجودة فى النتيجة الحالية.
+  const [tech, setTech] = useState("");
+  const { data: allRows = [], isFetching } = useQuery<RepeatedRow[]>({
     queryKey: ["/api/reports/repeated-within-month", central, q, dateFrom, dateTo],
     queryFn: async () => {
       const p = new URLSearchParams();
@@ -76,6 +79,17 @@ export function RepeatedWithinMonthReport() {
       return res.json();
     },
   });
+
+  // أسماء الفنيين الموجودة فى النتيجة الحالية (مرتّبة عربى) + «بدون فنى» لو فيه صفوف ملهاش فنى
+  const techOptions = Array.from(new Set(allRows.map((r) => (r.techName || "").trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b, "ar"));
+  const hasNoTech = allRows.some((r) => !(r.techName || "").trim());
+  const NO_TECH = "__none__";
+  const rows = !tech
+    ? allRows
+    : tech === NO_TECH
+      ? allRows.filter((r) => !(r.techName || "").trim())
+      : allRows.filter((r) => (r.techName || "").trim() === tech);
 
   const rangeLabel = `تاريخ آخر شكوى من ${dateFrom || "البداية"} إلى ${dateTo || "النهاية"}`;
 
@@ -198,6 +212,17 @@ export function RepeatedWithinMonthReport() {
         >
           <option value="">كل السنترالات</option>
           {CENTRALS.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select
+          value={tech}
+          onChange={(e) => setTech(e.target.value)}
+          className="border rounded-md px-3 py-1.5 text-sm w-full sm:w-auto"
+          dir="rtl"
+          title="فلترة بالفنى — الأسماء من نتيجة الفترة المعروضة"
+        >
+          <option value="">كل الفنيين</option>
+          {techOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+          {hasNoTech && <option value={NO_TECH}>— بدون فنى —</option>}
         </select>
         <Input
           placeholder="بحث برقم التليفون"

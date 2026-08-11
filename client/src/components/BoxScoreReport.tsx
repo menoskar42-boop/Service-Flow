@@ -518,7 +518,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
         <div className="fixed inset-0 z-[9998] bg-black/50 flex items-start justify-center p-3 overflow-auto" onClick={() => setLinesBox(null)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-[1400px] my-4" dir="rtl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b bg-purple-50">
-              <h3 className="font-bold text-sm">خطوط لها أكونت — {linesBox.centralName} / كابينة {linesBox.cabinNumber} / بكس {linesBox.boxNumber}</h3>
+              <h3 className="font-bold text-sm">خطوط لها أكونت — {linesBox.centralName} / كابينة <bdi dir="ltr">{linesBox.cabinNumber}</bdi> / بكس <bdi dir="ltr">{linesBox.boxNumber}</bdi></h3>
               <button onClick={() => setLinesBox(null)} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-2">

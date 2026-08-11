@@ -249,7 +249,7 @@ export function MaintBoxDetail({ row, onClose }: { row: MaintRow; onClose: () =>
         <div className="p-4 border-b flex items-center justify-between sticky top-0 bg-white">
           <div>
             <h3 className="font-semibold text-base">
-              تفاصيل صيانة البكس {row.box_number} — كابينة {row.cabin_number} — {row.central}
+              تفاصيل صيانة البكس <bdi dir="ltr">{row.box_number}</bdi> — كابينة <bdi dir="ltr">{row.cabin_number}</bdi> — {row.central}
             </h3>
             <div className="mt-1">{maintStatusBadge(row.maintenance_status, row.maintenance_status_ar)}</div>
           </div>

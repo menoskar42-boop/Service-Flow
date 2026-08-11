@@ -154,11 +154,14 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
         </span>
         {detail && <span className="text-[11px] text-muted-foreground">{detail}</span>}
         {/* الكابينة والبكس اللى الفنى كتبهم فى رده — كانوا بيتخزّنوا ومابيظهروش */}
+        {/* ⚠️ رقم الكابينة لازم يتعزل باتجاه LTR: «3-2» جوه فقرة عربية بيتعرض
+            بصرياً مقلوب «2-3» (خوارزمية bidi بتعتبر الشرطة محايدة بين رقمين
+            فتقلب ترتيبهم). القيمة المخزّنة سليمة — العرض بس هو اللى كان مقلوب. */}
         {(r.respCabinNumber || r.respBoxNumber) && (
           <span className="text-[11px] text-muted-foreground">
-            {r.respCabinNumber ? `كابينة ${r.respCabinNumber}` : ""}
+            {r.respCabinNumber ? <>كابينة <bdi dir="ltr">{r.respCabinNumber}</bdi></> : ""}
             {r.respCabinNumber && r.respBoxNumber ? " — " : ""}
-            {r.respBoxNumber ? `بكس ${r.respBoxNumber}` : ""}
+            {r.respBoxNumber ? <>بكس <bdi dir="ltr">{r.respBoxNumber}</bdi></> : ""}
           </span>
         )}
         {r.respNearestBoxDistance && (
