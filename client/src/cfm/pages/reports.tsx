@@ -690,14 +690,22 @@ export default function Reports() {
 
   const renderExcavationWorkersReport = () => {
     const data = getExcavationWorkersData();
-    // عدد العمال المختلفين (بالرقم القومي، وإلا بالاسم) وعدد أيام العمل ضمن نتيجة
-    // البحث/الفلتر الحالية — نفس الصفوف المعروضة تحت بالظبط، مش إجمالي كل البيانات.
-    const uniqueWorkersCount = new Set(
-      data.map(row => (row.nationalId && row.nationalId !== '-' ? row.nationalId : row.workerName))
-    ).size;
-    const uniqueDaysCount = new Set(
-      data.map(row => new Date(row.workDate).toISOString().split('T')[0])
-    ).size;
+    // «عدد العمال» = إجمالي يوميات عمال الحفر، مش عدد الأشخاص المختلفين. يعني لو
+    // يوم فيه عامل شغّال ويوم فيه 3 عمال، الإجمالي فى الفترة دى = 4 يوميات — مش 1
+    // (عدد الأشخاص المختلفين، اللى ممكن يكون نفس العامل اشتغل فى اليومين).
+    // الحساب: نجمّع الصفوف بكل يوم، نعدّ العمال المختلفين (بالرقم القومي وإلا
+    // بالاسم) فى اليوم ده وحده (لو نفس العامل ظهر على أكتر من تكت فى نفس اليوم
+    // بيتحسب مرة واحدة لليوم ده)، وبعدين نجمع عدد كل يوم على التانى.
+    const workerIdOf = (row: typeof data[number]) => (row.nationalId && row.nationalId !== '-' ? row.nationalId : row.workerName);
+    const dayOf = (row: typeof data[number]) => new Date(row.workDate).toISOString().split('T')[0];
+    const workersByDay = new Map<string, Set<string>>();
+    data.forEach(row => {
+      const day = dayOf(row);
+      if (!workersByDay.has(day)) workersByDay.set(day, new Set());
+      workersByDay.get(day)!.add(workerIdOf(row));
+    });
+    const uniqueWorkersCount = Array.from(workersByDay.values()).reduce((sum, workers) => sum + workers.size, 0);
+    const uniqueDaysCount = workersByDay.size;
 
     const handleDownloadCertificates = () => {
       // Group rows by work date
@@ -1042,11 +1050,12 @@ export default function Reports() {
                  </Button>
                )}
              </div>
-             {/* عدد العمال المختلفين وعدد أيام العمل ضمن نتيجة البحث/الفلتر الحالية —
-                 بتتحدّث لحظياً مع أى تغيير فى البحث أو التاريخ. */}
+             {/* عدد العمال = إجمالى يوميات العمل (مش عدد الأشخاص المختلفين) وعدد أيام
+                 العمل ضمن نتيجة البحث/الفلتر الحالية — بتتحدّث لحظياً مع أى تغيير. */}
              <div className="flex items-center gap-2 flex-wrap text-sm">
-               <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary font-semibold px-3 py-1.5">
-                 عدد العمال: {uniqueWorkersCount}
+               <span className="inline-flex items-center gap-1.5 rounded-md bg-primary/10 text-primary font-semibold px-3 py-1.5"
+                 title="إجمالى يوميات عمال الحفر: كل عامل فى كل يوم اشتغل فيه بيتحسب مرة (لو نفس العامل اشتغل يومين بيتحسب 2)">
+                 عدد العمال (يوميات): {uniqueWorkersCount}
                </span>
                <span className="inline-flex items-center gap-1.5 rounded-md bg-muted text-muted-foreground px-3 py-1.5">
                  عدد أيام العمل: {uniqueDaysCount}
