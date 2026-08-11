@@ -1644,21 +1644,33 @@ export async function registerRoutes(
       await expireOrphanedExecJobs();
       // وبعدها: رجّع الخطوط اللى قفلت بإيرور من باتشات خلصت (مرة واحدة، أولوية 1)
       await requeueErroredJobs();
-      const { rows } = await pool.query(
-        `UPDATE exec_jobs SET status = 'claimed', claimed_at = now(), executed_by = $1
-         WHERE id = (SELECT e.id FROM exec_jobs e
-                      WHERE e.status = 'pending' AND e.paused_at IS NULL
-                        -- الدومين لازم يكون فاضى: مفيش مهمة شغّالة على نفس الموقع دلوقتى
-                        AND NOT EXISTS (SELECT 1 FROM exec_jobs b
-                                         WHERE b.status = 'claimed'
-                                           AND COALESCE(b.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101'))
-                      ORDER BY e.priority DESC,
-                               CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
-                               e.created_at, e.id
-                      LIMIT 1 FOR UPDATE SKIP LOCKED)
-         RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site, params`,
-        [execIdentity(req)]);
-      res.json(rows[0] || null);
+      // ⚠️ فحص «الدومين فاضى» (NOT EXISTS) والـ UPDATE كانوا فى جملة واحدة — فيها الـ
+      // planner حر يقرّر ترتيب تقييم الشروط، فمفيش ضمان إن فحص NOT EXISTS بيحصل بعد أى
+      // قفل. النتيجة: تسابق حقيقى (مُثبت على Postgres حقيقى بجملتين متزامنتين): جهازين
+      // (أو تابين فى نفس الطلب) يسحبوا مهمتين لنفس الموقع (fcc.te.eg) فى نفس اللحظة —
+      // وده بالظبط اللى كان بيفتح تابين مراجعة على نفس جلسة FCC ويلخبط خانة البحث
+      // (أرقام بتتلزّق ورا بعض فى الحقل، لأن ADF بيشارك الـ view state بين التابات).
+      // الإصلاح: قفل transaction-level فى استعلام BEGIN منفصل *قبل* فحص NOT EXISTS —
+      // بيضمن إن السحب لأى موقع يبقى متسلسل بالكامل مهما كان عدد التابات/الأجهزة.
+      const row = await withTx(async (tx) => {
+        await tx.query("SELECT pg_advisory_xact_lock(872634501)");
+        const { rows } = await tx.query(
+          `UPDATE exec_jobs SET status = 'claimed', claimed_at = now(), executed_by = $1
+           WHERE id = (SELECT e.id FROM exec_jobs e
+                        WHERE e.status = 'pending' AND e.paused_at IS NULL
+                          -- الدومين لازم يكون فاضى: مفيش مهمة شغّالة على نفس الموقع دلوقتى
+                          AND NOT EXISTS (SELECT 1 FROM exec_jobs b
+                                           WHERE b.status = 'claimed'
+                                             AND COALESCE(b.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101'))
+                        ORDER BY e.priority DESC,
+                                 CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
+                                 e.created_at, e.id
+                        LIMIT 1 FOR UPDATE SKIP LOCKED)
+           RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site, params`,
+          [execIdentity(req)]);
+        return rows[0] || null;
+      });
+      res.json(row);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // تعليم مهمة كمنفّذة
