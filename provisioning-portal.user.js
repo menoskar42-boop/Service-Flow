@@ -2,7 +2,7 @@
 // @name         Provisioning Portal → Service-Flow (تحديث البورتات + غيّر البورت MSAN)
 // @namespace    service-flow.provisioning
 // @description  سكربت واحد لموقع Provisioning Portal (WE) — فيه ثلاث تدفّقات مستقلة تماماً بماركرات مختلفة لمنع أى تعارض: (1) sf_ports = تحديث ملف البورتات (Get MSAN Data لكل أكواد الأمسان المخزّنة فى Service-Flow). (2) sf_msan = غيّر البورت (MSAN Replacement) لرقم واحد — يملأ Old/New Cabin Code ويحقن ملف CSV ويضغط Submit، ثم يراقب 30 ثانية للتأكد إنه مرجعش للّوجين (نجح) قبل ما يقفل التاب (بدون متابعة تلقائية). (3) sf_pcheck = تحديث البورت (يدوى) — يفتح Search For My Requests مرة واحدة لرقم، يطابقه، ولو COMPLETED يجيب New Frame + New Msan ويحدّث بيان البورت فى Service-Flow. كل تدفّق فى نافذة باسم مستقل فالـ sessionStorage منفصل ومفيش تداخل.
-// @version      1.5.9
+// @version      1.6.0
 // @match        *://provisioningportal.te.eg/provisioningPortal/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -564,13 +564,13 @@
       const j = await r.json(); return Array.isArray(j.requestIds) ? j.requestIds.map(String) : [];
     } catch (e) { return []; }
   }
-  async function sfIngestResult(payload) {
-    // ⚠️ مهلة إجبارية: من غيرها لو الطلب علّق (شبكة/بروكسى/CORS) الـ fetch مابيرجعش
-    // **أبداً** — فالتدفّق بيقف صامت بعد سطر «COMPLETED … Frame=…» على طول: لا رسالة
-    // نجاح ولا فشل، والبورت اتقرا فعلاً بس ماتسجّلش. دلوقتى بيقطع بعد 30 ثانية
-    // ويرجّع سبب واضح يظهر فى البانر واللوج.
+  // محاولة رفع واحدة بمهلة محدّدة. بترجّع {ok} أو {ok:false, error, retriable}.
+  async function sfIngestOnce(payload, timeoutMs) {
+    // ⚠️ مهلة إجبارية: من غيرها لو الطلب علّق (شبكة/بروكسى) الـ fetch مابيرجعش **أبداً**
+    // — فالتدفّق بيقف صامت بعد سطر «COMPLETED … Frame=…»: لا نجاح ولا فشل، والبورت
+    // اتقرا فعلاً بس ماتسجّلش.
     const ctrl = typeof AbortController === "function" ? new AbortController() : null;
-    const tmo = setTimeout(() => { try { ctrl && ctrl.abort(); } catch (e) {} }, 30000);
+    const tmo = setTimeout(() => { try { ctrl && ctrl.abort(); } catch (e) {} }, timeoutMs);
     try {
       const opts = {
         method: "POST", headers: { "Content-Type": "application/json", "X-DZS-Token": SF_TOKEN },
@@ -581,14 +581,35 @@
       // لازم نتأكد إن السيرفر قبلها فعلاً — قبل كده كنا بنرجّع الـ json مهما كانت الحالة،
       // فأى 401/500 كان بيعدّى وتظهر رسالة نجاح خضراء والبيانات مش متحدّثة.
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.ok === false) return { ok: false, error: (j && j.message) || ("HTTP " + r.status) };
+      if (!r.ok || j.ok === false) {
+        // 5xx = مشكلة مؤقتة فى السيرفر → تستاهل إعادة. 4xx = غلط فى الطلب → مفيش فايدة.
+        return { ok: false, error: (j && j.message) || ("HTTP " + r.status), retriable: r.status >= 500 };
+      }
       return Object.assign({ ok: true }, j);
     } catch (e) {
-      const msg = (e && e.name === "AbortError")
-        ? "الرفع لـ Service-Flow علّق (عدّى 30 ثانية بلا رد)"
-        : String((e && e.message) || e);
-      return { ok: false, error: msg };
+      const aborted = e && e.name === "AbortError";
+      return {
+        ok: false, retriable: true,
+        error: aborted ? ("علّق " + Math.round(timeoutMs / 1000) + " ثانية بلا رد") : String((e && e.message) || e),
+      };
     } finally { clearTimeout(tmo); }
+  }
+  // الرفع مع إعادة محاولة: Service-Flow على Replit بينام، وأول طلب بيوقظه فبياخد
+  // وقت طويل (ممكن يعدّى نص دقيقة) — فمحاولة واحدة بـ30 ثانية كانت بتفشل على
+  // الفاضى رغم إن السيرفر شغّال. دلوقتى: 3 محاولات بمهل متزايدة (30/60/60).
+  async function sfIngestResult(payload) {
+    const TIMEOUTS = [30000, 60000, 60000];
+    let last = null;
+    for (let i = 0; i < TIMEOUTS.length; i++) {
+      if (i > 0) {
+        logln("↻ إعادة محاولة الرفع " + (i + 1) + "/" + TIMEOUTS.length + " (السبب: " + (last && last.error) + ")…");
+        await sleep(3000);
+      }
+      last = await sfIngestOnce(payload, TIMEOUTS[i]);
+      if (last.ok) { if (i > 0) logln("✅ الرفع نجح فى المحاولة " + (i + 1) + "."); return last; }
+      if (!last.retriable) break;   // غلط مش هيتصلّح بالإعادة
+    }
+    return { ok: false, error: "الرفع لـ Service-Flow فشل بعد " + TIMEOUTS.length + " محاولات — " + ((last && last.error) || "سبب غير معروف") };
   }
   // قراءة قيمة حقل بعنوان محدد داخل نافذة تفاصيل الطلب (label نصّه == العنوان بالظبط → أقرب input)
   // قراءة قيمة جنب عنوان معيّن. الإصدار القديم كان بيشترط <label> نصه مطابق تماماً
