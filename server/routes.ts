@@ -6276,7 +6276,12 @@ export async function registerRoutes(
          -- «جارٍ التنفيذ» لحد ما تعلّق وتتلغى بالمهلة.
          recorded_at = now()
        RETURNING (xmax = 0) AS inserted`,
-      [requestId, phone, oldMsan, newMsan, newFrame, portType, status, reservationCode, requestDate, completed]);
+      // ⚠️ reqBy ($11) كانت ناقصة: الاستعلام بيطلب 11 قيمة والكود كان بيبعت 10، فـ pg
+      // بيرمى «bind message supplies 10 parameters, but prepared statement requires 11».
+      // الرمية دى كانت بتطلع **برّه** أى try/catch (unhandledRejection) فالـ handler
+      // مابيردّش على الطلب **أبداً** — الرفع بيعلّق للأبد. ده سبب «اتقرا البورت الجديد
+      // بس الرفع علّق»: البورت اتقرا صح (Frame=518) والطلب مات هنا بالظبط.
+      [requestId, phone, oldMsan, newMsan, newFrame, portType, status, reservationCode, requestDate, completed, reqBy]);
     const wasNew = ins.rows[0]?.inserted === true;
 
     let updatedPort = false;
