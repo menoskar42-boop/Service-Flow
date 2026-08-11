@@ -129,8 +129,9 @@ export function executeBatch(type: ExecJobType, accounts: (string | number)[], o
   // كل طلب لمهمة لكل رقم، فالمصفوفة هنا بتبقى رقم واحد.
   if (type === "subinfo") return openSubInfo(accs[0]);
   // afterStop: يرفع السرعة ثم يوقف الـ nightly الناتج فى **نفس تشغيلة PO** (مهمة واحدة، مفيش تداخل).
-  if (type === "raise") { openProfileOptimization(accs, opts?.afterStop ? { afterStop: true } : {}); return null; }
-  if (type === "stop") { openProfileOptimization(accs, { stopOnly: true }); return null; }
+  // بنرجّع النافذة (كانت null) — جهاز التنفيذ محتاجها يكشف إن التاب اتقفل = خلص، ويقفله بنفسه.
+  if (type === "raise") return openProfileOptimization(accs, opts?.afterStop ? { afterStop: true } : {});
+  if (type === "stop") return openProfileOptimization(accs, { stopOnly: true });
   const fix = opts?.fixRecent ? "&sf_fix=recent" : "";
   return window.open(`${DZS_URL}#sf_accounts=${encodeURIComponent(accs.join(","))}${fix}`, DZS_MEASURE_TARGET);
 }

@@ -190,7 +190,10 @@ export function ExecutorButton() {
       const ev: "raise" | "stop" = (type === "stop" || raiseWithStop) ? "stop" : "raise";
       const perMax = type === "stop" ? STOP_MS : (raiseWithStop ? RAISE_MAX_MS + STOP_MS : RAISE_MAX_MS);
       const before = await latestPoEventAt(last, ev);
-      executeBatch(type, accs, raiseWithStop ? { afterStop: true } : undefined); // PO يلفّ على كل الأرقام فى run واحد
+      // بنمسك النافذة: سكربت PO بيقول «خلص كل الأرقام. تقدر تقفل التاب» ومابيقفلش نفسه،
+      // فمن غير المرجع ده كان التاب يفضل مفتوح للأبد والمهمة «جارية» لحد المهلة الكاملة.
+      const win = executeBatch(type, accs, raiseWithStop ? { afterStop: true } : undefined); // PO يلفّ على كل الأرقام فى run واحد
+      const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
       const deadline = Date.now() + Math.min(accs.length * perMax, MAX_TOTAL_MS);
       // ⚠️ كشف التوقّف: من غيره كان الباتش الكبير (261 رقم مثلاً) اللى بيقف فى نصّه
       // يفضل «جارٍ التنفيذ» لحد المهلة الكلية (لحد 4 ساعات) — الشاشة واقفة على
@@ -202,16 +205,23 @@ export function ExecutorButton() {
       // (perMax) + دقيقتين هامش، وأى تقدّم بيصفّر العدّاد من أول وجديد.
       const poStallMs = perMax + 2 * 60 * 1000;
       let lastDone = 0, lastProgAt = Date.now();
+      // مهلة صغيرة قبل فحص «التاب اتقفل» — window.open ساعات بترجّع تاب لسه بيفتح
+      await sleep(5 * 1000);
       while (!stopped && Date.now() < deadline) {
-        await sleep(5 * 1000);
         const chk = await jobCheck(jobId);
-        if (!chk.active) return "canceled"; // اتمسح من الطابور يدوياً → وقف فوراً
+        if (!chk.active) { closeWin(); return "canceled"; } // اتمسح من الطابور يدوياً → وقف فوراً
         if (chk.measured > lastDone) { lastDone = chk.measured; lastProgAt = Date.now(); }
-        if ((await latestPoEventAt(last, ev)) > before) return "done"; // آخر رقم اتسجّل → الباتش خلص
-        if (chk.total > 0 && chk.measured >= chk.total) return "done"; // كل الأرقام اتسجّلت
-        if (canPreempt && chk.preempt) return "preempted";             // طلب أعلى أولوية على نفس الدومين
-        if (Date.now() - lastProgAt > poStallMs) return "timeout";     // مافيش تقدّم = وقف
+        if ((await latestPoEventAt(last, ev)) > before) { closeWin(); return "done"; } // آخر رقم اتسجّل → الباتش خلص
+        if (chk.total > 0 && chk.measured >= chk.total) { closeWin(); return "done"; } // كل الأرقام اتسجّلت
+        // التاب اتقفل (السكربت خلّص والمستخدم قفله، أو قفل نفسه) — مانستناش المهلة كاملة.
+        // ده اللى كان ناقص: الخط ممكن يكون فشل (Critical error) فمفيش أثر فى قاعدة
+        // البيانات أبداً، وكنا نفضل مستنيين 8 دقايق على الفاضى قبل ما نعدّى للى بعده.
+        if (win && win.closed) return "tab_closed";
+        if (canPreempt && chk.preempt) { closeWin(); return "preempted"; } // طلب أعلى أولوية على نفس الدومين
+        if (Date.now() - lastProgAt > poStallMs) { closeWin(); return "timeout"; } // مافيش تقدّم = وقف
+        await sleep(5 * 1000);
       }
+      closeWin();
       return stopped ? "stopped" : "timeout";
     };
 

@@ -17,18 +17,23 @@ interface POOptions {
  * - afterStop: رفع سرعة لكل الأرقام ثم إيقاف الـ nightly الناتج لكلهم.
  * - بدون الاتنين: رفع سرعة فقط.
  */
+// ⚠️ بترجّع النافذة (مش void). السبب: جهاز التنفيذ محتاج مرجع النافذة عشان (1) يعرف
+// إن السكربت خلّص لما التاب يتقفل، و(2) يقفل التاب بنفسه بعد ما الخط يخلص. من غير
+// المرجع ده كان تاب AXON بيفضل مفتوح للأبد (السكربت بيقول «تقدر تقفل التاب» ومابيقفلش
+// نفسه)، والمهمة تفضل «جارٍ التنفيذ» لحد ما المهلة الكاملة تعدّى — فالمستخدم مضطر
+// يقفل الصفحة بإيده ويعمل إعادة تشغيل للباتش عشان يكمّل.
 export function openProfileOptimization(
   accounts: (string | number | null | undefined)[],
   opts: POOptions = {},
-): void {
+): Window | null {
   const accs = [...new Set(accounts.map((a) => String(a ?? "").trim()).filter(Boolean))];
   if (accs.length === 0) {
     alert(opts.stopOnly ? "لا توجد أرقام أكونت لإيقاف الـ Nightly PO" : "لا توجد أرقام أكونت لرفع السرعة");
-    return;
+    return null;
   }
   const flags = opts.stopOnly ? "&sf_stop=1" : (opts.afterStop ? "&sf_after=1" : "");
   const url = `${PO_BASE}?lineId=${encodeURIComponent(accs[0])}#sf_po=${encodeURIComponent(accs.join(","))}${flags}`;
   // نفس اسم نافذة القياس (dzs_measure) — القياس/رفع السرعة/الإيقاف كلهم يعيدوا استخدام **نفس النافذة**
   // (النافذة الجديدة تحلّ محل القديمة) فمفيش نوافذ متعددة ولا تداخل.
-  window.open(url, "dzs_measure");
+  return window.open(url, "dzs_measure");
 }
