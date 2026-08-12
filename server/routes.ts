@@ -9568,7 +9568,11 @@ export async function registerRoutes(
                 qual.prev_no                        AS "prevComplainNo",
                 (qual.prev_time AT TIME ZONE 'Africa/Cairo') AS "prevComplainTime",
                 qual.rep_count                      AS "repeatCount",
-                c138.account_no                     AS "accountNo",
+                -- الأكونت: من آخر قياس لو موجود، وإلا من جدول الأكونتات نفسه.
+                -- من غير الـ fallback ده الخطوط اللى ماتقاستش قبل كده كانت بتطلع من
+                -- غير أكونت — وهى بالظبط اللى محتاجة قياس، فأزرار القياس/رفع السرعة
+                -- كانت هتبقى معطّلة عليها.
+                COALESCE(c138.account_no, la.account_no) AS "accountNo",
                 c138.score                          AS "lastMeasScore",
                 c138.current_speed                  AS "lineCurrentSpeed",
                 c138.max_speed                      AS "lineMaxSpeed",
@@ -9583,6 +9587,7 @@ export async function registerRoutes(
            SELECT c.account_no, c.score, c.current_speed, c.max_speed, c.uploaded_at
            FROM case_138 c WHERE c.full_phone = '88' || qual.phone ORDER BY c.id DESC LIMIT 1
          ) c138 ON true
+         LEFT JOIN line_accounts la ON la.full_phone = '88' || qual.phone
          ORDER BY qual.last_time DESC NULLS LAST`,
         params,
       );

@@ -7,7 +7,66 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Info, Radar, Gauge, CircleSlash, X } from "lucide-react";
+import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
+import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
+import { dispatchSpeedTool } from "@/lib/exec-queue";
+import { openProfileOptimization } from "@/lib/profile-optimization";
+
+const DZS_URL = "https://10.42.187.101:8080/expresse/";
+const buildDZSUrl = (accounts: string[]) =>
+  `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
+
+// تفاصيل الخط فى نافذة صغيرة — نفس مصدر «بحث برقم التليفون» (/api/phone-lines/lookup)
+// عشان الاسم والعنوان وباقى البيانات تفضل مصدرها واحد ومايحصلش اختلاف بين الشاشتين.
+function LineDetailModal({ phone, onClose }: { phone: string; onClose: () => void }) {
+  const { data, isFetching } = useQuery({
+    queryKey: ["/api/phone-lines/lookup", phone],
+    queryFn: async () => {
+      const res = await fetch(`/api/phone-lines/lookup?phone=${encodeURIComponent(phone)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("فشل البحث");
+      return res.json() as Promise<{ found: boolean; line?: any }>;
+    },
+  });
+  const l = data?.found ? data.line : null;
+  const Row = ({ k, v }: { k: string; v: any }) => (
+    <div className="flex gap-2 py-1.5 border-b last:border-0">
+      <span className="text-muted-foreground w-32 shrink-0 text-xs">{k}</span>
+      <span className="text-sm font-medium break-words">{v || "-"}</span>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[9998] bg-black/50 flex items-start justify-center p-3 overflow-auto" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg my-8" dir="rtl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-2 border-b bg-blue-50">
+          <h3 className="font-bold text-sm">تفاصيل الخط — <bdi dir="ltr">{phone}</bdi></h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-4">
+          {isFetching ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : !l ? (
+            <p className="text-center text-sm text-muted-foreground py-6">مفيش بيانات للرقم ده</p>
+          ) : (
+            <>
+              <Row k="اسم العميل" v={l.subName} />
+              <Row k="العنوان" v={l.subAdd} />
+              <Row k="رقم الموبايل" v={l.mobile} />
+              <Row k="السنترال" v={l.central} />
+              <Row k="رقم الكابينه" v={l.cabinNumber} />
+              <Row k="رقم البكس" v={l.boxNumber} />
+              <Row k="DP Terminal" v={l.dpTerminal} />
+              <Row k="كود كابينة المسان" v={l.msanCode} />
+              <Row k="رقم الفريم" v={l.frame} />
+              <Row k="رقم الأكونت" v={l.accountNo} />
+              <Row k="اسم الفنى" v={l.techName} />
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // تقرير «الأعطال المكررة خلال شهر من تاريخه» — تفصيلى لكل رقم له شكوى سابقة خلال
 // شهر (±30 يوم) من تاريخ آخر شكوى له. الفلتر بتاريخ آخر شكوى، الافتراضى من أول الشهر.
@@ -52,6 +111,11 @@ const scoreBadge = (v: number | null | undefined) => {
 const CENTRALS = ["الغنايم", "الغنايم-العزايزة", "الغنايم-دير الجنادله", "الغنايم-نجع العمدة"];
 
 export function RepeatedWithinMonthReport() {
+  const showSpeedTools = useSpeedToolsVisible();
+  const isSuper = useIsSuperAdmin();
+  useSpeedToolSource("الأعطال المكررة خلال شهر");
+  const [detailPhone, setDetailPhone] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState(() => {
@@ -92,6 +156,47 @@ export function RepeatedWithinMonthReport() {
       : allRows.filter((r) => (r.techName || "").trim() === tech);
 
   const rangeLabel = `تاريخ آخر شكوى من ${dateFrom || "البداية"} إلى ${dateTo || "النهاية"}`;
+
+  // أرقام الأكونت للصفوف المعروضة (بعد كل الفلاتر) — من غير تكرار
+  const shownAccounts = () => {
+    const seen = new Set<string>();
+    return rows.map((r) => (r.accountNo ?? "").toString().trim())
+               .filter((a) => a && !seen.has(a) && seen.add(a));
+  };
+
+  // قياس DZS لخط واحد
+  const measureOne = async (r: RepeatedRow) => {
+    const acc = (r.accountNo ?? "").toString().trim();
+    if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
+    if (await dispatchSpeedTool("measure", [acc], isSuper)) return;
+    window.open(buildDZSUrl([acc]), "dzs_measure");
+  };
+
+  // قياس كل الأرقام المعروضة
+  const measureAll = async () => {
+    const accounts = shownAccounts();
+    if (!accounts.length) { alert("لا توجد أرقام أكونت فى الصفوف المعروضة"); return; }
+    setBusy(true);
+    const w = window.open("about:blank", "dzs_measure");
+    try {
+      if (await dispatchSpeedTool("measure", accounts, isSuper)) { try { w?.close(); } catch {} return; }
+      if (w) w.location.href = buildDZSUrl(accounts);
+    } finally { setBusy(false); }
+  };
+
+  // رفع السرعة / إيقاف الـ PO لكل الأرقام المعروضة
+  const raiseOrStop = async (kind: "raise" | "stop") => {
+    const accounts = shownAccounts();
+    if (!accounts.length) { alert("لا توجد أرقام أكونت فى الصفوف المعروضة"); return; }
+    const afterStop = kind === "raise"
+      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      : false;
+    setBusy(true);
+    try {
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
+      openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
+    } finally { setBusy(false); }
+  };
 
   const handleExportExcel = () => {
     const data = rows.map((r, i) => ({
@@ -234,6 +339,34 @@ export function RepeatedWithinMonthReport() {
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{rows.length}</strong> رقم مكرر</span>
+        {showSpeedTools && (
+          <>
+            <Button
+              variant="outline" size="sm" onClick={measureAll}
+              disabled={busy || rows.length === 0}
+              title="قياس DZS لكل الأرقام المعروضة (بعد الفلاتر)"
+              className="text-blue-700 border-blue-200 gap-1"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
+            </Button>
+            <Button
+              variant="outline" size="sm" onClick={() => raiseOrStop("raise")}
+              disabled={busy || rows.length === 0}
+              title="رفع السرعة لكل الأرقام المعروضة"
+              className="text-emerald-700 border-emerald-200 gap-1"
+            >
+              <Gauge className="w-4 h-4" /> رفع سرعة
+            </Button>
+            <Button
+              variant="outline" size="sm" onClick={() => raiseOrStop("stop")}
+              disabled={busy || rows.length === 0}
+              title="إيقاف الـ PO لكل الأرقام المعروضة"
+              className="text-orange-700 border-orange-200 gap-1"
+            >
+              <CircleSlash className="w-4 h-4" /> إيقاف PO
+            </Button>
+          </>
+        )}
         <Button
           variant="outline" size="sm"
           onClick={handleExportExcel}
@@ -251,6 +384,8 @@ export function RepeatedWithinMonthReport() {
           <Printer className="w-4 h-4" /> PDF
         </Button>
       </div>
+
+      {detailPhone && <LineDetailModal phone={detailPhone} onClose={() => setDetailPhone(null)} />}
 
       {/* Table */}
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
@@ -286,8 +421,36 @@ export function RepeatedWithinMonthReport() {
                 <TableRow key={i} className="hover:bg-muted/30">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell>{r.centralName || "-"}</TableCell>
-                  <TableCell dir="ltr" className="text-left font-mono font-semibold text-blue-700">{r.phoneShort || "-"}</TableCell>
-                  <TableCell dir="ltr" className="text-left font-mono">{r.accountNo || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono font-semibold text-blue-700">
+                    <span className="inline-flex items-center gap-1.5">
+                      {r.phoneShort || "-"}
+                      {r.phoneShort && (
+                        <button
+                          type="button"
+                          onClick={() => setDetailPhone(r.phoneShort!)}
+                          title="تفاصيل أكتر (الاسم والعنوان وبيانات الخط)"
+                          className="text-purple-600 hover:text-purple-800"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                      )}
+                    </span>
+                  </TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono">
+                    <span className="inline-flex items-center gap-1.5">
+                      {r.accountNo || "-"}
+                      {showSpeedTools && r.accountNo && (
+                        <button
+                          type="button"
+                          onClick={() => measureOne(r)}
+                          title="قياس DZS للخط ده لوحده"
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          <Radar className="w-4 h-4" />
+                        </button>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <span className="text-xs px-2 py-0.5 rounded font-semibold bg-purple-100 text-purple-800">{r.repeatCount ?? "-"}</span>
                   </TableCell>
