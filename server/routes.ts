@@ -9227,14 +9227,21 @@ export async function registerRoutes(
              cd.complain_no           AS "ticketId",
              cd.exchange_name         AS "centralName",
              cd.phone_number          AS "phoneShort",
+             -- مكرر: شكوى تانية لنفس الرقم فى نفس الشهر وبيوم مختلف.
+             -- المقارنة بـ **تاريخ الشكوى** مش تاريخ الإغلاق (شكوى من الشهر اللى فات
+             -- اتقفلت الشهر ده مش تكرار للشهر ده) — نفس تعريف باقى التقارير بالظبط.
+             -- وشرط «يوم مختلف» بيمنع إن شكويتين اتعملوا فى نفس اليوم (نفس العطل
+             -- اتسجّل مرتين) يتحسبوا تكرار.
              CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''
+                       AND cd.complain_time IS NOT NULL
                        AND EXISTS (
                          SELECT 1 FROM complaint_details cd2
                          WHERE cd2.complain_no <> cd.complain_no
                            AND cd2.close_time IS NOT NULL
                            AND cd2.phone_number = cd.phone_number
-                           AND date_trunc('month', cd2.close_time AT TIME ZONE 'Africa/Cairo')
-                             = date_trunc('month', cd.close_time AT TIME ZONE 'Africa/Cairo')
+                           AND cd2.complain_time IS NOT NULL
+                           AND date_trunc('month', cd2.complain_time) = date_trunc('month', cd.complain_time)
+                           AND cd2.complain_time::date <> cd.complain_time::date
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
              -- Status Code من شيت 430D (تفاصيل متبقى) بمطابقة رقم الشكوى —
@@ -9308,12 +9315,21 @@ export async function registerRoutes(
              rc.complain_no           AS "ticketId",
              rc.exchange_name         AS "centralName",
              rc.phone_number          AS "phoneShort",
+             -- مكرر: شكوى تانية لنفس الرقم **فى نفس الشهر وبيوم مختلف** — نفس تعريف
+             -- «مكرر» المستخدَم فى فرع «التفاصيل» وفى الأعطال الحالية بالظبط.
+             -- ⚠️ الشرط ده كان ناقص القيد الزمنى خالص: أى شكوى 138/135 تانية لنفس الرقم
+             -- فى **أى وقت** (حتى من شهور فاتت) كانت بتخلّى الصف يتعلّم «مكرر» للأبد،
+             -- فأرقام مالهاش غير شكوى واحدة الشهر ده كانت بتظهر مكررة.
              CASE WHEN rc.phone_number IS NOT NULL AND rc.phone_number <> ''
+                       AND rc.complain_time IS NOT NULL
                        AND EXISTS (
                          SELECT 1 FROM remaining_complaints rc2
                          WHERE rc2.complain_no <> rc.complain_no
                            AND rc2.status_code IN ('138', '135')
                            AND rc2.phone_number = rc.phone_number
+                           AND rc2.complain_time IS NOT NULL
+                           AND date_trunc('month', rc2.complain_time) = date_trunc('month', rc.complain_time)
+                           AND rc2.complain_time::date <> rc.complain_time::date
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
              rc.status_code           AS "statusCode",
@@ -9429,18 +9445,26 @@ export async function registerRoutes(
 
       const { rows } = await pool.query(
         `WITH comps AS (
-           SELECT cd.phone_number AS phone, cd.complain_no AS no, cd.complain_time AS ct,
-                  cd.exchange_name AS central, cd.cabinet_no AS cabinet
-           FROM complaint_details cd
-           WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
-             AND cd.phone_number IS NOT NULL AND cd.phone_number <> '' AND cd.complain_time IS NOT NULL
-             ${cdCentral}
-           UNION ALL
-           SELECT rc.phone_number, rc.complain_no, rc.complain_time, rc.exchange_name, rc.cabinet_no
-           FROM remaining_complaints rc
-           WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
-             AND rc.phone_number IS NOT NULL AND rc.phone_number <> '' AND rc.complain_time IS NOT NULL
-             ${rcCentral}
+           -- ⚠️ الشكوى الواحدة بتكون فى الجدولين مع بعض: اتسجّلت فى «المتبقى» وهى مفتوحة
+           -- (138/135)، وبعد ما اتقفلت اتسجّلت فى «التفاصيل». كل جدول مفتاحه complain_no
+           -- UNIQUE فمفيش تكرار جوّاه، لكن UNION ALL بين الاتنين كان بيعدّ نفس الشكوى
+           -- مرتين — فعمود «عدد التكرار خلال الشهر» كان بيطلع الضعف (شكويتين حقيقيتين
+           -- بيظهروا 4). DISTINCT ON (no) بتخلّى كل شكوى صف واحد، وبنفضّل صف «التفاصيل»
+           -- (pref = 0) لأنه السجل النهائى بعد الإغلاق.
+           SELECT DISTINCT ON (no) phone, no, ct, central, cabinet FROM (
+             SELECT cd.phone_number AS phone, cd.complain_no AS no, cd.complain_time AS ct,
+                    cd.exchange_name AS central, cd.cabinet_no AS cabinet, 0 AS pref
+             FROM complaint_details cd
+             WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
+               AND cd.phone_number IS NOT NULL AND cd.phone_number <> '' AND cd.complain_time IS NOT NULL
+               ${cdCentral}
+             UNION ALL
+             SELECT rc.phone_number, rc.complain_no, rc.complain_time, rc.exchange_name, rc.cabinet_no, 1
+             FROM remaining_complaints rc
+             WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
+               AND rc.phone_number IS NOT NULL AND rc.phone_number <> '' AND rc.complain_time IS NOT NULL
+               ${rcCentral}
+           ) u ORDER BY no, pref
          ),
          last_c AS (
            -- آخر شكوى لكل رقم
