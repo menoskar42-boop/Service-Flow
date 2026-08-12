@@ -890,6 +890,21 @@ export async function ensureSchema() {
     )
   `);
 
+  // line_mobile_checked — الأرقام اللى **اتفحصت** فى تقرير «أرقام بدون رقم موبايل تحت
+  // الفحص» وطلعت فعلاً مالهاش رقم محمول. بتتشال من تقرير «تحت الفحص» وبتروح لتقرير
+  // «أرقام تم الفحص وتحتاج أرقام محمول». مفيش هنا رقم موبايل — ده علَم فحص بس.
+  // (لو الرقم اتضاف له موبايل بعدين من أى مصدر بيختفى من التقرير التانى تلقائياً،
+  //  لأن التقرير بيستبعد أى رقم ليه موبايل — من غير ما نمسح الصف ده.)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_mobile_checked (
+      full_phone text PRIMARY KEY,
+      note text,
+      checked_by_id integer REFERENCES users(id),
+      checked_by_name text,
+      checked_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
   // wfm_task_cancels — سجل إلغاء إسناد المهام على WFM: مين طلبه وإمتى وعلى أى رقم.
   // بيتملى من سكربت التامبر منكى بعد ما الإلغاء يتم فعلاً (نفس أسلوب تسجيل القياس/رفع السرعة).
   await pool.query(`

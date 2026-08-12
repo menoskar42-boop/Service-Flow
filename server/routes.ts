@@ -634,6 +634,25 @@ const excludeQueuedOn = (req: any) => {
   const v = String(req?.query?.excludeQueued ?? "");
   return v === "1" || v === "true";
 };
+// الأرقام اللى ليها رقم موبايل من أى مصدر (يدوى/أوامر شغل/طلبات FTTH) — نفس أولوية
+// البحث المستخدَمة فى «بحث برقم التليفون». مجموعة **غير مرتبطة** بالصف عن قصد: الـ
+// planner بيبنيها مرة واحدة ويعمل Hash Anti Join بدل ما يعيد الحساب لكل صف.
+// ⚠️ كانت LATERAL بتتنفّذ لكل صف من عشرات الآلاف وبتمسح maintenance_orders و
+// ftth_orders_current كاملين فى كل مرة — تقرير «بدون موبايل» كان بياخد دقايق.
+// المفتاح الموحّد هو الرقم القصير (sp) لأن المصادر مخزّنة بصيغ مختلفة (بـ 88 أو من غيرها).
+const HAS_MOBILE_SET = `(
+  SELECT ${phoneNormSql("lm.full_phone")} AS ph FROM line_mobiles lm
+    WHERE NULLIF(btrim(lm.mobile), '') IS NOT NULL
+  UNION
+  SELECT ${phoneNormSql("mo.phone_number")} FROM maintenance_orders mo
+    WHERE NULLIF(btrim(mo.mobile), '') IS NOT NULL
+      AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+  UNION
+  SELECT ${phoneNormSql("fo.service_number")} FROM ftth_orders_current fo
+    WHERE NULLIF(btrim(fo.customer_mobile), '') IS NOT NULL
+      AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+)`;
+
 const notQueuedSql = (accCol: string) => `NOT EXISTS (
   SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
    WHERE e.type IN ('measure','raise','stop')
@@ -3482,7 +3501,18 @@ export async function registerRoutes(
   // GET /api/phone-lines/no-mobile — نفس تقرير بيان التليفونات، بس بس الأرقام اللى
   // مالهاش رقم موبايل من أى مصدر (يدوى/أوامر شغل/طلبات FTTH — نفس أولوية بحث برقم
   // التليفون بالظبط)، عشان تتجمّع أرقام الموبايل الناقصة وتتضاف من التقرير نفسه.
-  app.get("/api/phone-lines/no-mobile", requireAuth, async (req, res) => {
+  //
+  // GET /api/phone-lines/mobile-checked — «أرقام تم الفحص وتحتاج أرقام محمول»
+  // نفس الـ handler بالظبط (نفس الأعمدة والفلاتر والتصدير) وبيعكس شرط الفحص بس:
+  // بيعرض اللى اتعلّم إنه اتفحص بدل اللى لسه تحت الفحص. سوبر أدمن فقط حالياً.
+  // بيقبل كمان onlyCurrentFault=1 → الأرقام اللى ليها شكوى مفتوحة فى الأعطال الحالية.
+  // ⚠️ الشرطين الأساسيين (مالوش موبايل من أى مصدر) بيفضلوا شغّالين هنا كمان — فأى رقم
+  // يتضاف له موبايل بعدين (من بحث برقم التليفون مثلاً) بيختفى من التقرير ده تلقائياً.
+  app.get(["/api/phone-lines/no-mobile", "/api/phone-lines/mobile-checked"], requireAuth, async (req: any, res) => {
+    const checkedMode = req.path.endsWith("/mobile-checked");
+    if (checkedMode && req.user?.role !== ROLES.SUPER_ADMIN) {
+      return res.status(403).json({ message: "غير مسموح" });
+    }
     const { search = "", central = "", cabin = "", box = "", phoneFrom = "", phoneTo = "", page = "1", limit = "50" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
@@ -3491,30 +3521,28 @@ export async function registerRoutes(
     let pFrom = digitsOnly(phoneFrom), pTo = digitsOnly(phoneTo);
     if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
 
-    // «مالوش موبايل» = مش موجود فى أى من المصادر التلاتة. المصادر بتتجمّع فى مجموعة
-    // واحدة **غير مرتبطة** بالصف، فالـ planner بيبنيها مرة واحدة ويعمل Hash Anti Join.
-    // ⚠️ قبل كده كان LATERAL بيتنفّذ **لكل صف** من عشرات الآلاف، وكل مرة بيمسح
-    // maintenance_orders و ftth_orders_current كاملين — التقرير كان بياخد دقايق.
-    // المفتاح الموحّد هو الرقم القصير (sp) عشان المصادر مخزّنة بصيغ مختلفة (بـ 88 أو من غيرها).
-    const hasMobileSet = `(
-      SELECT ${sp("lm.full_phone")} AS ph FROM line_mobiles lm
-        WHERE NULLIF(btrim(lm.mobile), '') IS NOT NULL
-      UNION
-      SELECT ${sp("mo.phone_number")} FROM maintenance_orders mo
-        WHERE NULLIF(btrim(mo.mobile), '') IS NOT NULL
-          AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
-      UNION
-      SELECT ${sp("fo.service_number")} FROM ftth_orders_current fo
-        WHERE NULLIF(btrim(fo.customer_mobile), '') IS NOT NULL
-          AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
-    )`;
     const conds: string[] = [
-      `NOT EXISTS (SELECT 1 FROM ${hasMobileSet} hm WHERE hm.ph = ${sp("k.full_phone")})`,
+      `NOT EXISTS (SELECT 1 FROM ${HAS_MOBILE_SET} hm WHERE hm.ph = ${sp("k.full_phone")})`,
       // بنفحص كمان بـ tel_no لأن الفرع القديم كان بيطابق بيه لو موجود (لو اختلف عن
       // الرقم القصير المشتقّ من full_phone بسبب بيانات غير متسقة).
-      `NOT EXISTS (SELECT 1 FROM ${hasMobileSet} hm WHERE pl.tel_no IS NOT NULL AND hm.ph = ${sp("pl.tel_no")})`,
+      `NOT EXISTS (SELECT 1 FROM ${HAS_MOBILE_SET} hm WHERE pl.tel_no IS NOT NULL AND hm.ph = ${sp("pl.tel_no")})`,
+      // «تحت الفحص» = لسه ماتفحصش. اللى اتفحص بيروح لتقرير «تم الفحص وتحتاج أرقام محمول».
+      checkedMode
+        ? `EXISTS (SELECT 1 FROM line_mobile_checked mc WHERE mc.full_phone = k.full_phone)`
+        : `NOT EXISTS (SELECT 1 FROM line_mobile_checked mc WHERE mc.full_phone = k.full_phone)`,
     ];
     const params: any[] = [];
+    // فلتر «له شكوى فى الأعطال الحالية» — نفس تعريف تقرير الأعطال الحالية بالظبط
+    // (تذكرة مفتوحة close_date IS NULL على سنترالات الغنايم بنفس أكواد الأعطال).
+    if (checkedMode && (String(req.query.onlyCurrentFault ?? "") === "1" || String(req.query.onlyCurrentFault ?? "") === "true")) {
+      conds.push(`EXISTS (
+        SELECT 1 FROM ticket_dsl_current t
+         WHERE t.close_date IS NULL
+           AND (t.status_code ~ '^(160|173|122|73|72|60|81)' OR t.complain_type_name ~ '^(160|173|122|73|72|60|81)')
+           AND (t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة'
+                OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')
+           AND ${sp("t.phone_number")} = ${sp("k.full_phone")})`);
+    }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
     if (box) { params.push(box); conds.push(`pl.box_number = $${params.length}`); }
@@ -3576,6 +3604,34 @@ export async function registerRoutes(
     );
 
     res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+  });
+
+  // POST /api/line-mobile-checked { fullPhone, note? } — علّم إن الرقم اتفحص وطلع فعلاً
+  // مالوش رقم محمول. بيشيله من «تحت الفحص» وبيوديه لتقرير «تم الفحص وتحتاج أرقام محمول».
+  app.post("/api/line-mobile-checked", requireAuth, async (req: any, res) => {
+    try {
+      const fullPhone = String(req.body?.fullPhone || "").trim();
+      if (!fullPhone) return res.status(400).json({ message: "رقم التليفون مطلوب" });
+      const note = String(req.body?.note || "").trim() || null;
+      await pool.query(
+        `INSERT INTO line_mobile_checked (full_phone, note, checked_by_id, checked_by_name)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (full_phone) DO UPDATE SET
+           note = EXCLUDED.note, checked_by_id = EXCLUDED.checked_by_id,
+           checked_by_name = EXCLUDED.checked_by_name, checked_at = now()`,
+        [fullPhone, note, req.user?.id ?? null, String(req.user?.username || "")],
+      );
+      res.json({ ok: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/line-mobile-checked/:fullPhone — تراجُع: يرجّع الرقم لتقرير «تحت الفحص».
+  app.delete("/api/line-mobile-checked/:fullPhone", requireAuth, async (req, res) => {
+    try {
+      const { rowCount } = await pool.query(
+        `DELETE FROM line_mobile_checked WHERE full_phone = $1`, [String(req.params.fullPhone || "").trim()]);
+      res.json({ ok: true, removed: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // GET /api/phone-lines/box-summary — count of lines per box

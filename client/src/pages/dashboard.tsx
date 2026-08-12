@@ -78,7 +78,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports" | "box-tickets-backfill" | "box-tickets-repaired" | "slot-cards" | "cabinet-port-free" | "account-never-measured" | "box-score-avg" | "lines-no-mobile" | "needs-speed-lowscore";
+type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports" | "box-tickets-backfill" | "box-tickets-repaired" | "slot-cards" | "cabinet-port-free" | "account-never-measured" | "box-score-avg" | "lines-no-mobile" | "needs-speed-lowscore" | "lines-mobile-checked";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -186,7 +186,8 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
       { id: "lines-without-port", label: "بيان فنى بدون بورت" },
-      { id: "lines-no-mobile", label: "أرقام بدون رقم موبايل" },
+      { id: "lines-no-mobile", label: "أرقام بدون رقم موبايل تحت الفحص" },
+      { id: "lines-mobile-checked", label: "أرقام تم الفحص وتحتاج أرقام محمول" },
       { id: "box-summary",  label: "ملخص البكسيات" },
       { id: "port-change", label: "متابعة تغيير البورت" },
       { id: "subscriber-info", label: "اسم وعنوان العملاء (البورتات)" },
@@ -272,6 +273,8 @@ export default function Dashboard() {
   // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
   const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];
   const SALES_ADMIN_ALLOWED_GROUPS = ["متعذرات OM"];
+  // تقارير للسوبر أدمن فقط رغم إنها جوّه مجموعات مشتركة (السيرفر بيرفضها كمان بـ 403)
+  const SUPER_ONLY_REPORTS: ReportTab[] = ["lines-mobile-checked"];
   const visibleGroups = REPORT_GROUPS
     .filter((g) =>
       (user?.role !== ROLES.DATA_MANAGER || DM_ALLOWED_GROUPS.includes(g.label)) &&
@@ -285,7 +288,10 @@ export default function Dashboard() {
       if (user?.role === ROLES.TECH) return { ...g, items: g.items.filter((it) => TECH_ALLOWED.includes(it.id)) };
       if (user?.role === ROLES.SALES_ADMIN) return { ...g, items: g.items.filter((it) => SALES_ADMIN_ALLOWED.includes(it.id)) };
       return g;
-    });
+    })
+    // تقارير مقصورة على السوبر أدمن جوّه مجموعات عادية (مش مجموعة كاملة).
+    // بيتفلتروا هنا بعد كل الأدوار عشان يتشالوا من الأدمن العادى كمان.
+    .map((g) => (isSuperAdmin ? g : { ...g, items: g.items.filter((it) => !SUPER_ONLY_REPORTS.includes(it.id)) }));
   // حارس: لو التاب الحالى مش من ضمن المسموح لدور المستخدم، نرجّعه لأول تاب مسموح ونفتح
   // مجموعته. ضرورى لأن القيمة الافتراضية لـ reportTab بتتحسب عند **أول رندر بس**، وساعتها
   // بيانات المستخدم ممكن تكون لسه بتتحمّل — فأدمن المبيعات كان بيقع على «الأعطال الحالية»
@@ -688,6 +694,7 @@ export default function Dashboard() {
               {reportTab === "duplicate-accounts"  && <DuplicateAccountsReport />}
               {reportTab === "lines-without-port"  && <LinesWithoutPortReport />}
               {reportTab === "lines-no-mobile"     && <LinesNoMobileReport />}
+              {reportTab === "lines-mobile-checked" && isSuperAdmin && <LinesNoMobileReport checked />}
               {reportTab === "cfm-tickets"         && <CfmTicketsReport />}
               {reportTab === "manual-current-faults"   && <ManualCurrentFaultsReport />}
               {reportTab === "engineering-inspection"  && <EngineeringInspectionReport />}

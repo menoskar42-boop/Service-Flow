@@ -757,6 +757,17 @@ export const lineMobiles = pgTable("line_mobiles", {
 });
 export type LineMobile = typeof lineMobiles.$inferSelect;
 
+// الأرقام اللى اتفحصت وطلعت فعلاً مالهاش رقم محمول — بتتشال من تقرير «أرقام بدون رقم
+// موبايل تحت الفحص» وبتروح لتقرير «أرقام تم الفحص وتحتاج أرقام محمول».
+export const lineMobileChecked = pgTable("line_mobile_checked", {
+  fullPhone: text("full_phone").primaryKey(),
+  note: text("note"),
+  checkedById: integer("checked_by_id").references(() => users.id),
+  checkedByName: text("checked_by_name"),
+  checkedAt: timestamp("checked_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type LineMobileChecked = typeof lineMobileChecked.$inferSelect;
+
 // app_settings — إعدادات عامة مشتركة (key/value) تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر.
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
