@@ -1889,9 +1889,20 @@ export async function registerRoutes(
     try {
       const ids = Array.isArray(req.body?.batchIds) ? req.body.batchIds.map((x: any) => String(x)).filter(Boolean) : [];
       if (!ids.length) return res.status(400).json({ message: "لا توجد باتشات" });
-      for (let i = 0; i < ids.length; i++) {
-        await pool.query(`UPDATE exec_jobs SET queue_order = $1 WHERE batch_id = $2 AND status IN ('pending','claimed') AND priority = 0`, [i + 1, ids[i]]);
-      }
+      // ⚠️ لازم يتكتب على **كل** صفوف الباتش مش pending/claimed بس:
+      // القراءة فى /reorderable بتاخد MAX(queue_order) على الباتش كله، فلو الباتش
+      // اتنفّذ منه جزء (فيه صفوف done) الصفوف دى بتفضل شايلة الترتيب القديم، وMAX
+      // بيرجّع الرقم القديم الأكبر — فالترتيب اليدوى كان بيتلغى ويرجع لترتيب التاريخ.
+      // ده كان بيبان بس فى الباتشات اللى بدأت تتنفّذ (غالباً باتشات نفس التقرير).
+      // queue_order صفة للباتش كله مش للمهمة، فمفيش معنى لاختلاف القيمة بين صفوفه.
+      //
+      // وبقى **بيان واحد** بدل حلقة UPDATE لكل باتش: الترتيب بيتكتب كله مرة واحدة،
+      // فمفيش لحظة يكون فيها نص الترتيب القديم ونصه الجديد لو الطابور بيسحب فى نفس الوقت.
+      await pool.query(
+        `UPDATE exec_jobs e SET queue_order = v.ord
+           FROM unnest($1::text[], $2::bigint[]) AS v(batch_id, ord)
+          WHERE e.batch_id = v.batch_id AND e.priority = 0`,
+        [ids, ids.map((_: string, i: number) => i + 1)]);
       res.json({ ok: true, count: ids.length });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
