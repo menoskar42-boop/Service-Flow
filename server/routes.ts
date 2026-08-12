@@ -614,11 +614,21 @@ const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
 // يستخدم الفهرس (وإلا الـ LATERAL بتاع الشكاوى يرجع seq scan لكل صف ويعلّق التقارير).
 const sp = phoneNormSql;
 
-// «أى حاجة فى طابور التنفيذ ماتتكررش»: شرط بيستبعد أرقام الأكونت اللى ليها مهمة
-// منتظرة أو شغّالة فى الطابور (قياس/رفع سرعة/إيقاف). بيتحطّ فى تقارير القياسات
-// اللى بتتبعت منها باتشات، عشان الرقم مايتبعتش تانى وهو أصلاً فى الدور.
+// «أى حاجة فى طابور التنفيذ ماتتكررش»: شرط بيستبعد أرقام الأكونت اللى الباتش بتاعها
+// **لسه تحت التنفيذ** (قياس/رفع سرعة/إيقاف). بيتحطّ فى تقارير القياسات اللى بتتبعت منها
+// باتشات، عشان الرقم مايتبعتش تانى وهو أصلاً فى الدور.
+//
+// ⚠️ الاستبعاد على مستوى **الباتش** مش على مستوى الخط:
+// الباتش بيتقسّم لمهام (صف لكل خط) بنفس batch_id، وأول ما الخط يتنفّذ مهمته تبقى done.
+// لو استبعدنا اللى status بتاعه pending/claimed بس، الخطوط اللى اتنفّذت جوّه باتش لسه
+// شغّال بترجع تظهر فى التقرير فوراً، فالمستخدم يبعتها تانى وهى لسه فى نفس الجولة.
+// فالقاعدة: أى خط داخل باتش عنده أى مهمة pending/claimed يتستبعد — سواء مهمته هو
+// اتنفّذت أو لأ. ودى بالظبط نفس شروط ظهور الباتش فى تقرير «ترتيب الطابور»
+// (الإلغاء بيحوّل المهام لـ stale، فالباتش الملغى بيخرج من الاتنين مع بعض).
+//
 // subquery **غير مرتبطة** عن قصد: الـ planner بيعملها Hash Anti Join فبتتحسب مرة
-// واحدة بدل مرة لكل صف (اتقاست: 10 آلاف خط × 6500 مهمة = 15ms).
+// واحدة بدل مرة لكل صف (اتقاست: 10 آلاف خط × 6500 مهمة = 15ms). والـ IN جوّاها
+// كمان غير مرتبطة (بتتبنى مرة واحدة كقائمة batch_id نشطة، وعليها exec_jobs_batch_idx).
 // الزر اللى فى الواجهة: ?excludeQueued=1
 const excludeQueuedOn = (req: any) => {
   const v = String(req?.query?.excludeQueued ?? "");
@@ -626,9 +636,12 @@ const excludeQueuedOn = (req: any) => {
 };
 const notQueuedSql = (accCol: string) => `NOT EXISTS (
   SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
-   WHERE e.status IN ('pending','claimed')
-     AND e.type IN ('measure','raise','stop')
-     AND qa.acc = ${accCol})`;
+   WHERE e.type IN ('measure','raise','stop')
+     AND qa.acc = ${accCol}
+     AND (e.status IN ('pending','claimed')
+          OR e.batch_id IN (SELECT b.batch_id FROM exec_jobs b
+                             WHERE b.status IN ('pending','claimed')
+                               AND b.batch_id IS NOT NULL)))`;
 
 // «جدول الخطوط المرفوعة»: بدل ما نمسح الرقم اللى اختفى من الشيت، بننقله بكل بياناته
 // لـ removed_phone_ports ثم نشيله من phone_ports. لو رجع فى شيت بعدين بيتشال من هناك

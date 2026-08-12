@@ -372,7 +372,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
               size="sm"
               onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
               className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
-              title="يشيل الأرقام اللى ليها مهمة منتظرة أو شغّالة فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
+              title="يشيل كل أرقام أى باتش لسه تحت التنفيذ فى الطابور — حتى اللى اتنفّذ منها فعلاً — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
             >
               <EyeOff className="w-4 h-4" />
               {excludeQueued
