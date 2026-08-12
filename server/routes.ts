@@ -653,6 +653,15 @@ const HAS_MOBILE_SET = `(
       AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
 )`;
 
+// أرقام البورتات الصالحة لمراجعة الاسم/العنوان: **88 + 7 أرقام بالظبط**.
+// ⚠️ جدول phone_ports فيه صفوف مش أرقام تليفون عادية (أرقام أطول من 7 خانات وخدمات
+// وخلافه). من غير الفلتر ده كانت بتتبعت لمراجعة FCC وتتفتح واحدة واحدة من غير أى
+// فايدة — وده اللى خلّى زر «مراجعة الاسم والعنوان» يفتح أرقام أطول من 7 خانات.
+// نفس الشرط المستخدَم فى تقرير «أرقام بدون رقم موبايل» بالحرف.
+// (phone_lines مصدر موثوق — بيان التليفونات نفسه — فبيعدّى زى ما هو.)
+const PORTS_LOCAL_PHONES_SQL = `SELECT phone_number FROM phone_ports
+          WHERE regexp_replace(phone_number, '[^0-9]', '', 'g') ~ '^0*88[0-9]{7}$'`;
+
 const notQueuedSql = (accCol: string) => `NOT EXISTS (
   SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
    WHERE e.type IN ('measure','raise','stop')
@@ -6742,7 +6751,7 @@ export async function registerRoutes(
     // بورت») ماكانتش بتدخل قائمة الجلب أبداً → اسم/عنوان فاضى دايماً. دلوقتى بتتجلب زى غيرها.
     const { rows } = await pool.query(
       `SELECT pp.phone_number FROM (
-         SELECT phone_number FROM phone_ports
+         ${PORTS_LOCAL_PHONES_SQL}
          UNION
          SELECT full_phone AS phone_number FROM phone_lines
        ) pp
@@ -6917,7 +6926,7 @@ export async function registerRoutes(
     }
     const { rows: phoneRows } = await pool.query(
       `SELECT pp.phone_number FROM (
-         SELECT phone_number FROM phone_ports
+         ${PORTS_LOCAL_PHONES_SQL}
          UNION
          SELECT full_phone AS phone_number FROM phone_lines
        ) pp
