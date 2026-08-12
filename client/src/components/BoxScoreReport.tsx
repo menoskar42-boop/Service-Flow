@@ -9,7 +9,7 @@ import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, Wrench, List, X } from "lucide-react";
+import { Loader2, ChevronUp, ChevronDown, ChevronsUpDown, Radar, Wrench, List, X, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
@@ -316,6 +316,12 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
   const [maintDetail, setMaintDetail] = useState<MaintRow | null>(null);
   const [linesBox, setLinesBox] = useState<BoxAvgRow | null>(null); // نافذة خطوط البكس (خطوط لها أكونت)
 
+  // فلاتر: البكسيات اللى صيانتها «مكتمل» / اللى ليها تذكرة عطل أرضى مفتوحة
+  const [onlyMaintDone, setOnlyMaintDone] = useState(false);
+  const [onlyGroundTicket, setOnlyGroundTicket] = useState(false);
+  const isMaintDone = (m: MaintRow | undefined) =>
+    !!m && ((m.maintenance_status ?? "").trim() === "completed" || (m.maintenance_status_ar ?? "").trim() === "مكتمل");
+
   const [dzsBox, setDzsBox] = useState<string | null>(null);
   const measureBox = async (r: BoxAvgRow) => {
     setDzsBox(`${r.cabinNumber}/${r.boxNumber}`);
@@ -342,6 +348,8 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
     if (threshold != null && !isNaN(threshold)) {
       arr = arr.filter((r) => r.avgScore != null && r.avgScore > threshold);
     }
+    if (onlyMaintDone) arr = arr.filter((r) => isMaintDone(maintMap.get(mkey(r.centralName, r.cabinNumber, r.boxNumber))));
+    if (onlyGroundTicket) arr = arr.filter((r) => r.hasOpenTicket);
     return arr.sort((a, b) => {
       const av = a[sortKey] ?? ""; const bv = b[sortKey] ?? "";
       if (typeof av === "number" && typeof bv === "number")
@@ -350,7 +358,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
         ? String(av).localeCompare(String(bv), "ar")
         : String(bv).localeCompare(String(av), "ar");
     });
-  }, [data, sortKey, sortDir, minScore]);
+  }, [data, sortKey, sortDir, minScore, openTicketSet, maintMap, onlyMaintDone, onlyGroundTicket]);
 
   const toggle = (k: keyof BoxAvgRow) => {
     if (sortKey === k) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -365,6 +373,7 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
       "عدد الخطوط": r.lineCount, "لها أكونت": r.withAccountCount, "خطوط مقاسة": r.measuredCount,
       "بدون أكونت": r.noAccountCount, "لم يُحدَّد": r.undeterminedCount,
       "تذكرة أرضية مفتوحة": r.hasOpenTicket ? "نعم" : "لا",
+      "حالة الصيانة": maintMap.get(mkey(r.centralName, r.cabinNumber, r.boxNumber))?.maintenance_status_ar ?? "—",
       "متوسط الاسكور": r.measuredCount > 0 ? r.avgScore : "لا توجد خطوط مقاسة",
       "متوسط السرعة الحالية (Kbps)": r.measuredCount > 0 ? r.avgCurrentSpeed : "",
       "متوسط أقصى سرعة (Kbps)": r.measuredCount > 0 ? r.avgMaxSpeed : "",
@@ -379,17 +388,18 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
   const handleExportPDF = () => {
     printTablePDF({
       title: "متوسط قياسات البكسيات",
-      columns: ["السنترال", "الكابينه", "البكس", "الخطوط", "لها أكونت", "مقاسة", "بدون أكونت", "لم يُحدَّد", "تذكرة أرضية", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
-      rows: sorted.map((r) =>
-        r.measuredCount > 0
+      columns: ["السنترال", "الكابينه", "البكس", "الخطوط", "لها أكونت", "مقاسة", "بدون أكونت", "لم يُحدَّد", "تذكرة أرضية", "حالة الصيانة", "متوسط الاسكور", "متوسط السرعة الحالية", "متوسط أقصى سرعة", "أقدم قياس", "أحدث قياس"],
+      rows: sorted.map((r) => {
+        const ms = maintMap.get(mkey(r.centralName, r.cabinNumber, r.boxNumber))?.maintenance_status_ar ?? "—";
+        return r.measuredCount > 0
           ? [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, r.withAccountCount, r.measuredCount,
-             r.noAccountCount, r.undeterminedCount, r.hasOpenTicket ? "نعم" : "لا",
+             r.noAccountCount, r.undeterminedCount, r.hasOpenTicket ? "نعم" : "لا", ms,
              r.avgScore ?? "—", r.avgCurrentSpeed ?? "—", r.avgMaxSpeed ?? "—",
              fmtDt(r.oldestMeasTime), fmtDt(r.newestMeasTime)]
           : [r.centralName, r.cabinNumber, r.boxNumber, r.lineCount, r.withAccountCount, 0,
-             r.noAccountCount, r.undeterminedCount, r.hasOpenTicket ? "نعم" : "لا",
-             "لا توجد خطوط مقاسة", "", "", "لا يوجد", "لا يوجد"],
-      ),
+             r.noAccountCount, r.undeterminedCount, r.hasOpenTicket ? "نعم" : "لا", ms,
+             "لا توجد خطوط مقاسة", "", "", "لا يوجد", "لا يوجد"];
+      }),
     });
   };
 
@@ -407,6 +417,24 @@ function BoxTab({ central, cabin, minScore }: { central: string; cabin: string; 
             disabled={!cabin}
             className="w-36 text-sm"
           />
+          <Button
+            variant={onlyMaintDone ? "default" : "outline"}
+            size="sm"
+            onClick={() => setOnlyMaintDone((v) => !v)}
+            title="اعرض البكسيات اللى حالة الصيانة فيها «مكتمل» فقط"
+            className={onlyMaintDone ? "bg-green-600 hover:bg-green-700 gap-1" : "text-green-700 border-green-200 gap-1"}
+          >
+            <Wrench className="w-4 h-4" /> صيانة مكتملة{onlyMaintDone ? " ✓" : ""}
+          </Button>
+          <Button
+            variant={onlyGroundTicket ? "default" : "outline"}
+            size="sm"
+            onClick={() => setOnlyGroundTicket((v) => !v)}
+            title="اعرض البكسيات اللى ليها تذكرة عطل شبكة أرضية مفتوحة فقط"
+            className={onlyGroundTicket ? "bg-red-600 hover:bg-red-700 gap-1" : "text-red-700 border-red-200 gap-1"}
+          >
+            <AlertTriangle className="w-4 h-4" /> له شكوى أرضية{onlyGroundTicket ? " ✓" : ""}
+          </Button>
           {showSpeedTools && (
           <Button variant="outline" size="sm" onClick={measureAll} className="text-blue-700 border-blue-200 gap-1">
             <Radar className="w-4 h-4" /> قياس الكل
