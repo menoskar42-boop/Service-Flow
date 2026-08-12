@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { pool } from "./db";
-import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS, REJECTION_REASONS } from "@shared/schema";
+import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS, REJECTION_REASONS, SHIFT_COVER_STATES_SQL } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import multer from "multer";
@@ -733,7 +733,7 @@ const areaTechSql = (centralExpr: string, cabinExpr: string, dateExpr: string) =
      LEFT JOIN shift_schedules s
        ON s.week_start = ${dt} - ${di}
       AND btrim(s.tech_name) = btrim(tn.tech_name)
-      AND COALESCE(s.days->>${di}, '') IN ('راحه','إجازة')
+      AND COALESCE(s.days->>${di}, '') IN (${SHIFT_COVER_STATES_SQL})
     WHERE ct.central_name = ${centralExpr} AND ct.cabin_number = ${cabinExpr}
     LIMIT 1)`;
 };
@@ -1384,7 +1384,7 @@ export async function registerRoutes(
              ) d
              WHERE s.week_start = d.today - d.di
                AND btrim(COALESCE(s.covers->>d.di, '')) = btrim($1)
-               AND COALESCE(s.days->>d.di, '') IN ('راحه','إجازة')`, [tn]);
+               AND COALESCE(s.days->>d.di, '') IN (${SHIFT_COVER_STATES_SQL})`, [tn]);
           for (const r of rows) { if (r.name) coveredNames.add(String(r.name).trim()); if (r.code) covered.add(String(r.code).trim()); }
         } catch (e) {}
       }

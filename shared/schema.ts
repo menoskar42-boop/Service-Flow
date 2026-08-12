@@ -811,8 +811,18 @@ export const techCoverageGrants = pgTable("tech_coverage_grants", {
 }, (t) => ({ uq: unique().on(t.granteeTechName, t.coveredTechName) }));
 export type TechCoverageGrant = typeof techCoverageGrants.$inferSelect;
 
+// حالات اليوم فى جدول الورديات — مصدر واحد للواجهة والسيرفر.
+export const SHIFT_STATES = ["عمل", "راحه", "إجازة", "تكليف عمل", "مأمورية"] as const;
+// الحالات اللى الفنى بيكون فيها **مش على كابينته**، فبيتسجّل معاها «الفنى القائم بالعمل»
+// بدلاً منه. الحالات دى بتحدّد كمان مسئولية الأعطال وصلاحية الوصول لخطوط الزميل.
+// ⚠️ لازم تفضل مشتركة بين الواجهة والسيرفر: لو الواجهة بس اللى عرفت الحالة الجديدة،
+// «القائم بالعمل» هيتسجّل بس السيرفر هيتجاهله فى المسئولية والصلاحيات.
+export const SHIFT_COVER_STATES = ["راحه", "إجازة", "تكليف عمل", "مأمورية"] as const;
+// نفس القائمة كنص جاهز للاستخدام جوّه IN (...) فى الـ SQL
+export const SHIFT_COVER_STATES_SQL = SHIFT_COVER_STATES.map((s) => `'${s}'`).join(",");
+
 // shift_schedules — جدول ورديات الفنيين الأسبوعى. صف لكل (أسبوع، فنى):
-// week_start = الجمعة (بداية الأسبوع)، days = 7 قيم (جمعة→خميس): عمل/راحه/إجازة/بدل راحه.
+// week_start = الجمعة (بداية الأسبوع)، days = 7 قيم (جمعة→خميس): من SHIFT_STATES.
 export const shiftSchedules = pgTable("shift_schedules", {
   id: serial("id").primaryKey(),
   weekStart: date("week_start").notNull(),

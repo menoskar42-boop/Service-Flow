@@ -5,20 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ChevronRight, ChevronLeft, Loader2, CalendarDays, Eye } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { ROLES } from "@shared/schema";
+import { ROLES, SHIFT_STATES, SHIFT_COVER_STATES } from "@shared/schema";
 import { CoverageGrantsPanel } from "@/components/CoverageGrantsPanel";
 
 // «جدول الورديات» — جدول أسبوعى لورديات الفنيين. تنقّل بين الأسابيع بالأسهم،
-// وكل خلية دروب ليست (عمل / راحه / إجازة / بدل راحه). الفنى يشوف بدون تعديل؛
+// وكل خلية دروب ليست (عمل / راحه / إجازة / تكليف عمل / مأمورية). الفنى يشوف بدون تعديل؛
 // الأدمن/السوبر أدمن/الشئون الخارجية يعدّلون. الحفظ تلقائى لكل صف فنى.
 
-const OPTIONS = ["عمل", "راحه", "إجازة"];   // الافتراضى: عمل
-// الحالات التى تتطلب إدخال «الفنى القائم بالعمل» بدلاً من صاحبها
-const COVER_STATES = ["راحه", "إجازة"];
+// الحالات مشتركة مع السيرفر (shared/schema.ts) — الحالة اللى فيها الفنى مش على كابينته
+// بتفتح ليست «القائم بالعمل»، والسيرفر بيستخدم نفس القائمة فى مسئولية الأعطال وصلاحية
+// الوصول لخطوط الزميل. لو اتعرّفت هنا بس، «القائم بالعمل» كان هيتسجّل والسيرفر يتجاهله.
+const OPTIONS = [...SHIFT_STATES];            // الافتراضى: عمل
+const COVER_STATES: readonly string[] = SHIFT_COVER_STATES;
 const OPT_STYLE: Record<string, string> = {
   "عمل": "text-green-700 bg-green-50",
   "راحه": "text-amber-700 bg-amber-50",
   "إجازة": "text-red-700 bg-red-50",
+  "تكليف عمل": "text-blue-700 bg-blue-50",
+  "مأمورية": "text-purple-700 bg-purple-50",
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -186,7 +190,7 @@ export function ShiftScheduleReport() {
                       ) : (
                         <span className={`inline-block w-full text-xs rounded px-1 py-1.5 ${OPT_STYLE[val || "عمل"] || ""}`}>{val || "عمل"}</span>
                       )}
-                      {/* عند راحه/إجازة/بدل راحه: الفنى القائم بالعمل بدلاً منه */}
+                      {/* عند راحه/إجازة/تكليف عمل/مأمورية: الفنى القائم بالعمل بدلاً منه */}
                       {COVER_STATES.includes(val) && (
                         canEdit ? (
                           <select
