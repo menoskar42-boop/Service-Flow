@@ -3491,7 +3491,29 @@ export async function registerRoutes(
     let pFrom = digitsOnly(phoneFrom), pTo = digitsOnly(phoneTo);
     if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) { const t = pFrom; pFrom = pTo; pTo = t; }
 
-    const conds: string[] = ["mob.m IS NULL"];
+    // «مالوش موبايل» = مش موجود فى أى من المصادر التلاتة. المصادر بتتجمّع فى مجموعة
+    // واحدة **غير مرتبطة** بالصف، فالـ planner بيبنيها مرة واحدة ويعمل Hash Anti Join.
+    // ⚠️ قبل كده كان LATERAL بيتنفّذ **لكل صف** من عشرات الآلاف، وكل مرة بيمسح
+    // maintenance_orders و ftth_orders_current كاملين — التقرير كان بياخد دقايق.
+    // المفتاح الموحّد هو الرقم القصير (sp) عشان المصادر مخزّنة بصيغ مختلفة (بـ 88 أو من غيرها).
+    const hasMobileSet = `(
+      SELECT ${sp("lm.full_phone")} AS ph FROM line_mobiles lm
+        WHERE NULLIF(btrim(lm.mobile), '') IS NOT NULL
+      UNION
+      SELECT ${sp("mo.phone_number")} FROM maintenance_orders mo
+        WHERE NULLIF(btrim(mo.mobile), '') IS NOT NULL
+          AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+      UNION
+      SELECT ${sp("fo.service_number")} FROM ftth_orders_current fo
+        WHERE NULLIF(btrim(fo.customer_mobile), '') IS NOT NULL
+          AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+    )`;
+    const conds: string[] = [
+      `NOT EXISTS (SELECT 1 FROM ${hasMobileSet} hm WHERE hm.ph = ${sp("k.full_phone")})`,
+      // بنفحص كمان بـ tel_no لأن الفرع القديم كان بيطابق بيه لو موجود (لو اختلف عن
+      // الرقم القصير المشتقّ من full_phone بسبب بيانات غير متسقة).
+      `NOT EXISTS (SELECT 1 FROM ${hasMobileSet} hm WHERE pl.tel_no IS NOT NULL AND hm.ph = ${sp("pl.tel_no")})`,
+    ];
     const params: any[] = [];
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }
@@ -3525,20 +3547,7 @@ export async function registerRoutes(
       LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
       LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone
-      LEFT JOIN removed_phone_ports rpp ON rpp.phone_number = k.full_phone
-      LEFT JOIN LATERAL (
-        SELECT x.m FROM (
-          SELECT lm.mobile AS m, 0 AS pr FROM line_mobiles lm WHERE lm.full_phone = k.full_phone
-          UNION ALL
-          SELECT mo.mobile AS m, 1 AS pr FROM maintenance_orders mo
-            WHERE mo.phone_number IN (COALESCE(pl.tel_no, regexp_replace(k.full_phone,'^88','')), k.full_phone)
-              AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
-          UNION ALL
-          SELECT fo.customer_mobile AS m, 2 AS pr FROM ftth_orders_current fo
-            WHERE fo.service_number IN (COALESCE(pl.tel_no, regexp_replace(k.full_phone,'^88','')), k.full_phone)
-              AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
-        ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY x.pr LIMIT 1
-      ) mob ON true`;
+      LEFT JOIN removed_phone_ports rpp ON rpp.phone_number = k.full_phone`;
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
