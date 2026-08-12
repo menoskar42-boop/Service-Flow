@@ -102,6 +102,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // السيرفر بيحدّد الأولوية من نص الـ note). دلوقتى بنشتقّه من الـ endpoint.
   const sourceName =
     endpoint.includes("needs-po-stop") ? "تحتاج إيقاف PO"
+    : endpoint.includes("needs-speed-lowscore") ? "اسكور منخفض وسرعة عالية"
     : requireComplaint ? "محتاجة رفع سرعة (لها شكوى)"
     : "محتاجة رفع سرعة";
   useSpeedToolSource(sourceName);

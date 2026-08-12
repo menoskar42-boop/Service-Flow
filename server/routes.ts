@@ -4058,7 +4058,18 @@ export async function registerRoutes(
   // المعيار: نستبعد الخطوط غير المتزامنة (السرعة الحالية وأقصى سرعة < 200 معاً)، ثم نعتبر الخط
   //   محتاجاً رفع سرعة إذا: (نسبة الحالى/الأقصى < 60% و 15 < الاسكور < 101) أو (الاسكور < 16 و السرعة الحالية < 10000).
   // requireComplaint=1: فقط الأرقام التى لها رقم شكوى خلال آخر شهر (تقرير 2)؛ بدونها = الكل (تقرير 4).
-  app.get("/api/phone-lines/needs-speed", requireAuth, async (req, res) => {
+  //
+  // GET /api/phone-lines/needs-speed-lowscore — «اسكور منخفض وسرعة عالية» (تقرير منفصل)
+  // نفس الـ handler بالظبط (نفس الأعمدة والفلاتر والتصدير وزر الطابور) وبيغيّر معيار
+  // التأهيل بس. المعيار فوق فيه **فجوة**: الخط اللى اسكوره 15 أو أقل وسرعته الحالية
+  // 10000 أو أكتر بيسقط من الاتنين — شرط النسبة عايز اسكور > 15، وشرط الاسكور المنخفض
+  // عايز سرعة < 10000. مثال حقيقى: 2823645 (اسكور 15، حالى 10238، أقصى 53080 → 19% بس
+  // من سرعته الممكنة) كان مش ظاهر فى أى تقرير. التقرير ده بيمسك الفجوة دى بالظبط:
+  //   الاسكور < 16  و  السرعة الحالية >= 10000  و  النسبة < 60%.
+  // القيود التلاتة مع بعض بتضمن إن الخط **مستحيل** يكون فى تقرير «محتاجة رفع سرعة»
+  // (شرط (أ) بيقع على الاسكور، وشرط (ب) بيقع على السرعة) — فمافيش تكرار بين التقريرين.
+  app.get(["/api/phone-lines/needs-speed", "/api/phone-lines/needs-speed-lowscore"], requireAuth, async (req, res) => {
+    const lowScoreMode = req.path.endsWith("/needs-speed-lowscore");
     const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", search = "", includeExcluded = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
@@ -4092,10 +4103,14 @@ export async function registerRoutes(
         ) latest
         WHERE latest.score IS NOT NULL
           AND NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
-          AND (
+          AND ${lowScoreMode ? `(
+            latest.score < 16
+            AND latest.cur_n >= 10000
+            AND latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6
+          )` : `(
             (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
             OR (latest.score < 16 AND latest.cur_n < 10000)
-          )
+          )`}
       ) m
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone
