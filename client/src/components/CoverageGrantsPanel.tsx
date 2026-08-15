@@ -60,7 +60,7 @@ export function CoverageGrantsPanel() {
     <Card className="p-4 space-y-3 border-indigo-200" dir="rtl">
       <div>
         <h3 className="text-sm font-bold flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-indigo-600" /> منح التغطية الدائمة</h3>
-        <p className="text-[11px] text-muted-foreground">الفنى «القائم بالعمل» يقدر يقيس/يرفع سرعة/يوقف خطوط الزميل من بحث برقم التليفون ويشوفها فى أعطاله — حتى لو الزميل «عمل».</p>
+        <p className="text-[11px] text-muted-foreground">الفنى «القائم بالعمل» يقدر يقيس/يرفع سرعة/يوقف خطوط الزميل من بحث برقم التليفون ويشوفها فى أعطاله — حتى لو الزميل «عمل». <b>الصلاحية على الخطوط اللى عليها عطل مفتوح أو عطل اتنظّم النهاردة فقط</b> — مش على كل خطوط الزميل.</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-2">

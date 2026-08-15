@@ -4460,6 +4460,21 @@ export async function registerRoutes(
                               AND (tc.status_code ~ '^(160|173|122|73|72|60|81)' OR tc.complain_type_name ~ '^(160|173|122|73|72|60|81)'))
                     OR EXISTS (SELECT 1 FROM manual_faults mf
                                WHERE mf.status = 'open' AND (mf.phone_short = t.short OR mf.full_phone = t.full))
+                    -- أو عطل **اتنظّم النهاردة** (تقرير «الأعطال المنتظمة اليوم»):
+                    -- الفنى القائم بالعمل بيحتاج يقيس بعد الإزالة عشان يتأكد إن الخط
+                    -- رجع تمام، فالصلاحية مابتقفلش فى نفس اللحظة اللى العطل بيتقفل فيها.
+                    -- نفس تعريف التقرير بالحرف — مصدرين: مغلق النهاردة فى الحالى، أو
+                    -- اختفى من الحالى وكان فى لقطة بداية اليوم (ما عدا 135/138 الوسيطة).
+                    OR EXISTS (SELECT 1 FROM ticket_dsl_current tr
+                               WHERE tr.phone_number = t.short AND tr.close_date IS NOT NULL
+                                 AND (tr.close_date AT TIME ZONE 'Africa/Cairo')::date
+                                     = (now() AT TIME ZONE 'Africa/Cairo')::date
+                                 AND (tr.status_code ~ '^(160|173|122|73|72|60)' OR tr.complain_type_name ~ '^(160|173|122|73|72|60)'))
+                    OR EXISTS (SELECT 1 FROM ticket_dsl_sod ts
+                               WHERE ts.phone_number = t.short
+                                 AND NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = ts.ticket_id)
+                                 AND NOT (ts.status_code ~ '^(135|138)')
+                                 AND (ts.status_code ~ '^(160|173|122|73|72|60)' OR ts.complain_type_name ~ '^(160|173|122|73|72|60)'))
                   ))
               )) AS "ownedByMe",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"

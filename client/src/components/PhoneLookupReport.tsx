@@ -869,6 +869,9 @@ export function PhoneLookupReport() {
                   <span className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                     القياس ورفع السرعة والإيقاف متاحة فقط لفنى المنطقة
                     {line.techName ? ` — الخط تابع للفنى: ${line.techName}` : " — الخط غير مُسنَد لفنى معروف"}
+                    <span className="block mt-1 text-[11px] opacity-90">
+                      لو انت مغطّى للفنى ده: الصلاحية بتفتح على خطوطه اللى عليها عطل مفتوح أو عطل اتنظّم النهاردة بس.
+                    </span>
                   </span>
                 )
               ) : isSuper ? (
