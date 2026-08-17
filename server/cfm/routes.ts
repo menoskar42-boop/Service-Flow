@@ -802,6 +802,11 @@ export function registerCfmRoutes(app: Express) {
                 AND COALESCE(status, '') NOT IN ('feasible', 'external_feasible')
                 AND COALESCE(is_feasible, false) = false
                 AND COALESCE(is_feasible_external, false) = false
+                -- المتعذر اللى اتأكّد إنه **نفس** طلب فى قسم الطلبات مابيتعدّش تانى:
+                -- الاتنين نفس العميل ونفس الحالة، فيتحسبوا متعذر واحد على البكس مش 2.
+                -- (بنستبعد جنب OM ونسيب جنب الطلبات — الطلب هو السجل الأصلى.)
+                AND NOT EXISTS (SELECT 1 FROM om_order_matches mm
+                                 WHERE mm.om_serial = om_responses.serial_number)
            ) x
           GROUP BY 1, 2, 3`, ["بوكس معطل"]);
       res.json(rows);

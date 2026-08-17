@@ -890,6 +890,23 @@ export async function ensureSchema() {
     )
   `);
 
+  // om_order_matches — تطابق مؤكَّد بين طلب فى «قسم الطلبات» ومتعذر فى «المتعذرات
+  // الحالية» (نفس العميل). السوبر أدمن هو اللى بيأكّده من تقرير الربط.
+  // فايدته اتنين: (١) مزامنة سبب الرد بين النظامين، (٢) إحصائية برنامج الكوابل
+  // بتعدّ الاتنين **متعذر واحد** على البكس بدل اتنين.
+  // 1:1 عن قصد: الطلب الواحد يتربط بمتعذر واحد والعكس.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS om_order_matches (
+      order_id integer NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+      om_serial text NOT NULL UNIQUE,
+      score real,
+      confirmed_by_id integer REFERENCES users(id),
+      confirmed_by_name text,
+      confirmed_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (order_id, om_serial)
+    )
+  `);
+
   // line_deactivations — «جدول الرفع النهائى». أوامر شغل نوعها إلغاء/رفع الخط نهائياً
   // (Fixed Voice Deactivation / TDM Termination …) — دى **مش تركيب ولا نقل** ومابيتصرفلهاش
   // سلك، فمابتدخلش جدول أوامر الشغل عشان ماتظهرش فى تقارير التركيبات/النقل ولا فى

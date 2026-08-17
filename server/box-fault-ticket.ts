@@ -317,6 +317,8 @@ export async function settleBoxTicketIfCleared(inp: {
         WHERE rejection_reason = 'بوكس معطل' AND COALESCE(btrim(box_number),'') <> ''
           AND COALESCE(status,'') NOT IN ('feasible','external_feasible')
           AND COALESCE(is_feasible,false) = false AND COALESCE(is_feasible_external,false) = false
+          AND NOT EXISTS (SELECT 1 FROM om_order_matches mm
+                           WHERE mm.om_serial = om_responses.serial_number)
      ) x
       WHERE btrim(x.central_name) = $1 AND btrim(x.cabin_number) = $2 AND btrim(x.box_number) = $3
       LIMIT 1`, [central, cabinet, box]);

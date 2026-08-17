@@ -19,6 +19,7 @@ import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
+import { nameSimilarity, NAME_MATCH_THRESHOLD } from "@shared/name-match";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
@@ -3702,6 +3703,144 @@ export async function registerRoutes(
     try {
       const { rowCount } = await pool.query(
         `DELETE FROM line_mobile_checked WHERE full_phone = $1`, [String(req.params.fullPhone || "").trim()]);
+      res.json({ ok: true, removed: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ── تقرير ربط الطلبات بالمتعذرات الحالية (سوبر أدمن فقط) ────────────────────
+  // بيجيب كل الطلبات وكل المتعذرات الحالية وبيطابق **بالاسم** بنسبة ≥ العتبة
+  // (0.7 افتراضياً). الحساب فى الـ JS مش فى القاعدة — مافيش أى إضافة (pg_trgm)
+  // مطلوبة، والأحجام هنا مئات الصفوف فالتكلفة مالهاش أثر.
+  // بيرجّع لكل زوج: الاسم/العنوان/الموبايل والرد من الجهتين + نسبة التطابق.
+  app.get("/api/reports/om-order-match", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const minScore = Math.max(0, Math.min(1, parseFloat(String(req.query.minScore ?? "")) || NAME_MATCH_THRESHOLD));
+      const { rows: orderRows } = await pool.query(
+        `SELECT o.id, o.customer_name AS name, o.customer_address AS address,
+                o.customer_phone AS mobile, o.status, o.rejection_reason AS reason,
+                o.additional_notes AS notes, o.central_name AS central,
+                o.cabin_number AS cabin, o.box_number AS box, o.tech_name AS tech,
+                (o.created_at AT TIME ZONE 'Africa/Cairo') AS "createdAt"
+           FROM orders o
+          WHERE COALESCE(btrim(o.customer_name), '') <> ''`);
+      const { rows: omRows } = await pool.query(
+        `SELECT fo.serial_number AS serial, fo.customer_name AS name,
+                fo.install_address AS address, fo.customer_mobile AS mobile,
+                fo.service_number AS phone, fo.msan_code AS msan,
+                r.rejection_reason AS reason, r.additional_notes AS notes,
+                r.status AS "respStatus", r.tech_name AS tech,
+                r.central_name AS central, r.cabin_number AS cabin, r.box_number AS box
+           FROM ftth_orders_current fo
+           LEFT JOIN om_responses r ON r.serial_number = fo.serial_number
+          WHERE COALESCE(btrim(fo.customer_name), '') <> ''`);
+      const { rows: confirmed } = await pool.query(
+        `SELECT order_id AS "orderId", om_serial AS serial, score,
+                confirmed_by_name AS "confirmedBy",
+                (confirmed_at AT TIME ZONE 'Africa/Cairo') AS "confirmedAt"
+           FROM om_order_matches`);
+      const confByOrder = new Map<number, any>();
+      for (const c of confirmed) confByOrder.set(Number(c.orderId), c);
+
+      // لكل طلب: أحسن متعذر مطابق (أعلى نسبة) — الربط 1:1 فمابنعرضش نفس المتعذر
+      // لأكتر من طلب إلا لو لسه مش مؤكَّد (السوبر أدمن هو اللى يحسم).
+      const pairs: any[] = [];
+      for (const o of orderRows) {
+        let best: any = null, bestScore = 0;
+        for (const m of omRows) {
+          const sc = nameSimilarity(o.name, m.name);
+          if (sc > bestScore) { bestScore = sc; best = m; }
+        }
+        const conf = confByOrder.get(Number(o.id));
+        // الأزواج المؤكَّدة بتظهر دايماً حتى لو النسبة أقل من العتبة دلوقتى
+        if (conf) {
+          const m = omRows.find((x: any) => String(x.serial) === String(conf.serial)) || null;
+          pairs.push({ order: o, om: m, score: conf.score ?? bestScore, confirmed: conf });
+          continue;
+        }
+        if (best && bestScore >= minScore) pairs.push({ order: o, om: best, score: bestScore, confirmed: null });
+      }
+      pairs.sort((a, b) => (b.confirmed ? 1 : 0) - (a.confirmed ? 1 : 0) || b.score - a.score);
+      res.json({ data: pairs, minScore, orders: orderRows.length, omCases: omRows.length });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/reports/om-order-match/confirm { orderId, serialNumber }
+  // بيأكّد التطابق وبيزامن سبب الرد بين النظامين:
+  //   • فيه سبب فى المتعذرات الحالية → بينزل على قسم الطلبات (وبيحدّث أى سبب قديم)
+  //   • مفيش سبب فى المتعذرات وفيه سبب فى الطلبات → بيروح للمتعذرات الحالية
+  //   • الاتنين فاضيين → بنسجّل التطابق بس
+  app.post("/api/reports/om-order-match/confirm", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const orderId = parseInt(String(req.body?.orderId ?? ""));
+      const serial = String(req.body?.serialNumber ?? "").trim();
+      if (!orderId || !serial) return res.status(400).json({ message: "orderId و serialNumber مطلوبين" });
+
+      const { rows: oRows } = await pool.query(
+        `SELECT id, rejection_reason, additional_notes, central_name, cabin_number, box_number
+           FROM orders WHERE id = $1`, [orderId]);
+      if (!oRows.length) return res.status(404).json({ message: "الطلب مش موجود" });
+      const o = oRows[0];
+      const { rows: mRows } = await pool.query(
+        `SELECT serial_number, rejection_reason, additional_notes, central_name, cabin_number, box_number
+           FROM om_responses WHERE serial_number = $1`, [serial]);
+      const m = mRows[0] || null;
+
+      const omReason = String(m?.rejection_reason ?? "").trim();
+      const orderReason = String(o.rejection_reason ?? "").trim();
+      let direction = "none";
+
+      if (omReason) {
+        // سبب المتعذرات هو المرجع — بينزل على الطلب ويحدّث القديم
+        await pool.query(
+          `UPDATE orders SET rejection_reason = $2, is_feasible = false,
+                             status = CASE WHEN status IN ('feasible','external_feasible') THEN status ELSE 'not_feasible' END,
+                             additional_notes = COALESCE(NULLIF(btrim($3), ''), additional_notes),
+                             central_name = COALESCE(central_name, $4),
+                             cabin_number = COALESCE(cabin_number, $5),
+                             box_number   = COALESCE(box_number, $6)
+            WHERE id = $1`,
+          [orderId, omReason, String(m?.additional_notes ?? ""), m?.central_name ?? null,
+           m?.cabin_number ?? null, m?.box_number ?? null]);
+        direction = "om→order";
+      } else if (orderReason) {
+        // مفيش سبب فى المتعذرات → ناخد سبب الطلب ونوديه هناك
+        await pool.query(
+          `INSERT INTO om_responses (serial_number, status, is_feasible, rejection_reason,
+                                     additional_notes, central_name, cabin_number, box_number, updated_at)
+           VALUES ($1, 'not_feasible', false, $2, $3, $4, $5, $6, now())
+           ON CONFLICT (serial_number) DO UPDATE SET
+             rejection_reason = EXCLUDED.rejection_reason,
+             is_feasible = false,
+             status = CASE WHEN om_responses.status IN ('feasible','external_feasible')
+                           THEN om_responses.status ELSE 'not_feasible' END,
+             additional_notes = COALESCE(NULLIF(btrim(EXCLUDED.additional_notes), ''), om_responses.additional_notes),
+             central_name = COALESCE(om_responses.central_name, EXCLUDED.central_name),
+             cabin_number = COALESCE(om_responses.cabin_number, EXCLUDED.cabin_number),
+             box_number   = COALESCE(om_responses.box_number, EXCLUDED.box_number),
+             updated_at = now()`,
+          [serial, orderReason, String(o.additional_notes ?? ""), o.central_name, o.cabin_number, o.box_number]);
+        direction = "order→om";
+      }
+
+      const score = parseFloat(String(req.body?.score ?? "")) || null;
+      await pool.query(
+        `INSERT INTO om_order_matches (order_id, om_serial, score, confirmed_by_id, confirmed_by_name)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (order_id) DO UPDATE SET
+           om_serial = EXCLUDED.om_serial, score = EXCLUDED.score,
+           confirmed_by_id = EXCLUDED.confirmed_by_id,
+           confirmed_by_name = EXCLUDED.confirmed_by_name, confirmed_at = now()`,
+        [orderId, serial, score, req.user?.id ?? null, String(req.user?.username || "")]);
+
+      res.json({ ok: true, direction });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // DELETE /api/reports/om-order-match/:orderId — إلغاء تأكيد التطابق
+  app.delete("/api/reports/om-order-match/:orderId", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const { rowCount } = await pool.query(
+        `DELETE FROM om_order_matches WHERE order_id = $1`, [parseInt(req.params.orderId)]);
       res.json({ ok: true, removed: rowCount ?? 0 });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });

@@ -787,6 +787,17 @@ export const lineDeactivations = pgTable("line_deactivations", {
 }, (t) => ({ uq: unique().on(t.centralName, t.workOrderId) }));
 export type LineDeactivation = typeof lineDeactivations.$inferSelect;
 
+// تطابق مؤكَّد بين طلب فى «قسم الطلبات» ومتعذر فى «المتعذرات الحالية» (نفس العميل)
+export const omOrderMatches = pgTable("om_order_matches", {
+  orderId: integer("order_id").notNull().unique().references(() => orders.id),
+  omSerial: text("om_serial").notNull().unique(),
+  score: real("score"),
+  confirmedById: integer("confirmed_by_id").references(() => users.id),
+  confirmedByName: text("confirmed_by_name"),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }).defaultNow().notNull(),
+});
+export type OmOrderMatch = typeof omOrderMatches.$inferSelect;
+
 // app_settings — إعدادات عامة مشتركة (key/value) تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر.
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),
