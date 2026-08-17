@@ -4476,7 +4476,34 @@ export async function registerRoutes(
                                  AND NOT (ts.status_code ~ '^(135|138)')
                                  AND (ts.status_code ~ '^(160|173|122|73|72|60)' OR ts.complain_type_name ~ '^(160|173|122|73|72|60)'))
                   ))
-              )) AS "ownedByMe",
+              ))
+              -- أو: الرقم موجود فى تقرير «الأعطال المنتظمة اليوم» وتذكرته على كابينة
+              -- بتاعتى أو بتاعة زميل أنا مغطّيه → **كل** أرقام التقرير مفتوحة للفنى
+              -- القائم بالعمل وللفنى المغطَّى له.
+              -- ⚠️ ليه فرع منفصل مش شرط جوّه الفرع اللى فوق؟ الفرع اللى فوق بيحدّد
+              -- الكابينة من phone_lines، لكن التقرير نفسه بيحدّدها من **التذكرة**
+              -- (central_name/cabinet_no بتوعها). فالرقم اللى بيان الخط بتاعه ناقص أو
+              -- كابينته فيه مختلفة عن اللى فى التذكرة كان بيسقط رغم إنه ظاهر فى التقرير.
+              -- والمطابقة بـ sp() الطرفين لأن جداول التذاكر بتخزّن الرقم بصيغ مختلفة.
+              OR EXISTS (
+                SELECT 1 FROM (
+                  SELECT tc.phone_number, tc.central_name, tc.cabinet_no, tc.status_code, tc.complain_type_name
+                    FROM ticket_dsl_current tc
+                   WHERE tc.close_date IS NOT NULL
+                     AND (tc.close_date AT TIME ZONE 'Africa/Cairo')::date
+                         = (now() AT TIME ZONE 'Africa/Cairo')::date
+                  UNION ALL
+                  SELECT ts.phone_number, ts.central_name, ts.cabinet_no, ts.status_code, ts.complain_type_name
+                    FROM ticket_dsl_sod ts
+                   WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c2 WHERE c2.ticket_id = ts.ticket_id)
+                     AND NOT (ts.status_code ~ '^(135|138)')
+                ) rt
+                JOIN cabinet_technicians rct
+                  ON rct.central_name = rt.central_name AND rct.cabin_number = rt.cabinet_no
+                WHERE ${sp("rt.phone_number")} = ${sp("t.short")}
+                  AND (rt.status_code ~ '^(160|173|122|73|72|60)' OR rt.complain_type_name ~ '^(160|173|122|73|72|60)')
+                  AND btrim(rct.worker_code) = ANY($4::text[] || $5::text[])
+              ) AS "ownedByMe",
               (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
