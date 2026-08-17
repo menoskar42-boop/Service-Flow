@@ -587,6 +587,17 @@ const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
 // فأى قيمة أكبر من الفرق الفعلى معناها إن اللى اتخزّن هو عمود «Time untill now»
 // (المدة لحد لحظة توليد التقرير، مش لحد الإغلاق) — وده كان بيخلّى عطل اتقفل بعد
 // 23 ساعة يظهر فى «تجاوزت 24 ساعة» بـ29 ساعة.
+// «الآن» بعرف تخزين أوقات الشيتات.
+// ⚠️ أعمدة وقت الشكوى/الإغلاق جاية من شيتات 430D/FCC، والاستيراد بيبنى الـ Date من
+// **مكوّنات وقت الحائط** (new Date(y, m, d, h, mi)) والعملية شغّالة TZ=UTC — يعنى
+// «13:24 بتوقيت القاهرة» بتتخزّن كـ 13:24 UTC. العرض بيرجّعها خام والواجهة بتقراها
+// بـ getUTC* فبتظهر 13:24 صح.
+// لكن مقارنتها بـ now() الحقيقى بتنقص فرق توقيت القاهرة (3 ساعات صيفاً)، فعطل عدّى
+// عليه يومين وساعة كان بيظهر «يوم و23 ساعة». المقارنة الصحيحة مع **وقت حائط القاهرة**
+// عشان الطرفين يبقوا بنفس العرف. (متقاس: 48.00 بالغلط مقابل 51.00 الصح.)
+// بيتحطّ فقط مع أعمدة الشيتات — أعمدة زى claimed_at/updated_at لحظات حقيقية وبتتقارن بـ now().
+const NOW_SHEET = `(now() AT TIME ZONE 'Africa/Cairo')`;
+
 const closedHoursSql = (t: string) => `CASE
   WHEN ${t}.close_time IS NULL THEN ${t}.time_till_now
   WHEN ${t}.time_till_now IS NULL
@@ -856,7 +867,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
          -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت على الحالة 135/138 (من شيت المتبقى)
          -- لو time_till_now_full فارغ: نقدّر وقت الحالة 135 = (uploaded_at − complain_time) − time_till_now
          CASE WHEN t.complaint_time IS NULL THEN NULL
-              ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - t.complaint_time)) / 3600.0
+              ELSE GREATEST(0, EXTRACT(EPOCH FROM (${NOW_SHEET} - t.complaint_time)) / 3600.0
                                - COALESCE(
                                    rcd.time_till_now_full - rcd.time_till_now,
                                    GREATEST(0, EXTRACT(EPOCH FROM (rcd.uploaded_at - rcd.complain_time)) / 3600.0
@@ -9164,8 +9175,8 @@ export async function registerRoutes(
              NULL                    AS "customerName",
              CASE
                WHEN t.complaint_time IS NULL THEN NULL
-               WHEN (now() - t.complaint_time) < interval '24 hours' THEN 'اعطال 24 ساعه'
-               WHEN (now() - t.complaint_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
+               WHEN (${NOW_SHEET} - t.complaint_time) < interval '24 hours' THEN 'اعطال 24 ساعه'
+               WHEN (${NOW_SHEET} - t.complaint_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
                ELSE 'المتبقيات'
              END                     AS "faultClass",
              t.close_date            AS "closeDate",
@@ -9194,7 +9205,7 @@ export async function registerRoutes(
              -- يُحسب من شيت تفاصيل المتبقى (430D) بمطابقة رقم الشكوى: delta = full − except135
              -- لو time_till_now_full فارغ: نقدّر وقت الحالة 135 = (uploaded_at − complain_time) − time_till_now
              CASE WHEN t.complaint_time IS NULL THEN NULL
-                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (now() - t.complaint_time)) / 3600.0
+                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (${NOW_SHEET} - t.complaint_time)) / 3600.0
                                    - COALESCE(
                                        rcd.time_till_now_full - rcd.time_till_now,
                                        GREATEST(0, EXTRACT(EPOCH FROM (rcd.uploaded_at - rcd.complain_time)) / 3600.0
@@ -9470,8 +9481,8 @@ export async function registerRoutes(
              rc.complain_type         AS "complainTypeName",
              CASE
                WHEN rc.complain_time IS NULL THEN 'مغلق'
-               WHEN (COALESCE(rc.close_time, NOW()) - rc.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
-               WHEN (COALESCE(rc.close_time, NOW()) - rc.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
+               WHEN (COALESCE(rc.close_time, ${NOW_SHEET}) - rc.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
+               WHEN (COALESCE(rc.close_time, ${NOW_SHEET}) - rc.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
                ELSE 'المتبقيات'
              END                      AS "regStatus",
              rc.close_time            AS "closeDate",
@@ -10357,7 +10368,7 @@ export async function registerRoutes(
             -- الـ 138 (أُزيل): المدة من الشكوى حتى وقت الإزالة الفعلى
             CASE
               WHEN FLOOR(rc.status_code::numeric)::int = 135
-                THEN EXTRACT(EPOCH FROM (now() - rc.complain_time)) / 3600.0
+                THEN EXTRACT(EPOCH FROM (${NOW_SHEET} - rc.complain_time)) / 3600.0
               ELSE
                 ${closedHoursSql('rc')}
             END                                             AS hours
@@ -10437,7 +10448,7 @@ export async function registerRoutes(
                                                             AS tech_name,
             CASE
               WHEN src.is_open
-                THEN EXTRACT(EPOCH FROM (now() - src.complain_time)) / 3600.0
+                THEN EXTRACT(EPOCH FROM (${NOW_SHEET} - src.complain_time)) / 3600.0
               ELSE
                 ${closedHoursSql('src')}
             END                                             AS hours
@@ -10767,7 +10778,7 @@ export async function registerRoutes(
             src.close_code                                                               AS "closeCode",
             ROUND(CASE
               WHEN src.is_open
-                THEN EXTRACT(EPOCH FROM (now() - src.complain_time)) / 3600.0
+                THEN EXTRACT(EPOCH FROM (${NOW_SHEET} - src.complain_time)) / 3600.0
               ELSE
                 ${closedHoursSql('src')}
             END, 1)                                                                      AS hours,
