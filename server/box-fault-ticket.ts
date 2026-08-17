@@ -290,3 +290,49 @@ export async function openBoxFaultTicket(inp: OpenBoxTicketInput): Promise<OpenB
   }
   return { ok: false, reason: "فشل إنشاء التكت بعد عدة محاولات" };
 }
+
+// ── لما المتعذر يتحلّ: التكت اللى اتفتحت بسببه تروح «انتظار التأكيد» ──────────
+// الطلب/المتعذر لما بياخد «يمكن التنفيذ» معناه إن البكس بقى شغّال. ساعتها:
+//   • لو التكت **اتفتحت تلقائياً** من متعذر (ليها صف فى box_fault_tickets) ومفيش
+//     أى متعذر تانى لسه مفتوح على نفس البكس → بنحوّلها لـ «انتظار التأكيد».
+//     مابنقفلهاش: مهندس الكوابل لسه يقدر يضيف مهمات وأعمال ويقفلها بالتسلسل العادى.
+//   • لو التكت **اتفتحت يدوى** (مفيش صف ليها فى box_fault_tickets) → مابنلمسهاش
+//     خالص، بتفضل بتسلسل الإغلاق المعتاد.
+export async function settleBoxTicketIfCleared(inp: {
+  central?: string | null; cabinet?: string | null; box?: string | null;
+}): Promise<{ changed: boolean; ticketNumber?: string }> {
+  const central = String(inp.central ?? "").trim();
+  const cabinet = String(inp.cabinet ?? "").trim();
+  const box = normBox(inp.box);
+  if (!central || !cabinet || !box) return { changed: false };
+
+  // لسه فيه متعذر مفتوح على نفس البكس؟ (نفس تعريف /api/cfm/box-cases بالظبط)
+  const { rows: still } = await pool.query(
+    `SELECT 1 FROM (
+       SELECT central_name, cabin_number, box_number FROM orders
+        WHERE rejection_reason = 'بوكس معطل' AND COALESCE(btrim(box_number),'') <> ''
+          AND status NOT IN ('feasible','external_feasible')
+       UNION ALL
+       SELECT central_name, cabin_number, box_number FROM om_responses
+        WHERE rejection_reason = 'بوكس معطل' AND COALESCE(btrim(box_number),'') <> ''
+          AND COALESCE(status,'') NOT IN ('feasible','external_feasible')
+          AND COALESCE(is_feasible,false) = false AND COALESCE(is_feasible_external,false) = false
+     ) x
+      WHERE btrim(x.central_name) = $1 AND btrim(x.cabin_number) = $2 AND btrim(x.box_number) = $3
+      LIMIT 1`, [central, cabinet, box]);
+  if (still.length) return { changed: false };   // لسه فيه متعذر تانى → نسيبها مفتوحة
+
+  // التكت المفتوحة اللى بتغطّى البكس ده، **بشرط** إنها اتفتحت تلقائياً من متعذر
+  const covering = await findCoveringOpenTicket(central, cabinet, box);
+  if (!covering) return { changed: false };
+  const { rows: auto } = await pool.query(
+    `SELECT 1 FROM box_fault_tickets WHERE ticket_id = $1 LIMIT 1`, [covering.ticketId]);
+  if (!auto.length) return { changed: false };   // مفتوحة يدوى → مابنلمسهاش
+
+  const { rowCount } = await pool.query(
+    `UPDATE tickets
+        SET status = 'pending_confirmation', updated_at = now(),
+            notes = COALESCE(notes, '') || ' — اتحوّلت لانتظار التأكيد تلقائياً: المتعذر اللى فتحها اتحلّ'
+      WHERE id = $1 AND status = 'open'`, [covering.ticketId]);
+  return { changed: (rowCount ?? 0) > 0, ticketNumber: covering.ticketNumber };
+}

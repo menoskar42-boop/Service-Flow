@@ -787,13 +787,21 @@ export function registerCfmRoutes(app: Express) {
                 COUNT(*) FILTER (WHERE src = 'OM')::int      AS om,
                 COUNT(*) FILTER (WHERE src = 'طلبات')::int   AS orders
            FROM (
+             -- ⚠️ لازم شرط الحالة كمان مش سبب التعذر بس: الطلب اللى اتحوّل لـ«يمكن
+             -- التنفيذ» ممكن يكون لسه شايل سبب التعذر القديم من رفعة/رد أقدم، فكان
+             -- بيفضل محسوب متعذر على البكس للأبد. الشرط ده بيشيله فوراً من غير أى
+             -- تعديل على البيانات القديمة.
              SELECT 'طلبات' AS src, central_name, cabin_number, box_number
                FROM orders
               WHERE rejection_reason = $1 AND COALESCE(btrim(box_number), '') <> ''
+                AND status NOT IN ('feasible', 'external_feasible')
              UNION ALL
              SELECT 'OM', central_name, cabin_number, box_number
                FROM om_responses
               WHERE rejection_reason = $1 AND COALESCE(btrim(box_number), '') <> ''
+                AND COALESCE(status, '') NOT IN ('feasible', 'external_feasible')
+                AND COALESCE(is_feasible, false) = false
+                AND COALESCE(is_feasible_external, false) = false
            ) x
           GROUP BY 1, 2, 3`, ["بوكس معطل"]);
       res.json(rows);

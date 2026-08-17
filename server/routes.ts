@@ -21,7 +21,7 @@ import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
-import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable } from "./box-fault-ticket";
+import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
 import { normCab } from "@shared/cab-norm";
 import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
 
@@ -3137,6 +3137,12 @@ export async function registerRoutes(
       const order = await storage.updateOrder(id, {
         ...input,
         status,
+        // الطلب بقى «يمكن التنفيذ» → المتعذر خلاص اتحلّ، فبنمسح سببه.
+        // ⚠️ من غير المسح ده كان السبب القديم («بوكس معطل») بيفضل مكتوب على الصف
+        // للأبد (updateOrder بيتجاهل الحقول اللى مش فى input)، فالطلب يفضل محسوب
+        // متعذر على البكس فى برنامج الكوابل رغم إنه اتنفّذ. نفس اللى بيحصل فى
+        // متعذرات OM بالظبط (بتمسح rejection_reason لما is_feasible يبقى true).
+        ...(status === "feasible" ? { rejectionReason: null, isFeasible: true } : {}),
         techId: user.id,
         techName: user.username,
         techResponseAt: new Date(),
@@ -3149,6 +3155,15 @@ export async function registerRoutes(
       // «بوكس معطل» → تكت تلقائى على برنامج الكوابل (لو البكس مش مغطّى بتكت مفتوحة).
       // بيتنفّذ بعد حفظ الرد وبيرجّع نتيجته فى الرد — فشل التكت مايمنعش تسجيل الرد.
       let boxTicket: any = null;
+      // الطلب بقى «يمكن التنفيذ» → لو التكت اتفتحت تلقائياً بسبب المتعذر ده ومفيش
+      // متعذر تانى على نفس البكس، تروح «انتظار التأكيد» (ومهندس الكوابل لسه يقدر
+      // يضيف مهمات وأعمال). التكت المفتوحة يدوى مابتتلمسش.
+      if (order && status === "feasible") {
+        await settleBoxTicketIfCleared({
+          central: (order as any).centralName, cabinet: (order as any).cabinNumber,
+          box: (order as any).boxNumber,
+        }).catch(() => {});
+      }
       if (order && (order as any).rejectionReason === REJECTION_REASONS.BOX_BROKEN) {
         boxTicket = await openBoxFaultTicket({
           central: (order as any).centralName, cabinet: (order as any).cabinNumber,
@@ -8348,6 +8363,11 @@ export async function registerRoutes(
       // «بوكس معطل» → تكت تلقائى على برنامج الكوابل (نفس منطق قسم الطلبات)
       let boxTicket: any = null;
       const r0 = rows[0];
+      if (r0 && isFeasible === true) {
+        await settleBoxTicketIfCleared({
+          central: r0.central_name, cabinet: r0.cabin_number, box: r0.box_number,
+        }).catch(() => {});
+      }
       if (r0 && r0.rejection_reason === REJECTION_REASONS.BOX_BROKEN) {
         boxTicket = await openBoxFaultTicket({
           central: r0.central_name, cabinet: r0.cabin_number, box: r0.box_number,

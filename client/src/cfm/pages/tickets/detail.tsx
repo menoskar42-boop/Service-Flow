@@ -521,7 +521,10 @@ export default function TicketDetail() {
 
         <div className="flex gap-2 flex-wrap">
            {/* Action Buttons based on Role & Status */}
-           {(ticket.status === 'open' || isAdmin) && (
+           {/* التكت اللى اتحوّلت لـ«انتظار التأكيد» تلقائياً (المتعذر اللى فتحها اتحلّ)
+               لسه مهندس الكوابل يقدر يضيف عليها مهمات وأعمال وقياسات — التحويل ده
+               معناه «مستنى تأكيد» مش «اتقفلت». المقفولة بس هى اللى بتتمنع. */}
+           {(ticket.status === 'open' || ticket.status === 'pending_confirmation' || isAdmin) && (
              <>
                {canAddMeasurements && (
                  <Dialog open={isMeasureDialogOpen} onOpenChange={(open) => { if (open) fetchMasterData(); setIsMeasureDialogOpen(open); }}>
