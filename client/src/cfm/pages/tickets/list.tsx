@@ -24,7 +24,7 @@ export default function TicketList() {
   const { language, user } = useStore();
   const t = translations[language];
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useState("open");   // الافتراضى: المفتوحة
   // فلتر «به متعذرات» — التكتات اللى على بكسها متعذرات «بوكس معطل» (OM أو طلبات)
   const [onlyWithCases, setOnlyWithCases] = useState(false);
   
@@ -184,6 +184,28 @@ export default function TicketList() {
     return sortDir === 'desc' ? -diff : diff;
   });
 
+  // ملخّص السطر العلوى: عدد البكسيات وعدد المتعذرات **حسب الفلتر الحالى**.
+  // البكس بيتحسب مرة واحدة حتى لو ظاهر فى أكتر من تكت (المفتاح: سنترال + كابينة + بكس)،
+  // وكذلك متعذراته — عشان مايتضاعفوش بعدد التكتات المفتوحة على نفس البكس.
+  const summary = (() => {
+    const perBox = new Map<string, number>();
+    for (const ticket of filteredTickets) {
+      const central = centrals.find(c => c.id === ticket.centralId);
+      const cable = cables.find(c => c.id === ticket.cableId);
+      const cn = normCentral(central?.name ?? "");
+      const cab = normCab(cable?.number ?? ticket.cabinet ?? "");
+      for (const b of expandBoxes(ticket.box)) {
+        const key = `${cn}|${cab}|${b}`;
+        if (perBox.has(key)) continue;
+        const hit = boxCases.get(key);
+        perBox.set(key, hit ? hit.om + hit.orders : 0);
+      }
+    }
+    let cases = 0;
+    for (const v of Array.from(perBox.values())) cases += v;
+    return { boxes: perBox.size, cases };
+  })();
+
   const exportToExcel = async () => {
     // Define Headers
     const headers = [
@@ -269,6 +291,13 @@ export default function TicketList() {
       </div>
 
       <div className="bg-card rounded-lg border shadow-sm">
+        {/* ملخّص صغير حسب الفلتر الحالى */}
+        <div className="px-4 py-2 border-b bg-muted/40 text-xs flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span>عدد التكتات: <strong>{filteredTickets.length.toLocaleString("ar-EG")}</strong></span>
+          <span>عدد البكسيات: <strong>{summary.boxes.toLocaleString("ar-EG")}</strong></span>
+          <span>عدد المتعذرات: <strong className="text-amber-700">{summary.cases.toLocaleString("ar-EG")}</strong></span>
+          <span className="text-muted-foreground">— البكس المكرّر فى أكتر من تكت بيتحسب مرة واحدة</span>
+        </div>
         <div className="p-4 flex flex-col md:flex-row items-center gap-4 border-b">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full md:w-auto">
             <TabsList>
