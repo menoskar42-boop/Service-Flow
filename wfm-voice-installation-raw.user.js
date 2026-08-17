@@ -2,7 +2,7 @@
 // @name         WFM Reporting — Voice Installation Raw Data → Service-Flow
 // @namespace    service-flow.wfm.voice-raw
 // @description  يفتح wfm.te.eg/WfmReports، يسجّل الدخول، Reports → FO Raw Data Reports → «+» → Voice Installation Raw Data Report → Add Report، يحطّ التواريخ (آخر 30 يوم) + Middle Upper / Asuit Region، يضغط Generate ثم Export، ويرفع الشيت تلقائياً على تقرير أوامر الشغل فى Service-Flow.
-// @version      1.0.8
+// @version      1.0.9
 // @match        https://wfm.te.eg/WfmReports/*
 // @grant        GM_xmlhttpRequest
 // @connect      service-flow-menoskar42.replit.app
@@ -164,8 +164,8 @@
       if (!f) return;
       banner("📤 جارٍ رفع " + f.name + "…", "#1565c0");
       const resp = await sfUpload(f, f.name);
-      if (!resp) { bannerWithUpload("⚠️ فشل الرفع — جرّب تانى.", "#ef6c00"); return; }
-      banner(uploadMsg(resp), "#2e7d32");
+      if (!resp.ok) { bannerWithUpload(failMsg(resp), "#ef6c00"); return; }
+      banner(uploadMsg(resp.text), "#2e7d32");
     });
     bar.appendChild(inp);
     bar.appendChild(btn);
@@ -586,7 +586,11 @@
   installHooks(typeof unsafeWindow !== "undefined" ? unsafeWindow : window);
 
   /* ================== الرفع لـ Service-Flow ================== */
-  function sfUpload(blob, filename) {
+  // رفع الشيت لـ Service-Flow.
+  // ⚠️ بيرجّع تفاصيل الفشل مش null بس: الإصدار القديم كان بيبلع السبب (بيروح للـ
+  // console بس) ويعرض «فشل الرفع التلقائى» على طول — فمكانش فيه أى طريقة تعرف
+  // إن ده رفض صلاحية (403) ولا خطأ فى الملف (500) ولا السيرفر لسه بيقوم.
+  function sfUploadOnce(blob, filename) {
     return new Promise((resolve) => {
       try {
         const fd = new FormData();
@@ -598,14 +602,40 @@
           data: fd,
           timeout: 300000,
           onload: (r) => {
-            console.log("[WFM-VOICE] رفع أوامر الشغل", r.status, (r.responseText || "").slice(0, 300));
-            resolve(r.status >= 200 && r.status < 300 ? (r.responseText || "") : null);
+            const body = (r.responseText || "");
+            console.log("[WFM-VOICE] رفع أوامر الشغل", r.status, body.slice(0, 400));
+            resolve({ ok: r.status >= 200 && r.status < 300, status: r.status, text: body });
           },
-          onerror: (r) => { console.warn("[WFM-VOICE] فشل الرفع", r && r.status); resolve(null); },
-          ontimeout: () => resolve(null),
+          onerror: (r) => {
+            console.warn("[WFM-VOICE] فشل الاتصال", r && r.status);
+            resolve({ ok: false, status: (r && r.status) || 0, text: "" });
+          },
+          ontimeout: () => resolve({ ok: false, status: 0, text: "timeout" }),
         });
-      } catch (e) { resolve(null); }
+      } catch (e) { resolve({ ok: false, status: 0, text: String(e && e.message || e) }); }
     });
+  }
+
+  // إعادة محاولة واحدة بعد 20 ثانية لو الفشل من نوع «مؤقّت» (السيرفر لسه بيقوم أو
+  // انقطاع شبكة). الأخطاء اللى ليها سبب ثابت (403 صلاحية / 400 ملف غلط) مابنعيدهاش.
+  async function sfUpload(blob, filename) {
+    let r = await sfUploadOnce(blob, filename);
+    if (!r.ok && (r.status === 0 || r.status === 502 || r.status === 503 || r.status === 504)) {
+      banner("⏳ السيرفر مش جاهز — إعادة المحاولة بعد 20 ثانية…", "#ef6c00");
+      await sleep(20000);
+      r = await sfUploadOnce(blob, filename);
+    }
+    return r;
+  }
+
+  /** رسالة فشل واضحة: الحالة + رسالة السيرفر نفسها */
+  function failMsg(r) {
+    if (!r) return "⚠️ فشل الرفع التلقائى — سبب غير معروف.";
+    if (r.status === 403) return "⚠️ فشل الرفع — الصلاحية مرفوضة (403). التوكن فى السكربت مش مطابق لـ UPLOAD_TOKEN على السيرفر.";
+    if (r.status === 0)   return "⚠️ فشل الرفع — مفيش اتصال بالسيرفر (Service-Flow مقفول أو الدومين مش مسموح فى @connect).";
+    let detail = "";
+    try { const j = JSON.parse(r.text || "{}"); detail = j.message || j.detail || ""; } catch (e) { detail = (r.text || "").slice(0, 120); }
+    return "⚠️ فشل الرفع — " + (r.status || "؟") + (detail ? ": " + detail : "") + " — الملف موجود فى التحميلات، اختاره من هنا.";
   }
 
   /* ================== التدفّق الرئيسى ================== */
@@ -738,12 +768,12 @@
 
     banner("📤 رفع الشيت لـ Service-Flow…");
     const resp = await sfUpload(file.blob, file.name || "voice_installation_raw.csv");
-    if (!resp) {
-      bannerWithUpload("⚠️ فشل الرفع التلقائى — الملف موجود فى التحميلات، اختاره من هنا.", "#ef6c00");
+    if (!resp.ok) {
+      bannerWithUpload(failMsg(resp), "#ef6c00");
       return;
     }
 
-    banner(uploadMsg(resp), "#2e7d32");
+    banner(uploadMsg(resp.text), "#2e7d32");
 
     if (AUTO_CLOSE_MS > 0) {
       setTimeout(() => { try { window.close(); } catch (e) {} }, AUTO_CLOSE_MS);
