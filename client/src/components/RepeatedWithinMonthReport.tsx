@@ -12,64 +12,12 @@ import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { openProfileOptimization } from "@/lib/profile-optimization";
+import { LineDetailsDialog } from "@/components/LineDetailsDialog";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
   `${DZS_URL}#sf_accounts=${encodeURIComponent(accounts.join(","))}`;
 
-// تفاصيل الخط فى نافذة صغيرة — نفس مصدر «بحث برقم التليفون» (/api/phone-lines/lookup)
-// عشان الاسم والعنوان وباقى البيانات تفضل مصدرها واحد ومايحصلش اختلاف بين الشاشتين.
-function LineDetailModal({ phone, onClose }: { phone: string; onClose: () => void }) {
-  const { data, isFetching } = useQuery({
-    queryKey: ["/api/phone-lines/lookup", phone],
-    queryFn: async () => {
-      const res = await fetch(`/api/phone-lines/lookup?phone=${encodeURIComponent(phone)}`, { credentials: "include" });
-      if (!res.ok) throw new Error("فشل البحث");
-      return res.json() as Promise<{ found: boolean; line?: any }>;
-    },
-  });
-  const l = data?.found ? data.line : null;
-  const Row = ({ k, v }: { k: string; v: any }) => (
-    <div className="flex gap-2 py-1.5 border-b last:border-0">
-      <span className="text-muted-foreground w-32 shrink-0 text-xs">{k}</span>
-      <span className="text-sm font-medium break-words">{v || "-"}</span>
-    </div>
-  );
-  return (
-    <div className="fixed inset-0 z-[9998] bg-black/50 flex items-start justify-center p-3 overflow-auto" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg my-8" dir="rtl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-2 border-b bg-blue-50">
-          <h3 className="font-bold text-sm">تفاصيل الخط — <bdi dir="ltr">{phone}</bdi></h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="p-4">
-          {isFetching ? (
-            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-          ) : !l ? (
-            <p className="text-center text-sm text-muted-foreground py-6">مفيش بيانات للرقم ده</p>
-          ) : (
-            <>
-              <Row k="اسم العميل" v={l.subName} />
-              <Row k="العنوان" v={l.subAdd} />
-              <Row k="رقم الموبايل" v={l.mobile} />
-              <Row k="السنترال" v={l.central} />
-              <Row k="رقم الكابينه" v={l.cabinNumber} />
-              <Row k="رقم البكس" v={l.boxNumber} />
-              <Row k="DP Terminal" v={l.dpTerminal} />
-              <Row k="كود كابينة المسان" v={l.msanCode} />
-              <Row k="رقم الفريم" v={l.frame} />
-              <Row k="رقم الأكونت" v={l.accountNo} />
-              <Row k="اسم الفنى" v={l.techName} />
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// تقرير «الأعطال المكررة خلال شهر من تاريخه» — تفصيلى لكل رقم له شكوى سابقة خلال
-// شهر (±30 يوم) من تاريخ آخر شكوى له. الفلتر بتاريخ آخر شكوى، الافتراضى من أول الشهر.
 interface RepeatedRow {
   phoneShort: string | null;
   centralName: string | null;
@@ -385,7 +333,7 @@ export function RepeatedWithinMonthReport() {
         </Button>
       </div>
 
-      {detailPhone && <LineDetailModal phone={detailPhone} onClose={() => setDetailPhone(null)} />}
+      {detailPhone && <LineDetailsDialog phone={detailPhone} onClose={() => setDetailPhone(null)} />}
 
       {/* Table */}
       <Card className="overflow-hidden shadow-sm border-0 bg-white">

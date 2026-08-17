@@ -21,6 +21,7 @@ import { CurrentFaultsReport } from "@/components/CurrentFaultsReport";
 import { WithAccountReport } from "@/components/WithAccountReport";
 import { NoAccountTab } from "@/components/NoAccountTab";
 import { NeedsSpeedTab } from "@/components/NeedsSpeedTab";
+import { printTablePDF } from "@/lib/print-pdf";
 import { NeedsSpeedReport } from "@/components/NeedsSpeedReport";
 import { ComplaintNoMeasureReport } from "@/components/ComplaintNoMeasureReport";
 import { CabinetScoreReport } from "@/components/CabinetScoreReport";
@@ -73,7 +74,7 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
 import { canAccessCFM } from "@shared/roles-access";
 import { useLocation } from "wouter";
-import { LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable, Server, CalendarDays } from "lucide-react";
+import { Printer, LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable, Server, CalendarDays } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
@@ -384,6 +385,41 @@ export default function Dashboard() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الطلبات");
     XLSX.writeFile(wb, `orders_export_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+  };
+
+  // تصدير PDF لجدول الطلبات — نفس مصدر وأعمدة تصدير الإكسل (بدون الأعمدة الطويلة
+  // اللى مابتتقراش فى صفحة مطبوعة زى الملاحظات وأسباب الرفض التفصيلية).
+  const handleExportOrdersPDF = () => {
+    if (!orders) return;
+    const statusLabel = (status: string) => {
+      switch (status) {
+        case "feasible": return "يمكن التنفيذ";
+        case "not_feasible": return "لا يمكن";
+        case "needs_external": return "يحتاج رد الشئون الخارجية";
+        case "external_feasible": return "يمكن التنفيذ (شئون خارجية)";
+        case "external_not_feasible": return "لا يمكن (شئون خارجية)";
+        default: return "قيد الانتظار";
+      }
+    };
+    printTablePDF({
+      title: "تقرير الطلبات",
+      columns: ["#", "التاريخ", "العميل", "الهاتف", "العنوان", "المندوب", "الحالة",
+                "حالة التعاقد", "السنترال", "الكابينه", "البوكس", "الفني"],
+      rows: orders.map((o) => [
+        o.id,
+        format(new Date(o.createdAt), "yyyy-MM-dd HH:mm"),
+        o.customerName ?? "",
+        o.customerPhone ?? "",
+        o.customerAddress ?? "",
+        o.salesName ?? "",
+        statusLabel(o.status),
+        o.contractStatus || "لم يتم التعاقد",
+        o.centralName || "",
+        o.cabinNumber || "",
+        o.boxNumber || "",
+        o.techName || "",
+      ]),
+    });
   };
 
   return (
@@ -749,6 +785,12 @@ export default function Dashboard() {
                 <Button variant="outline" onClick={handleExport} className="bg-white">
                   <FileSpreadsheet className="w-4 h-4 ml-2 text-green-600" />
                   تصدير Excel
+                </Button>
+              )}
+              {user.role !== ROLES.EXTERNAL && (
+                <Button variant="outline" onClick={handleExportOrdersPDF} className="bg-white">
+                  <Printer className="w-4 h-4 ml-2 text-red-600" />
+                  تصدير PDF
                 </Button>
               )}
             </div>

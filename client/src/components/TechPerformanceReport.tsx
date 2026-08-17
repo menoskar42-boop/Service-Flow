@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat2, Clock, Pencil, Save, X } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat2, Clock, Pencil, Save, X, Info } from "lucide-react";
+import { LineDetailsDialog } from "@/components/LineDetailsDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableCombobox } from "@/components/ui/searchable-combobox";
 import { closeReason } from "@/lib/close-codes";
@@ -434,6 +435,8 @@ export function TechPerformanceReport() {
   const myIdx = rows.findIndex((r) => String(r.techName || "").trim() === myTech);
   const visRows = techView ? (myIdx >= 0 ? [rows[myIdx]] : []) : rows;
 
+  const [detailPhone, setDetailPhone] = useState<string | null>(null);
+
   // ── حوارات التفاصيل: الأرقام المكررة + أعطال تجاوزت 24 ساعة ──
   const fmtDT = (d: string | null) => (d ? new Date(d).toLocaleString("ar-EG") : "");
   // الفلترة بتتم على مستوى الـ server (الفني يرى أرقامه فقط — فنى الإغلاق أو فنى المنطقة؛
@@ -658,7 +661,7 @@ export function TechPerformanceReport() {
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-purple-800 hover:bg-purple-800">
-                    {["#", "رقم التليفون", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                    {["#", "رقم التليفون", "تفاصيل", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
                       <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
                     ))}
                   </TableRow>
@@ -668,6 +671,16 @@ export function TechPerformanceReport() {
                     <TableRow key={r.complainNo + "-" + i} className="hover:bg-muted/30">
                       <TableCell className="text-center">{i + 1}</TableCell>
                       <TableCell className="text-center">{r.phoneNumber}</TableCell>
+                      <TableCell className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => setDetailPhone(String(r.phoneNumber))}
+                          title="تفاصيل الخط: الاسم والعنوان وتواريخ الشكوى والإغلاق"
+                          className="text-purple-600 hover:text-purple-800"
+                        >
+                          <Info className="w-4 h-4 inline" />
+                        </button>
+                      </TableCell>
                       <TableCell>{r.centralName}</TableCell>
                       <TableCell className="text-center">{r.lineCabin ?? "-"}</TableCell>
                       <TableCell className="text-center">{r.lineBox ?? "-"}</TableCell>
@@ -715,6 +728,8 @@ export function TechPerformanceReport() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {detailPhone && <LineDetailsDialog phone={detailPhone} onClose={() => setDetailPhone(null)} />}
 
       {/* ── حوار: أعطال تجاوزت 24 ساعة ── */}
       <Dialog open={b24Open} onOpenChange={setB24Open}>
