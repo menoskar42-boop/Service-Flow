@@ -7,7 +7,9 @@
 //
 //   • بنقسّم الاسم لكلمات وبنشيل الكلمات اللى مالهاش قيمة تمييزية («عبد» لوحدها،
 //     «محمد» متكرّرة جداً بس بنسيبها لأنها بتفرّق فعلاً فى الأسماء القصيرة).
-//   • بنلزّق «عبد» بالكلمة اللى بعدها (عبد الله → عبدالله) عشان الصيغتين يتطابقوا.
+//   • **توفيق المسافات**: لو كلمة فى جهة = كلمتين متلاصقين فى الجهة التانية بندمجهم
+//     (عبد الله ↔ عبدالله، نور الدين ↔ نورالدين، ابو بكر ↔ ابوبكر) — من غير تعداد
+//     بادئات بعينها، فأى اختلاف فى المسافات بيتحلّ لوحده.
 //   • التشابه = مقياس Dice على **مجموعة الكلمات** مش على النص كامل — عشان اختلاف
 //     ترتيب الكلمات أو زيادة/نقصان اسم فى النص مايكسرش المطابقة، وده الشائع فى
 //     الأسماء الرباعية («أحمد محمد على حسن» مقابل «أحمد محمد على»).
@@ -22,24 +24,11 @@ import { arNorm } from "./ar-norm";
 /** كلمات بتتشال لأنها مش مميِّزة (ألقاب/وصلات) */
 const STOP_WORDS = new Set(["بن", "بنت", "ال", "الحاج", "الحاجه", "الشيخ", "دكتور", "د", "م", "مهندس"]);
 
-/** يرجّع كلمات الاسم بعد التطبيع ولزق «عبد» بما بعدها */
+/** يرجّع كلمات الاسم بعد التطبيع */
 export function nameTokens(s: unknown): string[] {
-  const norm = arNorm(s).replace(/[^\p{L}\p{N}\s]/gu, " ");
-  const raw = norm.split(/\s+/).filter(Boolean);
-  const out: string[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const w = raw[i];
-    // «عبد» + الاسم اللى بعدها = كلمة واحدة (عبد الله / عبدالله)
-    if ((w === "عبد" || w === "عبدال") && i + 1 < raw.length) {
-      out.push((w + raw[i + 1]).replace(/^عبدال/, "عبدال"));
-      i++;
-      continue;
-    }
-    if (STOP_WORDS.has(w)) continue;
-    if (w.length < 2) continue;
-    out.push(w);
-  }
-  return out;
+  // مش بنستخدم \p{L} عشان الـ target هنا ES5 — نطاق الحروف العربية + اللاتينى + الأرقام
+  const norm = arNorm(s).replace(/[^\u0600-\u06FF\u0750-\u077FA-Za-z0-9\s]/g, " ");
+  return norm.split(/\s+/).filter((w) => w && w.length >= 2 && !STOP_WORDS.has(w));
 }
 
 /** Dice على الحروف الثنائية — للأخطاء الإملائية داخل الكلمة الواحدة */
@@ -63,13 +52,42 @@ function bigramDice(a: string, b: string): number {
 
 /** الكلمتين تعتبروا نفس الكلمة؟ (تطابق تام أو تشابه حرفى عالى) */
 const WORD_MATCH_MIN = 0.82;
+/** عتبة أعلى للدمج — عشان مانلزقش كلمتين غلط */
+const MERGE_MATCH_MIN = 0.9;
+
+/**
+ * توفيق المسافات: لو كلمة فى جهة = كلمتين (أو تلاتة) متلاصقين فى الجهة التانية،
+ * بندمجهم. ده بيخلّى «عبد الله» تساوى «عبدالله»، و«نور الدين» تساوى «نورالدين»،
+ * و«ابو بكر» تساوى «ابوبكر» — **من غير ما نعدّد بادئات بعينها**، فأى اختلاف
+ * فى المسافات بين الاسمين بيتحلّ لوحده.
+ */
+function reconcile(a: string[], b: string[]): string[] {
+  if (!b.length) return a;
+  const out: string[] = [];
+  for (let i = 0; i < a.length; i++) {
+    let merged: string | null = null;
+    for (let n = 3; n >= 2 && !merged; n--) {
+      if (i + n > a.length) continue;
+      const cand = a.slice(i, i + n).join("");
+      const hit = b.some((w) => w === cand || bigramDice(cand, w) >= MERGE_MATCH_MIN);
+      if (hit) { merged = cand; i += n - 1; }
+    }
+    out.push(merged ?? a[i]);
+  }
+  return out;
+}
 
 /**
  * نسبة تشابه اسمين (0 → 1).
- * Dice على مجموعة الكلمات: 2×(الكلمات المشتركة) ÷ (مجموع عدد الكلمات).
+ * Dice على مجموعة الكلمات: 2×(الكلمات المشتركة) ÷ (مجموع عدد الكلمات)،
+ * بعد توفيق المسافات بين الجهتين.
  */
 export function nameSimilarity(a: unknown, b: unknown): number {
-  const ta = nameTokens(a), tb = nameTokens(b);
+  let ta = nameTokens(a), tb = nameTokens(b);
+  if (!ta.length || !tb.length) return 0;
+  // التوفيق فى الاتجاهين: كل جهة بتتدمج حسب كلمات الجهة التانية
+  ta = reconcile(ta, tb);
+  tb = reconcile(tb, ta);
   if (!ta.length || !tb.length) return 0;
 
   // كل كلمة فى الأول بتتطابق مع **كلمة واحدة بحد أقصى** فى التانى (مطابقة جشعة)
