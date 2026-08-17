@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, RotateCcw, IdCard } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, RotateCcw, IdCard, Check, X, Plus } from "lucide-react";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { useAuth } from "@/hooks/use-auth";
@@ -71,6 +71,33 @@ export function MarkedNoAccountReport() {
     } finally {
       setRestoring(null);
     }
+  };
+
+  // إدخال رقم الأكونت مباشرةً من هنا: تسجيله معناه إن الخط **له أكونت فعلاً**،
+  // فبيترجع تلقائياً (السيرفر بيشيل علامة «بدون أكونت» مع حفظ الأكونت فى نفس الطلب).
+  const [editPhone, setEditPhone] = useState<string | null>(null);
+  const [accInput, setAccInput] = useState("");
+  const [savingAcc, setSavingAcc] = useState<string | null>(null);
+  const saveAccount = async (fullPhone: string) => {
+    const acc = accInput.trim();
+    if (!acc) return;
+    setSavingAcc(fullPhone);
+    try {
+      const res = await fetch(`/api/line-accounts/${encodeURIComponent(fullPhone)}`, {
+        method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountNo: acc }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.message || "تعذّر حفظ رقم الأكونت");
+        return;
+      }
+      setEditPhone(null); setAccInput("");
+      qc.invalidateQueries({ queryKey: ["/api/reports/marked-no-account"] });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/without-account"] });
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+    } finally { setSavingAcc(null); }
   };
 
   const handleExportExcel = () => {
@@ -153,13 +180,14 @@ export function MarkedNoAccountReport() {
                 <TableHead className="text-right font-bold text-white">رقم البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">المصدر</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ التعليم</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الأكونت</TableHead>
                 <TableHead className="text-right font-bold text-white">استرجاع</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أرقام معلَّمة بدون أكونت"}
                   </TableCell>
                 </TableRow>
@@ -181,6 +209,41 @@ export function MarkedNoAccountReport() {
                     </span>
                   </TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.markedAt)}</TableCell>
+                  <TableCell>
+                    {editPhone === r.fullPhone ? (
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          value={accInput}
+                          onChange={(e) => setAccInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveAccount(r.fullPhone); }}
+                          placeholder="رقم الأكونت"
+                          className="border rounded px-2 py-0.5 text-xs w-28"
+                          dir="ltr"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => saveAccount(r.fullPhone)}
+                          disabled={savingAcc === r.fullPhone || !accInput.trim()}
+                          title="حفظ — الخط هيترجع تلقائياً"
+                          className="text-emerald-600 hover:text-emerald-800 disabled:opacity-30"
+                        >
+                          {savingAcc === r.fullPhone ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        </button>
+                        <button onClick={() => { setEditPhone(null); setAccInput(""); }} title="إلغاء" className="text-gray-500 hover:text-gray-700">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { setEditPhone(r.fullPhone); setAccInput(""); }}
+                        title="لو الخط ليه أكونت فعلاً — اكتبه هنا والخط هيترجع تلقائياً"
+                        className="inline-flex items-center gap-1 text-xs text-emerald-700 border border-emerald-300 rounded px-2 py-0.5 hover:bg-emerald-50"
+                      >
+                        <Plus className="w-3 h-3" /> إضافة أكونت
+                      </button>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <button
                       type="button"

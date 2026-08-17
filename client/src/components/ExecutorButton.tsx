@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Server, Loader2, Trash2 } from "lucide-react";
+import { Server, Loader2, Trash2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { execDeviceLabel, executeBatch, latestOpAt, latestPoEventAt, latestSubInfoAt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
@@ -31,6 +31,22 @@ export function ExecutorButton() {
     const iv = setInterval(load, 10 * 1000);
     return () => clearInterval(iv);
   }, [user?.role]);
+
+  // طلب ريفريش لمتصفح **جهاز التنفيذ** من أى جهاز تانى (الموبايل مثلاً).
+  // بيتنفّذ مع أول نبضة (~20 ثانية) — مش لازم أكون قاعد على الجهاز نفسه.
+  const [reloading, setReloading] = useState(false);
+  const requestReload = async () => {
+    if (!confirm("عمل ريفريش لمتصفح جهاز التنفيذ؟\n(هيتنفّذ خلال حوالى 20 ثانية)")) return;
+    setReloading(true);
+    try {
+      const r = await fetch("/api/exec-queue/request-reload", { method: "POST", credentials: "include" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { alert(d?.message || "تعذّر إرسال الطلب"); return; }
+      alert(d?.active
+        ? `تم إرسال طلب الريفريش لجهاز التنفيذ (${d.executor || "مفعّل"}) — هيتنفّذ خلال حوالى 20 ثانية.`
+        : "⚠️ مفيش جهاز تنفيذ مفعّل دلوقتى — الطلب اتسجّل وهيتنفّذ أول ما جهاز يتفعّل.");
+    } catch { alert("تعذّر إرسال الطلب"); } finally { setReloading(false); }
+  };
 
   // مسح الطابور يدوياً (يعلّم كل المهام النشطة stale)
   const clearQueue = async () => {
@@ -66,11 +82,28 @@ export function ExecutorButton() {
     // بنبعت هوية الجهاز مع النبضة ومع كل سحب — عشان يتسجّل على المهمة نفسها
     // وتعرف الرقابة الطلب اتنفّذ من أى جهاز/متصفح.
     const device = execDeviceLabel();
+    // رمز إعادة التحميل الجاى مع النبضة: أول قراءة بنسجّلها وبس، وأى **تغيير** بعدها
+    // معناه إن سوبر أدمن طلب ريفريش لجهاز التنفيذ (من الموبايل مثلاً) → بنعمل reload.
+    // بيتنفّذ خلال أقل من نبضة (~20 ثانية) ومن غير أى اتصال إضافى.
+    // ⚠️ undefined = «لسه ماقريناش أى رمز»، null = «قرينا ومفيش طلب».
+    // لازم نفرّق بينهم: لو استخدمنا null للاتنين، الجهاز اللى اتفعّل **قبل** أى طلب
+    // ريفريش هيسجّل أول رمز حقيقى على إنه «القراءة الأولى» ويبلع الطلب من غير ما ينفّذه.
+    let lastReloadToken: string | null | undefined = undefined;
     const heartbeat = () => {
       fetch("/api/exec-queue/heartbeat", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device }),
-      }).catch(() => {});
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const tok = j && j.reload ? String(j.reload) : null;
+          if (lastReloadToken === undefined) { lastReloadToken = tok; return; }  // أول قراءة
+          if (tok && tok !== lastReloadToken) {
+            lastReloadToken = tok;
+            try { window.location.reload(); } catch (e) {}
+          }
+        })
+        .catch(() => {});
     };
 
     // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
@@ -339,6 +372,18 @@ export function ExecutorButton() {
              : current ? `⏳ ${current}`
              : `جهاز التنفيذ: مُفعَّل${pending ? ` (${pending})` : ""}`)
           : "جهاز التنفيذ"}
+      </Button>
+      {/* ريفريش لجهاز التنفيذ عن بُعد — بيشتغل من أى جهاز (الموبايل) مش لازم الجهاز نفسه */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={requestReload}
+        disabled={reloading}
+        className="text-sky-700 border-sky-200 gap-1"
+        title="عمل ريفريش لمتصفح جهاز التنفيذ من هنا — بيتنفّذ خلال حوالى 20 ثانية"
+      >
+        {reloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+        ريفريش جهاز التنفيذ
       </Button>
       {/* زر مسح الطابور — يظهر للسوبر أدمن لما يكون فيه مهام عالقة */}
       {pending > 0 && (

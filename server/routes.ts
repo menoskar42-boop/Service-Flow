@@ -1638,7 +1638,28 @@ export async function registerRoutes(
         // «اسم المستخدم · المتصفح/النظام · معرّف الجهاز» — عشان يبان الجهاز المفعّل
         [execIdentity(req)],
       );
-      res.json({ ok: true });
+      // «رمز إعادة التحميل»: أى سوبر أدمن (من الموبايل مثلاً) يقدر يطلب ريفريش لمتصفح
+      // جهاز التنفيذ. بنرجّع الرمز الحالى مع النبضة، والجهاز بيقارنه باللى شايله:
+      // أول نبضة بيسجّله وبس، وأى **تغيير** بعد كده معناه فيه طلب جديد → يعمل reload.
+      // بنركب على النبضة الموجودة (كل ~20 ثانية) فمفيش أى استعلام أو اتصال إضافى.
+      const { rows: rl } = await pool.query(`SELECT value FROM app_state WHERE key = 'exec_reload'`);
+      res.json({ ok: true, reload: rl[0]?.value ?? null });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/exec-queue/request-reload — اطلب ريفريش لمتصفح جهاز التنفيذ (سوبر أدمن).
+  // بيتنفّذ خلال أقل من نبضة (~20 ثانية). لو الجهاز مش مفعّل بيرجّع active=false
+  // عشان المستخدم يعرف إن مفيش حد هيستقبل الطلب.
+  app.post("/api/exec-queue/request-reload", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      const token = new Date().toISOString() + "|" + String(req.user?.username || "");
+      await pool.query(
+        `INSERT INTO app_state (key, value, updated_at) VALUES ('exec_reload', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [token]);
+      const { rows } = await pool.query(
+        `SELECT (now() - updated_at < interval '45 seconds') AS active, value
+           FROM app_state WHERE key = 'exec_heartbeat'`);
+      res.json({ ok: true, active: !!rows[0]?.active, executor: rows[0]?.value ?? null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
   // حالة جهاز التنفيذ: مفعّل لو فيه نبضة خلال آخر 45 ثانية
@@ -4121,7 +4142,11 @@ export async function registerRoutes(
        VALUES ($1, $2, $3, $4, $5)`,
       [fullPhone, oldNo, newNo, req.user.id, req.user.username],
     );
-    res.json({ ok: true });
+    // الخط بقى له رقم أكونت → علامة «بدون أكونت» مابقاش ليها معنى، فبتتشال تلقائياً
+    // (نفس أثر زر «استرجاع» فى تقرير «معلَّمة بدون أكونت» بالظبط). من غير ده كان
+    // الخط يفضل فى تقرير المعلَّمة رغم إن أكونته اتسجّل.
+    const un = await pool.query(`DELETE FROM lines_no_account WHERE full_phone = $1`, [fullPhone]);
+    res.json({ ok: true, restored: (un.rowCount ?? 0) > 0 });
   });
 
   // GET /api/reports/lines-without-port — أرقام لها بيان فنى (131) لكن مالهاش بورت/فريم
