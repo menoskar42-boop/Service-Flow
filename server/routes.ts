@@ -19,7 +19,7 @@ import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
-import { nameSimilarity, NAME_MATCH_THRESHOLD } from "@shared/name-match";
+import { nameMatch, NAME_MATCH_THRESHOLD } from "@shared/name-match";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
@@ -3745,19 +3745,19 @@ export async function registerRoutes(
       // لأكتر من طلب إلا لو لسه مش مؤكَّد (السوبر أدمن هو اللى يحسم).
       const pairs: any[] = [];
       for (const o of orderRows) {
-        let best: any = null, bestScore = 0;
+        let best: any = null, bestScore = 0, bestMatched = 0;
         for (const m of omRows) {
-          const sc = nameSimilarity(o.name, m.name);
-          if (sc > bestScore) { bestScore = sc; best = m; }
+          const r = nameMatch(o.name, m.name);
+          if (r.score > bestScore) { bestScore = r.score; best = m; bestMatched = r.matched; }
         }
         const conf = confByOrder.get(Number(o.id));
         // الأزواج المؤكَّدة بتظهر دايماً حتى لو النسبة أقل من العتبة دلوقتى
         if (conf) {
           const m = omRows.find((x: any) => String(x.serial) === String(conf.serial)) || null;
-          pairs.push({ order: o, om: m, score: conf.score ?? bestScore, confirmed: conf });
+          pairs.push({ order: o, om: m, score: conf.score ?? bestScore, matched: bestMatched, confirmed: conf });
           continue;
         }
-        if (best && bestScore >= minScore) pairs.push({ order: o, om: best, score: bestScore, confirmed: null });
+        if (best && bestScore >= minScore) pairs.push({ order: o, om: best, score: bestScore, matched: bestMatched, confirmed: null });
       }
       pairs.sort((a, b) => (b.confirmed ? 1 : 0) - (a.confirmed ? 1 : 0) || b.score - a.score);
       res.json({ data: pairs, minScore, orders: orderRows.length, omCases: omRows.length });

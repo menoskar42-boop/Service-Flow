@@ -10,9 +10,10 @@
 //   • **توفيق المسافات**: لو كلمة فى جهة = كلمتين متلاصقين فى الجهة التانية بندمجهم
 //     (عبد الله ↔ عبدالله، نور الدين ↔ نورالدين، ابو بكر ↔ ابوبكر) — من غير تعداد
 //     بادئات بعينها، فأى اختلاف فى المسافات بيتحلّ لوحده.
-//   • التشابه = مقياس Dice على **مجموعة الكلمات** مش على النص كامل — عشان اختلاف
-//     ترتيب الكلمات أو زيادة/نقصان اسم فى النص مايكسرش المطابقة، وده الشائع فى
-//     الأسماء الرباعية («أحمد محمد على حسن» مقابل «أحمد محمد على»).
+//   • المقارنة **بالترتيب**: الأسماء المصرية مرتّبة (الاسم + الأب + الجد + العيلة)،
+//     فالأقصر لازم يكون **بادئة** من الأطول. «محمد مختار عثمان» تطابق «محمد مختار»،
+//     لكن «محمد مختار عثمان» **مش** تطابق «محمد مختار احمد» — الجد مختلف يعنى
+//     شخص تانى. أقل تطابق مقبول اسمين متتاليين (ثنائى).
 //   • للكلمات اللى مش متطابقة بالظبط بنسمح بتشابه حرفى عالى (Dice على الحروف
 //     الثنائية) عشان الأخطاء الإملائية البسيطة («ابراهيم» / «إبراهيم»).
 //
@@ -77,32 +78,46 @@ function reconcile(a: string[], b: string[]): string[] {
   return out;
 }
 
+/** أقل عدد أسماء متتالية لازم تتطابق عشان نقترح تطابق (ثنائى) */
+const MIN_LEADING_NAMES = 2;
+
 /**
- * نسبة تشابه اسمين (0 → 1).
- * Dice على مجموعة الكلمات: 2×(الكلمات المشتركة) ÷ (مجموع عدد الكلمات)،
- * بعد توفيق المسافات بين الجهتين.
+ * نتيجة المقارنة التفصيلية — بيرجّع كمان عدد الأسماء المتطابقة عشان الواجهة
+ * تقدر توضّح «تطابق ثلاثى» ولا «ثنائى».
  */
-export function nameSimilarity(a: unknown, b: unknown): number {
+export function nameMatch(a: unknown, b: unknown): { score: number; matched: number; conflict: boolean } {
   let ta = nameTokens(a), tb = nameTokens(b);
-  if (!ta.length || !tb.length) return 0;
-  // التوفيق فى الاتجاهين: كل جهة بتتدمج حسب كلمات الجهة التانية
+  if (!ta.length || !tb.length) return { score: 0, matched: 0, conflict: false };
+  // توفيق المسافات فى الاتجاهين
   ta = reconcile(ta, tb);
   tb = reconcile(tb, ta);
-  if (!ta.length || !tb.length) return 0;
 
-  // كل كلمة فى الأول بتتطابق مع **كلمة واحدة بحد أقصى** فى التانى (مطابقة جشعة)
-  const used = new Array(tb.length).fill(false);
+  // ⚠️ المقارنة **بالترتيب**: الأسماء المصرية مرتّبة (الاسم + الأب + الجد + العيلة)،
+  // فاختلاف اسم فى نفس الموضع معناه شخص تانى مش نفس الشخص.
+  //   محمد مختار عثمان  ↔ محمد مختار        → تطابق (الأقصر بادئة من الأطول)
+  //   محمد مختار عثمان  ↔ محمد مختار احمد   → **مش** تطابق (الجد مختلف)
+  // من غير القاعدة دى كان قياس Dice بيدّى 0.75 للحالة التانية لو الأسماء رباعية
+  // (محمد مختار عثمان على ↔ محمد مختار احمد على) ويعتبرهم نفس الشخص بالغلط.
+  const overlap = Math.min(ta.length, tb.length);
   let matched = 0;
-  for (const wa of ta) {
-    let bestIdx = -1, bestScore = 0;
-    for (let j = 0; j < tb.length; j++) {
-      if (used[j]) continue;
-      const sc = wa === tb[j] ? 1 : bigramDice(wa, tb[j]);
-      if (sc > bestScore) { bestScore = sc; bestIdx = j; }
-    }
-    if (bestIdx >= 0 && bestScore >= WORD_MATCH_MIN) { used[bestIdx] = true; matched++; }
+  for (let i = 0; i < overlap; i++) {
+    const same = ta[i] === tb[i] || bigramDice(ta[i], tb[i]) >= WORD_MATCH_MIN;
+    if (!same) return { score: 0, matched: i, conflict: true };   // تعارض فى الترتيب
+    matched++;
   }
-  return (2 * matched) / (ta.length + tb.length);
+  if (matched < MIN_LEADING_NAMES) return { score: 0, matched, conflict: false };
+
+  // مفيش تعارض → الأقصر بادئة من الأطول. النتيجة بتعبّر عن قوة التطابق:
+  // الاسمين متطابقين بالكامل = 1، وكل ما الفرق فى عدد الأسماء يكبر النتيجة تقلّ.
+  // بأرضية تضمن إن التطابق الثنائى السليم يظهر عند العتبة الافتراضية (0.7).
+  const dice = (2 * matched) / (ta.length + tb.length);
+  const floor = matched >= 3 ? 0.75 : 0.70;
+  return { score: Math.max(dice, floor), matched, conflict: false };
+}
+
+/** نسبة تشابه اسمين (0 → 1) */
+export function nameSimilarity(a: unknown, b: unknown): number {
+  return nameMatch(a, b).score;
 }
 
 /** العتبة الافتراضية للتطابق (المستخدم طلب 70%) */

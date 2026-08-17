@@ -21,6 +21,7 @@ interface Pair {
   order: Side & { id: number; status: string; createdAt: string | null };
   om: (Side & { serial: string; phone: string | null; msan: string | null }) | null;
   score: number;
+  matched?: number;
   confirmed: { serial: string; confirmedBy: string | null; confirmedAt: string | null } | null;
 }
 
@@ -78,6 +79,7 @@ export function OmOrderMatchReport() {
   const excelRows = () => rows.map((p, i) => ({
     "#": i + 1,
     "نسبة التطابق": pct(p.score),
+    "مستوى التطابق": p.matched ? (p.matched >= 4 ? "رباعى" : p.matched === 3 ? "ثلاثى" : "ثنائى") : "",
     "مؤكَّد": p.confirmed ? "نعم" : "لا",
     "العميل (طلبات)": p.order.name ?? "",
     "العنوان (طلبات)": p.order.address ?? "",
@@ -114,7 +116,7 @@ export function OmOrderMatchReport() {
               <Link2 className="w-4 h-4 text-indigo-600" /> ربط الطلبات بالمتعذرات الحالية
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              مطابقة بالاسم — {rows.length.toLocaleString("ar-EG")} تطابق
+              مطابقة بالاسم بالترتيب (الأقصر لازم يكون بادئة من الأطول) — {rows.length.toLocaleString("ar-EG")} تطابق
               {data ? ` (من ${data.orders.toLocaleString("ar-EG")} طلب و ${data.omCases.toLocaleString("ar-EG")} متعذر)` : ""}
               {" "}— «تأكيد التطابق» بينقل سبب الرد بين النظامين ويخلّيهم متعذر واحد على البكس
             </p>
@@ -173,6 +175,12 @@ export function OmOrderMatchReport() {
                       <span className={`px-2 py-0.5 rounded ${p.score >= 0.9 ? "bg-green-100 text-green-800" : p.score >= 0.7 ? "bg-amber-100 text-amber-800" : "bg-gray-100 text-gray-700"}`}>
                         {pct(p.score)}
                       </span>
+                      {/* مستوى التطابق: كام اسم متتالى اتطابقوا من الأول */}
+                      {p.matched ? (
+                        <span className="block mt-0.5 text-[10px] font-normal text-muted-foreground">
+                          {p.matched >= 4 ? "رباعى" : p.matched === 3 ? "ثلاثى" : "ثنائى"}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="min-w-[140px]"><Cell v={p.order.name} /></TableCell>
                     <TableCell className="min-w-[160px] max-w-[240px] break-words"><Cell v={p.order.address} /></TableCell>
