@@ -768,6 +768,25 @@ export const lineMobileChecked = pgTable("line_mobile_checked", {
 });
 export type LineMobileChecked = typeof lineMobileChecked.$inferSelect;
 
+// «جدول الرفع النهائى» — أوامر شغل إلغاء/رفع الخط نهائياً (مش تركيب ولا نقل، ومابيتصرفلهاش سلك)
+export const lineDeactivations = pgTable("line_deactivations", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name").notNull(),
+  workOrderId: bigint("work_order_id", { mode: "number" }).notNull(),
+  phoneNumber: text("phone_number"),
+  workOrderType: text("work_order_type"),
+  closeReason: text("close_reason"),
+  closeCategory: text("close_category"),
+  closeDate: timestamp("close_date", { withTimezone: true }),
+  creationDate: timestamp("creation_date", { withTimezone: true }),
+  techName: text("tech_name"),
+  msanCode: text("msan_code"),
+  rawData: jsonb("raw_data"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
+  uploadedById: integer("uploaded_by_id").references(() => users.id),
+}, (t) => ({ uq: unique().on(t.centralName, t.workOrderId) }));
+export type LineDeactivation = typeof lineDeactivations.$inferSelect;
+
 // app_settings — إعدادات عامة مشتركة (key/value) تثبت على السيرفر لكل المستخدمين لحد ما تتغيّر.
 export const appSettings = pgTable("app_settings", {
   key: text("key").primaryKey(),

@@ -890,6 +890,32 @@ export async function ensureSchema() {
     )
   `);
 
+  // line_deactivations — «جدول الرفع النهائى». أوامر شغل نوعها إلغاء/رفع الخط نهائياً
+  // (Fixed Voice Deactivation / TDM Termination …) — دى **مش تركيب ولا نقل** ومابيتصرفلهاش
+  // سلك، فمابتدخلش جدول أوامر الشغل عشان ماتظهرش فى تقارير التركيبات/النقل ولا فى
+  // «أوامر شغل بدون كمية سلك». بتتسجّل هنا بكل بيانات الصف الخام (القاعدة #10).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_deactivations (
+      id serial PRIMARY KEY,
+      central_name text NOT NULL,
+      work_order_id bigint NOT NULL,
+      phone_number text,
+      work_order_type text,
+      close_reason text,
+      close_category text,
+      close_date timestamptz,
+      creation_date timestamptz,
+      tech_name text,
+      msan_code text,
+      raw_data jsonb,
+      uploaded_at timestamptz NOT NULL DEFAULT now(),
+      uploaded_by_id integer REFERENCES users(id),
+      UNIQUE (central_name, work_order_id)
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS line_deactivations_phone_idx ON line_deactivations (phone_number)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS line_deactivations_close_idx ON line_deactivations (close_date DESC)`);
+
   // line_mobile_checked — الأرقام اللى **اتفحصت** فى تقرير «أرقام بدون رقم موبايل تحت
   // الفحص» وطلعت فعلاً مالهاش رقم محمول. بتتشال من تقرير «تحت الفحص» وبتروح لتقرير
   // «أرقام تم الفحص وتحتاج أرقام محمول». مفيش هنا رقم موبايل — ده علَم فحص بس.

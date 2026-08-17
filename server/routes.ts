@@ -218,6 +218,24 @@ const WFM_COLS = [
 // أنواع أوامر الشغل التى تُعتبر "تركيبات / نقل" (حالات التركيب wfm).
 // تُستخدم لفلترة تقريرى التركيبات الحالية والتركيبات المنتظمة.
 // المقارنة تتم بعد lower(trim(...)) لتجاوز فروق الأحرف/المسافات.
+// أنواع أوامر الشغل اللى معناها **رفع/إلغاء الخط نهائياً** — مش تركيب ولا نقل،
+// ومابيتصرفلهاش سلك. بتتسجّل فى جدول «الرفع النهائى» (line_deactivations) ومابتدخلش
+// جدول أوامر الشغل خالص، عشان ماتظهرش فى تقارير التركيبات/النقل ولا فى تقرير
+// «أوامر شغل بدون كمية سلك». المطابقة على النوع، وسبب الإغلاق كتأكيد إضافى.
+const DEACTIVATION_WO_TYPES_LC = [
+  "fixed voice deactivation",
+  "tdm termination order (without release technical data)",
+  "tdm termination order",
+];
+const DEACTIVATION_CLOSE_REASONS_LC = ["line deactivated successfully"];
+function isDeactivationWO(rawType: string, closeReason: string): boolean {
+  const t = String(rawType || "").trim().toLowerCase();
+  const r = String(closeReason || "").trim().toLowerCase();
+  if (DEACTIVATION_WO_TYPES_LC.some((x) => t === x || t.startsWith(x))) return true;
+  // شبكة أمان: النوع مكتوب بصيغة مختلفة لكن سبب الإغلاق صريح إن الخط اترفع
+  return DEACTIVATION_CLOSE_REASONS_LC.includes(r);
+}
+
 const INSTALL_TYPES = [
   "FVInstallationMSAN",
   "FVChPhoneNoNewLoc",
@@ -4945,6 +4963,7 @@ export async function registerRoutes(
       const iCreation  = findCol("creation date", "تاريخ الانشاء", "تاريخ الإنشاء", "initiate date");
       const iItem      = findCol("اسم الصنف", "الصنف", "item name");
       const iCable     = findCol("consumed cables", "كميه السلك", "كمية السلك", "السلك", "cable");
+      const iCloseReason = findCol("close reason", "سبب الاغلاق", "سبب الإغلاق");
       const iTech      = findCol("tech name", "اسم الفنى", "اسم الفني", "الفنى");
       const iMsan      = findCol("msan code", "msan", "الكابينة", "الكابينه");
       // العناوين الأصلية (بدون تصغير) لحفظ raw_data بكل خانات الشيت — القاعدة #10
@@ -4964,6 +4983,14 @@ export async function registerRoutes(
 
       let inserted = 0;
       let skipped = 0;
+      let deactivated = 0;   // أوامر رفع نهائى اتحوّلت لجدولها
+
+      const toDate = (v: any): Date | null => {
+        if (v instanceof Date) return v;
+        if (typeof v === "number") return new Date(Math.round((v - 25569) * 86400 * 1000));
+        if (v === "" || v == null) return null;
+        const d = new Date(v); return isNaN(d.getTime()) ? null : d;
+      };
 
       for (const r of dataRows) {
         // نقبل Success و Fail (كل واحد يظهر فى تقريره الخاص)؛ نتخطّى بس لو التصنيف غير واضح.
@@ -4980,6 +5007,40 @@ export async function registerRoutes(
         // IIf([Work Order Type]="Fixed Voice Installation MSAN";"تركيب جديد";"نقل")
         const rawServiceType = String(g(r, iService, 5)).trim();
         const serviceType  = rawServiceType === "Fixed Voice Installation MSAN" ? "تركيب جديد" : "نقل";
+        // ⚠️ السطر اللى فوق بيحطّ **أى** نوع مش «Installation MSAN» على إنه «نقل» —
+        // بما فيهم أوامر رفع/إلغاء الخط نهائياً. ودى مش تركيب ولا نقل ومابيتصرفلهاش
+        // سلك، فكانت بتظهر فى تقارير النقل وفى «أوامر شغل بدون كمية سلك» غلط.
+        // بنحوّلها لجدول «الرفع النهائى» ومابتدخلش work_orders خالص.
+        const closeReason = iCloseReason >= 0 ? String(r[iCloseReason] ?? "").trim() : "";
+        if (isDeactivationWO(rawServiceType, closeReason)) {
+          const rawObjD: Record<string, any> = {};
+          for (let ci = 0; ci < origHeader.length; ci++) {
+            const k = origHeader[ci] || ("col" + ci);
+            const v = r[ci];
+            rawObjD[k] = (v === "" || v === undefined) ? null : (v instanceof Date ? v.toISOString() : v);
+          }
+          const dDate = toDate(g(r, iDate, 12)), dCreate = toDate(opt(r, iCreation));
+          await pool.query(
+            `INSERT INTO line_deactivations
+               (central_name, work_order_id, phone_number, work_order_type, close_reason,
+                close_category, close_date, creation_date, tech_name, msan_code, raw_data, uploaded_by_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+             ON CONFLICT (central_name, work_order_id) DO UPDATE SET
+               close_reason = EXCLUDED.close_reason, close_category = EXCLUDED.close_category,
+               close_date = COALESCE(EXCLUDED.close_date, line_deactivations.close_date),
+               creation_date = COALESCE(EXCLUDED.creation_date, line_deactivations.creation_date),
+               tech_name = EXCLUDED.tech_name, msan_code = COALESCE(EXCLUDED.msan_code, line_deactivations.msan_code),
+               raw_data = COALESCE(EXCLUDED.raw_data, line_deactivations.raw_data), uploaded_at = now()`,
+            [centralName, workOrderId, phoneNumber, rawServiceType || null, closeReason || null,
+             closeCategory, dDate, dCreate, String(g(r, iTech, 15)).trim() || null,
+             iMsan >= 0 ? (String(r[iMsan] ?? "").trim() || null) : null,
+             JSON.stringify(rawObjD), (req.user as any)?.id ?? null]);
+          // ولو الأمر ده كان اتسجّل قبل كده فى أوامر الشغل (من رفعة قديمة) نشيله من هناك
+          await pool.query(`DELETE FROM work_orders WHERE central_name = $1 AND work_order_id = $2`,
+                           [centralName, workOrderId]);
+          deactivated++;
+          continue;
+        }
         const rawDate      = g(r, iDate, 12);
         const rawCreation  = opt(r, iCreation);
         const itemName     = "سلك واحد جوز"; // اسم الصنف ثابت دائماً
@@ -4988,12 +5049,6 @@ export async function registerRoutes(
 
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
 
-        const toDate = (v: any): Date | null => {
-          if (v instanceof Date) return v;
-          if (typeof v === "number") return new Date(Math.round((v - 25569) * 86400 * 1000));
-          if (v === "" || v == null) return null;
-          const d = new Date(v); return isNaN(d.getTime()) ? null : d;
-        };
         const closeDate = toDate(rawDate);
         if (!closeDate || isNaN(closeDate.getTime())) { skipped++; continue; }
         const creationDate = toDate(rawCreation); // اختيارى — لحساب زمن الإغلاق
@@ -5058,7 +5113,7 @@ export async function registerRoutes(
       }
 
       console.log(`work-orders import: purged=${purged}, headers=${JSON.stringify(header)}, cols={central:${iCentral},order:${iWorkOrder},phone:${iPhone},svc:${iService},date:${iDate},item:${iItem},cable:${iCable},tech:${iTech}}, rows=${dataRows.length}, inserted=${inserted}, skipped=${skipped}, stampedAt=${stampedAt}`);
-      res.json({ ok: true, inserted, skipped, purged, total: dataRows.length, stampedAt });
+      res.json({ ok: true, inserted, skipped, purged, deactivated, total: dataRows.length, stampedAt });
     } catch (e: any) {
       console.error("work-orders import error:", e);
       res.status(500).json({ message: "خطأ أثناء معالجة الملف", detail: e.message });
