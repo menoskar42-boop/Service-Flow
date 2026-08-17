@@ -2336,14 +2336,18 @@ export async function registerRoutes(
           INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, params, retry_round, requested_from)
           SELECT p.type, p.accounts, p.requested_by,
                  COALESCE(p.note, '') || ' (إعادة تنفيذ بعد إيرور)',
-                 1, COALESCE(p.batch_id, 'b') || '-r1', p.site, p.params, 1, p.requested_from
+                 -- أولوية 3 (أعلى الترتيب): الباتش الأصلى خلص خلاص (شرط الاختيار فوق)،
+                 -- والإعادة لازم تتنفّذ **مباشرة بعده** مش ورا كل اللى فى الطابور.
+                 -- ومع كده مابتقاطعش أى مهمة شغّالة — شوف استثناء retry_round فى
+                 -- فحص المقاطعة (/preempt-check): بتستنى اللى شغّال يخلص وبس.
+                 3, COALESCE(p.batch_id, 'b') || '-r1', p.site, p.params, 1, p.requested_from
             FROM picked p
           RETURNING id
         )
         UPDATE exec_jobs SET retried_at = now()
          WHERE id IN (SELECT id FROM picked)
         RETURNING id`);
-      if (rows.length) console.log(`[exec-queue] إعادة تنفيذ ${rows.length} خط رجعوا بإيرور (أولوية 1)`);
+      if (rows.length) console.log(`[exec-queue] إعادة تنفيذ ${rows.length} خط رجعوا بإيرور (أولوية 3)`);
     } catch (e: any) {
       console.error("[exec-queue] فشل إعادة تنفيذ الأخطاء:", e.message);
     }
@@ -2520,6 +2524,10 @@ export async function registerRoutes(
       const { rows: p } = await pool.query(
         `SELECT 1 FROM exec_jobs
           WHERE status = 'pending' AND paused_at IS NULL AND priority > $1
+            -- باتشات «إعادة التنفيذ بعد إيرور» ليها أعلى أولوية فى **الترتيب** بس،
+            -- ومابتقاطعش مهمة شغّالة: بتستنى اللى شغّال يخلص وتتنفّذ بعده على طول.
+            -- (المقاطعة مقصودة لتحديث الملفات اليومية بس.)
+            AND retry_round = 0
             AND COALESCE(site, '10.42.187.101') = COALESCE($2, '10.42.187.101') LIMIT 1`,
         [job.priority ?? 0, job.site]);
       const prog = await jobProgress(job.accounts, job.type, job.claimed_at);

@@ -10,7 +10,9 @@ const ExcelJS = require('exceljs');
 const { buildBoxCountMap } = require('./service_flow');
 
 const router = express.Router();
-const staffOnly = requireRole('admin', 'inspector');
+// فنى الصيانة (technician) بقى يشوف قسم التقارير زى الأدمن والمفتّش — بقرار تشغيلى.
+// الثابت ده مستخدَم على كل مسارات التقارير هنا، فالتعديل مكان واحد بيفتحها كلها.
+const staffOnly = requireRole('admin', 'inspector', 'technician');
 
 router.get('/', staffOnly, async (req, res) => {
   try {
