@@ -3153,6 +3153,102 @@ export async function registerRoutes(
     }
   });
 
+  // ── مزامنة الرد بين الطلب والمتعذر المربوطين بتطابق مؤكَّد ──────────────
+  // بعد ما السوبر أدمن يأكّد التطابق، الاتنين بقوا **نفس الحالة**. فأى رد يتسجّل
+  // على أى ناحية فى أى وقت (رد فنى، تحويل للشئون الخارجية، رد خارجى، أو إلغاء
+  // الرد) بينزل على الناحية التانية على طول — مش وقت التأكيد بس.
+  // بيكتب بـ SQL مباشر (مش من خلال الـ endpoints) فمافيش استدعاء متبادل لا نهائى،
+  // وبيتنادى بعد ما الرد الأصلى يتحفظ فأى فشل هنا مايضيّعش الرد نفسه.
+  // (تكتات البكس مابتتفتحش من هنا — الحالة واحدة والتكت بتتفتح من الناحية
+  //  اللى اترد عليها فعلاً، وبرنامج الكوابل أصلاً بيمنع تكرار التكت على نفس البكس.)
+  async function syncMatchedResponse(src: { orderId?: number; serial?: string }) {
+    try {
+      const byOrder = src.orderId != null;
+      const { rows: mm } = await pool.query(
+        byOrder
+          ? `SELECT order_id, om_serial FROM om_order_matches WHERE order_id = $1`
+          : `SELECT order_id, om_serial FROM om_order_matches WHERE om_serial = $1`,
+        [byOrder ? src.orderId : String(src.serial ?? "")]);
+      if (!mm.length) return;              // مش مربوط بتطابق مؤكَّد → مافيش مزامنة
+      const orderId = Number(mm[0].order_id);
+      const serial = String(mm[0].om_serial);
+
+      if (byOrder) {
+        // طلبات → متعذرات
+        const { rows } = await pool.query(
+          `SELECT status, is_feasible, rejection_reason, central_name, cabin_number, box_number,
+                  nearest_box_distance, additional_notes, tech_id, tech_name, tech_response_at,
+                  external_id, external_name, is_feasible_external, external_rejection_reason,
+                  external_response_at
+             FROM orders WHERE id = $1`, [orderId]);
+        if (!rows.length) return;
+        const o = rows[0];
+        await pool.query(
+          `INSERT INTO om_responses (serial_number, status, is_feasible, rejection_reason, central_name,
+              cabin_number, box_number, nearest_box_distance, additional_notes, tech_id, tech_name,
+              responded_at, external_id, external_name, is_feasible_external, external_rejection_reason,
+              external_response_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+           ON CONFLICT (serial_number) DO UPDATE SET
+             status = EXCLUDED.status, is_feasible = EXCLUDED.is_feasible,
+             rejection_reason = EXCLUDED.rejection_reason,
+             central_name = COALESCE(EXCLUDED.central_name, om_responses.central_name),
+             cabin_number = COALESCE(EXCLUDED.cabin_number, om_responses.cabin_number),
+             box_number = COALESCE(EXCLUDED.box_number, om_responses.box_number),
+             nearest_box_distance = COALESCE(EXCLUDED.nearest_box_distance, om_responses.nearest_box_distance),
+             additional_notes = EXCLUDED.additional_notes,
+             tech_id = EXCLUDED.tech_id, tech_name = EXCLUDED.tech_name,
+             responded_at = EXCLUDED.responded_at,
+             external_id = EXCLUDED.external_id, external_name = EXCLUDED.external_name,
+             is_feasible_external = EXCLUDED.is_feasible_external,
+             external_rejection_reason = EXCLUDED.external_rejection_reason,
+             external_response_at = EXCLUDED.external_response_at, updated_at = now()`,
+          [serial, o.status, o.is_feasible, o.rejection_reason, o.central_name, o.cabin_number,
+           o.box_number, o.nearest_box_distance, o.additional_notes, o.tech_id, o.tech_name,
+           o.tech_response_at, o.external_id, o.external_name, o.is_feasible_external,
+           o.external_rejection_reason, o.external_response_at]);
+      } else {
+        // متعذرات → طلبات
+        const { rows } = await pool.query(
+          `SELECT status, is_feasible, rejection_reason, central_name, cabin_number, box_number,
+                  nearest_box_distance, additional_notes, tech_id, tech_name, responded_at,
+                  external_id, external_name, is_feasible_external, external_rejection_reason,
+                  external_response_at
+             FROM om_responses WHERE serial_number = $1`, [serial]);
+        if (rows.length) {
+          const m = rows[0];
+          await pool.query(
+            `UPDATE orders SET status = $2, is_feasible = $3, rejection_reason = $4,
+                    central_name = COALESCE($5, central_name),
+                    cabin_number = COALESCE($6, cabin_number),
+                    box_number = COALESCE($7, box_number),
+                    nearest_box_distance = COALESCE($8, nearest_box_distance),
+                    additional_notes = $9, tech_id = $10, tech_name = $11, tech_response_at = $12,
+                    external_id = $13, external_name = $14, is_feasible_external = $15,
+                    external_rejection_reason = $16, external_response_at = $17
+              WHERE id = $1`,
+            [orderId, m.status, m.is_feasible, m.rejection_reason, m.central_name, m.cabin_number,
+             m.box_number, m.nearest_box_distance, m.additional_notes, m.tech_id, m.tech_name,
+             m.responded_at, m.external_id, m.external_name, m.is_feasible_external,
+             m.external_rejection_reason, m.external_response_at]);
+        } else {
+          // الرد اتلغى خالص من ناحية المتعذرات → الطلب يرجع «قيد الانتظار»
+          await pool.query(
+            `UPDATE orders SET status = $2, is_feasible = NULL, rejection_reason = NULL,
+                    tech_id = NULL, tech_name = NULL, tech_response_at = NULL,
+                    external_id = NULL, external_name = NULL, is_feasible_external = NULL,
+                    external_rejection_reason = NULL, external_response_at = NULL
+              WHERE id = $1`, [orderId, ORDER_STATUS.PENDING]);
+        }
+      }
+      // الواجهة عند الطرف التانى تتحدّث من غير ما المستخدم يعمل ريفرش
+      try {
+        const o = await storage.getOrder(orderId);
+        if (o) broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: o });
+      } catch {}
+    } catch (e: any) { console.error("[match-sync]", e?.stack || e); }
+  }
+
   app.put(api.orders.update.path, requireAuth, async (req, res) => {
     const user = req.user as any;
     // Only Tech (or Admin) can update status/feasibility
@@ -3207,6 +3303,8 @@ export async function registerRoutes(
           customerName: (order as any).customerName, nationalId: (order as any).nationalId,
         });
       }
+      // لو الطلب مربوط بمتعذر مؤكَّد → الرد ينزل عليه على طول
+      await syncMatchedResponse({ orderId: id });
       res.json(boxTicket ? { ...order, boxTicket } : order);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -3235,6 +3333,7 @@ export async function registerRoutes(
 
       const order = await storage.resetTechResponse(id);
       broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      await syncMatchedResponse({ orderId: id });
       res.json(order);
     } catch (e) {
       res.status(500).json({ message: "Error resetting order" });
@@ -3314,6 +3413,7 @@ export async function registerRoutes(
 
       const order = await storage.requestExternalReview(id);
       broadcast({ type: WS_EVENTS.ORDER_UPDATE, payload: order });
+      await syncMatchedResponse({ orderId: id });
       res.json(order);
     } catch (e) {
       res.status(500).json({ message: "Error requesting external review" });
@@ -3353,6 +3453,7 @@ export async function registerRoutes(
       if (newStatus === ORDER_STATUS.EXTERNAL_FEASIBLE) {
         await notifyOrderFeasible(order, "external");
       }
+      await syncMatchedResponse({ orderId: id });
       res.json(order);
     } catch (e) {
       if (e instanceof z.ZodError) {
@@ -8792,6 +8893,8 @@ export async function registerRoutes(
           serialNumber,
         });
       }
+      // لو المتعذر مربوط بطلب مؤكَّد → الرد ينزل على الطلب على طول
+      await syncMatchedResponse({ serial: serialNumber });
       res.json({ ok: true, response: r0, boxTicket });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -8811,6 +8914,7 @@ export async function registerRoutes(
          RETURNING *`,
         [serialNumber, ORDER_STATUS.NEEDS_EXTERNAL],
       );
+      await syncMatchedResponse({ serial: serialNumber });
       res.json({ ok: true, response: rows[0] });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -8847,6 +8951,7 @@ export async function registerRoutes(
          req.user?.id ?? null, String(req.user?.username || "")],
       );
       if (!rows.length) return res.status(404).json({ message: "المتعذر ده مش محوَّل للشئون الخارجية" });
+      await syncMatchedResponse({ serial: serialNumber });
       res.json({ ok: true, response: rows[0] });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -8857,6 +8962,7 @@ export async function registerRoutes(
       const serialNumber = String(req.body?.serialNumber ?? "").trim();
       if (!serialNumber) return res.status(400).json({ message: "رقم المسلسل مطلوب" });
       await pool.query(`DELETE FROM om_responses WHERE serial_number = $1`, [serialNumber]);
+      await syncMatchedResponse({ serial: serialNumber });
       res.json({ ok: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
