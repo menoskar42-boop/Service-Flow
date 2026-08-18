@@ -32,9 +32,22 @@ export function nameTokens(s: unknown): string[] {
   return norm.split(/\s+/).filter((w) => w && w.length >= 2 && !STOP_WORDS.has(w));
 }
 
+// فلتر رخيص قبل حساب الـ bigrams: الكلمتين ممكن أصلاً يوصلوا للعتبة؟
+// حساب الـ bigrams بيعمل Map وتخصيص ذاكرة لكل مقارنة — وده كان أغلب تكلفة
+// التقرير. الحرف الأول مختلف أو فرق الطول كبير معناه إن النتيجة هتبقى بعيدة
+// عن العتبة (0.82) بفارق واسع، فبنرفض من غير أى حساب.
+// (تطبيع الحروف بيوحّد الهمزات والياء قبل كده، فاختلاف الحرف الأول هنا اختلاف حقيقى.)
+function mayMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.charCodeAt(0) !== b.charCodeAt(0)) return false;
+  const d = a.length - b.length;
+  return d > -4 && d < 4;
+}
+
 /** Dice على الحروف الثنائية — للأخطاء الإملائية داخل الكلمة الواحدة */
 function bigramDice(a: string, b: string): number {
   if (a === b) return 1;
+  if (!mayMatch(a, b)) return 0;
   if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
   const grams = (s: string) => {
     const m = new Map<string, number>();
@@ -122,3 +135,70 @@ export function nameSimilarity(a: unknown, b: unknown): number {
 
 /** العتبة الافتراضية للتطابق (المستخدم طلب 70%) */
 export const NAME_MATCH_THRESHOLD = 0.7;
+
+// ── نسخة سريعة للمقارنة بالجملة (آلاف × آلاف) ───────────────────────────────
+// ⚠️ nameMatch بتعمل tokenize + reconcile لكل مقارنة. لو قارنّا كل الطلبات بكل
+// المتعذرات (624 × آلاف) ده ملايين العمليات وبيقفل الـ event loop بتاع Node —
+// والسيرفر ثريد واحد، فالموقع **كله** بيقف مش التقرير بس. (حصل فعلاً.)
+//
+// الحل جزئين:
+//   (1) نحسب كلمات كل اسم **مرة واحدة** بدل مرة لكل مقارنة.
+//   (2) القاعدة أصلاً بتحتّم إن **الاسم الأول** يتطابق، فبنفهرس الطرف التانى
+//       بالاسم الأول ومابنقارنش غير المرشّحين اللى اسمهم الأول مطابق أو قريب.
+//       ده بيحوّل المقارنة من N×M لمجموع دلاء صغيرة.
+
+/** نفس nameMatch بس على كلمات محسوبة مسبقاً */
+function walk(ta: string[], tb: string[]): { score: number; matched: number; conflict: boolean } {
+  const overlap = Math.min(ta.length, tb.length);
+  let matched = 0;
+  for (let i = 0; i < overlap; i++) {
+    const same = ta[i] === tb[i] || bigramDice(ta[i], tb[i]) >= WORD_MATCH_MIN;
+    if (!same) return { score: 0, matched: i, conflict: true };
+    matched++;
+  }
+  if (matched < MIN_LEADING_NAMES) return { score: 0, matched, conflict: false };
+  const dice = (2 * matched) / (ta.length + tb.length);
+  const floor = matched >= 3 ? 0.75 : 0.70;
+  return { score: Math.max(dice, floor), matched, conflict: false };
+}
+
+export function nameMatchTokens(ta0: string[], tb0: string[]): { score: number; matched: number; conflict: boolean } {
+  if (!ta0.length || !tb0.length) return { score: 0, matched: 0, conflict: false };
+  // المسار السريع: مقارنة موضعية على الكلمات زى ما هى — بتغطّى الغالبية العظمى.
+  const direct = walk(ta0, tb0);
+  if (!direct.conflict) return direct;
+  // فشلت → ممكن يكون **اختلاف مسافات** (عبد الله / عبدالله). التوفيق غالى فمابنعملهوش
+  // إلا هنا، ولو مالقاش أى دمج مافيش داعى نعيد المقارنة أصلاً.
+  const ta = reconcile(ta0, tb0);
+  const tb = reconcile(tb0, ta);
+  if (ta.length === ta0.length && tb.length === tb0.length) return direct;
+  return walk(ta, tb);
+}
+
+/** فهرس بالاسم الأول — بيرجّع دالة بتجيب المرشّحين لأى اسم أول */
+export function buildFirstNameIndex<T>(rows: T[], tokensOf: (r: T) => string[]) {
+  const byFirst = new Map<string, T[]>();
+  for (const r of rows) {
+    const t = tokensOf(r);
+    if (!t.length) continue;
+    const k = t[0];
+    const arr = byFirst.get(k);
+    if (arr) arr.push(r); else byFirst.set(k, [r]);
+  }
+  const keys = Array.from(byFirst.keys());
+  // كاش: الاسم الأول → قائمة المرشّحين (بيتحسب مرة واحدة لكل اسم أول مميّز)
+  const cache = new Map<string, T[]>();
+  return (firstName: string): T[] => {
+    if (!firstName) return [];
+    const hit = cache.get(firstName);
+    if (hit) return hit;
+    let out: T[] = (byFirst.get(firstName) ?? []).slice();
+    // الأسماء الأولى القريبة (اختلاف إملائى مش مغطّى بتطبيع الحروف)
+    for (const k of keys) {
+      if (k === firstName) continue;
+      if (bigramDice(k, firstName) >= WORD_MATCH_MIN) out = out.concat(byFirst.get(k)!);
+    }
+    cache.set(firstName, out);
+    return out;
+  };
+}

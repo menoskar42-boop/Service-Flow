@@ -19,7 +19,7 @@ import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
 import { phoneNormSql } from "./phone-norm";
-import { nameMatch, NAME_MATCH_THRESHOLD } from "@shared/name-match";
+import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH_THRESHOLD } from "@shared/name-match";
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
@@ -3764,11 +3764,28 @@ export async function registerRoutes(
 
       // لكل طلب: أحسن متعذر مطابق (أعلى نسبة) — الربط 1:1 فمابنعرضش نفس المتعذر
       // لأكتر من طلب إلا لو لسه مش مؤكَّد (السوبر أدمن هو اللى يحسم).
+      // ⚠️ الأداء: المقارنة الكاملة (كل طلب × كل متعذر) كانت بتقفل الـ event loop
+      // بتاع Node — والسيرفر ثريد واحد فالموقع **كله** كان بيقف مش التقرير بس.
+      // بنحسب الكلمات مرة واحدة لكل صف، وبنفهرس المتعذرات بالاسم الأول: القاعدة
+      // أصلاً بتحتّم إن الاسم الأول يتطابق، فمافيش داعى نقارن باللى اسمه الأول
+      // مختلف خالص. النتيجة نفس النتيجة بالظبط لكن بجزء ضئيل من العمل.
+      const omTok = new Map<any, string[]>();
+      for (const m of omRows) omTok.set(m, nameTokens(m.name));
+      const candidatesFor = buildFirstNameIndex(omRows, (m) => omTok.get(m) ?? []);
+
+      // 🛡️ صمّام أمان: كل 50 طلب بنسيب الـ event loop يتنفّس. حتى لو البيانات
+      // كبرت جداً، السيرفر بيفضل بيرد على باقى المستخدمين بدل ما يتجمّد.
+      // (التقرير ده وقّع الموقع كله قبل كده لأن الحلقة كانت بتقفل الـ loop لدقايق.)
+      const breathe = () => new Promise<void>((r) => setImmediate(r));
+
       const pairs: any[] = [];
+      let scanned = 0;
       for (const o of orderRows) {
+        if (++scanned % 50 === 0) await breathe();
+        const ot = nameTokens(o.name);
         let best: any = null, bestScore = 0, bestMatched = 0;
-        for (const m of omRows) {
-          const r = nameMatch(o.name, m.name);
+        for (const m of candidatesFor(ot[0] ?? "")) {
+          const r = nameMatchTokens(ot, omTok.get(m) ?? []);
           if (r.score > bestScore) { bestScore = r.score; best = m; bestMatched = r.matched; }
         }
         const conf = confByOrder.get(Number(o.id));
