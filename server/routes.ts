@@ -3807,24 +3807,48 @@ export async function registerRoutes(
       // (التقرير ده وقّع الموقع كله قبل كده لأن الحلقة كانت بتقفل الـ loop لدقايق.)
       const breathe = () => new Promise<void>((r) => setImmediate(r));
 
+      // المسلسلات المربوطة خلاص بطلب معيّن — مابتترشّحش لأى طلب تانى (الربط 1:1).
+      const omBySerial = new Map<string, any>();
+      for (const m of omRows) omBySerial.set(String(m.serial), m);
+      const takenSerial = new Set<string>();
+      for (const c of confirmed) takenSerial.add(String(c.serial));
+
       const pairs: any[] = [];
+      // كل الترشيحات فوق العتبة (أحسن ٥ لكل طلب) — بنسندها بعد كده إسناد أحادى
+      const proposals: { o: any; m: any; score: number; matched: number }[] = [];
       let scanned = 0;
       for (const o of orderRows) {
         if (++scanned % 50 === 0) await breathe();
-        const ot = nameTokens(o.name);
-        let best: any = null, bestScore = 0, bestMatched = 0;
-        for (const m of candidatesFor(ot[0] ?? "")) {
-          const r = nameMatchTokens(ot, omTok.get(m) ?? []);
-          if (r.score > bestScore) { bestScore = r.score; best = m; bestMatched = r.matched; }
-        }
         const conf = confByOrder.get(Number(o.id));
         // الأزواج المؤكَّدة بتظهر دايماً حتى لو النسبة أقل من العتبة دلوقتى
         if (conf) {
-          const m = omRows.find((x: any) => String(x.serial) === String(conf.serial)) || null;
-          pairs.push({ order: o, om: m, score: conf.score ?? bestScore, matched: bestMatched, confirmed: conf });
+          pairs.push({ order: o, om: omBySerial.get(String(conf.serial)) ?? null,
+                       score: conf.score ?? 0, matched: 0, confirmed: conf });
           continue;
         }
-        if (best && bestScore >= minScore) pairs.push({ order: o, om: best, score: bestScore, matched: bestMatched, confirmed: null });
+        const ot = nameTokens(o.name);
+        const cands: { m: any; score: number; matched: number }[] = [];
+        for (const m of candidatesFor(ot[0] ?? "")) {
+          if (takenSerial.has(String(m.serial))) continue;
+          const r = nameMatchTokens(ot, omTok.get(m) ?? []);
+          if (r.score >= minScore) cands.push({ m, score: r.score, matched: r.matched });
+        }
+        cands.sort((a, b) => b.score - a.score);
+        for (const c of cands.slice(0, 5)) proposals.push({ o, m: c.m, score: c.score, matched: c.matched });
+      }
+      // ⚠️ إسناد أحادى: المتعذر الواحد مايتعرضش لأكتر من طلب. الطلب الأعلى نسبة
+      // بياخده، والباقى بياخد أفضل متعذر **تانى متاح**. قبل كده كل طلب كان بياخد
+      // أحسن متعذر ليه بشكل مستقل، فكان نفس المتعذر يتعرض لكذا طلب (شائع لما
+      // نفس العميل يكون له أكتر من طلب) — أول تأكيد بس هو اللى ينفع والباقى
+      // يقع على قيد UNIQUE ويظهر للمستخدم كـ «تعذّر تأكيد التطابق».
+      proposals.sort((a, b) => b.score - a.score);
+      const usedOrder = new Set<number>();
+      const usedSerial = new Set<string>(takenSerial);
+      for (const p of proposals) {
+        const oid = Number(p.o.id), sn = String(p.m.serial);
+        if (usedOrder.has(oid) || usedSerial.has(sn)) continue;
+        usedOrder.add(oid); usedSerial.add(sn);
+        pairs.push({ order: p.o, om: p.m, score: p.score, matched: p.matched, confirmed: null });
       }
       pairs.sort((a, b) => (b.confirmed ? 1 : 0) - (a.confirmed ? 1 : 0) || b.score - a.score);
       res.json({ data: pairs, minScore, orders: orderRows.length, omCases: omRows.length });
@@ -3836,19 +3860,53 @@ export async function registerRoutes(
   //   • فيه سبب فى المتعذرات الحالية → بينزل على قسم الطلبات (وبيحدّث أى سبب قديم)
   //   • مفيش سبب فى المتعذرات وفيه سبب فى الطلبات → بيروح للمتعذرات الحالية
   //   • الاتنين فاضيين → بنسجّل التطابق بس
+  // ⚠️ كله جوه **ترانزاكشن واحدة**: لو أى خطوة وقعت بيترجع كل شىء زى ما كان.
+  // من غيرها كان ممكن السبب/الموبايل يتنقل وبعدين سطر الربط يفشل → تعديل من غير
+  // لقطة تراجع (ده اللى كان بيحصل فى «تعذّر تأكيد التطابق»).
   app.post("/api/reports/om-order-match/confirm", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    const orderId = parseInt(String(req.body?.orderId ?? ""));
+    const serial = String(req.body?.serialNumber ?? "").trim();
+    if (!orderId || !serial) return res.status(400).json({ message: "orderId و serialNumber مطلوبين" });
+    const client = await pool.connect();
     try {
-      const orderId = parseInt(String(req.body?.orderId ?? ""));
-      const serial = String(req.body?.serialNumber ?? "").trim();
-      if (!orderId || !serial) return res.status(400).json({ message: "orderId و serialNumber مطلوبين" });
+      await client.query("BEGIN");
+      // قفل استشارى على المسلسل — يمنع تأكيدين متوازيين لنفس المتعذر
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, ["om-match:" + serial]);
 
-      const { rows: oRows } = await pool.query(
+      const { rows: oRows } = await client.query(
         `SELECT id, rejection_reason, additional_notes, central_name, cabin_number, box_number,
-                customer_phone
+                customer_phone, status, is_feasible
            FROM orders WHERE id = $1`, [orderId]);
-      if (!oRows.length) return res.status(404).json({ message: "الطلب مش موجود" });
+      if (!oRows.length) { await client.query("ROLLBACK"); return res.status(404).json({ message: "الطلب مش موجود" }); }
       const o = oRows[0];
-      const { rows: mRows } = await pool.query(
+
+      // ── فحص الارتباطات القائمة قبل ما نلمس أى حاجة ──────────────────────
+      // الربط 1:1 (قيد UNIQUE على المسلسل وعلى الطلب). لو المسلسل مربوط بطلب
+      // تانى، أو الطلب مربوط بمتعذر تانى، بنرجّع رسالة واضحة بدل ما الـ INSERT
+      // يقع بخطأ قاعدة بيانات ويوصل للمستخدم كـ «تعذّر تأكيد التطابق» من غير سبب.
+      const { rows: clash } = await client.query(
+        `SELECT m.order_id, m.om_serial, o2.customer_name
+           FROM om_order_matches m
+           LEFT JOIN orders o2 ON o2.id = m.order_id
+          WHERE (m.om_serial = $1 AND m.order_id <> $2) OR (m.order_id = $2 AND m.om_serial <> $1)`,
+        [serial, orderId]);
+      if (clash.length) {
+        await client.query("ROLLBACK");
+        const c = clash[0];
+        const msg = String(c.om_serial) === serial
+          ? `المتعذر ده مربوط قبل كده بطلب تانى (${c.customer_name || "طلب #" + c.order_id}). اعمل «تراجع» على الربط القديم الأول.`
+          : `الطلب ده مربوط قبل كده بمتعذر تانى (مسلسل ${c.om_serial}). اعمل «تراجع» الأول.`;
+        return res.status(409).json({ message: msg });
+      }
+      // لو نفس الربط موجود بالظبط → مافيش حاجة تتعمل (تجنّب دبل-كليك)
+      const { rows: same } = await client.query(
+        `SELECT 1 FROM om_order_matches WHERE order_id = $1 AND om_serial = $2`, [orderId, serial]);
+      if (same.length) {
+        await client.query("ROLLBACK");
+        return res.json({ ok: true, direction: "none", mobileDirection: "none", already: true });
+      }
+
+      const { rows: mRows } = await client.query(
         `SELECT serial_number, rejection_reason, additional_notes, central_name, cabin_number,
                 box_number, status, is_feasible
            FROM om_responses WHERE serial_number = $1`, [serial]);
@@ -3870,7 +3928,7 @@ export async function registerRoutes(
           cabin_number: o.cabin_number, box_number: o.box_number,
         };
         // سبب المتعذرات هو المرجع — بينزل على الطلب اللى مالوش رد
-        await pool.query(
+        await client.query(
           `UPDATE orders SET rejection_reason = $2, is_feasible = false,
                              status = CASE WHEN status IN ('feasible','external_feasible') THEN status ELSE 'not_feasible' END,
                              additional_notes = COALESCE(NULLIF(btrim($3), ''), additional_notes),
@@ -3888,7 +3946,7 @@ export async function registerRoutes(
               cabin_number: m.cabin_number, box_number: m.box_number }
           : { existed: false };
         // مفيش سبب فى المتعذرات → ناخد سبب الطلب ونوديه هناك
-        await pool.query(
+        await client.query(
           `INSERT INTO om_responses (serial_number, status, is_feasible, rejection_reason,
                                      additional_notes, central_name, cabin_number, box_number, updated_at)
            VALUES ($1, 'not_feasible', false, $2, $3, $4, $5, $6, now())
@@ -3916,7 +3974,7 @@ export async function registerRoutes(
         const d = raw.replace(/\D/g, "");
         return d.length >= 10 ? raw : null;
       };
-      const { rows: omMob } = await pool.query(
+      const { rows: omMob } = await client.query(
         `SELECT COALESCE(omm.mobile, wfm.mobile, fo.customer_mobile) AS mobile
            FROM ftth_orders_current fo
            LEFT JOIN om_manual_mobiles omm ON omm.serial_number = fo.serial_number
@@ -3932,13 +3990,13 @@ export async function registerRoutes(
       let mobileDirection = "none";
       if (omMobile && !orderMobile) {
         undoData.orderPhone = o.customer_phone;
-        await pool.query(`UPDATE orders SET customer_phone = $2 WHERE id = $1`, [orderId, omMobile]);
+        await client.query(`UPDATE orders SET customer_phone = $2 WHERE id = $1`, [orderId, omMobile]);
         mobileDirection = "om→order";
       } else if (orderMobile && !omMobile) {
-        const { rows: prevMm } = await pool.query(
+        const { rows: prevMm } = await client.query(
           `SELECT mobile FROM om_manual_mobiles WHERE serial_number = $1`, [serial]);
         undoData.omManualMobile = prevMm.length ? { existed: true, mobile: prevMm[0].mobile } : { existed: false };
-        await pool.query(
+        await client.query(
           `INSERT INTO om_manual_mobiles (serial_number, mobile, updated_by, updated_at)
            VALUES ($1, $2, $3, now())
            ON CONFLICT (serial_number) DO UPDATE SET
@@ -3948,19 +4006,21 @@ export async function registerRoutes(
       }
 
       const score = parseFloat(String(req.body?.score ?? "")) || null;
-      await pool.query(
+      await client.query(
         `INSERT INTO om_order_matches (order_id, om_serial, score, confirmed_by_id, confirmed_by_name, undo_data)
-         VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (order_id) DO UPDATE SET
-           om_serial = EXCLUDED.om_serial, score = EXCLUDED.score,
-           confirmed_by_id = EXCLUDED.confirmed_by_id,
-           confirmed_by_name = EXCLUDED.confirmed_by_name, confirmed_at = now(),
-           undo_data = EXCLUDED.undo_data`,
+         VALUES ($1,$2,$3,$4,$5,$6)`,
         [orderId, serial, score, req.user?.id ?? null, String(req.user?.username || ""),
          Object.keys(undoData).length ? JSON.stringify(undoData) : null]);
 
+      await client.query("COMMIT");
       res.json({ ok: true, direction, mobileDirection });
-    } catch (e: any) { res.status(500).json({ message: e.message }); }
+    } catch (e: any) {
+      try { await client.query("ROLLBACK"); } catch {}
+      // 23505 = تصادم على قيد UNIQUE (سباق بين تأكيدين فى نفس اللحظة)
+      if (e?.code === "23505")
+        return res.status(409).json({ message: "المتعذر ده أو الطلب ده اتربط للتو من مكان تانى. اعمل تحديث للتقرير." });
+      res.status(500).json({ message: e.message });
+    } finally { client.release(); }
   });
 
   // DELETE /api/reports/om-order-match/:orderId — تراجع كامل عن التطابق.
@@ -3975,12 +4035,19 @@ export async function registerRoutes(
       const serial = mm[0]?.om_serial;
 
       if (u.order) {
-        await pool.query(
-          `UPDATE orders SET rejection_reason = $2, is_feasible = $3, status = $4,
-                             additional_notes = $5, central_name = $6, cabin_number = $7, box_number = $8
-            WHERE id = $1`,
-          [orderId, u.order.rejection_reason, u.order.is_feasible, u.order.status,
-           u.order.additional_notes, u.order.central_name, u.order.cabin_number, u.order.box_number]);
+        // بنرجّع **بس** الحقول الموجودة فى اللقطة. اللقطات القديمة (اتكتبت قبل ما
+        // نضيف status/is_feasible للـ SELECT) مافيهاش الحقلين دول — لو كتبناهم
+        // على طول كانوا هيتكتبوا NULL فوق القيمة الصح ويبوّظوا حالة الطلب.
+        const sets: string[] = [];
+        const vals: any[] = [orderId];
+        for (const col of ["rejection_reason", "is_feasible", "status", "additional_notes",
+                           "central_name", "cabin_number", "box_number"]) {
+          if (u.order[col] === undefined) continue;
+          vals.push(u.order[col]);
+          sets.push(`${col} = $${vals.length}`);
+        }
+        if (sets.length)
+          await pool.query(`UPDATE orders SET ${sets.join(", ")} WHERE id = $1`, vals);
       }
       if (u.omResponse && serial) {
         if (u.omResponse.existed) {

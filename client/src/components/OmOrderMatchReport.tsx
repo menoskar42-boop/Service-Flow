@@ -55,6 +55,14 @@ export function OmOrderMatchReport() {
       .some((v) => arNorm(v ?? "").includes(needle));
   });
 
+  // بنقرا رسالة السيرفر الحقيقية ونعرضها. قبل كده كانت أى مشكلة بتطلع
+  // «تعذّر تأكيد التطابق» من غير سبب — والمستخدم مايعرفش إن المتعذر مثلاً
+  // مربوط بطلب تانى.
+  const failMsg = async (res: Response, fallback: string) => {
+    try { const j = await res.json(); return String(j?.message || fallback); }
+    catch { return `${fallback} (${res.status})`; }
+  };
+
   const confirm = async (p: Pair) => {
     if (!p.om) return;
     setBusy(p.order.id);
@@ -64,18 +72,45 @@ export function OmOrderMatchReport() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: p.order.id, serialNumber: p.om.serial, score: p.score }),
       });
-      if (!res.ok) throw new Error();
-      await qc.invalidateQueries({ queryKey: ["/api/reports/om-order-match"] });
-    } catch { alert("تعذّر تأكيد التطابق"); } finally { setBusy(null); }
+      if (!res.ok) {
+        const msg = await failMsg(res, "تعذّر تأكيد التطابق");
+        // التقرير بقى قديم (حد تانى ربط المتعذر) → نحدّثه عشان الترشيح يتصحّح
+        if (res.status === 409) qc.invalidateQueries({ queryKey: ["/api/reports/om-order-match"] });
+        alert(msg);
+        return;
+      }
+      // مش بننتظر إعادة التحميل — التقرير بيحسب المطابقة لكل الطلبات وبياخد وقت،
+      // ولو استنيناه زر التأكيد يفضل بيلف. بنحدّث الصف محلياً والتحديث بيكمّل ورا.
+      markConfirmed(p);
+      qc.invalidateQueries({ queryKey: ["/api/reports/om-order-match"] });
+    } catch (e: any) {
+      alert(`تعذّر تأكيد التطابق: ${e?.message || "مشكلة فى الاتصال"}`);
+    } finally { setBusy(null); }
+  };
+
+  // تحديث فورى للصف فى الكاش — عشان المستخدم يشوف النتيجة على طول
+  const markConfirmed = (p: Pair) => {
+    qc.setQueriesData<{ data: Pair[]; orders: number; omCases: number }>(
+      { queryKey: ["/api/reports/om-order-match"] }, (old) => old && ({
+        ...old,
+        data: old.data.map((r) => r.order.id === p.order.id && p.om
+          ? { ...r, confirmed: { serial: p.om.serial, confirmedBy: null, confirmedAt: null } } : r),
+      }));
   };
 
   const unconfirm = async (p: Pair) => {
     setBusy(p.order.id);
     try {
       const res = await fetch(`/api/reports/om-order-match/${p.order.id}`, { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error();
-      await qc.invalidateQueries({ queryKey: ["/api/reports/om-order-match"] });
-    } catch { alert("تعذّر إلغاء التطابق"); } finally { setBusy(null); }
+      if (!res.ok) { alert(await failMsg(res, "تعذّر إلغاء التطابق")); return; }
+      qc.setQueriesData<{ data: Pair[]; orders: number; omCases: number }>(
+        { queryKey: ["/api/reports/om-order-match"] }, (old) => old && ({
+          ...old, data: old.data.map((r) => r.order.id === p.order.id ? { ...r, confirmed: null } : r),
+        }));
+      qc.invalidateQueries({ queryKey: ["/api/reports/om-order-match"] });
+    } catch (e: any) {
+      alert(`تعذّر إلغاء التطابق: ${e?.message || "مشكلة فى الاتصال"}`);
+    } finally { setBusy(null); }
   };
 
   const excelRows = () => rows.map((p, i) => ({
