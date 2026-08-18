@@ -489,7 +489,7 @@ export function TechPerformanceReport() {
       "#": i + 1, "رقم التليفون": r.phoneNumber, "السنترال": r.centralName,
       "الكابينه": r.lineCabin ?? "", "البكس": r.lineBox ?? "", "MSAN": r.msanCode ?? "", "الفريم": r.frame ?? "",
       "عدد المرات": r.appearances, "رقم الشكوى": r.complainNo,
-      "سبب الإغلاق": r.closeCode ?? "",
+      "سبب الإغلاق": r.closeCode ? (closeReason(r.closeCode) || r.closeCode) : "",
       "تاريخ الشكوى": fmtDT(r.complainTime), "تاريخ الإغلاق": fmtDT(r.closeTime),
       "فنى الإغلاق": r.closeByName, "فنى المنطقة": r.areaTechName,
     })));
@@ -688,7 +688,10 @@ export function TechPerformanceReport() {
                       <TableCell className="text-center">{r.frame ?? "-"}</TableCell>
                       <TableCell className="text-center font-bold">{r.appearances}</TableCell>
                       <TableCell className="text-center">{r.complainNo}</TableCell>
-                      <TableCell className="whitespace-nowrap text-center">{r.closeCode ?? "-"}</TableCell>
+                      {/* الكلام مش الكود — الكود بيفضل فى الـ tooltip للرجوع ليه */}
+                      <TableCell className="whitespace-nowrap text-center text-xs" title={r.closeCode ? `كود ${r.closeCode}` : ""}>
+                        {r.closeCode ? (closeReason(r.closeCode) || `كود ${r.closeCode}`) : "-"}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">
                         {editingTech === r.complainNo ? (
                           <span className="inline-flex items-center gap-1">
