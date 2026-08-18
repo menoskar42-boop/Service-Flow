@@ -617,6 +617,19 @@ const byCentralThen = (cmp: (a: any, b: any) => number) => (a: any, b: any) =>
 // بيتحطّ فقط مع أعمدة الشيتات — أعمدة زى claimed_at/updated_at لحظات حقيقية وبتتقارن بـ now().
 const NOW_SHEET = `(now() AT TIME ZONE 'Africa/Cairo')`;
 
+// «الوقت الفعلى» للعطل المفتوح = (الآن − وقت الشكوى) − المدة اللى قضاها على
+// الحالة 135/138 (معلّق). ثابت مشترك عشان **العمود والتصنيف** يستخدموا نفس
+// الرقم — قبل كده العمود كان بيخصم مدة التعليق والتصنيف بياخد الزمن الخام،
+// فعطل ظاهر «1ي 3س» كان بيتصنّف «المتبقيات» لأن الخام تعدّى 48 ساعة.
+const openEffectiveHoursSql = (t: string, rcd: string) => `CASE WHEN ${t}.complaint_time IS NULL THEN NULL
+     ELSE GREATEST(0, EXTRACT(EPOCH FROM (${NOW_SHEET} - ${t}.complaint_time)) / 3600.0
+                      - COALESCE(
+                          ${rcd}.time_till_now_full - ${rcd}.time_till_now,
+                          GREATEST(0, EXTRACT(EPOCH FROM (${rcd}.uploaded_at - ${rcd}.complain_time)) / 3600.0
+                                      - COALESCE(${rcd}.time_till_now, 0))
+                        ))
+END`;
+
 const closedHoursSql = (t: string) => `CASE
   WHEN ${t}.close_time IS NULL THEN ${t}.time_till_now
   WHEN ${t}.time_till_now IS NULL
@@ -5188,6 +5201,49 @@ export async function registerRoutes(
         const d = new Date(v); return isNaN(d.getTime()) ? null : d;
       };
 
+      // ⚡ الإدخال بالدفعات: قبل كده كان بيتعمل استعلام لكل صف — ملف من 1500 صف
+      // يعنى ~370 رحلة لقاعدة البيانات. القاعدة على Replit بعيدة (كل رحلة عشرات
+      // الملّى ثانية)، فالرفع كان بياخد عشرات الثوانى وبيقرّب من حد المهلة —
+      // ودى كانت أشهر سبب لرسالة «Failed to fetch» عند الرفع.
+      // دلوقتى كل 500 صف فى بيان واحد → الملف كله بيبقى 3-4 رحلات.
+      const WO_COLS = 14;
+      const BATCH = 500;
+      const pending: any[][] = [];
+      let pendingTotal = 0;
+      const flushWorkOrders = async (): Promise<number> => {
+        if (!pending.length) return 0;
+        const rows = pending.splice(0, pending.length);
+        pendingTotal += rows.length;
+        const params: any[] = [];
+        // الصف الأول بأنواع صريحة: Postgres مابيقدرش يستنتج نوع البارامتر جوّه
+        // VALUES، فمن غير الكاست بيعتبرهم كلهم نص ويرفض (bigint/timestamptz/jsonb).
+        const CAST = ["text", "bigint", "text", "text", "timestamptz", "text", "text",
+                      "text", "text", "timestamptz", "text", "text", "jsonb", "int"];
+        const values = rows.map((r, i) => {
+          params.push(...r);
+          const base = i * WO_COLS;
+          return "(" + Array.from({ length: WO_COLS },
+            (_, k) => `$${base + k + 1}` + (i === 0 ? `::${CAST[k]}` : "")).join(",") + ")";
+        }).join(",");
+        // ⚠️ لازم نستبعد التكرار **جوّه نفس الدفعة**: Postgres بيرفض
+        // «ON CONFLICT DO UPDATE» لو نفس المفتاح اتكرّر مرتين فى نفس البيان.
+        const res = await pool.query(
+          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id)
+           SELECT DISTINCT ON (central_name, work_order_id) *
+             FROM (VALUES ${values}) AS v(central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id)
+           ON CONFLICT (central_name, work_order_id) DO UPDATE SET
+             close_category = EXCLUDED.close_category,
+             creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date),
+             msan_code = COALESCE(EXCLUDED.msan_code, work_orders.msan_code),
+             work_order_type_raw = COALESCE(EXCLUDED.work_order_type_raw, work_orders.work_order_type_raw),
+             raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data),
+             -- نجدّد وقت الرفع حتى لو الصف موجود بالفعل، عشان MAX(uploaded_at) اللى بيغذّى
+             -- «آخر تحديث» يفضل صحيح لو الملف الجديد كل صفوفه موجودة أصلاً.
+             uploaded_at = now()`,
+          params);
+        return res.rowCount ?? 0;
+      };
+
       for (const r of dataRows) {
         // نقبل Success و Fail (كل واحد يظهر فى تقريره الخاص)؛ نتخطّى بس لو التصنيف غير واضح.
         const closeCatLower = String(g(r, iCloseCat, 10)).trim().toLowerCase();
@@ -5257,23 +5313,15 @@ export async function registerRoutes(
           rawObj[k] = (v === "" || v === undefined) ? null : (v instanceof Date ? v.toISOString() : v);
         }
 
-        // المقارنة على (اسم السنترال + رقم امر الشغل): لو موجود يُحدَّث تصنيفه/تواريخه، لو جديد يُضاف.
-        const ins = await pool.query(
-          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-           ON CONFLICT (central_name, work_order_id) DO UPDATE SET
-             close_category = EXCLUDED.close_category,
-             creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date),
-             msan_code = COALESCE(EXCLUDED.msan_code, work_orders.msan_code),
-             work_order_type_raw = COALESCE(EXCLUDED.work_order_type_raw, work_orders.work_order_type_raw),
-             raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data),
-             -- نجدّد وقت الرفع حتى لو الصف موجود بالفعل، عشان MAX(uploaded_at) اللى بيغذّى
-             -- «آخر تحديث» يفضل صحيح لو الملف الجديد كل صفوفه موجودة أصلاً.
-             uploaded_at = now()`,
-          [centralName, workOrderId, phoneNumber, serviceType, closeDate, itemName || null, cableQuantity || null, techName, closeCategory, creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj), (req.user as any)?.id ?? null],
-        );
-        if (ins.rowCount && ins.rowCount > 0) inserted++; else skipped++;
+        // بنجمّع الصفوف وبندخّلها **دفعات** بعد الحلقة (شوف flushWorkOrders تحت)
+        pending.push([centralName, workOrderId, phoneNumber, serviceType, closeDate,
+                      itemName || null, cableQuantity || null, techName, closeCategory,
+                      creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj),
+                      (req.user as any)?.id ?? null]);
+        if (pending.length >= BATCH) inserted += await flushWorkOrders();
       }
+      inserted += await flushWorkOrders();
+      skipped += Math.max(0, pendingTotal - inserted);
 
       // Purge any previously-stored work orders for non-allowed centrals,
       // so the report stays restricted to الغنايم وفروعها even after older uploads.
@@ -9437,10 +9485,13 @@ export async function registerRoutes(
              t.complaint_time        AS "complainTime",
              t.complain_type_name    AS "complainTypeName",
              NULL                    AS "customerName",
+             -- التصنيف بيتبع **الوقت الفعلى** (نفس رقم عمود «الوقت الفعلى») مش الزمن
+             -- الخام — عشان الشارة والعمود مايتعارضوش، وعشان يتفق مع الإحصائيات
+             -- اللى أصلاً بتحسب بالساعات الفعلية.
              CASE
                WHEN t.complaint_time IS NULL THEN NULL
-               WHEN (${NOW_SHEET} - t.complaint_time) < interval '24 hours' THEN 'اعطال 24 ساعه'
-               WHEN (${NOW_SHEET} - t.complaint_time) < interval '48 hours' THEN 'اعطال 48 ساعه'
+               WHEN (${openEffectiveHoursSql('t', 'rcd')}) < 24 THEN 'اعطال 24 ساعه'
+               WHEN (${openEffectiveHoursSql('t', 'rcd')}) < 48 THEN 'اعطال 48 ساعه'
                ELSE 'المتبقيات'
              END                     AS "faultClass",
              t.close_date            AS "closeDate",
@@ -9468,14 +9519,7 @@ export async function registerRoutes(
              -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت الذى قضته على الحالة 135/138
              -- يُحسب من شيت تفاصيل المتبقى (430D) بمطابقة رقم الشكوى: delta = full − except135
              -- لو time_till_now_full فارغ: نقدّر وقت الحالة 135 = (uploaded_at − complain_time) − time_till_now
-             CASE WHEN t.complaint_time IS NULL THEN NULL
-                  ELSE GREATEST(0, EXTRACT(EPOCH FROM (${NOW_SHEET} - t.complaint_time)) / 3600.0
-                                   - COALESCE(
-                                       rcd.time_till_now_full - rcd.time_till_now,
-                                       GREATEST(0, EXTRACT(EPOCH FROM (rcd.uploaded_at - rcd.complain_time)) / 3600.0
-                                                   - COALESCE(rcd.time_till_now, 0))
-                                     ))
-             END                     AS "effectiveFaultHours"
+             ${openEffectiveHoursSql('t', 'rcd')} AS "effectiveFaultHours"
            FROM ticket_dsl_current t
            -- التطبيع لازم: phone_ports كامل (88+) وticket_dsl_current قصير (شوف
            -- الملاحظة فى تقرير المنتظم) — من غيره عمود Frame بيفضل فاضى للكل.
@@ -9659,10 +9703,13 @@ export async function registerRoutes(
              pl.dp_terminal           AS "dpTerminal",
              cd.complain_time         AS "complainTime",
              cd.complain_type_name    AS "complainTypeName",
+             -- نفس الساعات اللى تقارير الإحصائيات بتحسب بيها (closedHoursSql) —
+             -- بتستبعد مدة التعليق. قبل كده الشارة كانت بالزمن الخام فكانت
+             -- بتخالف الإحصائية لنفس الشكوى.
              CASE
                WHEN cd.complain_time IS NULL THEN 'مغلق'
-               WHEN (cd.close_time - cd.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
-               WHEN (cd.close_time - cd.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
+               WHEN (${closedHoursSql('cd')}) < 24 THEN 'أعطال 24 ساعة'
+               WHEN (${closedHoursSql('cd')}) < 48 THEN 'أعطال 48 ساعة'
                ELSE 'المتبقيات'
              END                      AS "regStatus",
              cd.close_time            AS "closeDate",
@@ -9745,8 +9792,8 @@ export async function registerRoutes(
              rc.complain_type         AS "complainTypeName",
              CASE
                WHEN rc.complain_time IS NULL THEN 'مغلق'
-               WHEN (COALESCE(rc.close_time, ${NOW_SHEET}) - rc.complain_time) < interval '24 hours' THEN 'أعطال 24 ساعة'
-               WHEN (COALESCE(rc.close_time, ${NOW_SHEET}) - rc.complain_time) < interval '48 hours' THEN 'أعطال 48 ساعة'
+               WHEN (${closedHoursSql('rc')}) < 24 THEN 'أعطال 24 ساعة'
+               WHEN (${closedHoursSql('rc')}) < 48 THEN 'أعطال 48 ساعة'
                ELSE 'المتبقيات'
              END                      AS "regStatus",
              rc.close_time            AS "closeDate",
