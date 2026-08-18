@@ -279,6 +279,9 @@ export const masterDataApi = {
 
   // Cables
   getCables: () => apiFetch<Cable[]>('/master-data/cables'),
+  // فنى الكابينة من برنامج الصيانة — (سنترال + رقم كابينة) → اسم الفنى
+  getCabinetTechs: () =>
+    apiFetch<{ centralName: string; cabinNumber: string; techName: string }[]>('/master-data/cabinet-techs'),
   createCable: (data: { centralId: string; number: string; cableNumber?: string | null; cabinetNumber?: string | null; type: 'copper' | 'fiber' }) =>
     apiFetch<Cable>('/master-data/cables', {
       method: 'POST',

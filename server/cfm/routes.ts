@@ -350,6 +350,24 @@ export function registerCfmRoutes(app: Express) {
     }
   });
 
+  // فنى الكابينة — (السنترال + رقم الكابينة) → اسم الفنى المسؤول.
+  // مصدر البيانات هو نفس جدول برنامج الصيانة (cabinet_technicians) عشان الاسم
+  // اللى بيظهر فى تقارير الكوابل يبقى هو نفسه اللى فى الصيانة من غير إدخال تانى.
+  app.get("/api/cfm/master-data/cabinet-techs", requireAuth, async (_req, res) => {
+    try {
+      const r = await pool.query(
+        `SELECT ct.central_name AS "centralName", ct.cabin_number AS "cabinNumber",
+                tn.tech_name AS "techName"
+           FROM cabinet_technicians ct
+           JOIN technician_names tn ON tn.worker_code = ct.worker_code
+          WHERE COALESCE(btrim(tn.tech_name), '') <> ''`);
+      res.json(r.rows);
+    } catch (error) {
+      console.error("Get cabinet techs error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Cables
   app.get("/api/cfm/master-data/cables", requireAuth, async (req, res) => {
     try {

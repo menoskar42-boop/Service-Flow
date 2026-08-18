@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from "react";
 import ExcelJS from 'exceljs';
 import { ticketsApi, masterDataApi, inventoryApi, type Ticket, type Contractor, type WorkType, type TaskType, type InventoryTransaction, type ExcavationWorker, type Cable } from "@/cfm/lib/api";
 import { arNorm, arIncludes } from "@shared/ar-norm";
+import { normCab, normCentral } from "@shared/cab-norm";
 
 // Split a performedBy field (which may contain multiple technicians joined by
 // an Arabic/Latin comma) into individual technician names.
@@ -43,19 +44,25 @@ export default function Reports() {
   const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>([]);
   const [excavationWorkers, setExcavationWorkers] = useState<ExcavationWorker[]>([]);
   const [cables, setCables] = useState<Cable[]>([]);
+  const [cabinetTechs, setCabinetTechs] = useState<{ centralName: string; cabinNumber: string; techName: string }[]>([]);
+  // فلاتر «تكتات مفتوحة تحتاج قياس» — دروب ليست للسنترال والكابينة جنب البحث العادى
+  const [needsMeasCentral, setNeedsMeasCentral] = useState("");
+  const [needsMeasCabinet, setNeedsMeasCabinet] = useState("");
 
   // Fetch all data from API
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [ticketsData, contractorsData, workTypesData, taskTypesData, transactionsData, excavationWorkersData, cablesData] = await Promise.all([
+      const [ticketsData, contractorsData, workTypesData, taskTypesData, transactionsData, excavationWorkersData, cablesData, cabinetTechsData] = await Promise.all([
         ticketsApi.getAll(),
         masterDataApi.getContractors(),
         masterDataApi.getWorkTypes(),
         masterDataApi.getTaskTypes(),
         inventoryApi.getTransactions(),
         masterDataApi.getExcavationWorkers(),
-        masterDataApi.getCables()
+        masterDataApi.getCables(),
+        // فنى الكابينة اختيارى — لو الجدول فاضى التقرير بيشتغل عادى بـ«-»
+        masterDataApi.getCabinetTechs().catch(() => [])
       ]);
       setTickets(ticketsData);
       setContractors(contractorsData);
@@ -64,6 +71,7 @@ export default function Reports() {
       setInventoryTransactions(transactionsData);
       setExcavationWorkers(excavationWorkersData);
       setCables(cablesData);
+      setCabinetTechs(cabinetTechsData);
     } catch (error) {
       console.error("Failed to fetch reports data:", error);
     } finally {
@@ -305,6 +313,15 @@ export default function Reports() {
 
 
   // 6. Open Tickets Needing Measurement (no measurements yet)
+  // فنى الكابينة: (سنترال + رقم كابينة) → اسم الفنى. المطابقة بعد التوحيد لأن
+  // برنامج الكوابل بيكتب الكابينة «2-2» وبرنامج الصيانة ممكن يكتبها «2/2».
+  const cabinetTechName = (centralName: string, cabinetNumber: string): string => {
+    const c = normCentral(centralName), cab = normCab(cabinetNumber);
+    if (!c || !cab) return '-';
+    const hit = cabinetTechs.find(t => normCentral(t.centralName) === c && normCab(t.cabinNumber) === cab);
+    return hit?.techName || '-';
+  };
+
   const getOpenTicketsNeedingMeasurementsData = () => {
     return tickets
       .filter(ticket =>
@@ -313,15 +330,22 @@ export default function Reports() {
       )
       .map(ticket => {
         const cable = cables.find(c => c.id === ticket.cableId);
+        const centralName = ticket.central?.name || '-';
+        const cabinetNumber = cable?.number || '-';
         return {
           id: ticket.id,
           ticketNumber: ticket.ticketNumber,
-          centralName: ticket.central?.name || '-',
-          cabinetNumber: cable?.number || '-',
+          centralName,
+          cabinetNumber,
           boxNumber: ticket.box || '-',
           faultType: ticket.faultType?.name || '-',
+          cabinetTech: cabinetTechName(centralName, cabinetNumber),
+          openedBy: ticket.createdByUser?.name || ticket.createdByUser?.username || '-',
         };
       })
+      .filter(item =>
+        (!needsMeasCentral || item.centralName === needsMeasCentral) &&
+        (!needsMeasCabinet || item.cabinetNumber === needsMeasCabinet))
       .filter(item => {
         const searchLower = arNorm(search);
         return (
@@ -329,7 +353,9 @@ export default function Reports() {
           arIncludes(item.centralName, searchLower) ||
           arIncludes(item.cabinetNumber, searchLower) ||
           arIncludes(item.boxNumber, searchLower) ||
-          arIncludes(item.faultType, searchLower)
+          arIncludes(item.faultType, searchLower) ||
+          arIncludes(item.cabinetTech, searchLower) ||
+          arIncludes(item.openedBy, searchLower)
         );
       })
       .sort((a, b) => {
@@ -1204,6 +1230,24 @@ export default function Reports() {
   const renderOpenTicketsNeedingMeasurementsReport = () => {
     const data = getOpenTicketsNeedingMeasurementsData();
 
+    // خيارات الدروب ليست من التكتات المعروضة فى التقرير نفسه (مفتوحة وبدون قياس)
+    // — يعنى مافيش سنترال/كابينة فى القايمة ملهاش ولا تكت هنا.
+    const base = tickets
+      .filter(tk => tk.status === 'open' && (!tk.measurements || tk.measurements.length === 0))
+      .map(tk => ({
+        central: tk.central?.name || '-',
+        cabinet: cables.find(c => c.id === tk.cableId)?.number || '-',
+      }));
+    const centralOptions = Array.from(new Set(base.map(r => r.central)))
+      .sort((a, b) => a.localeCompare(b, 'ar'));
+    const parseCab = (x: string) => x.split('-').map(n => parseInt(n) || 0);
+    const cabinetOptions = Array.from(new Set(
+      base.filter(r => !needsMeasCentral || r.central === needsMeasCentral).map(r => r.cabinet)))
+      .sort((a, b) => {
+        const [aC, aS] = parseCab(a), [bC, bS] = parseCab(b);
+        return aC !== bC ? aC - bC : (aS || 0) - (bS || 0);
+      });
+
     const handleExport = () => {
       const exportData = data.map(row => ({
         "رقم التكت": row.ticketNumber,
@@ -1211,6 +1255,8 @@ export default function Reports() {
         "رقم الكابينة": row.cabinetNumber,
         "رقم البوكس": row.boxNumber,
         "نوع العطل": row.faultType,
+        "فنى الكابينة": row.cabinetTech,
+        "من فتح التكت": row.openedBy,
       }));
       exportToExcel(exportData, "Open_Tickets_Needing_Measurements");
     };
@@ -1224,12 +1270,41 @@ export default function Reports() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium whitespace-nowrap">السنترال:</label>
+              <select
+                value={needsMeasCentral}
+                onChange={e => { setNeedsMeasCentral(e.target.value); setNeedsMeasCabinet(""); }}
+                className="border rounded px-2 py-1 text-sm bg-background"
+              >
+                <option value="">الكل</option>
+                {centralOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium whitespace-nowrap">الكابينة:</label>
+              <select
+                value={needsMeasCabinet}
+                onChange={e => setNeedsMeasCabinet(e.target.value)}
+                className="border rounded px-2 py-1 text-sm bg-background"
+              >
+                <option value="">الكل</option>
+                {cabinetOptions.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
             <Input
-              placeholder="بحث برقم التكت أو اسم السنترال..."
+              placeholder="بحث برقم التكت أو السنترال أو الفنى..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              className="w-64"
             />
+            {(needsMeasCentral || needsMeasCabinet || search) && (
+              <Button variant="ghost" size="sm" onClick={() => { setNeedsMeasCentral(""); setNeedsMeasCabinet(""); setSearch(""); }}>
+                مسح الفلتر
+              </Button>
+            )}
+            <span className="text-sm text-muted-foreground">عدد التكتات: <b>{data.length}</b></span>
           </div>
           <div className="rounded-md border">
             <Table>
@@ -1240,11 +1315,13 @@ export default function Reports() {
                   <TableHead>رقم الكابينة</TableHead>
                   <TableHead>رقم البوكس</TableHead>
                   <TableHead>نوع العطل</TableHead>
+                  <TableHead>فنى الكابينة</TableHead>
+                  <TableHead>من فتح التكت</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center h-24 text-muted-foreground">لا توجد تكتات مفتوحة بدون قياسات</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center h-24 text-muted-foreground">لا توجد تكتات مفتوحة بدون قياسات</TableCell></TableRow>
                 ) : (
                   data.map((row) => (
                     <TableRow key={row.id}>
@@ -1253,6 +1330,8 @@ export default function Reports() {
                       <TableCell>{row.cabinetNumber}</TableCell>
                       <TableCell>{row.boxNumber}</TableCell>
                       <TableCell>{row.faultType}</TableCell>
+                      <TableCell>{row.cabinetTech}</TableCell>
+                      <TableCell>{row.openedBy}</TableCell>
                     </TableRow>
                   ))
                 )}
