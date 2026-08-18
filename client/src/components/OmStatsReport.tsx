@@ -212,7 +212,7 @@ export function OmStatsReport({ yearFilter, title }: { yearFilter?: "current" | 
         *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
         @media print{body{background:#fff}.toolbar{display:none}.page{box-shadow:none;margin:0;padding:0}@page{size:A4 landscape;margin:8mm}}
       </style></head><body>
-      <div class="toolbar"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>
+      <div class="toolbar"><button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>
       <div class="page">
         <h2>${esc(title)}</h2>
         <h3>لكل فنى</h3>

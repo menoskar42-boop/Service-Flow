@@ -41,7 +41,7 @@ const B = '<span class="blank"></span>';
 const wrap = (title: string, inner: string, landscape = true) =>
   `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${esc(title)}</title>
    <style>${BASE_CSS}${landscape ? "" : "@media print{@page{size:A4 portrait;margin:12mm}}"}</style></head><body>
-   <div class="toolbar"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button><span>اختر "حفظ بصيغة PDF" كوجهة الطباعة.</span></div>
+   <div class="toolbar"><button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button><span>اختر "حفظ بصيغة PDF" كوجهة الطباعة.</span></div>
    <section class="page">${WE_HEADER}${inner}</section></body></html>`;
 
 const sigTable = (headerLine: string, withNum = false) =>

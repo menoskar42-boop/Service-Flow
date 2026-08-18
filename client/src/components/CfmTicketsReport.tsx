@@ -462,7 +462,7 @@ export function CfmTicketsReport() {
         @media print{.toolbar{display:none}.page{box-shadow:none;margin:0;padding:5px}}
       </style></head><body>
       <div class="toolbar">
-        <button onclick="window.print()" style="padding:6px 14px;background:#1e50a0;color:#fff;border:none;border-radius:4px;cursor:pointer">طباعة / PDF</button>
+        <button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()" style="padding:6px 14px;background:#1e50a0;color:#fff;border:none;border-radius:4px;cursor:pointer">طباعة / PDF</button>
         <button onclick="window.close()" style="padding:6px 14px;background:#64748b;color:#fff;border:none;border-radius:4px;cursor:pointer">إغلاق</button>
       </div>
       ${pages}</body></html>`;

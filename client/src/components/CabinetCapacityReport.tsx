@@ -83,7 +83,7 @@ export function CabinetCapacityReport() {
         .toolbar button { background: #dc2626; color: #fff; border: 0; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
         @media print { body { background: #fff; } .toolbar { display: none; } .page { box-shadow: none; margin: 0; max-width: none; } @page { size: A4; margin: 10mm; } }
       </style></head><body>
-      <div class="toolbar"><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>
+      <div class="toolbar"><button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button></div>
       <section class="page"><h2>${esc(title)}</h2>
         <table><thead><tr>${head}</tr></thead><tbody>${body}${totalRow}</tbody></table>
       </section></body></html>`;

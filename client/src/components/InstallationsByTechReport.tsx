@@ -80,7 +80,7 @@ export function InstallationsByTechReport() {
         : `<tr><td colspan="8" style="text-align:center;color:#666">لا توجد تركيبات متجاوزة 24 ساعة</td></tr>`;
       w.document.open();
       w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>خطوط التركيبات المتجاوزة 24 ساعة (${list.length})</title><style>${style}</style></head><body>
-        <button onclick="window.print()">🖨️ طباعة</button>
+        <button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()">🖨️ طباعة</button>
         <h2>⚠️ خطوط التركيبات المتجاوزة 24 ساعة (${list.length})</h2>
         <table><thead><tr><th>اسم الفنى</th><th>السنترال</th><th>رقم الأمر</th><th>رقم التليفون</th><th>النوع</th><th>تاريخ الفتح</th><th>تاريخ الإغلاق</th><th>المدة (ساعة)</th></tr></thead><tbody>${body}</tbody></table>
         </body></html>`);

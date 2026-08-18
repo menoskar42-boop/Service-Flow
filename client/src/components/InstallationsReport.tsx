@@ -189,7 +189,7 @@ export function InstallationsReport({
         }
       </style></head><body>
       <div class="toolbar">
-        <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+        <button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
         <span>في نافذة الطباعة اختر &quot;حفظ بصيغة PDF&quot; كوجهة الطباعة.</span>
       </div>
       ${pages}
