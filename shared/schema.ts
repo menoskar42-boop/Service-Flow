@@ -795,6 +795,8 @@ export const omOrderMatches = pgTable("om_order_matches", {
   confirmedById: integer("confirmed_by_id").references(() => users.id),
   confirmedByName: text("confirmed_by_name"),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }).defaultNow().notNull(),
+  // لقطة «قبل التأكيد» — عشان التراجع يرجّع الحقول اللى اتغيّرت زى ما كانت
+  undoData: jsonb("undo_data"),
 });
 export type OmOrderMatch = typeof omOrderMatches.$inferSelect;
 

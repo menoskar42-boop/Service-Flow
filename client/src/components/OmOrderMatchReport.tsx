@@ -31,7 +31,8 @@ export function OmOrderMatchReport() {
   const qc = useQueryClient();
   const [minScore, setMinScore] = useState("0.7");
   const [q, setQ] = useState("");
-  const [onlyUnconfirmed, setOnlyUnconfirmed] = useState(false);
+  // فلتر ثلاثى: الكل / اللى اتضغط عليه تطابق / اللى لسه
+  const [confFilter, setConfFilter] = useState<"all" | "done" | "todo">("all");
   const [busy, setBusy] = useState<number | null>(null);
 
   const { data, isFetching } = useQuery({
@@ -46,7 +47,8 @@ export function OmOrderMatchReport() {
 
   const all = data?.data ?? [];
   const rows = all.filter((p) => {
-    if (onlyUnconfirmed && p.confirmed) return false;
+    if (confFilter === "done" && !p.confirmed) return false;
+    if (confFilter === "todo" && p.confirmed) return false;
     if (!q.trim()) return true;
     const needle = arNorm(q);
     return [p.order.name, p.order.address, p.order.mobile, p.om?.name, p.om?.address, p.om?.serial]
@@ -133,11 +135,23 @@ export function OmOrderMatchReport() {
             </div>
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="بحث بالاسم/العنوان/المسلسل…"
                    className="w-full sm:w-56 text-sm h-9" dir="rtl" />
-            <Button variant={onlyUnconfirmed ? "default" : "outline"} size="sm"
-                    onClick={() => setOnlyUnconfirmed((v) => !v)}
-                    className={onlyUnconfirmed ? "bg-amber-600 hover:bg-amber-700" : "text-amber-700 border-amber-300"}>
-              {onlyUnconfirmed ? "غير المؤكَّد فقط ✓" : "غير المؤكَّد فقط"}
-            </Button>
+            {/* الصفوف المؤكَّدة بتفضل ظاهرة (بزر تراجع) — الفلتر ده بيوضّح
+                اللى خلص واللى لسه من غير ما يخفى حاجة نهائياً. */}
+            <div className="flex items-center rounded-md border overflow-hidden">
+              {([["all", `الكل (${all.length})`],
+                 ["done", `تم التطابق (${all.filter((x) => x.confirmed).length})`],
+                 ["todo", `لسه (${all.filter((x) => !x.confirmed).length})`]] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => setConfFilter(k as any)}
+                  className={`px-3 py-1.5 text-xs whitespace-nowrap ${
+                    confFilter === k ? "bg-indigo-600 text-white font-semibold" : "bg-white hover:bg-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <Button variant="outline" size="sm" onClick={handleExcel} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>

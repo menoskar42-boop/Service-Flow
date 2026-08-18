@@ -906,6 +906,9 @@ export async function ensureSchema() {
       PRIMARY KEY (order_id, om_serial)
     )
   `);
+  // لقطة «قبل التأكيد» للحقول اللى التأكيد بيغيّرها — عشان زر التراجع يرجّع كل
+  // حاجة زى ما كانت بالظبط (سبب الرد + الموبايل على الجهتين)، مش بس يفكّ الربط.
+  await pool.query(`ALTER TABLE om_order_matches ADD COLUMN IF NOT EXISTS undo_data jsonb`);
 
   // line_deactivations — «جدول الرفع النهائى». أوامر شغل نوعها إلغاء/رفع الخط نهائياً
   // (Fixed Voice Deactivation / TDM Termination …) — دى **مش تركيب ولا نقل** ومابيتصرفلهاش
@@ -1291,6 +1294,10 @@ export async function ensureSchema() {
 
   // رقم محمول يدوى لمتعذرات OM — للأرقام اللى بتظهر بنجوم (مشفّرة) نقدر ندخّلها يدوياً.
   // المفتاح = المسلسل (serial_number) المميّز لكل متعذر.
+  // تقرير المتعذرات بيدوّر على موبايل المعاينة بـ reference_no لكل صف — من غير
+  // الفهرس ده بيعمل مسح كامل لجدول أوامر الشغل لكل متعذر.
+  await pool.query(`CREATE INDEX IF NOT EXISTS maintenance_orders_ref_idx ON maintenance_orders (reference_no)`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS om_manual_mobiles (
       serial_number text PRIMARY KEY,

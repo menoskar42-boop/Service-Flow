@@ -3758,14 +3758,25 @@ export async function registerRoutes(
            FROM orders o
           WHERE COALESCE(btrim(o.customer_name), '') <> ''`);
       const { rows: omRows } = await pool.query(
+        // الموبايل بنفس أولوية تقرير المتعذرات بالظبط: اليدوى ← موبايل المعاينة ←
+        // اللى فى الملف. الانضمام مجمّع (مش lateral لكل صف) عشان مايتقلش.
         `SELECT fo.serial_number AS serial, fo.customer_name AS name,
-                fo.install_address AS address, fo.customer_mobile AS mobile,
+                fo.install_address AS address,
+                COALESCE(omm.mobile, wfm.mobile, fo.customer_mobile) AS mobile,
                 fo.service_number AS phone, fo.msan_code AS msan,
                 r.rejection_reason AS reason, r.additional_notes AS notes,
                 r.status AS "respStatus", r.tech_name AS tech,
                 r.central_name AS central, r.cabin_number AS cabin, r.box_number AS box
            FROM ftth_orders_current fo
            LEFT JOIN om_responses r ON r.serial_number = fo.serial_number
+           LEFT JOIN om_manual_mobiles omm ON omm.serial_number = fo.serial_number
+           LEFT JOIN (
+             SELECT reference_no, MIN(mobile) AS mobile
+               FROM maintenance_orders
+              WHERE work_order_type ILIKE 'fvmanualsurvey'
+                AND COALESCE(btrim(mobile), '') <> ''
+              GROUP BY reference_no
+           ) wfm ON wfm.reference_no = fo.service_order_id
           WHERE COALESCE(btrim(fo.customer_name), '') <> ''`);
       const { rows: confirmed } = await pool.query(
         `SELECT order_id AS "orderId", om_serial AS serial, score,
@@ -3827,21 +3838,33 @@ export async function registerRoutes(
       if (!orderId || !serial) return res.status(400).json({ message: "orderId و serialNumber مطلوبين" });
 
       const { rows: oRows } = await pool.query(
-        `SELECT id, rejection_reason, additional_notes, central_name, cabin_number, box_number
+        `SELECT id, rejection_reason, additional_notes, central_name, cabin_number, box_number,
+                customer_phone
            FROM orders WHERE id = $1`, [orderId]);
       if (!oRows.length) return res.status(404).json({ message: "الطلب مش موجود" });
       const o = oRows[0];
       const { rows: mRows } = await pool.query(
-        `SELECT serial_number, rejection_reason, additional_notes, central_name, cabin_number, box_number
+        `SELECT serial_number, rejection_reason, additional_notes, central_name, cabin_number,
+                box_number, status, is_feasible
            FROM om_responses WHERE serial_number = $1`, [serial]);
       const m = mRows[0] || null;
+      // لقطة «قبل التأكيد» — بتتخزّن مع الربط عشان زر التراجع يرجّع كل حاجة زى ما كانت
+      const undoData: any = {};
 
       const omReason = String(m?.rejection_reason ?? "").trim();
       const orderReason = String(o.rejection_reason ?? "").trim();
       let direction = "none";
 
-      if (omReason) {
-        // سبب المتعذرات هو المرجع — بينزل على الطلب ويحدّث القديم
+      // ⚠️ النقل بيحصل **بس لو جهة ناقصة**. لو الاتنين فيهم رد خلاص مابنلمسش
+      // أى حاجة — الرد اللى اتسجّل فى كل نظام هو رد صاحبه ومش من حقنا نطمسه.
+      // اللى بيحصل فى الحالة دى هو الربط بس (يتحسبوا متعذر واحد على البكس).
+      if (omReason && !orderReason) {
+        undoData.order = {
+          rejection_reason: o.rejection_reason, is_feasible: o.is_feasible, status: o.status,
+          additional_notes: o.additional_notes, central_name: o.central_name,
+          cabin_number: o.cabin_number, box_number: o.box_number,
+        };
+        // سبب المتعذرات هو المرجع — بينزل على الطلب اللى مالوش رد
         await pool.query(
           `UPDATE orders SET rejection_reason = $2, is_feasible = false,
                              status = CASE WHEN status IN ('feasible','external_feasible') THEN status ELSE 'not_feasible' END,
@@ -3853,7 +3876,12 @@ export async function registerRoutes(
           [orderId, omReason, String(m?.additional_notes ?? ""), m?.central_name ?? null,
            m?.cabin_number ?? null, m?.box_number ?? null]);
         direction = "om→order";
-      } else if (orderReason) {
+      } else if (orderReason && !omReason) {
+        undoData.omResponse = m
+          ? { existed: true, rejection_reason: m.rejection_reason, is_feasible: m.is_feasible,
+              status: m.status, additional_notes: m.additional_notes, central_name: m.central_name,
+              cabin_number: m.cabin_number, box_number: m.box_number }
+          : { existed: false };
         // مفيش سبب فى المتعذرات → ناخد سبب الطلب ونوديه هناك
         await pool.query(
           `INSERT INTO om_responses (serial_number, status, is_feasible, rejection_reason,
@@ -3873,26 +3901,113 @@ export async function registerRoutes(
         direction = "order→om";
       }
 
+      // ── مزامنة رقم المحمول ──────────────────────────────────────────────
+      // «رقم حقيقى» = 10 أرقام فأكتر بعد شيل أى رموز، ومفيهوش نجوم. الأرقام
+      // المخفية فى ملف المتعذرات بتتكتب زى «*****011» — بعد شيل النجوم بتبقى
+      // 3 أرقام، فبتترفض تلقائياً بشرط الطول، والنجمة بترفضها صراحةً كمان.
+      const realMobile = (v: unknown): string | null => {
+        const raw = String(v ?? "").trim();
+        if (!raw || raw.includes("*")) return null;
+        const d = raw.replace(/\D/g, "");
+        return d.length >= 10 ? raw : null;
+      };
+      const { rows: omMob } = await pool.query(
+        `SELECT COALESCE(omm.mobile, wfm.mobile, fo.customer_mobile) AS mobile
+           FROM ftth_orders_current fo
+           LEFT JOIN om_manual_mobiles omm ON omm.serial_number = fo.serial_number
+           LEFT JOIN LATERAL (
+             SELECT mobile FROM maintenance_orders
+              WHERE reference_no = fo.service_order_id
+                AND work_order_type ILIKE 'fvmanualsurvey'
+                AND COALESCE(btrim(mobile), '') <> '' LIMIT 1
+           ) wfm ON true
+          WHERE fo.serial_number = $1 LIMIT 1`, [serial]);
+      const omMobile = realMobile(omMob[0]?.mobile);
+      const orderMobile = realMobile(o.customer_phone);
+      let mobileDirection = "none";
+      if (omMobile && !orderMobile) {
+        undoData.orderPhone = o.customer_phone;
+        await pool.query(`UPDATE orders SET customer_phone = $2 WHERE id = $1`, [orderId, omMobile]);
+        mobileDirection = "om→order";
+      } else if (orderMobile && !omMobile) {
+        const { rows: prevMm } = await pool.query(
+          `SELECT mobile FROM om_manual_mobiles WHERE serial_number = $1`, [serial]);
+        undoData.omManualMobile = prevMm.length ? { existed: true, mobile: prevMm[0].mobile } : { existed: false };
+        await pool.query(
+          `INSERT INTO om_manual_mobiles (serial_number, mobile, updated_by, updated_at)
+           VALUES ($1, $2, $3, now())
+           ON CONFLICT (serial_number) DO UPDATE SET
+             mobile = EXCLUDED.mobile, updated_by = EXCLUDED.updated_by, updated_at = now()`,
+          [serial, orderMobile, String(req.user?.username || "")]);
+        mobileDirection = "order→om";
+      }
+
       const score = parseFloat(String(req.body?.score ?? "")) || null;
       await pool.query(
-        `INSERT INTO om_order_matches (order_id, om_serial, score, confirmed_by_id, confirmed_by_name)
-         VALUES ($1,$2,$3,$4,$5)
+        `INSERT INTO om_order_matches (order_id, om_serial, score, confirmed_by_id, confirmed_by_name, undo_data)
+         VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (order_id) DO UPDATE SET
            om_serial = EXCLUDED.om_serial, score = EXCLUDED.score,
            confirmed_by_id = EXCLUDED.confirmed_by_id,
-           confirmed_by_name = EXCLUDED.confirmed_by_name, confirmed_at = now()`,
-        [orderId, serial, score, req.user?.id ?? null, String(req.user?.username || "")]);
+           confirmed_by_name = EXCLUDED.confirmed_by_name, confirmed_at = now(),
+           undo_data = EXCLUDED.undo_data`,
+        [orderId, serial, score, req.user?.id ?? null, String(req.user?.username || ""),
+         Object.keys(undoData).length ? JSON.stringify(undoData) : null]);
 
-      res.json({ ok: true, direction });
+      res.json({ ok: true, direction, mobileDirection });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
-  // DELETE /api/reports/om-order-match/:orderId — إلغاء تأكيد التطابق
+  // DELETE /api/reports/om-order-match/:orderId — تراجع كامل عن التطابق.
+  // مش بيفكّ الربط وبس: بيرجّع الحقول اللى التأكيد غيّرها (سبب الرد + الموبايل
+  // على الجهتين) لقيمتها الأصلية من اللقطة المخزّنة وقت التأكيد.
   app.delete("/api/reports/om-order-match/:orderId", requireAuth, requireSuperAdmin, async (req, res) => {
     try {
+      const orderId = parseInt(req.params.orderId);
+      const { rows: mm } = await pool.query(
+        `SELECT om_serial, undo_data FROM om_order_matches WHERE order_id = $1`, [orderId]);
+      const u = mm[0]?.undo_data || {};
+      const serial = mm[0]?.om_serial;
+
+      if (u.order) {
+        await pool.query(
+          `UPDATE orders SET rejection_reason = $2, is_feasible = $3, status = $4,
+                             additional_notes = $5, central_name = $6, cabin_number = $7, box_number = $8
+            WHERE id = $1`,
+          [orderId, u.order.rejection_reason, u.order.is_feasible, u.order.status,
+           u.order.additional_notes, u.order.central_name, u.order.cabin_number, u.order.box_number]);
+      }
+      if (u.omResponse && serial) {
+        if (u.omResponse.existed) {
+          await pool.query(
+            `UPDATE om_responses SET rejection_reason = $2, is_feasible = $3, status = $4,
+                                     additional_notes = $5, central_name = $6, cabin_number = $7,
+                                     box_number = $8, updated_at = now()
+              WHERE serial_number = $1`,
+            [serial, u.omResponse.rejection_reason, u.omResponse.is_feasible, u.omResponse.status,
+             u.omResponse.additional_notes, u.omResponse.central_name, u.omResponse.cabin_number,
+             u.omResponse.box_number]);
+        } else {
+          // الصف ده احنا اللى أنشأناه وقت التأكيد → بيتشال بالكامل
+          await pool.query(`DELETE FROM om_responses WHERE serial_number = $1`, [serial]);
+        }
+      }
+      if (u.orderPhone !== undefined) {
+        await pool.query(`UPDATE orders SET customer_phone = $2 WHERE id = $1`, [orderId, u.orderPhone]);
+      }
+      if (u.omManualMobile && serial) {
+        if (u.omManualMobile.existed) {
+          await pool.query(
+            `UPDATE om_manual_mobiles SET mobile = $2, updated_at = now() WHERE serial_number = $1`,
+            [serial, u.omManualMobile.mobile]);
+        } else {
+          await pool.query(`DELETE FROM om_manual_mobiles WHERE serial_number = $1`, [serial]);
+        }
+      }
+
       const { rowCount } = await pool.query(
-        `DELETE FROM om_order_matches WHERE order_id = $1`, [parseInt(req.params.orderId)]);
-      res.json({ ok: true, removed: rowCount ?? 0 });
+        `DELETE FROM om_order_matches WHERE order_id = $1`, [orderId]);
+      res.json({ ok: true, removed: rowCount ?? 0, restored: Object.keys(u) });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
