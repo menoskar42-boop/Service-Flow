@@ -48,6 +48,7 @@ export function printTablePDF(opts: {
       .page { background: #fff; padding: 14px; margin: 12px auto; max-width: 1100px; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
       .toolbar { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e2e8f0;
         padding: 10px 14px; display: flex; gap: 10px; align-items: center; z-index: 10; }
+      .toolbar button.back { background: #475569; }
       .toolbar button { background: #dc2626; color: #fff; border: 0; border-radius: 6px;
         padding: 8px 16px; font-size: 13px; cursor: pointer; font-family: inherit; }
       .toolbar span { color: #475569; font-size: 12px; }
@@ -60,6 +61,10 @@ export function printTablePDF(opts: {
       }
     </style></head><body>
     <div class="toolbar">
+      <!-- زر رجوع: على الموبايل الصفحة بتتفتح فى تاب جديد ومفيش زر رجوع مفيد،
+           فالمستخدم بيعلق فيها. الزر بيقفل التاب، ولو المتصفح منع القفل بيرجع
+           للصفحة اللى قبلها. -->
+      <button class="back" onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)">↩ رجوع</button>
       <button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
       <span>في نافذة الطباعة اختر &quot;حفظ بصيغة PDF&quot; (Save as PDF) كوجهة الطباعة.</span>
     </div>

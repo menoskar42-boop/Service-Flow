@@ -406,7 +406,7 @@ export default function Dashboard() {
     printTablePDF({
       title: "تقرير الطلبات",
       columns: ["#", "التاريخ", "العميل", "الهاتف", "العنوان", "المندوب", "الحالة",
-                "حالة التعاقد", "السنترال", "الكابينه", "البوكس", "الفني"],
+                "السبب", "حالة التعاقد", "السنترال", "الكابينه", "البوكس", "الفني"],
       rows: orders.map((o) => [
         o.id,
         format(new Date(o.createdAt), "yyyy-MM-dd HH:mm"),
@@ -415,6 +415,9 @@ export default function Dashboard() {
         o.customerAddress ?? "",
         o.salesName ?? "",
         statusLabel(o.status),
+        // سبب الرفض: رد الفنى، ولو الشئون الخارجية ردّت بسبب تانى بيتكتب جنبه
+        [o.rejectionReason || "", o.externalRejectionReason && o.externalRejectionReason !== o.rejectionReason
+          ? `(خارجية: ${o.externalRejectionReason})` : ""].filter(Boolean).join(" ") || "",
         o.contractStatus || "لم يتم التعاقد",
         o.centralName || "",
         o.cabinNumber || "",
