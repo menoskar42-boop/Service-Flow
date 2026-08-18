@@ -3777,7 +3777,12 @@ export async function registerRoutes(
                 AND COALESCE(btrim(mobile), '') <> ''
               GROUP BY reference_no
            ) wfm ON wfm.reference_no = fo.service_order_id
-          WHERE COALESCE(btrim(fo.customer_name), '') <> ''`);
+          -- ⚠️ نفس فلتر تقرير «المتعذرات الحالية» بالحرف: ملف OM بيجى فيه طلبات
+          -- سنترالات تانية وأنواع خدمة تانية. من غير الفلتر ده كان التقرير بيطابق
+          -- على متعذرات **مش ظاهرة أصلاً** فى المتعذرات الحالية ولا فى تم فكها.
+          WHERE COALESCE(btrim(fo.customer_name), '') <> ''
+            AND fo.fcc_exchange IN ('GHNAT','AMZAT','DRGAT','NGOAT')
+            AND fo.service_name = 'FV Survey'`);
       const { rows: confirmed } = await pool.query(
         `SELECT order_id AS "orderId", om_serial AS serial, score,
                 confirmed_by_name AS "confirmedBy",
