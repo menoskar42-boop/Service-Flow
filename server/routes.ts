@@ -765,48 +765,52 @@ const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
 // الشكوى فالمسؤول فعلياً هو فنى الوردية القائم بالعمل مكانه (shift_schedules.covers).
 // جدول الورديات: صف لكل (أسبوع يبدأ الجمعة، فنى)، وdays/covers 7 قيم من الجمعة للخميس.
 //   dateExpr = تعبير timestamp للشكوى (بيتحوّل لتوقيت القاهرة جوّه).
-// phoneExpr (اختيارى): رقم التليفون — لما يتبعت بنحدّد صاحب الكابينة بكود الكابينة
-// (MSAN) بتاع الخط نفسه بدل رقم الكابينة المكتوب فى شيت 430D. الشيت بيكتب أحياناً
-// رقم كابينة غير كابينة الخط الحقيقية، فالتقرير كان بيعرض كابينة الخط فى العمود
-// وياخد الفنى من كابينة تانية خالص — فيظهر فنى غلط جنب كابينة مش بتاعته.
-// الترتيب: (1) إسناد السوبر أدمن اليدوى لكود الكابينة، (2) صاحب كود الكابينة من
-// cabinet_technicians، (3) الطريقة القديمة برقم الكابينة من الشيت.
+// phoneExpr (اختيارى): رقم التليفون. لما يتبعت بنحدّد «فنى المنطقة» من **بيان الخط**
+// (phone_lines) بالظبط زى تقرير «بحث برقم التليفون» — نفس المفتاح ونفس الترتيب ونفس
+// أولوية الإسناد اليدوى لكود الكابينة. من غير كده التقريرين كانوا بيدّوا فنيين
+// مختلفين لنفس الكابينة، لأن:
+//   • الشيت (430D) هو اللى كان بيحدّد الكابينة بدل بيان الخط، و
+//   • الاختيار من cabinet_technicians كان LIMIT 1 من غير ORDER BY — والكابينة الواحدة
+//     ليها أكتر من صف، فكان بيرجع صف عشوائى (اسم فنى غير صاحب الكابينة).
+// الترتيب: (1) إسناد السوبر أدمن اليدوى لكود الكابينة، (2) صاحب كابينة الخط من بيان
+// الخط، (3) الطريقة القديمة برقم الكابينة من الشيت — بس لو الخط مش موجود فى بيان الخطوط.
 const areaTechSql = (centralExpr: string, cabinExpr: string, dateExpr: string, phoneExpr?: string) => {
   const cairo = `(${dateExpr} AT TIME ZONE 'Africa/Cairo')`;
   const dt = `${cairo}::date`;                                              // يوم الشكوى
   const di = `((EXTRACT(DOW FROM ${cairo})::int - 5 + 7) % 7)`;             // 0=الجمعة … 6=الخميس
+  // نفس ترتيب «بحث برقم التليفون»: الصف اللى ليه كود كابينة الأول، وبعدين بالاسم —
+  // عشان الاختيار يبقى ثابت ومطابق للتقرير التانى مهما كان عدد الصفوف المكررة.
+  const CT_ORDER = `ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, tn.tech_name NULLS LAST`;
   const bySheetCabin = `
       (SELECT tn.tech_name FROM cabinet_technicians ct
-         JOIN technician_names tn ON tn.worker_code = ct.worker_code
+         LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
         WHERE ct.central_name = ${centralExpr} AND ct.cabin_number = ${cabinExpr}
-        LIMIT 1)`;
-  if (!phoneExpr) {
-    return `
-  (SELECT COALESCE(NULLIF(btrim(COALESCE(s.covers->>${di}, '')), ''), tn.tech_name)
-     FROM cabinet_technicians ct
-     JOIN technician_names tn ON tn.worker_code = ct.worker_code
-     LEFT JOIN shift_schedules s
-       ON s.week_start = ${dt} - ${di}
-      AND btrim(s.tech_name) = btrim(tn.tech_name)
-      AND COALESCE(s.days->>${di}, '') IN (${SHIFT_COVER_STATES_SQL})
-    WHERE ct.central_name = ${centralExpr} AND ct.cabin_number = ${cabinExpr}
-    LIMIT 1)`;
-  }
-  // كود الكابينة بيتحسب مرة واحدة جوه FROM عشان مايتكررش فى كل بديل
+        ${CT_ORDER} LIMIT 1)`;
+  // من غير رقم تليفون: الطريقة القديمة (كابينة الشيت) بس بترتيب ثابت
+  const owner = phoneExpr
+    ? `COALESCE(
+         (SELECT mto.tech_name FROM msan_tech_overrides mto
+           WHERE mto.cabin_code = ctc.cabin_code
+             AND COALESCE(btrim(ctc.cabin_code), '') <> '' LIMIT 1),
+         ctc.ct_tech,
+         ${bySheetCabin}
+       )`
+    : bySheetCabin;
+  const ownerFrom = phoneExpr
+    ? `FROM (VALUES (1)) AS one(x)
+       LEFT JOIN LATERAL (
+         SELECT ct.cabin_code, tn.tech_name AS ct_tech
+           FROM phone_lines pl
+           JOIN cabinet_technicians ct
+             ON ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
+           LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+          WHERE pl.tel_no = ${phoneExpr}
+          ${CT_ORDER} LIMIT 1
+       ) ctc ON true`
+    : "";
   return `
   (SELECT COALESCE(NULLIF(btrim(COALESCE(s.covers->>${di}, '')), ''), o.name)
-     FROM (
-       SELECT COALESCE(
-         (SELECT mto.tech_name FROM msan_tech_overrides mto WHERE mto.cabin_code = m.code LIMIT 1),
-         (SELECT tn.tech_name FROM cabinet_technicians ct
-            JOIN technician_names tn ON tn.worker_code = ct.worker_code
-           WHERE ct.cabin_code = m.code LIMIT 1),
-         ${bySheetCabin}
-       ) AS name
-       FROM (SELECT (SELECT pp.msan_code FROM phone_lines pl
-                       JOIN phone_ports pp ON pp.phone_number = pl.full_phone
-                      WHERE pl.tel_no = ${phoneExpr} LIMIT 1) AS code) m
-     ) o
+     FROM (SELECT ${owner} AS name ${ownerFrom}) o
      LEFT JOIN shift_schedules s
        ON s.week_start = ${dt} - ${di}
       AND btrim(s.tech_name) = btrim(o.name)
@@ -829,9 +833,14 @@ const effTechSql = (complainNoExpr: string, closeByExpr: string, centralExpr: st
 // الكابينة) — بصرف النظر عن من ردّ على الطلب. يُستخدم لفلتر "متعذراتى" للفنى.
 async function attachCabinetTech(orders: any[]): Promise<any[]> {
   if (!orders.length) return orders;
+  // DISTINCT ON بنفس ترتيب «بحث برقم التليفون» — الكابينة الواحدة ليها أكتر من صف،
+  // ومن غير ترتيب ثابت كان آخر صف عشوائى هو اللى بيكسب فيظهر فنى غير صاحبها.
   const { rows } = await pool.query(
-    `SELECT ct.central_name AS c, ct.cabin_number AS n, tn.tech_name AS t
-     FROM cabinet_technicians ct JOIN technician_names tn ON tn.worker_code = ct.worker_code`,
+    `SELECT DISTINCT ON (ct.central_name, ct.cabin_number)
+            ct.central_name AS c, ct.cabin_number AS n, tn.tech_name AS t
+     FROM cabinet_technicians ct JOIN technician_names tn ON tn.worker_code = ct.worker_code
+     ORDER BY ct.central_name, ct.cabin_number,
+              (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, tn.tech_name NULLS LAST`,
   );
   const map = new Map<string, string>();
   for (const r of rows) map.set(`${r.c}|${r.n}`, r.t);

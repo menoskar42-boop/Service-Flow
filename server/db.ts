@@ -1046,6 +1046,7 @@ export async function ensureSchema() {
   // فهرس على كود الكابينة — تقارير الأعطال بتحدّد «فنى المنطقة» بكود كابينة الخط
   // (MSAN) قبل ما ترجع لرقم الكابينة المكتوب فى الشيت، والبحث ده بيتنفّذ لكل صف.
   await pool.query(`CREATE INDEX IF NOT EXISTS cabinet_technicians_cabin_code_idx ON cabinet_technicians (cabin_code)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS cabinet_technicians_central_cabin_idx ON cabinet_technicians (central_name, cabin_number)`);
 
   // technician_names — أسماء الفنيين بأكواد العمال (full replace each upload)
   await pool.query(`
