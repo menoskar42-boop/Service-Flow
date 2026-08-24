@@ -1,5 +1,6 @@
 const express = require('express');
-const bcrypt = require('bcrypt');
+// bcryptjs: نسخة JS خالصة، نفس الـ API ونفس هاشات $2b$ — من غير native build
+const bcrypt = require('bcryptjs');
 const db = require('../database');
 const router = express.Router();
 

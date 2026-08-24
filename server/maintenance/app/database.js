@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
-const bcrypt = require('bcrypt');
+// bcryptjs: نسخة JS خالصة، نفس الـ API ونفس هاشات $2b$ — من غير native build
+const bcrypt = require('bcryptjs');
 
 // جداول الصيانة بتعيش فى **نفس قاعدة Service-Flow** (توفير الاستضافة) بس فى **سكيما منفصلة**
 // اسمها maintenance — فمفيش تعارض مع جداول Service-Flow (زى users). بنضبط search_path على

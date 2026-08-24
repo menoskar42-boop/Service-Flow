@@ -38,7 +38,7 @@ interface TechResponseDialogProps {
 }
 
 export function TechResponseDialog({ order, mode, onClose }: TechResponseDialogProps) {
-  const { updateOrder } = useOrders();
+  const { updateOrder, isUpdating } = useOrders();
 
   const form = useForm<UpdateOrder>({
     resolver: zodResolver(updateOrderSchema),
@@ -73,8 +73,8 @@ export function TechResponseDialog({ order, mode, onClose }: TechResponseDialogP
       }
     }
 
-    updateOrder.mutate(
-      { id: order.id, ...payload },
+    updateOrder(
+      { id: order.id, updates: payload },
       {
         onSuccess: () => {
           onClose();
@@ -207,9 +207,9 @@ export function TechResponseDialog({ order, mode, onClose }: TechResponseDialogP
               <Button 
                 type="submit" 
                 variant={mode === "feasible" ? "default" : "destructive"}
-                disabled={updateOrder.isPending}
+                disabled={isUpdating}
               >
-                {updateOrder.isPending ? (
+                {isUpdating ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : mode === "feasible" ? (
                   <>

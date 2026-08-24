@@ -627,6 +627,9 @@ export function FileUploadSection() {
 
   // bucket selector applies to tabs that keep 3 snapshots
   const showBucket = tab === "maintenance" || tab === "tickets" || tab === "ticketsFtth";
+  // زر «تحديث الصفحة» كان بينادى qc وهى معرّفة فى كومبوننت تانى — undefined وقت
+  // التشغيل، فالضغط على الزر كان بيرمى استثناء بدل ما يحدّث.
+  const qc = useQueryClient();
 
   return (
     <div className="space-y-5" dir="rtl">

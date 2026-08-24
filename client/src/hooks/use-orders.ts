@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import { type InsertOrder, type UpdateOrder, type UpdateExternalResponse } from "@shared/schema";
+import { type InsertOrder, type UpdateOrder, type UpdateExternal } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 export function useOrders() {
@@ -201,7 +201,7 @@ export function useOrders() {
   });
 
   const externalResponseMutation = useMutation({
-    mutationFn: async ({ orderId, data }: { orderId: number; data: UpdateExternalResponse }) => {
+    mutationFn: async ({ orderId, data }: { orderId: number; data: UpdateExternal }) => {
       const url = buildUrl(api.orders.externalResponse.path, { id: orderId });
       const res = await fetch(url, {
         method: api.orders.externalResponse.method,

@@ -33,7 +33,12 @@ const MemStore = MemoryStore(session);
 function buildSessionStore() {
   try {
     const PgSession = connectPgSimple(session);
-    return new PgSession({ pool, tableName: "sf_session", createTableIfMissing: false });
+    // pruneSessionInterval: connect-pg-simple بيمسح الجلسات المنتهية كل ساعة.
+    // من غيره الجدول بيكبر بلا حدود (الفهرس على expire كان موجود بس مفيش حد بيمسح).
+    return new PgSession({
+      pool, tableName: "sf_session", createTableIfMissing: false,
+      pruneSessionInterval: 60 * 60,
+    });
   } catch (e) {
     console.error("[session] PgSession init failed → MemoryStore fallback:", (e as Error).message);
     return new MemStore({ checkPeriod: 86400000 });
@@ -9483,15 +9488,19 @@ export async function registerRoutes(
 
   // === Public API: Box Summary (Bearer Token Auth) ===
   // OPTIONS preflight for cross-origin requests
-  app.options("/api/box-summary", (req, res) => {
+  // ⚠️ المسار ده كان اسمه /api/box-summary زى اللى فوقه بالظبط — و Express بيدّى
+  // الأولوية للأول اللى اتسجّل، فالنسخة دى كانت **مش شغّالة خالص** من غير ما حد
+  // ياخد باله (الاتنين مختلفين تماماً: اللى فوق بيرجّع تجميع البكسات من بيان
+  // الخطوط، ودى بترجّع الطلبات المتعذرة). اتسمّت باسمها الصح: /api/box-orders.
+  app.options("/api/box-orders", (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
     res.status(204).end();
   });
 
-  // GET /api/box-summary?page=1&limit=100&q=<search>
-  app.get("/api/box-summary", async (req, res) => {
+  // GET /api/box-orders?page=1&limit=100&q=<search> — الطلبات المتعذرة (لموقع خارجى)
+  app.get("/api/box-orders", async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");

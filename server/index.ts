@@ -20,7 +20,8 @@ const httpServer = createServer(app);
 
 declare module "http" {
   interface IncomingMessage {
-    rawBody: unknown;
+    // Buffer مش unknown — أى استخدام كان بيحتاج type assertion يدوى
+    rawBody?: Buffer;
   }
 }
 
@@ -72,6 +73,20 @@ app.use((req, res, next) => {
   });
 
   next();
+});
+
+// /api/health — فحص جاهزية حقيقى (بيتسجّل قبل الـ SPA catch-all عشان مايرجّعش HTML).
+// أنظمة المراقبة والنشر بتسأل عليه؛ قبل كده كان بيرجّع صفحة التطبيق فمكانش بيقول
+// أى حاجة عن حالة الـ API ولا الداتابيز.
+app.get("/api/health", async (_req, res) => {
+  const started = Date.now();
+  try {
+    const { pool } = await import("./db");
+    await pool.query("SELECT 1");
+    res.json({ ok: true, db: "up", uptimeSec: Math.round(process.uptime()), tookMs: Date.now() - started });
+  } catch (e: any) {
+    res.status(503).json({ ok: false, db: "down", error: e?.message || "db error" });
+  }
 });
 
 (async () => {

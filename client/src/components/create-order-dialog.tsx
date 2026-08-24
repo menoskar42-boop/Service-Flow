@@ -26,7 +26,7 @@ import { Plus, Loader2 } from "lucide-react";
 
 export function CreateOrderDialog() {
   const [open, setOpen] = useState(false);
-  const { createOrder } = useOrders();
+  const { createOrder, isCreating } = useOrders();
 
   const form = useForm<InsertOrder>({
     resolver: zodResolver(insertOrderSchema),
@@ -38,7 +38,7 @@ export function CreateOrderDialog() {
   });
 
   const onSubmit = (data: InsertOrder) => {
-    createOrder.mutate(data, {
+    createOrder(data, {
       onSuccess: () => {
         setOpen(false);
         form.reset();
@@ -111,8 +111,8 @@ export function CreateOrderDialog() {
             />
 
             <div className="flex justify-end pt-4">
-              <Button type="submit" disabled={createOrder.isPending} className="w-full sm:w-auto">
-                {createOrder.isPending ? (
+              <Button type="submit" disabled={isCreating} className="w-full sm:w-auto">
+                {isCreating ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     Creating...
