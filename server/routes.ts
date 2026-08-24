@@ -9076,6 +9076,15 @@ export async function registerRoutes(
         yf === "current" ? `AND EXTRACT(YEAR FROM order_create_time AT TIME ZONE 'UTC') = EXTRACT(YEAR FROM now())::int`
         : yf === "prior" ? `AND EXTRACT(YEAR FROM order_create_time AT TIME ZONE 'UTC') < EXTRACT(YEAR FROM now())::int`
         : "";
+      // فلتر السنترال (اختيارى): السنترال بتاع كل كود كابينة بييجى من cabinet_technicians،
+      // فبنفلتر بعد الـ LATERAL. المقارنة بعد التطبيع (ة/ه والهمزات).
+      const central = String((req.query as Record<string, string>).central || "").trim();
+      const omParams: any[] = [];
+      let centralClause = "";
+      if (central) {
+        omParams.push(arNorm(central));
+        centralClause = `WHERE ${n("tech.central_name")} = $${omParams.length}`;
+      }
       // تجميع لكل كود MSAN (كابينة): إجمالى البداية + تم فكها (من SOY) + الحالى.
       const { rows: byCabinet } = await pool.query(`
         WITH soy AS (
@@ -9128,8 +9137,9 @@ export async function registerRoutes(
           WHERE ct.cabin_code = m.msan
         ) tech ON TRUE
         LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = m.msan
+        ${centralClause}
         ORDER BY m.soy_total DESC, m.msan
-      `);
+      `, omParams);
 
       // تجميع لكل فنى (مجموع كابيناته) — يُحسب فى JS لضمان تطابق الإجماليات.
       const techMap = new Map<string, { techName: string; soyTotal: number; currentTotal: number; resolved: number }>();
@@ -11074,12 +11084,18 @@ export async function registerRoutes(
   // النِسب تُحسب على إجمالى الأعطال مجتمعة. ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
   app.get("/api/reports/combined-stats", requireAuth, async (req, res) => {
     try {
-      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const { dateFrom, dateTo, central } = req.query as Record<string, string>;
       const params: any[] = [];
       // فلتر التاريخ يُطبَّق على المصدرين بنفس البارامترات
       let dateClause = "";
       if (dateFrom) { params.push(dateFrom); dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (src.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+      // فلتر السنترال — المقارنة بعد التطبيع (ة/ه والهمزات) لأن اسم السنترال بيتكتب
+      // بأكتر من صيغة فى شيتات 430D المختلفة.
+      if (central?.trim()) {
+        params.push(arNorm(central.trim()));
+        dateClause += ` AND ${n("src.exchange_name")} = $${params.length}`;
+      }
 
       const { rows } = await pool.query(`
         WITH src_raw AS (
@@ -11287,11 +11303,15 @@ export async function registerRoutes(
   // GET /api/reports/repetition-combined — المصدران معاً (UNION ALL) لتحديد التكرار عبر المغلقة والمفتوحة
   app.get("/api/reports/repetition-combined", requireAuth, async (req, res) => {
     try {
-      const { dateFrom, dateTo } = req.query as Record<string, string>;
+      const { dateFrom, dateTo, central } = req.query as Record<string, string>;
       const params: any[] = [];
       let dateClause = "";
       if (dateFrom) { params.push(dateFrom); dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}`; }
       if (dateTo)   { params.push(dateTo);   dateClause += ` AND (po.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}`; }
+      if (central?.trim()) {
+        params.push(arNorm(central.trim()));
+        dateClause += ` AND ${n("po.exchange_name")} = $${params.length}`;
+      }
 
       const { rows } = await pool.query(`
         WITH src_raw AS (

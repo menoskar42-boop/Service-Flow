@@ -204,8 +204,10 @@ export function TechPerformanceReport() {
   });
   const { data: omData, isFetching: f4 } = useQuery({
     // نسبة تحقيق المتعذرات فى أداء الفنيين تُحسب على متعذرات السنة الحالية (2026) فقط
-    queryKey: ["/api/reports/om-stats", "current"],
-    queryFn: () => fetchJson(`/api/reports/om-stats?yearFilter=current`),
+    // + بتتبع فلتر السنترال زى نسب الإزالة والتكرار (كان الفلتر بيأثر على «الأعطال
+    // فى الألف» بس، فالصف الواحد كان بيخلط متعذرات كل السنترالات مع أعطال سنترال واحد).
+    queryKey: ["/api/reports/om-stats", "current", central],
+    queryFn: () => fetchJson(`/api/reports/om-stats?yearFilter=current${central ? `&central=${encodeURIComponent(central)}` : ""}`),
     refetchOnMount: "always",
   });
 
