@@ -1201,6 +1201,20 @@ export async function ensureSchema() {
   await pool.query(`CREATE INDEX IF NOT EXISTS phone_lines_tel_no_idx ON phone_lines (tel_no)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS phone_lines_central_cabin_box_idx ON phone_lines (central, cabin_number, box_number)`);
 
+  // ── تغيير كود كابينة نجع العمدة: 11-2-76-01 → 11-2-26-26 ──────────────────
+  // الكابينة أخدت كود جديد فى الشبكة. الجداول اللى بتتملى من شيتات بتتصحّح لوحدها
+  // مع أول رفعة بالكود الجديد، لكن الجداول دى لازم تتحدّث عشان الربط (فنى الكابينة،
+  // الإسناد اليدوى، بيان البورتات) مايفضلش معلّق على كود مابقاش موجود.
+  // idempotent: لو مفيش صف بالكود القديم مابيعملش حاجة.
+  for (const [t, c] of [
+    ["cabinet_technicians", "cabin_code"], ["msan_tech_overrides", "cabin_code"],
+    ["phone_ports", "msan_code"], ["manual_faults", "msan_code"],
+  ] as const) {
+    await pool.query(
+      `UPDATE ${t} SET ${c} = '11-2-26-26' WHERE btrim(${c}) = '11-2-76-01'`,
+    ).catch(() => {});
+  }
+
   // إدخال يدوى لكابينة TB07 (الغنايم) على حسن عبد الفتاح يعقوب — خارج حياة كريمة
   // يُنفَّذ مرة واحدة فقط إذا لم تكن الكابينة موجودة بالفعل
   await pool.query(`
