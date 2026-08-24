@@ -5006,8 +5006,9 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `WITH t AS (SELECT $1::text AS raw, $2::text AS short, $3::text AS full)
        SELECT COALESCE(pl.tel_no, t.short) AS "telNo",
-              COALESCE(pl.central, cpl.central_name, si.central) AS central,
-              COALESCE(pl.cabin_number, cpl.cabinet_no, si.cabin_number) AS "cabinNumber",
+              COALESCE(pl.central, cpl.central_name, si.central, wfmo.central_name) AS central,
+              COALESCE(pl.cabin_number, cpl.cabinet_no, si.cabin_number,
+                       NULLIF(btrim(wfmo.exch_cabinet), '')) AS "cabinNumber",
               COALESCE(pl.box_number, si.box_number) AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
               ctc.cabin_code AS "msanCode",
               COALESCE(mto.tech_name, ctc.ct_tech, '') AS "techName",
@@ -5020,7 +5021,12 @@ export async function registerRoutes(
               pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
               pp.operator AS "operator", pp.shelf AS "shelf", pp.slot AS "slot",
               mob.m AS "mobile", mob.manual AS "mobileManual",
-              si.sub_name AS "subName", si.sub_add AS "subAdd",
+              COALESCE(si.sub_name, wfmo.customer_name) AS "subName",
+              COALESCE(si.sub_add, wfmo.address) AS "subAdd",
+              -- أمر الشغل الأحدث للرقم — بيوضّح إن الرقم جديد وتحت التركيب/النقل
+              wfmo.work_order_type AS "wfmType", wfmo.stage AS "wfmStage",
+              wfmo.status AS "wfmStatus",
+              (wfmo.creation_date AT TIME ZONE 'Africa/Cairo') AS "wfmCreatedAt",
               si.work_ord_date AS "workOrdDate", si.work_ord_no AS "workOrdNo",
               COALESCE(pl.full_phone, la.full_phone, c.full_phone, t.full) AS "fullPhone",
               la.account_no AS "accountNo",
@@ -5097,7 +5103,7 @@ export async function registerRoutes(
                   AND (rt.status_code ~ '^(160|173|122|73|72|60)' OR rt.complain_type_name ~ '^(160|173|122|73|72|60)')
                   AND btrim(rct.worker_code) = ANY($4::text[] || $5::text[])
               ) AS "ownedByMe",
-              (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL) AS "hasData"
+              (pl.full_phone IS NOT NULL OR la.account_no IS NOT NULL OR c.uploaded_at IS NOT NULL OR cpl.complain_no IS NOT NULL OR pp.phone_number IS NOT NULL OR si.phone_number IS NOT NULL OR wfmo.phone_number IS NOT NULL) AS "hasData"
        FROM t
        LEFT JOIN phone_lines pl ON pl.full_phone = t.raw OR pl.tel_no = t.short OR pl.full_phone = t.full
        LEFT JOIN line_accounts la ON la.full_phone = COALESCE(pl.full_phone, t.full)
@@ -5128,6 +5134,22 @@ export async function registerRoutes(
          ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
        ) cpl ON true
        LEFT JOIN LATERAL (
+         -- أوامر الشغل (تركيب/نقل): الرقم الجديد لسه ماحصلش عليه بيان خطوط ولا شكاوى،
+         -- فكان «لا يوجد خط بالرقم» رغم إنه ظاهر فى تقرير «التركيبات والنقل الحالى».
+         -- الحالى (wfm_current) الأول، وبعده التاريخى (maintenance_orders).
+         SELECT w.phone_number, w.customer_name, w.address, w.central_name, w.exch_cabinet,
+                w.work_order_type, w.stage, w.status, w.creation_date
+         FROM (
+           SELECT phone_number, customer_name, address, central_name, exch_cabinet,
+                  work_order_type, stage, status, creation_date, 0 AS pr
+             FROM wfm_current WHERE ${sp("phone_number")} = ${sp("t.short")}
+           UNION ALL
+           SELECT phone_number, customer_name, address, central_name, exch_cabinet,
+                  work_order_type, stage, status, creation_date, 1 AS pr
+             FROM maintenance_orders WHERE ${sp("phone_number")} = ${sp("t.short")}
+         ) w ORDER BY w.pr, w.creation_date DESC NULLS LAST LIMIT 1
+       ) wfmo ON true
+       LEFT JOIN LATERAL (
          -- رقم الموبايل: الأولوية للمُدخَل يدوياً، ثم من أوامر الشغل (wfm)، ثم من طلبات FTTH
          SELECT m, manual FROM (
            SELECT lm.mobile AS m, true AS manual, 0 AS pr FROM line_mobiles lm
@@ -5136,6 +5158,11 @@ export async function registerRoutes(
            SELECT mo.mobile AS m, false AS manual, 1 AS pr FROM maintenance_orders mo
              WHERE mo.phone_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw)
                AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'   -- رقم حقيقى فقط (استبعاد المشفّر)
+           UNION ALL
+           -- أوامر الشغل الحالية (تركيب/نقل) — الرقم الجديد موبايله هنا قبل ما يدخل التاريخى
+           SELECT wc.mobile AS m, false AS manual, 1 AS pr FROM wfm_current wc
+             WHERE ${sp("wc.phone_number")} = ${sp("t.short")}
+               AND wc.mobile !~ '[A-Za-z=/]' AND wc.mobile ~ '[0-9]{5,}'
            UNION ALL
            SELECT fo.customer_mobile AS m, false AS manual, 2 AS pr FROM ftth_orders_current fo
              WHERE fo.service_number IN (COALESCE(pl.tel_no, t.short), t.full, t.raw)

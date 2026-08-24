@@ -69,6 +69,11 @@ interface LineData {
   mobileManual: boolean | null;
   subName: string | null;
   subAdd: string | null;
+  // أمر شغل (تركيب/نقل) — بيظهر للأرقام الجديدة اللى لسه ماحصلش عليها بيان خطوط
+  wfmType?: string | null;
+  wfmStage?: string | null;
+  wfmStatus?: string | null;
+  wfmCreatedAt?: string | null;
   workOrdDate: string | null;
   workOrdNo: string | null;
   ownedByMe: boolean | null;
@@ -628,6 +633,14 @@ export function PhoneLookupReport() {
         ["تاريخ آخر شكوى", fmtDate(line.lastComplaintAt)], ["Row", dash(line.rowNo)],
         ["حالة صيانة البكس", boxMaintCell],             ["Column", dash(line.columnNo)],
         ["هل البكس له تكت أرضية", groundCell],
+        // بيظهر بس لو الرقم ليه أمر شغل — يوضّح إن الرقم جديد تحت التركيب/النقل
+        ...(line.wfmType
+          ? ([["أمر شغل (تركيب/نقل)",
+              <span className="text-emerald-700 font-semibold">
+                {[line.wfmType, line.wfmStatus || line.wfmStage, fmtDate(line.wfmCreatedAt ?? null)]
+                  .filter(Boolean).join(" — ")}
+              </span>]] as [string, ReactNode][])
+          : []),
         // الحقول الفنية الباقية — كامل العرض (صف لكل حقل).
         ["رقم التليفون الكامل", dash(line.fullPhone)],
         ["إحداثيات البكس", coordsCell],
@@ -665,6 +678,8 @@ export function PhoneLookupReport() {
     const row = {
       "رقم التليفون الكامل": line.fullPhone,
       "رقم التليفون": line.telNo,
+      "أمر شغل (تركيب/نقل)": line.wfmType
+        ? [line.wfmType, line.wfmStatus || line.wfmStage].filter(Boolean).join(" — ") : "",
       "اسم العميل": line.subName ?? "",
       "عنوان العميل": line.subAdd ?? "",
       "السنترال": line.central,
