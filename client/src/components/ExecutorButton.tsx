@@ -5,6 +5,61 @@ import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { execDeviceLabel, executeBatch, latestOpAt, latestPoEventAt, latestSubInfoAt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
 
+// ── إبقاء تاب جهاز التنفيذ صاحى ─────────────────────────────────────────────
+// المشكلة اللى بتوقف الطابور: Edge/Chrome بيعملوا للتاب اللى فى الخلفية
+//   (١) Timer throttling — الـ setInterval بيقلّ لمرة كل دقيقة بعد ٥ دقايق،
+//   (٢) Sleeping tabs / Tab discarding — التاب بيتجمّد بالكامل بعد فترة خمول.
+// النتيجة: النبضة بتقف فالسيرفر يقول «مفيش جهاز مفعّل»، وحلقة سحب المهام
+// بتقف فالقياسات اللى فى الطابور تفضل مستنية لحد ما حد يعمل ريفريش يدوى.
+//
+// الحل: نخلّى التاب «بيشغّل صوت». التاب اللى بيشغّل صوت مستثنى من Sleeping
+// tabs ومن الـ discarding ومن الـ throttling الشديد فى المتصفحين. الصوت
+// نفسه سكوت تام (gain = 0) فمحدش بيسمع حاجة.
+// AudioContext محتاج user gesture — واحنا بنشغّله من ضغطة زر «جهاز التنفيذ».
+function startSilentKeepAlive(): () => void {
+  let ctx: AudioContext | null = null;
+  try {
+    const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return () => {};
+    ctx = new AC();
+    const osc = ctx!.createOscillator();
+    const gain = ctx!.createGain();
+    gain.gain.value = 0;                  // سكوت تام
+    osc.connect(gain); gain.connect(ctx!.destination);
+    osc.start();
+    // بعض المتصفحات بتوقف الـ context لو اتفتح قبل الـ gesture — بنحاول نرجّعه
+    const resume = () => { try { ctx && ctx.state === "suspended" && ctx.resume(); } catch {} };
+    resume();
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      try { osc.stop(); } catch {}
+      try { ctx && ctx.close(); } catch {}
+    };
+  } catch { return () => {}; }
+}
+
+// قفل الشاشة (لو المتصفح بيدعمه): بيمنع الجهاز من النوم طول ما التنفيذ مفعّل.
+// بيتفكّ لوحده لما التاب يتخفى، فبنعيد طلبه عند الرجوع.
+function startWakeLock(): () => void {
+  const nav: any = navigator;
+  if (!nav?.wakeLock?.request) return () => {};
+  let lock: any = null;
+  let killed = false;
+  const acquire = async () => {
+    if (killed || document.visibilityState !== "visible") return;
+    try { lock = await nav.wakeLock.request("screen"); } catch {}
+  };
+  acquire();
+  const onVis = () => { if (document.visibilityState === "visible") acquire(); };
+  document.addEventListener("visibilitychange", onVis);
+  return () => {
+    killed = true;
+    document.removeEventListener("visibilitychange", onVis);
+    try { lock && lock.release(); } catch {}
+  };
+}
+
 // زر «جهاز التنفيذ» — للسوبر أدمن فقط. لما يتفعّل، البراوزر ده يبقى هو المنفّذ:
 // يبعت نبضة كل 20ث، ويسحب المهام من الطابور كل 4ث وينفّذها (رفع سرعة/قياس/إيقاف).
 // أى جهاز تانى يعمل رفع سرعة/قياس/إيقاف بيروح للطابور فينفّذه الجهاز ده.
@@ -17,20 +72,37 @@ export function ExecutorButton() {
   const [current, setCurrent] = useState<string>("");
   // آخر خطأ فى سحب المهام — بيتعرض على الزر عشان التوقف مايبقاش صامت
   const [claimError, setClaimError] = useState<string | null>(null);
+  // التاب فاق بعد تجميد/انقطاع — بيتعرض على الزر عشان التوقف مايبقاش صامت
+  const [stale, setStale] = useState(false);
   const busy = useRef(false);
   const [clearing, setClearing] = useState(false);
   // تاب القياس الأخير — نقفله أول ما نفتح قياس جديد (يفضل تاب واحد بس مفتوح: الأخير)
   const lastMeasureWin = useRef<Window | null>(null);
 
   // استطلاع دائم لعدد المهام فى الطابور (للسوبر أدمن) — حتى لو الجهاز مش مفعّل — عشان يظهر زر المسح
+  // + حالة جهاز التنفيذ: لو فيه مهام مستنية ومفيش جهاز شغّال، الطابور واقف فعلاً
+  // ولازم ده يبان على طول من أى صفحة بدل ما يتكتشف بعد ساعات.
+  const [execDown, setExecDown] = useState<{ lastSeenSec: number | null; who: string | null } | null>(null);
   useEffect(() => {
     if (user?.role !== ROLES.SUPER_ADMIN) return;
-    const load = () => fetch("/api/exec-queue/pending", { credentials: "include" })
-      .then((r) => r.json()).then((d) => setPending(d?.pending ?? 0)).catch(() => {});
+    const load = async () => {
+      try {
+        const [p, st] = await Promise.all([
+          fetch("/api/exec-queue/pending", { credentials: "include" }).then((r) => r.json()),
+          fetch("/api/exec-queue/status", { credentials: "include" }).then((r) => r.json()),
+        ]);
+        setPending(p?.pending ?? 0);
+        setExecDown(st?.active ? null : { lastSeenSec: st?.lastSeenSec ?? null, who: st?.lastExecutor ?? null });
+      } catch {}
+    };
     load();
     const iv = setInterval(load, 10 * 1000);
     return () => clearInterval(iv);
   }, [user?.role]);
+
+  const agoText = (sec: number | null) =>
+    sec == null ? "" : sec < 90 ? `${Math.round(sec)} ثانية`
+    : sec < 3600 ? `${Math.round(sec / 60)} دقيقة` : `${Math.round(sec / 3600)} ساعة`;
 
   // طلب ريفريش لمتصفح **جهاز التنفيذ** من أى جهاز تانى (الموبايل مثلاً).
   // بيتنفّذ مع أول نبضة (~20 ثانية) — مش لازم أكون قاعد على الجهاز نفسه.
@@ -42,9 +114,17 @@ export function ExecutorButton() {
       const r = await fetch("/api/exec-queue/request-reload", { method: "POST", credentials: "include" });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { alert(d?.message || "تعذّر إرسال الطلب"); return; }
+      const ago = d?.lastSeenSec == null ? null
+        : d.lastSeenSec < 90 ? `${Math.round(d.lastSeenSec)} ثانية`
+        : d.lastSeenSec < 3600 ? `${Math.round(d.lastSeenSec / 60)} دقيقة`
+        : `${Math.round(d.lastSeenSec / 3600)} ساعة`;
       alert(d?.active
         ? `تم إرسال طلب الريفريش لجهاز التنفيذ (${d.executor || "مفعّل"}) — هيتنفّذ خلال حوالى 20 ثانية.`
-        : "⚠️ مفيش جهاز تنفيذ مفعّل دلوقتى — الطلب اتسجّل وهيتنفّذ أول ما جهاز يتفعّل.");
+        : ago
+          // مفيش نبضة حديثة لكن الجهاز معروف: غالباً التاب متجمّد (Sleeping tabs).
+          // الطلب متسجّل — أول ما التاب يفوق (أو تفتحه بإيدك) هينفّذ الريفريش.
+          ? `⚠️ آخر نبضة من جهاز التنفيذ (${d.executor || "?"}) من ${ago}.\nالتاب غالباً متجمّد فى المتصفح — الطلب اتسجّل وهينفّذ أول ما التاب يفوق.\nلو مستعجل: افتح تاب جهاز التنفيذ بإيدك.`
+          : "⚠️ مفيش جهاز تنفيذ مفعّل دلوقتى — الطلب اتسجّل وهيتنفّذ أول ما جهاز يتفعّل.");
     } catch { alert("تعذّر إرسال الطلب"); } finally { setReloading(false); }
   };
 
@@ -89,6 +169,8 @@ export function ExecutorButton() {
     // لازم نفرّق بينهم: لو استخدمنا null للاتنين، الجهاز اللى اتفعّل **قبل** أى طلب
     // ريفريش هيسجّل أول رمز حقيقى على إنه «القراءة الأولى» ويبلع الطلب من غير ما ينفّذه.
     let lastReloadToken: string | null | undefined = undefined;
+    // آخر نبضة **نجحت** فعلاً — أساس الحارس اللى بيكتشف إن التاب كان متجمّد
+    let lastBeatOk = Date.now();
     const heartbeat = () => {
       fetch("/api/exec-queue/heartbeat", {
         method: "POST", credentials: "include",
@@ -96,6 +178,7 @@ export function ExecutorButton() {
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => {
+          if (j) { lastBeatOk = Date.now(); setStale(false); }
           const tok = j && j.reload ? String(j.reload) : null;
           if (lastReloadToken === undefined) { lastReloadToken = tok; return; }  // أول قراءة
           if (tok && tok !== lastReloadToken) {
@@ -105,6 +188,29 @@ export function ExecutorButton() {
         })
         .catch(() => {});
     };
+
+    // ── الحارس ─────────────────────────────────────────────────────────────
+    // بيقيس **الوقت الحقيقى** اللى عدّى من غير نبضة ناجحة، مش عدد مرات الـ tick
+    // (الـ tick نفسه بيتأخّر لما المتصفح يخنق التاب). لو التاب كان متجمّد
+    // أو النت قطع، أول ما يفوق بيلاقى فجوة كبيرة فيتصرّف على طول:
+    //   • فجوة > دقيقتين  → نبضة فورية + محاولة سحب فورية (استئناف الطابور)
+    //   • فجوة > ١٠ دقايق → ريفريش تلقائى للصفحة (بداية نظيفة زى الريفريش اليدوى
+    //     اللى المستخدم بيعمله بإيده) — من غيره التاب بيفوق بحالة داخلية بايظة.
+    const WAKE_MS = 2 * 60 * 1000, HARD_RELOAD_MS = 10 * 60 * 1000;
+    const watchdog = () => {
+      const gap = Date.now() - lastBeatOk;
+      if (gap < WAKE_MS) return;
+      setStale(true);
+      if (gap > HARD_RELOAD_MS) { try { window.location.reload(); } catch {} return; }
+      busy.current = false;           // فكّ أى قفل سحب اتعلّق وقت التجميد
+      heartbeat(); claimAndRun(); refreshPending();
+    };
+    // أى إشارة إن التاب رجع للحياة → افحص على طول من غير ما تستنى الـ tick
+    const onWake = () => { if (document.visibilityState === "visible" || navigator.onLine) watchdog(); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    window.addEventListener("online", onWake);
+    document.addEventListener("resume", onWake as any);   // Page Lifecycle: التاب فكّ التجميد
 
     // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
     const MEASURE_MAX_MS = 2.5 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
@@ -341,11 +447,21 @@ export function ExecutorButton() {
         .then((r) => r.json()).then((d) => setPending(d?.pending ?? 0)).catch(() => {});
     };
 
+    // الصوت الصامت + قفل الشاشة: بيمنعوا المتصفح من تجميد التاب أو خنق مؤقتاته
+    const stopAudio = startSilentKeepAlive();
+    const stopWake = startWakeLock();
+
     heartbeat(); refreshPending();
     const hb = setInterval(heartbeat, 20 * 1000);
     const poll = setInterval(() => { claimAndRun(); refreshPending(); }, 4 * 1000);
+    const wd = setInterval(watchdog, 30 * 1000);
     return () => {
-      stopped = true; clearInterval(hb); clearInterval(poll);
+      stopped = true; clearInterval(hb); clearInterval(poll); clearInterval(wd);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+      window.removeEventListener("online", onWake);
+      document.removeEventListener("resume", onWake as any);
+      stopAudio(); stopWake();
       // امسح النبضة عند إيقاف التفعيل/مغادرة الصفحة عشان مايفضلش «مفعّل» بالغلط
       fetch("/api/exec-queue/offline", { method: "POST", credentials: "include" }).catch(() => {});
     };
@@ -361,6 +477,7 @@ export function ExecutorButton() {
         onClick={toggle}
         className={
           active && claimError ? "bg-red-600 hover:bg-red-700 gap-1"
+          : active && stale ? "bg-amber-600 hover:bg-amber-700 gap-1"
           : active ? "bg-indigo-600 hover:bg-indigo-700 gap-1"
           : "text-indigo-700 border-indigo-200 gap-1"}
         title={claimError || "جهاز التنفيذ المركزى: لما يتفعّل، رفع السرعة/القياس/الإيقاف من أى جهاز بيتنفّذ هنا عبر طابور"}
@@ -369,6 +486,7 @@ export function ExecutorButton() {
         {/* لو السحب فاشل الزر بيبقى أحمر ومكتوب عليه السبب — بدل ما التنفيذ يقف بصمت */}
         {active
           ? (claimError ? "⚠️ التنفيذ متوقف — خطأ فى الطابور"
+             : stale ? "⚠️ التاب كان متجمّد — جارى الاستئناف"
              : current ? `⏳ ${current}`
              : `جهاز التنفيذ: مُفعَّل${pending ? ` (${pending})` : ""}`)
           : "جهاز التنفيذ"}
@@ -385,6 +503,19 @@ export function ExecutorButton() {
         {reloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         ريفريش جهاز التنفيذ
       </Button>
+      {/* الطابور فيه مهام ومفيش جهاز تنفيذ شغّال → تحذير ظاهر على أى صفحة.
+          ده اللى بيمنع إن القياسات تفضل واقفة ساعات من غير ما حد ياخد باله. */}
+      {pending > 0 && execDown && !active && (
+        <span
+          className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1"
+          title={execDown.lastSeenSec == null
+            ? "مفيش جهاز تنفيذ اتفعّل — شغّل «جهاز التنفيذ» على الجهاز المخصص"
+            : `آخر نبضة من ${execDown.who || "جهاز التنفيذ"} من ${agoText(execDown.lastSeenSec)} — التاب غالباً متجمّد، افتحه أو اعمله ريفريش`}
+        >
+          ⚠️ الطابور واقف ({pending})
+          {execDown.lastSeenSec != null && ` — آخر نبضة من ${agoText(execDown.lastSeenSec)}`}
+        </span>
+      )}
       {/* زر مسح الطابور — يظهر للسوبر أدمن لما يكون فيه مهام عالقة */}
       {pending > 0 && (
         <Button

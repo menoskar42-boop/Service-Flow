@@ -1685,6 +1685,12 @@ export async function registerRoutes(
   // تحديث الملفات (اليومى + كل نص ساعة): أولوية قصوى وبتقاطع الشغل الجارى على نفس الدومين.
   const DAILY_TYPES = new Set(["ports", "fccdaily", "wfmdaily", "ossdaily", "weoas"]);
 
+  // نافذة «الجهاز مفعّل». النبضة كل ٢٠ ثانية، لكن المتصفح بيخنق مؤقتات التاب
+  // اللى فى الخلفية لمرة كل دقيقة (وأكتر مع Sleeping tabs) — فنافذة الـ ٤٥ ثانية
+  // القديمة كانت بتقول «مفيش جهاز مفعّل» والتاب شغّال فعلاً. دقيقتين ونص بتستوعب
+  // الخنق من غير ما تخفى جهاز واقف فعلاً (وإيقاف التفعيل بيمسح النبضة فوراً برضه).
+  const EXEC_ACTIVE_WINDOW = "interval '150 seconds'";
+
   // نبضة جهاز التنفيذ (كل ~20ث) — تُخزَّن فى app_state
   app.post("/api/exec-queue/heartbeat", requireAuth, requireSuperAdmin, async (req: any, res) => {
     try {
@@ -1713,20 +1719,30 @@ export async function registerRoutes(
         `INSERT INTO app_state (key, value, updated_at) VALUES ('exec_reload', $1, now())
          ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = now()`, [token]);
       const { rows } = await pool.query(
-        `SELECT (now() - updated_at < interval '45 seconds') AS active, value
+        `SELECT (now() - updated_at < ${EXEC_ACTIVE_WINDOW}) AS active, value,
+                EXTRACT(EPOCH FROM (now() - updated_at)) AS since
            FROM app_state WHERE key = 'exec_heartbeat'`);
-      res.json({ ok: true, active: !!rows[0]?.active, executor: rows[0]?.value ?? null });
+      // lastSeenSec بيخلّى الرسالة تقول «آخر نبضة من ٧ دقايق» بدل «مفيش جهاز» —
+      // فرق مهم: الأولى معناها التاب متجمّد، والتانية معناها مفيش جهاز أصلاً.
+      res.json({
+        ok: true, active: !!rows[0]?.active, executor: rows[0]?.value ?? null,
+        lastSeenSec: rows.length ? Number(rows[0].since) : null,
+      });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
-  // حالة جهاز التنفيذ: مفعّل لو فيه نبضة خلال آخر 45 ثانية
+  // حالة جهاز التنفيذ: مفعّل لو فيه نبضة خلال نافذة الحياة
   app.get("/api/exec-queue/status", requireAuth, async (_req, res) => {
     try {
       const { rows } = await pool.query(
-        `SELECT value, updated_at, (now() - updated_at < interval '45 seconds') AS active
+        `SELECT value, updated_at, (now() - updated_at < ${EXEC_ACTIVE_WINDOW}) AS active,
+                EXTRACT(EPOCH FROM (now() - updated_at)) AS since
          FROM app_state WHERE key = 'exec_heartbeat'`);
       const r = rows[0];
-      res.json({ active: !!r?.active, executor: r?.active ? r.value : null });
-    } catch { res.json({ active: false, executor: null }); }
+      res.json({
+        active: !!r?.active, executor: r?.active ? r.value : null,
+        lastSeenSec: r ? Number(r.since) : null, lastExecutor: r?.value ?? null,
+      });
+    } catch { res.json({ active: false, executor: null, lastSeenSec: null }); }
   });
   // إضافة مهمة للطابور
   app.post("/api/exec-queue/enqueue", requireAuth, async (req: any, res) => {
