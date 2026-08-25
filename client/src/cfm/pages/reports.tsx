@@ -13,7 +13,7 @@ import { normCab, normCentral } from "@shared/cab-norm";
 
 // Split a performedBy field (which may contain multiple technicians joined by
 // an Arabic/Latin comma) into individual technician names.
-const splitTechnicians = (performedBy?: string): string[] => {
+const splitTechnicians = (performedBy?: string | null): string[] => {
   const parts = (performedBy || '').split(/[،,]/).map(s => s.trim()).filter(Boolean);
   return parts.length > 0 ? parts : ['-'];
 };

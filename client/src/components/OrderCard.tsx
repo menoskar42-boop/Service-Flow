@@ -102,8 +102,8 @@ export function OrderCard({ order, role }: OrderCardProps) {
       {isTech && order.status === "pending" && (
         <CardFooter className="p-4 pt-0 flex gap-2 justify-end bg-muted/20 border-t">
           <div className="w-full flex gap-2 pt-3">
-            <TechActionModal orderId={order.id} type="feasible" />
-            <TechActionModal orderId={order.id} type="not_feasible" />
+            <TechActionModal order={order} action="feasible" />
+            <TechActionModal order={order} action="not_feasible" />
           </div>
         </CardFooter>
       )}

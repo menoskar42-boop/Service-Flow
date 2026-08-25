@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { pool } from "./db";
+import type { User as SchemaUser } from "@shared/schema";
 import { insertOrderSchema, updateOrderSchema, updateExternalResponseSchema, ROLES, WS_EVENTS, CONTRACT_STATUS, ORDER_STATUS, REJECTION_REASONS, SHIFT_COVER_STATES_SQL } from "@shared/schema";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -649,6 +650,16 @@ END`;
 // الدالتين بيعملوا lower() كمان، فمش محتاجين LOWER() ولا ILIKE — LIKE عادى بيكفى.
 //   n("col")     → sf_ar_norm(COALESCE(col::text,''))  للعمود
 //   arQ("كلمة")  → '%كلمه%'  للـ param
+// req.user بتاعنا هو صف users من قاعدة البيانات (فيه role و workerCode …).
+// من غير التوسعة دى Express بيعتبره {} فارغ، فـ req.user?.role كانت خطأ ترجمة
+// وكل استخدام كان محتاج (req.user as any) — يعنى صفر حماية من الأنواع فى أهم
+// شرط أمان فى السيرفر (تحديد الدور).
+declare global {
+  namespace Express {
+    interface User extends SchemaUser {}
+  }
+}
+
 const n = (expr: string) => `sf_ar_norm(COALESCE(${expr}::text, ''))`;
 const arQ = (q: unknown) => `%${arNorm(String(q ?? "").trim())}%`;
 
@@ -11010,9 +11021,9 @@ export async function registerRoutes(
           COUNT(*) FILTER (WHERE hours <= 24)::int                 AS within24h,
           COUNT(*) FILTER (WHERE hours <= 48)::int                 AS within48h,
           COUNT(*) FILTER (WHERE hours <= 120)::int                AS within120h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / COUNT(*), 1) AS pct24h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / COUNT(*), 1) AS pct48h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / COUNT(*), 1) AS pct120h
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / NULLIF(COUNT(*), 0), 1) AS pct24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / NULLIF(COUNT(*), 0), 1) AS pct48h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / NULLIF(COUNT(*), 0), 1) AS pct120h
         FROM base
         GROUP BY GROUPING SETS (
           (central_name, tech_name),
@@ -11091,9 +11102,9 @@ export async function registerRoutes(
           COUNT(*) FILTER (WHERE hours <= 24)::int                 AS within24h,
           COUNT(*) FILTER (WHERE hours <= 48)::int                 AS within48h,
           COUNT(*) FILTER (WHERE hours <= 120)::int                AS within120h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / COUNT(*), 1) AS pct24h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / COUNT(*), 1) AS pct48h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / COUNT(*), 1) AS pct120h
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / NULLIF(COUNT(*), 0), 1) AS pct24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / NULLIF(COUNT(*), 0), 1) AS pct48h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / NULLIF(COUNT(*), 0), 1) AS pct120h
         FROM base
         GROUP BY GROUPING SETS (
           (central_name, tech_name),
@@ -11177,9 +11188,9 @@ export async function registerRoutes(
           COUNT(*) FILTER (WHERE hours <= 24)::int                 AS within24h,
           COUNT(*) FILTER (WHERE hours <= 48)::int                 AS within48h,
           COUNT(*) FILTER (WHERE hours <= 120)::int                AS within120h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / COUNT(*), 1) AS pct24h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / COUNT(*), 1) AS pct48h,
-          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / COUNT(*), 1) AS pct120h
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 24)  / NULLIF(COUNT(*), 0), 1) AS pct24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 48)  / NULLIF(COUNT(*), 0), 1) AS pct48h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE hours <= 120) / NULLIF(COUNT(*), 0), 1) AS pct120h
         FROM base
         GROUP BY GROUPING SETS (
           (central_name, tech_name),

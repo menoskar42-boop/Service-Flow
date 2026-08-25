@@ -226,7 +226,7 @@ export const useStore = create<AppState>()(
           id: Math.random().toString(36).substr(2, 9),
           ticketNumber: `TKT-2025-${(state.tickets.length + 1).toString().padStart(3, '0')}`,
           status: 'open',
-          createdBy: state.user.id,
+          createdBy: state.user?.id ?? '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           works: [],
@@ -244,7 +244,7 @@ export const useStore = create<AppState>()(
             ...workData,
             id: Math.random().toString(36).substr(2, 9),
             createdAt: new Date().toISOString(),
-            createdBy: state.user.id
+            createdBy: state.user?.id ?? ''
           };
           return { ...t, works: [newWork, ...t.works], updatedAt: new Date().toISOString() };
         })
@@ -269,7 +269,7 @@ export const useStore = create<AppState>()(
               ...taskData,
               id: Math.random().toString(36).substr(2, 9),
               createdAt: new Date().toISOString(),
-              createdBy: state.user.id
+              createdBy: state.user?.id ?? ''
             };
             return { ...t, usedTasks: [newTask, ...t.usedTasks], updatedAt: new Date().toISOString() };
           })
@@ -285,7 +285,7 @@ export const useStore = create<AppState>()(
             works: [],
             usedTasks: [],
             createdAt: new Date().toISOString(),
-            createdBy: state.user.id
+            createdBy: state.user?.id ?? ''
           };
           return { ...t, measurements: [newMeasurement, ...t.measurements], updatedAt: new Date().toISOString() };
         })
@@ -302,7 +302,7 @@ export const useStore = create<AppState>()(
                 ...workData,
                 id: Math.random().toString(36).substr(2, 9),
                 createdAt: new Date().toISOString(),
-                createdBy: state.user.id
+                createdBy: state.user?.id ?? ''
               };
               return { ...m, works: [newWork, ...m.works] };
             }),
@@ -334,7 +334,7 @@ export const useStore = create<AppState>()(
                   ...taskData,
                   id: Math.random().toString(36).substr(2, 9),
                   createdAt: new Date().toISOString(),
-                  createdBy: state.user.id
+                  createdBy: state.user?.id ?? ''
                 };
                 return { ...m, usedTasks: [newTask, ...m.usedTasks] };
               }),
@@ -351,7 +351,7 @@ export const useStore = create<AppState>()(
             ...repairData,
             id: Math.random().toString(36).substr(2, 9),
             repairedAt: new Date().toISOString(),
-            repairedBy: state.user.id
+            repairedBy: state.user?.id ?? ''
           };
           return { 
             ...t, 
@@ -368,7 +368,7 @@ export const useStore = create<AppState>()(
             ...t, 
             status: 'closed', 
             closedAt: new Date().toISOString(),
-            closedBy: state.user.name, // Record closer name
+            closedBy: state.user?.name ?? '', // Record closer name
             updatedAt: new Date().toISOString() 
           } : t
         )
@@ -431,9 +431,8 @@ export const useStore = create<AppState>()(
 
       setLanguage: (language) => set({ language }),
       
-      setUserRole: (role) => set((state) => ({ 
-        user: { ...state.user, role } 
-      })),
+      // مفيش مستخدم مسجّل → مافيش دور نغيّره (بدل ما يتعمل كائن ناقص الحقول)
+      setUserRole: (role) => set((state) => (state.user ? { user: { ...state.user, role } } : {})),
     }),
     {
       name: 'cable-guardian-storage-v6', // Bump version

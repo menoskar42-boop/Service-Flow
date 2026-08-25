@@ -865,14 +865,17 @@ export function PhoneLookupReport() {
                     variant="outline"
                     onClick={async () => {
                       if (awaitingOp === "stop") { cancelOpWait(); return; }
-                      void recordOpIntent("stop", [line.accountNo]);
-                      if (await enqueueIfExecutorActive("stop", [line.accountNo])) {
+                      // نفس حارس زر رفع السرعة — من غيره كان ممكن يتبعت أكونت فاضى
+                      const acc = line.accountNo;
+                      if (!acc) { alert("لا يوجد رقم أكونت لهذا الخط"); return; }
+                      void recordOpIntent("stop", [acc]);
+                      if (await enqueueIfExecutorActive("stop", [acc])) {
                         alert("تم إضافة الرقم لطابور إيقاف PO — هيتنفّذ على جهاز التنفيذ، والصفحة هتتحدّث تلقائياً بعد التنفيذ");
-                        void waitForOpThenRefresh("stop", String(line.accountNo));
+                        void waitForOpThenRefresh("stop", String(acc));
                         return;
                       }
                       if (!isSuper || !canRunLocalExecutor()) { alert(NO_EXECUTOR_MSG); return; }
-                      openProfileOptimization([line.accountNo], { stopOnly: true });
+                      openProfileOptimization([acc], { stopOnly: true });
                     }}
                     className="bg-white gap-2 text-orange-700 border-orange-200"
                     title={awaitingOp === "stop" ? "اضغط لإلغاء انتظار إيقاف PO" : "إيقاف الـ Nightly PO فقط (يرجّع الحالة Not Started) لهذا الرقم"}

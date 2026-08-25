@@ -201,7 +201,9 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   }
 
   // Build status tabs based on role
-  const buildStatusTabs = () => {
+  // النوع صريح: الفرع اللى بيرجّع مصفوفة حرفية كان بيوسّع key لـ string، فالتبويبات
+  // كلها تبقى string وsetStatusFilter وstatusCounts يفقدوا الأمان.
+  const buildStatusTabs = (): { key: StatusFilter; label: string }[] => {
     const tabs: { key: StatusFilter; label: string }[] = [
       { key: "all", label: "الكل" },
     ];

@@ -144,7 +144,7 @@ export function CabinetAdslFaultsReport() {
         "أعطال لكل 1000 خط": per1000(r.faultCount, r.workingLines),
         "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingLines),
       }));
-      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "رقم البكس": "", "اسم الفنى": "",
+      data.push({ "#": "" as any, "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "رقم البكس": "", "اسم الفنى": "",
         "عدد الخطوط": totWorking, "عدد الأعطال": totFaults,
         "أعطال لكل 1000 خط": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
       makeSheet(data, "البكسيات");
@@ -154,7 +154,7 @@ export function CabinetAdslFaultsReport() {
         "عدد الأعطال": r.faultCount, "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
         "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
       }));
-      data.push({ "#": "", "اسم الفنى": "إجمالى الإدارة", "الشغال ADSL": totWorking,
+      data.push({ "#": "" as any, "اسم الفنى": "إجمالى الإدارة", "الشغال ADSL": totWorking,
         "عدد الأعطال": totFaults, "أعطال لكل 1000 مشترك": totPer1000,
         "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
       makeSheet(data, "بالفنى");
@@ -166,7 +166,7 @@ export function CabinetAdslFaultsReport() {
         "أعطال لكل 1000 مشترك": per1000(r.faultCount, r.workingAdsl),
         "أعطال الألف المتوقع (نهاية الشهر)": projected(r.faultCount, r.workingAdsl),
       }));
-      data.push({ "#": "", "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "كود الكابينه (MSAN)": "", "اسم الفنى": "",
+      data.push({ "#": "" as any, "السنترال": "إجمالى الإدارة", "رقم الكابينه": "", "كود الكابينه (MSAN)": "", "اسم الفنى": "",
         "الشغال ADSL": totWorking, "عدد الأعطال": totFaults,
         "أعطال لكل 1000 مشترك": totPer1000, "أعطال الألف المتوقع (نهاية الشهر)": totProjected });
       makeSheet(data, "الكابينه");

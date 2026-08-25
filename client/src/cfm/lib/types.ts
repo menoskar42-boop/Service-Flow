@@ -104,16 +104,16 @@ export type MeasurementEntry = {
 
 export type WorksBy = 'self' | 'contractor';
 
-export type WorkEntry = {
+// إجراء الإصلاح النهائى (Mode C) — كان مستخدَم فى Ticket و store من غير تعريف.
+export type RepairAction = {
   id: string;
-  items: WorkItem[];
-  notes?: string;
-  performedBy: string; // Technician Name
-  worksBy?: WorksBy;
-  contractorId?: string;
-  createdAt: string;
-  createdBy: string;
+  description: string;
+  repairedAt: string;
+  repairedBy: string;
 };
+
+// WorkEntry معرَّف فوق مرة واحدة — كان مكرَّر بنفس الحقول بالظبط (تعريفين لنفس
+// الاسم فى نفس الملف)، والتانى بيطغى على الأول من غير ما حد ياخد باله.
 
 export type Contractor = {
   id: string;

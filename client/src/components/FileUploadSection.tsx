@@ -704,7 +704,7 @@ export function FileUploadSection() {
               const [h, m] = s.split(":").map(Number);
               return (h || 0) * 60 + (m || 0);
             };
-            const okToday = (x?: string) => !!x && cairoDay(x) === today && cairoMinOfDay(x) >= PORTS_THRESHOLD_MIN;
+            const okToday = (x?: string | null) => !!x && cairoDay(x) === today && cairoMinOfDay(x) >= PORTS_THRESHOLD_MIN;
             const done = okToday(iso) || okToday(upIso);
             return done
               ? <span className="text-green-600 font-medium">اتحدّثت ✓</span>
