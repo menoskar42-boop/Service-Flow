@@ -236,51 +236,6 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     }
   };
 
-  // بارامترات الفلاتر — **مصدر واحد** للجدول وللقياس ورفع السرعة والتصدير.
-  // كانت متكرّرة ٤ مرات بالنسخ، وأى فلتر جديد بيتضاف فى مكان وينسى فى التانى.
-  const filterParams = (extra: Record<string, string>) => {
-    const params = new URLSearchParams(extra);
-    if (central) params.set("central", central);
-    if (cabin) params.set("cabin", cabin);
-    if (box) params.set("box", box);
-    if (!box && boxFrom) params.set("boxFrom", boxFrom);
-    if (!box && boxTo)   params.set("boxTo",   boxTo);
-    if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
-    if (excludeQueued) params.set("excludeQueued", "1");
-    if (hasComplaintOn) params.set("hasComplaint", "1");
-    if (scoreGt != null) params.set("scoreGt", String(scoreGt));
-    if (neverMeasured) params.set("neverMeasured", "1");
-    if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
-    if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
-    if (speedMin.trim()) params.set("speedGt", speedMin.trim());
-    if (speedMax.trim()) params.set("speedLt", speedMax.trim());
-    if (accountQ.trim()) params.set("accountQ", accountQ.trim());
-    return params;
-  };
-
-  // ⚠️ العدد المعروض فى الجدول **لقطة** وقت ما التقرير اتحمّل، والتقرير مابيتحدّثش
-  // لوحده (staleTime: Infinity). فى نفس الوقت فلتر «الطابور مستبعد» بيشيل الأرقام
-  // اللى فى طابور التنفيذ، والطابور بيفضى باستمرار — فكل باتش بيخلص بيرجّع أرقامه
-  // للتقرير. النتيجة: الشاشة تقول «١ سجل» وزر القياس يلاقى ٤٢٩ رقم مؤهّل فعلاً.
-  // فبنسأل المستخدم بالعدد **الحقيقى** قبل ما نبعت، ونوضّح سبب الفرق.
-  const confirmRealCount = (real: number, shown: number, what: string): boolean => {
-    if (real === 0) return false;
-    if (real !== shown) {
-      return window.confirm(
-        `الشاشة بتعرض ${shown.toLocaleString("ar-EG")} رقم، لكن المؤهّل لـ${what} دلوقتى ` +
-        `${real.toLocaleString("ar-EG")} رقم.\n\nالفرق سببه أرقام خرجت من طابور التنفيذ بعد ما ` +
-        `التقرير اتحمّل (الباتشات اللى خلصت بترجّع أرقامها للتقرير).\n\n` +
-        `تحب تكمّل وتبعت ${real.toLocaleString("ar-EG")} رقم؟\n(لو عايز تشوفهم الأول: إلغاء ثم «تحديث»)`,
-      );
-    }
-    if (real > 500) {
-      return window.confirm(
-        `عدد الخطوط ${real.toLocaleString("ar-EG")} (أكثر من 500) — ${what} على دفعات هياخد وقت طويل. هل تريد الاستمرار؟`,
-      );
-    }
-    return true;
-  };
-
   const toItem = (r: PhoneLine): DZSItem => ({
     account: (r.accountNo ?? "").toString().trim(),
     complaint: "",
@@ -291,13 +246,34 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   // القياس: نفتح كل أكونتس النطاق فى تاب DZS واحد — والسكريبت (dzs-expresse-v10.user.js)
   // يتولّى التقسيم لدفعات 50 خط والانتظار 400 ثانية بين كل دفعة والرفع التلقائى لشيت 138.
   const handleMeasureDZS = async () => {
+    const totalCount = data?.total ?? 0;
+    // تحذير فقط (مش منع): لو العدد كبير نسأل المستخدم هل يكمّل
+    if (totalCount > 500) {
+      if (!confirm(`عدد الخطوط ${totalCount.toLocaleString("ar-EG")} (أكثر من 500) — القياس على دفعات هياخد وقت طويل. هل تريد الاستمرار؟`)) return;
+    }
     // افتح التاب فوراً وبشكل متزامن داخل ضغطة الزر (قبل أى await) — وإلا يحجبه الـ popup blocker
     const w = window.open("about:blank", "dzs_measure");
     setDzsLoading(true);
     setDzsCount(null);
     try {
-      const res = await fetch(`/api/phone-lines/with-account?${filterParams({ page: "1", limit: "20000" })}`,
-        { credentials: "include" });
+      const params = new URLSearchParams({ page: "1", limit: "20000" });
+      if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (box) params.set("box", box);
+      if (!box && boxFrom) params.set("boxFrom", boxFrom);
+      if (!box && boxTo)   params.set("boxTo",   boxTo);
+      if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
+      if (hasComplaintOn) params.set("hasComplaint", "1");
+      if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+      if (neverMeasured) params.set("neverMeasured", "1");
+      if (accountQ.trim()) params.set("accountQ", accountQ.trim());
+      // 🆕 نطبّق نفس فلاتر الاسكور/السرعة المكتوبة فى الشاشة على القياس
+      if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+      if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+      if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+      if (speedMax.trim()) params.set("speedLt", speedMax.trim());
+      const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
       const all = (json.data as PhoneLine[]) ?? [];
       const seen = new Set<string>();
@@ -305,16 +281,9 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
       if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
-      // التأكيد بالعدد الحقيقى اللى هيتبعت — مش بالعدد المعروض على الشاشة
-      if (!confirmRealCount(items.length, data?.total ?? 0, "القياس")) { try { w?.close(); } catch {} return; }
-      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) {
-        try { w?.close(); } catch {}
-        qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });  // الجدول يطابق الواقع
-        return;
-      }
+      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) { try { w?.close(); } catch {} return; }
       if (w) w.location.href = buildDZSUrl(items, scoreGt != null); // scoreGt != null = تقرير الأسكور>100 → فرض real-time
       setDzsCount(items.length);
-      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
     } catch {
       try { w?.close(); } catch {}
       alert("تعذّر تحميل بيانات النطاق للقياس");
@@ -335,19 +304,27 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       : false;
     setDzsLoading(true);
     try {
-      const res = await fetch(`/api/phone-lines/with-account?${filterParams({ page: "1", limit: "20000" })}`,
-        { credentials: "include" });
+      const params = new URLSearchParams({ page: "1", limit: "20000" });
+      if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (box) params.set("box", box);
+      if (!box && boxFrom) params.set("boxFrom", boxFrom);
+      if (!box && boxTo)   params.set("boxTo",   boxTo);
+      if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
+      if (hasComplaintOn) params.set("hasComplaint", "1");
+      if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+      if (neverMeasured) params.set("neverMeasured", "1");
+      if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+      if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+      if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+      if (speedMax.trim()) params.set("speedLt", speedMax.trim());
+      if (accountQ.trim()) params.set("accountQ", accountQ.trim());
+      const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       const json = await res.json();
-      const accounts = (json.data as PhoneLine[])
-        .map((r) => (r.accountNo ?? "").toString().trim()).filter(Boolean);
-      // نفس حماية القياس — رفع السرعة على أرقام مش ظاهرة على الشاشة أخطر
-      if (!confirmRealCount(accounts.length, data?.total ?? 0, kind === "stop" ? "الإيقاف" : "رفع السرعة")) return;
-      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) {
-        qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
-        return;
-      }
+      const accounts = (json.data as PhoneLine[]).map((r) => (r.accountNo ?? "").toString().trim());
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) return;
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
-      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");
     } finally {
@@ -356,7 +333,22 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   };
 
   const handleExport = async () => {
-    const params = filterParams({ page: "1", limit: "20000" });
+    const params = new URLSearchParams({ page: "1", limit: "20000" });
+    if (central) params.set("central", central);
+    if (cabin) params.set("cabin", cabin);
+    if (box) params.set("box", box);
+    if (!box && boxFrom) params.set("boxFrom", boxFrom);
+    if (!box && boxTo)   params.set("boxTo",   boxTo);
+    if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
+      if (excludeQueued) params.set("excludeQueued", "1");
+    if (hasComplaintOn) params.set("hasComplaint", "1");
+    if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+    if (neverMeasured) params.set("neverMeasured", "1");
+    if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
+    if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
+    if (speedMin.trim()) params.set("speedGt", speedMin.trim());
+    if (speedMax.trim()) params.set("speedLt", speedMax.trim());
+    if (accountQ.trim()) params.set("accountQ", accountQ.trim());
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
     const json = await res.json();
     const rows = (json.data as PhoneLine[]).map((r) => ({
@@ -430,11 +422,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 {/* الأرقام اللى فى طابور القياس دلوقتى بتتشال من النتيجة عشان مايتقاسش
                     نفس الرقم مرتين — بنقول للمستخدم اتشال كام. */}
                 {!!data.queuedExcluded && (
-                  <span className="text-amber-700"> {" "}— مستبعَد {data.queuedExcluded.toLocaleString("ar-EG")} رقم موجود فى طابور القياس
-                    {/* العدد لقطة وقت التحميل: الطابور بيفضى باستمرار وكل باتش بيخلص
-                        بيرجّع أرقامه للتقرير، فالرقم ده بيقلّ مع الوقت. */}
-                    <span className="text-muted-foreground"> (العدد وقت فتح التقرير — اضغط «تحديث» للرقم الحالى)</span>
-                  </span>
+                  <span className="text-amber-700"> {" "}— مستبعَد {data.queuedExcluded.toLocaleString("ar-EG")} رقم موجود فى طابور القياس</span>
                 )}
               </p>
             )}
