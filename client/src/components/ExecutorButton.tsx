@@ -83,6 +83,33 @@ export function ExecutorButton() {
   // + حالة جهاز التنفيذ: لو فيه مهام مستنية ومفيش جهاز شغّال، الطابور واقف فعلاً
   // ولازم ده يبان على طول من أى صفحة بدل ما يتكتشف بعد ساعات.
   const [execDown, setExecDown] = useState<{ lastSeenSec: number | null; who: string | null } | null>(null);
+  const [autoReloading, setAutoReloading] = useState(false);
+  const autoReloadBusy = useRef(false);
+
+  // التاب المتجمّد لا يستطيع تنفيذ JavaScript أثناء التجميد نفسه، لذلك الصفحة
+  // المفتوحة على جهاز آخر تراقب آخر نبضة وتطلب ريفرش صامتاً كل 5 ثوانٍ.
+  // الطلب يظل محفوظاً على السيرفر، وأول ما تاب جهاز التنفيذ يفوق يقرأه وينفّذ
+  // window.location.reload() من خلال النبضة التالية.
+  const requestAutomaticReload = async () => {
+    if (autoReloadBusy.current) return;
+    autoReloadBusy.current = true;
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const r = await fetch("/api/exec-queue/request-reload", {
+        method: "POST",
+        credentials: "include",
+        signal: ctrl.signal,
+      });
+      if (r.ok) setAutoReloading(true);
+    } catch {
+      // المحاولة التالية بعد 5 ثوانٍ
+    } finally {
+      clearTimeout(timeout);
+      autoReloadBusy.current = false;
+    }
+  };
+
   useEffect(() => {
     if (user?.role !== ROLES.SUPER_ADMIN) return;
     const load = async () => {
@@ -92,11 +119,21 @@ export function ExecutorButton() {
           fetch("/api/exec-queue/status", { credentials: "include" }).then((r) => r.json()),
         ]);
         setPending(p?.pending ?? 0);
-        setExecDown(st?.active ? null : { lastSeenSec: st?.lastSeenSec ?? null, who: st?.lastExecutor ?? null });
+        const lastSeenSec = typeof st?.lastSeenSec === "number" ? st.lastSeenSec : null;
+        const knownExecutor = !!st?.lastExecutor;
+        const heartbeatStalled = knownExecutor && lastSeenSec != null && lastSeenSec >= 45;
+        setExecDown(st?.active ? null : { lastSeenSec, who: st?.lastExecutor ?? null });
+        if (heartbeatStalled) {
+          // لا ننتظر انتهاء نافذة active (150 ثانية)؛ نبدأ الريفريش
+          // بعد فقدان أكثر من نبضتين، ثم نكرر المحاولة كل 5 ثوانٍ.
+          void requestAutomaticReload();
+        } else {
+          setAutoReloading(false);
+        }
       } catch {}
     };
     load();
-    const iv = setInterval(load, 10 * 1000);
+    const iv = setInterval(load, 5 * 1000);
     return () => clearInterval(iv);
   }, [user?.role]);
 
@@ -505,7 +542,15 @@ export function ExecutorButton() {
       </Button>
       {/* الطابور فيه مهام ومفيش جهاز تنفيذ شغّال → تحذير ظاهر على أى صفحة.
           ده اللى بيمنع إن القياسات تفضل واقفة ساعات من غير ما حد ياخد باله. */}
-      {pending > 0 && execDown && !active && (
+       {autoReloading && (
+         <span
+           className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+           title="آخر نبضة من جهاز التنفيذ متوقفة — يتم إرسال طلب ريفرش تلقائي كل 5 ثوانٍ"
+         >
+           ↻ ريفرش تلقائي لجهاز التنفيذ
+         </span>
+       )}
+       {pending > 0 && execDown && !active && (
         <span
           className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1"
           title={execDown.lastSeenSec == null
