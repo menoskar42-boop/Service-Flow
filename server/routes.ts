@@ -9849,6 +9849,14 @@ export async function registerRoutes(
         const p = `$${params.length}`;
         conds.push(`(${n("t.phone_number")} LIKE ${p} OR ${n("t.cabinet_no")} LIKE ${p} OR ${n("t.status_code")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
       }
+      // الفني يرى الأعطال التابعة لكوده فقط. الفلترة هنا على السيرفر، لأن
+      // إخفاء الصفوف من الواجهة وحده كان يترك بيانات كل الفنيين تصل للمتصفح.
+      if (req.user?.role === ROLES.TECH) {
+        const workerCode = String(req.user.workerCode || "").trim();
+        if (!workerCode) return res.json([]);
+        params.push(workerCode);
+        conds.push(`btrim(COALESCE(ct.worker_code, '')) = btrim($${params.length})`);
+      }
       const where = "WHERE " + conds.join(" AND ");
 
       // DISTINCT ON (ticket_id) — آخر حالة لكل شكوى (أعلى id)، ثم ترتيب بوقت الشكوى.
