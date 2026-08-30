@@ -271,7 +271,7 @@ export default function Dashboard() {
   // الفني: 5 تقارير فقط (الأعطال الحالية + أداء الفنيين + إحصائيات الإزالة/التكرار + متوسط القياسات)
   // «التركيبات والنقل الحالى» و«المعاينات الحالية» بيظهروا للفنى كمان — والسيرفر
   // بيفلترهم على كباينه هو (worker_code) فكل واحد يشوف اللى يخصه بس.
-  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "box-score-avg", "om-current", "with-account", "installations-by-tech", "shift-schedule", "current-installations", "current-surveys"];
+  const TECH_ALLOWED: ReportTab[] = ["current-faults", "manual-current-faults", "tech-performance", "removal-stats", "repetition-stats", "repeated-within-month", "box-score-avg", "om-current", "with-account", "installations-by-tech", "shift-schedule", "current-installations", "current-surveys"];
   const TECH_ALLOWED_GROUPS = ["الأعطال", "القياسات", "متعذرات OM", "تركيبات و نقل و اوامر شغل", "المعاينات", "جدول الورديات"];
   // أدمن المبيعات: تقرير المتعذرات الحالية فقط (عشان يدخّل رقم المحمول)
   const SALES_ADMIN_ALLOWED: ReportTab[] = ["om-current"];

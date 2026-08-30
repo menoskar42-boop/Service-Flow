@@ -3578,12 +3578,28 @@ export async function registerRoutes(
   });
 
   // GET /api/phone-lines/filter-options — returns unique centrals, cabins per central, boxes per central+cabin
-  app.get("/api/phone-lines/filter-options", requireAuth, async (req, res) => {
+  app.get("/api/phone-lines/filter-options", requireAuth, async (req: any, res) => {
+    const workerCode = req.user?.role === ROLES.TECH
+      ? String(req.user.workerCode || "").trim()
+      : "";
+    if (req.user?.role === ROLES.TECH && !workerCode) {
+      return res.json({ centrals: [], cabins: {}, boxes: {} });
+    }
+    const params = workerCode ? [workerCode] : [];
+    const techWhere = workerCode
+      ? `AND EXISTS (
+           SELECT 1 FROM cabinet_technicians ct
+            WHERE ct.central_name = pl.central
+              AND ct.cabin_number = pl.cabin_number
+              AND btrim(COALESCE(ct.worker_code, '')) = btrim($1)
+         )`
+      : "";
     const { rows } = await pool.query(`
-      SELECT DISTINCT central, cabin_number, box_number
-      FROM phone_lines
-      WHERE central IS NOT NULL AND central <> ''
-    `);
+      SELECT DISTINCT pl.central, pl.cabin_number, pl.box_number
+      FROM phone_lines pl
+      WHERE pl.central IS NOT NULL AND pl.central <> ''
+      ${techWhere}
+    `, params);
 
     const centralSet = new Set<string>();
     const cabinMap = new Map<string, Set<string>>();
@@ -5388,20 +5404,40 @@ export async function registerRoutes(
   });
 
   // GET /api/reports/cabinet-score-avg/options — فلاتر التقرير: السنترالات + الكباين النحاسية + كباين MSAN
-  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (_req, res) => {
+  app.get("/api/reports/cabinet-score-avg/options", requireAuth, async (req: any, res) => {
+    const workerCode = req.user?.role === ROLES.TECH
+      ? String(req.user.workerCode || "").trim()
+      : "";
+    if (req.user?.role === ROLES.TECH && !workerCode) {
+      return res.json({ centrals: [], copperCabins: {}, msanCabins: {} });
+    }
+    const params = workerCode ? [workerCode] : [];
+    const lineTechWhere = workerCode
+      ? `AND EXISTS (
+           SELECT 1 FROM cabinet_technicians ct
+            WHERE ct.central_name = pl.central
+              AND ct.cabin_number = pl.cabin_number
+              AND btrim(COALESCE(ct.worker_code, '')) = btrim($1)
+         )`
+      : "";
+    const msanTechWhere = workerCode
+      ? `AND btrim(COALESCE(worker_code, '')) = btrim($1)`
+      : "";
     // السنترالات + الكباين النحاسية من بيان التليفونات
     const { rows: plRows } = await pool.query(`
-      SELECT DISTINCT central, cabin_number
-      FROM phone_lines
-      WHERE central IS NOT NULL AND central <> ''
-    `);
+      SELECT DISTINCT pl.central, pl.cabin_number
+      FROM phone_lines pl
+      WHERE pl.central IS NOT NULL AND pl.central <> ''
+      ${lineTechWhere}
+    `, params);
     // كباين MSAN (cabin_code) لكل سنترال من جدول الفنيين
     const { rows: msanRows } = await pool.query(`
       SELECT DISTINCT central_name AS central, cabin_code
       FROM cabinet_technicians
       WHERE central_name IS NOT NULL AND central_name <> ''
         AND cabin_code IS NOT NULL AND cabin_code <> ''
-    `);
+        ${msanTechWhere}
+    `, params);
     const centralSet = new Set<string>();
     const copperMap = new Map<string, Set<string>>();
     const msanMap = new Map<string, Set<string>>();
@@ -5434,6 +5470,18 @@ export async function registerRoutes(
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
     if (msan)    { params.push(msan);    conds.push(`ctm.cabin_code = $${params.length}`); }
+    if (req.user?.role === ROLES.TECH) {
+      const workerCode = String(req.user.workerCode || "").trim();
+      if (!workerCode) return res.json({ data: [] });
+      params.push(workerCode);
+      conds.push(`EXISTS (
+        SELECT 1
+          FROM cabinet_technicians ct
+         WHERE ct.central_name = pl.central
+           AND ct.cabin_number = pl.cabin_number
+           AND btrim(COALESCE(ct.worker_code, '')) = btrim($${params.length})
+      )`);
+    }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // تعبير آمن لتحويل عمود السرعة النصى لرقم (تجاهل أى رمز غير رقمى)
     const numSpeed = (col: string) =>
@@ -5454,7 +5502,7 @@ export async function registerRoutes(
        FROM line_accounts la
        JOIN phone_lines pl ON pl.full_phone = la.full_phone
        LEFT JOIN LATERAL (
-         SELECT ct.cabin_code FROM cabinet_technicians ct
+          SELECT ct.cabin_code FROM cabinet_technicians ct
          WHERE ct.central_name = pl.central AND ct.cabin_number = pl.cabin_number
          ORDER BY (ct.cabin_code IS NOT NULL AND btrim(ct.cabin_code) <> '') DESC
          LIMIT 1
@@ -5487,6 +5535,17 @@ export async function registerRoutes(
       if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
       if (cabin)   { params.push(cabin);   conds.push(`pl.cabin_number = $${params.length}`); }
       if (box)     { params.push(box);     conds.push(`pl.box_number = $${params.length}`); }
+      if (req.user?.role === ROLES.TECH) {
+        const workerCode = String(req.user.workerCode || "").trim();
+        if (!workerCode) return res.json({ data: [] });
+        params.push(workerCode);
+        conds.push(`EXISTS (
+          SELECT 1 FROM cabinet_technicians ct
+           WHERE ct.central_name = pl.central
+             AND ct.cabin_number = pl.cabin_number
+             AND btrim(COALESCE(ct.worker_code, '')) = btrim($${params.length})
+        )`);
+      }
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
       const numSpeed = (col: string) =>
         `NULLIF(regexp_replace(COALESCE(${col}, ''), '[^0-9]', '', 'g'), '')::numeric`;
