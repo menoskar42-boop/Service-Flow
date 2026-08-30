@@ -834,6 +834,72 @@ export function registerCfmRoutes(app: Express) {
     }
   });
 
+  // GET /api/cfm/box-cases/details — التفاصيل التى تغذّى عدّاد المتعذرات.
+  // نفس شروط عدّاد /box-cases بالحرف، مع بيانات العميل إن كانت موجودة.
+  app.get("/api/cfm/box-cases/details", requireAuth, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT *
+           FROM (
+             SELECT 'طلبات' AS source,
+                    o.id::text AS reference,
+                    o.customer_name AS name,
+                    o.customer_address AS address,
+                    o.customer_phone AS mobile,
+                    o.central_name AS central,
+                    o.cabin_number AS cabinet,
+                    o.box_number AS box,
+                    o.rejection_reason AS reason
+               FROM orders o
+              WHERE o.rejection_reason = $1
+                AND COALESCE(btrim(o.box_number), '') <> ''
+                AND o.status NOT IN ('feasible', 'external_feasible')
+
+             UNION ALL
+
+             SELECT 'OM' AS source,
+                    r.serial_number::text AS reference,
+                    fo.customer_name AS name,
+                    fo.install_address AS address,
+                    COALESCE(omm.mobile, wfm.mobile, fo.customer_mobile) AS mobile,
+                    r.central_name AS central,
+                    r.cabin_number AS cabinet,
+                    r.box_number AS box,
+                    r.rejection_reason AS reason
+               FROM om_responses r
+               LEFT JOIN ftth_orders_current fo
+                 ON fo.serial_number = r.serial_number
+               LEFT JOIN om_manual_mobiles omm
+                 ON omm.serial_number = r.serial_number
+               LEFT JOIN (
+                 SELECT reference_no, MIN(mobile) AS mobile
+                   FROM maintenance_orders
+                  WHERE work_order_type ILIKE 'fvmanualsurvey'
+                    AND COALESCE(btrim(mobile), '') <> ''
+                  GROUP BY reference_no
+               ) wfm
+                 ON wfm.reference_no = fo.service_order_id
+              WHERE r.rejection_reason = $1
+                AND COALESCE(btrim(r.box_number), '') <> ''
+                AND COALESCE(r.status, '') NOT IN ('feasible', 'external_feasible')
+                AND COALESCE(r.is_feasible, false) = false
+                AND COALESCE(r.is_feasible_external, false) = false
+                AND NOT EXISTS (
+                  SELECT 1
+                    FROM om_order_matches mm
+                   WHERE mm.om_serial = r.serial_number
+                )
+           ) details
+          ORDER BY central, cabinet, box, source, reference`,
+        ["بوكس معطل"],
+      );
+      res.json(rows);
+    } catch (error) {
+      console.error("Get box case details error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // GET /api/tickets/:id
   app.get("/api/cfm/tickets/:id", requireAuth, async (req, res) => {
     try {

@@ -14,11 +14,23 @@ import {
 } from "@/cfm/components/ui/table";
 import { Badge } from "@/cfm/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/cfm/components/ui/tabs";
-import { Plus, Search, Eye, FileSpreadsheet, ArrowDownUp, ArrowDown, ArrowUp } from "lucide-react";
+import { Plus, Search, Eye, FileSpreadsheet, ArrowDownUp, ArrowDown, ArrowUp, FileText } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import ExcelJS from 'exceljs';
 import { arNorm, arIncludes } from "@shared/ar-norm";
 import { normCentral, normCab, normBox, expandBoxes } from "@shared/cab-norm";
+
+interface BoxCaseDetail {
+  source: string;
+  reference: string | null;
+  name: string | null;
+  address: string | null;
+  mobile: string | null;
+  central: string | null;
+  cabinet: string | null;
+  box: string | null;
+  reason: string | null;
+}
 
 export default function TicketList() {
   const { language, user } = useStore();
@@ -36,6 +48,7 @@ export default function TicketList() {
   const [users, setUsers] = useState<UserType[]>([]);
   // عدد المتعذرات «بوكس معطل» على كل بكس (من Service-Flow) — سنترال|كابينة|بكس → {om, orders}
   const [boxCases, setBoxCases] = useState<Map<string, { om: number; orders: number }>>(new Map());
+  const [boxCaseDetails, setBoxCaseDetails] = useState<BoxCaseDetail[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Sort direction: 'desc' = newest first, 'asc' = oldest first
@@ -79,9 +92,12 @@ export default function TicketList() {
       }
       // عدد المتعذرات على كل بكس — لو فشل مانوقفش القائمة، العمود بس هيبان فاضى
       try {
-        const r = await fetch('/api/cfm/box-cases', { credentials: 'include' });
-        if (r.ok) {
-          const list: any[] = await r.json();
+        const [countsResponse, detailsResponse] = await Promise.all([
+          fetch('/api/cfm/box-cases', { credentials: 'include' }),
+          fetch('/api/cfm/box-cases/details', { credentials: 'include' }),
+        ]);
+        if (countsResponse.ok) {
+          const list: any[] = await countsResponse.json();
           const m = new Map<string, { om: number; orders: number }>();
           for (const x of list) {
             const k = `${normCentral(x.central)}|${normCab(x.cabinet)}|${normBox(x.box)}`;
@@ -90,6 +106,7 @@ export default function TicketList() {
           }
           setBoxCases(m);
         }
+        if (detailsResponse.ok) setBoxCaseDetails(await detailsResponse.json());
       } catch {}
     } catch (error) {
       console.error("Failed to fetch tickets data:", error);
@@ -206,6 +223,84 @@ export default function TicketList() {
     return { boxes: perBox.size, cases };
   })();
 
+  // نفس نطاق التكتات المفلترة المستخدم فى ملخص المتعذرات، بدون تكرار البكس
+  // لو كان مفتوحًا على أكثر من تكت.
+  const shownCaseDetails = (() => {
+    const keys = new Set<string>();
+    for (const ticket of filteredTickets) {
+      const central = centrals.find(c => c.id === ticket.centralId);
+      const cable = cables.find(c => c.id === ticket.cableId);
+      const cn = normCentral(central?.name ?? "");
+      const cab = normCab(cable?.number ?? ticket.cabinet ?? "");
+      for (const b of expandBoxes(ticket.box)) keys.add(`${cn}|${cab}|${b}`);
+    }
+    return boxCaseDetails.filter((item) =>
+      keys.has(`${normCentral(item.central ?? "")}|${normCab(item.cabinet ?? "")}|${normBox(item.box ?? "")}`),
+    );
+  })();
+
+  const openCaseDetails = () => {
+    if (!shownCaseDetails.length) {
+      alert("لا توجد تفاصيل متعذرات متاحة للتكتات المعروضة");
+      return;
+    }
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("تعذّر فتح نافذة جديدة — اسمح بالنوافذ المنبثقة للموقع");
+      return;
+    }
+    const esc = (value: unknown) =>
+      String(value ?? "-")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    const rows = shownCaseDetails.map((item, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${esc(item.source)}</td>
+        <td>${esc(item.reference)}</td>
+        <td>${esc(item.name)}</td>
+        <td>${esc(item.address)}</td>
+        <td dir="ltr">${esc(item.mobile)}</td>
+        <td>${esc(item.central)}</td>
+        <td>${esc(item.cabinet)}</td>
+        <td>${esc(item.box)}</td>
+        <td>${esc(item.reason)}</td>
+      </tr>`).join("");
+    w.document.write(`<!doctype html>
+      <html lang="ar" dir="rtl">
+        <head>
+          <meta charset="utf-8" />
+          <title>تفاصيل المتعذرات</title>
+          <style>
+            body { font-family: Arial, "Segoe UI", sans-serif; margin: 0; padding: 20px; color: #172033; background: #f8fafc; }
+            h1 { font-size: 20px; margin: 0 0 6px; }
+            .meta { color: #64748b; font-size: 13px; margin-bottom: 16px; }
+            table { width: 100%; border-collapse: collapse; background: #fff; font-size: 13px; }
+            th { background: #1e3a8a; color: #fff; padding: 9px 7px; border: 1px solid #172554; white-space: nowrap; }
+            td { padding: 8px 7px; border: 1px solid #cbd5e1; vertical-align: top; }
+            tr:nth-child(even) { background: #eff6ff; }
+            td:nth-child(5) { min-width: 180px; }
+            @media print { body { background: #fff; padding: 0; } table { font-size: 10px; } }
+          </style>
+        </head>
+        <body>
+          <h1>تفاصيل المتعذرات</h1>
+          <div class="meta">عدد المتعذرات المعروضة: ${shownCaseDetails.length}</div>
+          <table>
+            <thead><tr>
+              <th>#</th><th>المصدر</th><th>رقم المتعذر</th><th>اسم العميل</th>
+              <th>العنوان</th><th>رقم الموبايل</th><th>السنترال</th>
+              <th>الكابينة</th><th>البكس</th><th>سبب التعذر</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>`);
+    w.document.close();
+  };
+
   const exportToExcel = async () => {
     // Define Headers
     const headers = [
@@ -295,7 +390,19 @@ export default function TicketList() {
         <div className="px-4 py-2 border-b bg-muted/40 text-xs flex flex-wrap items-center gap-x-4 gap-y-1">
           <span>عدد التكتات: <strong>{filteredTickets.length.toLocaleString("ar-EG")}</strong></span>
           <span>عدد البكسيات: <strong>{summary.boxes.toLocaleString("ar-EG")}</strong></span>
-          <span>عدد المتعذرات: <strong className="text-amber-700">{summary.cases.toLocaleString("ar-EG")}</strong></span>
+           <span className="inline-flex items-center gap-2">
+             <span>عدد المتعذرات: <strong className="text-amber-700">{summary.cases.toLocaleString("ar-EG")}</strong></span>
+             <Button
+               variant="outline"
+               size="sm"
+               onClick={openCaseDetails}
+               disabled={summary.cases === 0 || shownCaseDetails.length === 0}
+               className="h-7 gap-1 px-2 text-amber-700 border-amber-300"
+               title="فتح تفاصيل المتعذرات للتكتات المعروضة"
+             >
+               <FileText className="h-3.5 w-3.5" /> التفاصيل
+             </Button>
+           </span>
           <span className="text-muted-foreground">— البكس المكرّر فى أكتر من تكت بيتحسب مرة واحدة</span>
         </div>
         <div className="p-4 flex flex-col md:flex-row items-center gap-4 border-b">
