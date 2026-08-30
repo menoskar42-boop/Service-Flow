@@ -10403,14 +10403,16 @@ export async function registerRoutes(
            -- بيظهروا 4). DISTINCT ON (no) بتخلّى كل شكوى صف واحد، وبنفضّل صف «التفاصيل»
            -- (pref = 0) لأنه السجل النهائى بعد الإغلاق.
            SELECT DISTINCT ON (no) phone, no, ct, central, cabinet FROM (
-             SELECT cd.phone_number AS phone, cd.complain_no AS no, cd.complain_time AS ct,
-                    cd.exchange_name AS central, cd.cabinet_no AS cabinet, 0 AS pref
+              SELECT cd.phone_number AS phone, cd.complain_no AS no, cd.complain_time AS ct,
+                     cd.exchange_name AS central, cd.cabinet_no AS cabinet,
+                     cd.close_code AS close_code, 0 AS pref
              FROM complaint_details cd
              WHERE cd.close_time IS NOT NULL AND cd.exchange_name ILIKE '%غنايم%'
                AND cd.phone_number IS NOT NULL AND cd.phone_number <> '' AND cd.complain_time IS NOT NULL
                ${cdCentral}
              UNION ALL
-             SELECT rc.phone_number, rc.complain_no, rc.complain_time, rc.exchange_name, rc.cabinet_no, 1
+              SELECT rc.phone_number, rc.complain_no, rc.complain_time, rc.exchange_name,
+                     rc.cabinet_no, rc.close_code, 1
              FROM remaining_complaints rc
              WHERE rc.status_code IN ('138', '135') AND rc.exchange_name ILIKE '%غنايم%'
                AND rc.phone_number IS NOT NULL AND rc.phone_number <> '' AND rc.complain_time IS NOT NULL
@@ -10419,15 +10421,18 @@ export async function registerRoutes(
          ),
          last_c AS (
            -- آخر شكوى لكل رقم
-           SELECT DISTINCT ON (phone) phone, no AS last_no, ct AS last_time, central, cabinet
+            SELECT DISTINCT ON (phone) phone, no AS last_no, ct AS last_time,
+                   close_code AS last_close_code, central, cabinet
            FROM comps ORDER BY phone, ct DESC
          ),
          qual AS (
-           SELECT lc.phone, lc.last_no, lc.last_time, lc.central, lc.cabinet,
-                  p.prev_no, p.prev_time, rc.rep_count
+            SELECT lc.phone, lc.last_no, lc.last_time, lc.last_close_code,
+                   lc.central, lc.cabinet, p.prev_no, p.prev_time,
+                   p.prev_close_code, rc.rep_count
            FROM last_c lc
            LEFT JOIN LATERAL (
-             SELECT c.no AS prev_no, c.ct AS prev_time
+              SELECT c.no AS prev_no, c.ct AS prev_time,
+                     c.close_code AS prev_close_code
              FROM comps c
              WHERE c.phone = lc.phone AND c.no <> lc.last_no
                AND c.ct < lc.last_time AND c.ct >= lc.last_time - interval '1 month'
@@ -10452,8 +10457,10 @@ export async function registerRoutes(
                 COALESCE(tn.tech_name, '')          AS "techName",
                 qual.last_no                        AS "lastComplainNo",
                 (qual.last_time AT TIME ZONE 'Africa/Cairo') AS "lastComplainTime",
+                 qual.last_close_code                AS "lastCloseCode",
                 qual.prev_no                        AS "prevComplainNo",
                 (qual.prev_time AT TIME ZONE 'Africa/Cairo') AS "prevComplainTime",
+                 qual.prev_close_code                AS "prevCloseCode",
                 qual.rep_count                      AS "repeatCount",
                 -- الأكونت: من آخر قياس لو موجود، وإلا من جدول الأكونتات نفسه.
                 -- من غير الـ fallback ده الخطوط اللى ماتقاستش قبل كده كانت بتطلع من

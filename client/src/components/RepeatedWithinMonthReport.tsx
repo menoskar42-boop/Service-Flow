@@ -13,6 +13,7 @@ import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { LineDetailsDialog } from "@/components/LineDetailsDialog";
+import { closeReason } from "@/lib/close-codes";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -28,8 +29,10 @@ interface RepeatedRow {
   techName: string | null;
   lastComplainNo: string | null;
   lastComplainTime: string | null;
+  lastCloseCode: string | null;
   prevComplainNo: string | null;
   prevComplainTime: string | null;
+  prevCloseCode: string | null;
   repeatCount: number | null;
   accountNo: string | null;
   lastMeasScore: number | null;
@@ -156,8 +159,10 @@ export function RepeatedWithinMonthReport() {
       "عدد التكرار خلال الشهر": r.repeatCount,
       "رقم آخر شكوى": r.lastComplainNo,
       "تاريخ آخر شكوى": fmtDt(r.lastComplainTime),
+      "سبب إغلاق آخر شكوى": closeReason(r.lastCloseCode) || r.lastCloseCode || "-",
       "رقم الشكوى السابقة": r.prevComplainNo,
       "تاريخ الشكوى السابقة": fmtDt(r.prevComplainTime),
+      "سبب إغلاق الشكوى السابقة": closeReason(r.prevCloseCode) || r.prevCloseCode || "-",
       "الكابينه": r.cabinetNo,
       "البكس": r.boxNo,
       "ترمنال": r.dpTerminal,
@@ -182,7 +187,8 @@ export function RepeatedWithinMonthReport() {
     const totalPages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>عدد التكرار</th>
-        <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th>
+        <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>سبب إغلاق آخر شكوى</th>
+        <th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th><th>سبب إغلاق الشكوى السابقة</th>
         <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th><th>توقيت آخر قياس للخط</th>
     </tr>`;
     let pages = "";
@@ -197,8 +203,10 @@ export function RepeatedWithinMonthReport() {
           <td>${esc(r.repeatCount)}</td>
           <td>${esc(r.lastComplainNo)}</td>
           <td style="font-size:9px">${esc(fmtDt(r.lastComplainTime))}</td>
+           <td>${esc(closeReason(r.lastCloseCode) || r.lastCloseCode || "-")}</td>
           <td>${esc(r.prevComplainNo)}</td>
           <td style="font-size:9px">${esc(fmtDt(r.prevComplainTime))}</td>
+           <td>${esc(closeReason(r.prevCloseCode) || r.prevCloseCode || "-")}</td>
           <td>${esc(r.cabinetNo)}</td>
           <td>${esc(r.boxNo)}</td>
           <td>${esc(r.dpTerminal)}</td>
@@ -352,10 +360,12 @@ export function RepeatedWithinMonthReport() {
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
                 <TableHead className="text-right font-bold text-white">الأكونت</TableHead>
                 <TableHead className="text-right font-bold text-white">عدد التكرار خلال الشهر</TableHead>
-                <TableHead className="text-right font-bold text-white">رقم آخر شكوى</TableHead>
-                <TableHead className="text-right font-bold text-white">تاريخ آخر شكوى</TableHead>
-                <TableHead className="text-right font-bold text-white">رقم الشكوى السابقة</TableHead>
-                <TableHead className="text-right font-bold text-white">تاريخ الشكوى السابقة</TableHead>
+                 <TableHead className="text-right font-bold text-white">رقم آخر شكوى</TableHead>
+                 <TableHead className="text-right font-bold text-white">تاريخ آخر شكوى</TableHead>
+                 <TableHead className="text-right font-bold text-white">سبب إغلاق آخر شكوى</TableHead>
+                 <TableHead className="text-right font-bold text-white">رقم الشكوى السابقة</TableHead>
+                 <TableHead className="text-right font-bold text-white">تاريخ الشكوى السابقة</TableHead>
+                 <TableHead className="text-right font-bold text-white">سبب إغلاق الشكوى السابقة</TableHead>
                 <TableHead className="text-right font-bold text-white">الكابينه</TableHead>
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
@@ -411,8 +421,10 @@ export function RepeatedWithinMonthReport() {
                   </TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{r.lastComplainNo || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.lastComplainTime)}</TableCell>
+                   <TableCell className="whitespace-nowrap">{closeReason(r.lastCloseCode) || r.lastCloseCode || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{r.prevComplainNo || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.prevComplainTime)}</TableCell>
+                   <TableCell className="whitespace-nowrap">{closeReason(r.prevCloseCode) || r.prevCloseCode || "-"}</TableCell>
                   <TableCell>{r.cabinetNo || "-"}</TableCell>
                   <TableCell>{r.boxNo || "-"}</TableCell>
                   <TableCell>{r.dpTerminal || "-"}</TableCell>
