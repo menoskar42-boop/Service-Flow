@@ -84,7 +84,7 @@ export function RepeatedWithinMonthReport() {
   // فلتر باسم الفنى — بيتفلتر على النتيجة المحمّلة (مش طلب جديد للسيرفر) فبيشتغل
   // فوراً، والقايمة نفسها بتتبنى من الأسماء الموجودة فى النتيجة الحالية.
   const [tech, setTech] = useState("");
-  const { data: allRows = [], isFetching } = useQuery<RepeatedRow[]>({
+  const { data: allRows = [], isFetching, isError } = useQuery<RepeatedRow[]>({
     queryKey: ["/api/reports/repeated-within-month", central, q, dateFrom, dateTo],
     queryFn: async () => {
       const p = new URLSearchParams();
@@ -389,7 +389,11 @@ export function RepeatedWithinMonthReport() {
               {rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={20} className="text-center py-16 text-muted-foreground">
-                    {isFetching ? "جاري التحميل..." : "لا توجد أرقام مكررة خلال شهر في هذه الفترة"}
+                    {isFetching
+                      ? "جاري التحميل..."
+                      : isError
+                        ? "تعذر تحميل التقرير، حاول مرة أخرى"
+                        : "لا توجد أرقام مكررة خلال شهر في هذه الفترة"}
                   </TableCell>
                 </TableRow>
               ) : rows.map((r, i) => (

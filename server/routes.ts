@@ -10402,7 +10402,7 @@ export async function registerRoutes(
            -- مرتين — فعمود «عدد التكرار خلال الشهر» كان بيطلع الضعف (شكويتين حقيقيتين
            -- بيظهروا 4). DISTINCT ON (no) بتخلّى كل شكوى صف واحد، وبنفضّل صف «التفاصيل»
            -- (pref = 0) لأنه السجل النهائى بعد الإغلاق.
-           SELECT DISTINCT ON (no) phone, no, ct, central, cabinet FROM (
+            SELECT DISTINCT ON (no) phone, no, ct, central, cabinet, close_code, close_by FROM (
               SELECT cd.phone_number AS phone, cd.complain_no AS no, cd.complain_time AS ct,
                      cd.exchange_name AS central, cd.cabinet_no AS cabinet,
                      cd.close_code AS close_code, cd.close_by AS close_by, 0 AS pref
