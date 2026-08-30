@@ -10066,6 +10066,13 @@ export async function registerRoutes(
         cdConds.push(`(${n("cd.phone_number")} LIKE ${p} OR ${n("cd.cabinet_no")} LIKE ${p} OR ${n("cd.close_code")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
         rcConds.push(`(${n("rc.phone_number")} LIKE ${p} OR ${n("rc.cabinet_no")} LIKE ${p} OR ${n("rc.status_code")} LIKE ${p})`);
       }
+      // نفس زر «استبعاد اللى فى الطابور» الموجود فى تقارير القياسات:
+      // استبعاد الرقم لو له أى مهمة قياس/رفع سرعة/إيقاف داخل باتش ما زال نشطاً.
+      // كل فرع من الـ UNION له alias مختلف لآخر أكونت فى شيت 138.
+      if (excludeQueuedOn(req)) {
+        cdConds.push(notQueuedSql("c138p.account_no"));
+        rcConds.push(notQueuedSql("rc138p.account_no"));
+      }
       const cdWhere = "WHERE " + cdConds.join(" AND ");
       const rcWhere = "WHERE " + rcConds.join(" AND ");
 

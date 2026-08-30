@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -105,16 +105,19 @@ export function RegularizedFaultsRangeReport() {
   });
   const [repeatedOnly, setRepeatedOnly] = useState(false);
   const [closeReasonF, setCloseReasonF] = useState(""); // فلتر سبب الإغلاق (مثال: عطل يخص راوتر العميل)
+  // استبعاد أرقام الأكونت الموجودة فى أى باتش قياس/رفع سرعة/إيقاف ما زال فى الطابور
+  const [excludeQueued, setExcludeQueued] = useState(false);
 
   // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
-    queryKey: ["/api/reports/regularized-faults-range", central, q, dateFrom, dateTo],
+    queryKey: ["/api/reports/regularized-faults-range", central, q, dateFrom, dateTo, excludeQueued],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (central) p.set("central", central);
       if (q) p.set("q", q);
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
+      if (excludeQueued) p.set("excludeQueued", "1");
       const res = await fetch(`/api/reports/regularized-faults-range?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -362,6 +365,16 @@ export function RegularizedFaultsRangeReport() {
           className={`gap-1 ${repeatedOnly ? "bg-orange-600 hover:bg-orange-700 text-white" : "text-orange-700 border-orange-200"}`}
         >
           <Repeat className="w-4 h-4" /> {repeatedOnly ? "عرض الكل" : "المكرر فقط"}
+        </Button>
+        <Button
+          variant={excludeQueued ? "default" : "outline"}
+          size="sm"
+          onClick={() => setExcludeQueued((v) => !v)}
+          className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
+          title="استبعاد كل أرقام الأكونت الموجودة حالياً فى طابور القياس أو رفع السرعة أو الإيقاف"
+        >
+          <EyeOff className="w-4 h-4" />
+          {excludeQueued ? "الطابور مستبعَد ✓" : "استبعاد اللى فى الطابور"}
         </Button>
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
         {showSpeedTools && (<>
