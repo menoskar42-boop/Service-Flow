@@ -24,6 +24,7 @@ interface RepeatedRow {
   cabinetNo: string | null;
   boxNo: string | null;
   dpTerminal: string | null;
+  workerCode: string | null;
   techName: string | null;
   lastComplainNo: string | null;
   lastComplainTime: string | null;
@@ -160,6 +161,7 @@ export function RepeatedWithinMonthReport() {
       "الكابينه": r.cabinetNo,
       "البكس": r.boxNo,
       "ترمنال": r.dpTerminal,
+      "كود الفنى": r.workerCode,
       "اسم الفنى": r.techName,
       "آخر اسكور": r.lastMeasScore,
       "السرعة الحالية": r.lineCurrentSpeed,
