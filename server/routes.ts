@@ -10310,6 +10310,25 @@ export async function registerRoutes(
       const cdCentral = central ? `AND cd.exchange_name = ${centralParam}` : "";
       const rcCentral = central ? `AND rc.exchange_name = ${centralParam}` : "";
       const phoneQ = q.trim() ? `AND ${n("lc.phone")} LIKE ${qParam}` : "";
+      // الفني يرى خطوطه فقط. الاسم المعروض فى التقرير هو فنى الكابينة الحالية
+      // (نفس الربط الموجود فى SELECT)، لذلك نضع القيد هنا على السيرفر قبل إرسال
+      // النتيجة — وليس كفلتر واجهة يمكن تجاوزه.
+      let techClause = "";
+      if (req.user?.role === ROLES.TECH) {
+        const workerCode = String(req.user.workerCode || "").trim();
+        let myTech = "";
+        if (workerCode) {
+          const techResult = await pool.query(
+            `SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`,
+            [workerCode],
+          );
+          myTech = String(techResult.rows[0]?.tech_name || "").trim();
+        }
+        // عدم وجود ربط موثوق لا يعنى عرض كل البيانات للفنى.
+        if (!myTech) return res.json([]);
+        params.push(myTech);
+        techClause = ` AND btrim(COALESCE(tn.tech_name, '')) = btrim($${params.length})`;
+      }
 
       const { rows } = await pool.query(
         `WITH comps AS (
@@ -10391,7 +10410,8 @@ export async function registerRoutes(
            FROM case_138 c WHERE c.full_phone = '88' || qual.phone ORDER BY c.id DESC LIMIT 1
          ) c138 ON true
          LEFT JOIN line_accounts la ON la.full_phone = '88' || qual.phone
-         ORDER BY qual.last_time DESC NULLS LAST`,
+          WHERE TRUE${techClause}
+          ORDER BY qual.last_time DESC NULLS LAST`,
         params,
       );
       res.json(rows);
