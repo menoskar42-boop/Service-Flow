@@ -10315,24 +10315,16 @@ export async function registerRoutes(
       const cdCentral = central ? `AND cd.exchange_name = ${centralParam}` : "";
       const rcCentral = central ? `AND rc.exchange_name = ${centralParam}` : "";
       const phoneQ = q.trim() ? `AND ${n("lc.phone")} LIKE ${qParam}` : "";
-      // الفني يرى خطوطه فقط. الاسم المعروض فى التقرير هو فنى الكابينة الحالية
-      // (نفس الربط الموجود فى SELECT)، لذلك نضع القيد هنا على السيرفر قبل إرسال
-      // النتيجة — وليس كفلتر واجهة يمكن تجاوزه.
+      // الفني يرى خطوطه فقط. نربط مباشرة بكود العامل الموجود فى حسابه مع
+      // كود الفني المسند للكابينة، بدل الاعتماد على تحويل الكود إلى اسم ثم
+      // مقارنته — لأن الاسم قد يتغير أو توجد مسافات/اختلافات فى كتابته.
       let techClause = "";
       if (req.user?.role === ROLES.TECH) {
         const workerCode = String(req.user.workerCode || "").trim();
-        let myTech = "";
-        if (workerCode) {
-          const techResult = await pool.query(
-            `SELECT tech_name FROM technician_names WHERE worker_code = $1 ORDER BY id DESC LIMIT 1`,
-            [workerCode],
-          );
-          myTech = String(techResult.rows[0]?.tech_name || "").trim();
-        }
-        // عدم وجود ربط موثوق لا يعنى عرض كل البيانات للفنى.
-        if (!myTech) return res.json([]);
-        params.push(myTech);
-        techClause = ` AND btrim(COALESCE(tn.tech_name, '')) = btrim($${params.length})`;
+        // عدم وجود كود مربوط لا يعنى عرض كل البيانات للفنى.
+        if (!workerCode) return res.json([]);
+        params.push(workerCode);
+        techClause = ` AND btrim(COALESCE(ct.worker_code, '')) = btrim($${params.length})`;
       }
 
       const { rows } = await pool.query(
@@ -10389,6 +10381,7 @@ export async function registerRoutes(
                 COALESCE(pl.cabin_number, qual.cabinet) AS "cabinetNo",
                 pl.box_number                       AS "boxNo",
                 pl.dp_terminal                      AS "dpTerminal",
+                 COALESCE(ct.worker_code, '')        AS "workerCode",
                 COALESCE(tn.tech_name, '')          AS "techName",
                 qual.last_no                        AS "lastComplainNo",
                 (qual.last_time AT TIME ZONE 'Africa/Cairo') AS "lastComplainTime",
