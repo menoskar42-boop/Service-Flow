@@ -73,7 +73,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { ChangeMyPasswordButton } from "@/components/ChangeMyPasswordButton";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { ROLES, ORDER_STATUS } from "@shared/schema";
-import { canAccessCFM } from "@shared/roles-access";
+import { canAccessCFM, canAccessMaint } from "@shared/roles-access";
 import { useLocation } from "wouter";
 import { Printer, LogOut, LayoutDashboard, FileSpreadsheet, Loader2, BarChart3, ClipboardList, Upload, Zap, Phone, Box, AlertTriangle, FileText, Wrench, ChevronDown, Menu, Cable, Server, CalendarDays } from "lucide-react";
 import * as XLSX from 'xlsx';
@@ -461,7 +461,7 @@ export default function Dashboard() {
             )}
             {/* موقع الصيانة المدمج (smart-box-maintenance) — تطبيق مستقل تحت /maintenance
                 (فتح صفحة كاملة، له تسجيل دخول خاص). نفس جمهور الكوابل. */}
-            {canAccessCFM(authUser?.role ?? "") && (
+            {canAccessMaint(authUser?.role ?? "") && (
               <a href="/maintenance" className="inline-flex items-center gap-1 rounded-md border border-teal-300 text-teal-700 hover:bg-teal-50 text-xs sm:text-sm h-8 sm:h-9 px-2 sm:px-3 font-medium">
                 <span className="hidden sm:inline">موقع الصيانة</span>
                 <span className="sm:hidden">الصيانة</span>

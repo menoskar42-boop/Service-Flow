@@ -38,7 +38,7 @@ export const UNIFIED_ROLE_ACCESS: Record<UnifiedRole, RoleAccess> = {
   cable_engineer: { labelAr: "مهندس كوابل",       sf: "external",     cfm: "cable_engineer",    maint: "inspector" },
   sales:          { labelAr: "مبيعات",            sf: "sales",        cfm: null,                maint: null },
   sales_admin:    { labelAr: "أدمن مبيعات",        sf: "sales_admin",  cfm: null,                maint: null },
-  tech:           { labelAr: "فنى",               sf: "tech",         cfm: "external_affairs",  maint: null },
+  tech:           { labelAr: "فنى",               sf: "tech",         cfm: "external_affairs",  maint: "technician" },
   data_manager:   { labelAr: "بيانات",            sf: "data_manager", cfm: null,                maint: null },
   supervisor:     { labelAr: "مشرف",              sf: null,           cfm: "supervisor",        maint: null },
   ext_tech:       { labelAr: "فنى خارجى",          sf: null,           cfm: "ext_tech",          maint: null },
@@ -62,6 +62,7 @@ export const SF_ROLE_TO_MAINT: Record<string, string> = {
   super_admin: "admin",
   admin: "admin",
   external: "inspector",
+  tech: "technician",
   maintenance_tech: "technician",
 };
 

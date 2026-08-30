@@ -81,7 +81,13 @@ app.use(session({
 // (مستخدم الطلبات) قبل ما نوصل هنا. لو مفيش جلسة صيانة والمستخدم داخل Service-Flow بدور له وصول
 // للصيانة → نسجّله تلقائياً بالدور المقابل (من غير شاشة لوجين تانية ولا حساب فى قاعدة الصيانة).
 // نفس مفاتيح shared/roles-access.ts (SF_ROLE_TO_MAINT) — مكرّرة هنا لأن ده ملف CJS مستقل.
-const SF_ROLE_TO_MAINT = { super_admin: "admin", admin: "admin", external: "inspector", maintenance_tech: "technician" };
+const SF_ROLE_TO_MAINT = {
+  super_admin: "admin",
+  admin: "admin",
+  external: "inspector",
+  tech: "technician",
+  maintenance_tech: "technician",
+};
 app.use(async (req, res, next) => {
   try {
     if (!req.session.user && req.user && req.user.username) {
