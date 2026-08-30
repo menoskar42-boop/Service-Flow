@@ -110,11 +110,13 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
   const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد التاريخ
+  const [measuredBefore, setMeasuredBefore] = useState(""); // فلتر: يستبعد اللى تم قياسها بعد التاريخ
   // بحث برقم التليفون / الأكونت / الشكوى — بيتنفّذ على السيرفر (كل السجلات، مش الصفحة الحالية بس).
   // debounce نصف ثانية علشان مانبعتش request مع كل حرف.
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const showPoStopFilter = endpoint.includes("needs-po-stop") || endpoint.includes("needs-speed");
+  const showMeasuredFilter = endpoint.includes("needs-speed");
   const dateFilterLabel = "استبعد إيقاف PO بعد:";
   const dateFilterParam = "poStoppedBefore";
   const [page, setPage] = useState(1);
@@ -156,13 +158,14 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (isNeedsSpeed && showExcludedCabins) params.set("includeExcluded", "1");
     if (excludeQueued) params.set("excludeQueued", "1");
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
+    if (showMeasuredFilter && measuredBefore) params.set("measuredBefore", measuredBefore);
     if (requireComplaint) params.set("requireComplaint", "1");
     if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, search, page, requireComplaint, complaintAny, showExcludedCabins, excludeQueued],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, search, page, requireComplaint, complaintAny, showExcludedCabins, excludeQueued],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -340,6 +343,23 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 />
                 {poStoppedBefore && (
                   <button onClick={() => { setPoStoppedBefore(""); setPage(1); }} className="text-muted-foreground hover:text-foreground" title="مسح الفلتر">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
+            {showMeasuredFilter && (
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">استبعد القياس بعد:</label>
+                <input
+                  type="datetime-local"
+                  value={measuredBefore}
+                  onChange={(e) => { setMeasuredBefore(e.target.value); setPage(1); }}
+                  className="border rounded-md px-2 py-1 text-sm"
+                  title="يستبعد الأرقام التى تم قياسها بعد هذا التاريخ والوقت، ويُبقى الباقى"
+                />
+                {measuredBefore && (
+                  <button onClick={() => { setMeasuredBefore(""); setPage(1); }} className="text-muted-foreground hover:text-foreground" title="مسح فلتر القياس">
                     <X className="w-4 h-4" />
                   </button>
                 )}

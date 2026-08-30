@@ -4767,7 +4767,7 @@ export async function registerRoutes(
   // (شرط (أ) بيقع على الاسكور، وشرط (ب) بيقع على السرعة) — فمافيش تكرار بين التقريرين.
   app.get(["/api/phone-lines/needs-speed", "/api/phone-lines/needs-speed-lowscore"], requireAuth, async (req, res) => {
     const lowScoreMode = req.path.endsWith("/needs-speed-lowscore");
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", search = "", includeExcluded = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", measuredBefore = "", search = "", includeExcluded = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
@@ -4876,6 +4876,9 @@ export async function registerRoutes(
     }
     // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت، ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    // فلتر مطابق لفلتر إيقاف PO: يستبعد القياسات الأحدث من التاريخ/الوقت المحدد
+    // (بتوقيت القاهرة)، ويُبقى الخطوط التى لم تُقَس أو قِيسَت قبله.
+    if (measuredBefore) { params.push(measuredBefore); conds.push(`(m.uploaded_at IS NULL OR (m.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
     if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
@@ -4913,7 +4916,7 @@ export async function registerRoutes(
   // المعيار: لها رقم أكونت + آخر قياس مرّ عليه أقل من 3 أيام + لا تحتاج رفع سرعة (عكس معيار
   //   محتاجة رفع سرعة). دى غالباً خطوط اتعملها Profile Optimization ومحتاجة إيقاف الـ nightly PO.
   app.get("/api/phone-lines/needs-po-stop", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", poStoppedBefore = "", page = "1", limit = "50", search = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", poStoppedBefore = "", measuredBefore = "", page = "1", limit = "50", search = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const params: any[] = [];
@@ -4978,6 +4981,8 @@ export async function registerRoutes(
     // فلتر: يستبعد الخطوط اللى تم إيقاف الـ PO بتاعها بعد هذا التاريخ/الوقت (بتوقيت القاهرة)،
     //        ويُبقى الباقى بما فيهم اللى مالوش تاريخ إيقاف (last_stop_at IS NULL).
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    // نفس فلتر القياس الموجود فى تقرير محتاجة رفع سرعة.
+    if (measuredBefore) { params.push(measuredBefore); conds.push(`(m.uploaded_at IS NULL OR (m.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
     if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
