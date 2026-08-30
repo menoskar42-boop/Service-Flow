@@ -4311,17 +4311,20 @@ export async function registerRoutes(
     if (neverMeasured === "1" || neverMeasured === "true") {
       conds.push(`NOT EXISTS (SELECT 1 FROM case_138 c WHERE c.full_phone = la.full_phone)`);
     }
-    // فلتر "لها شكوى": الرقم له أى شكوى — على شاشة الـ OSS (ticket_dsl_current المفتوحة) أو
+    // فلتر الشكوى: الرقم له أى شكوى — على شاشة الـ OSS (ticket_dsl_current المفتوحة) أو
     // خارجها فى 430D (complaint_details المغلقة + remaining_complaints)، أو عطل «خارج الشاشة»
     // مسجَّل يدوياً من صفحة بحث رقم التليفون (manual_faults) وممكن ملوش أى أثر فى 430D خالص.
     // نفس المصادر الأربعة بالظبط المستخدَمة فى /api/phone-lines/needs-speed (requireComplaintAny).
-    if (hasComplaint === "1" || hasComplaint === "true") {
-      conds.push(`(
+    const complaintExistsClause = `(
         EXISTS (SELECT 1 FROM complaint_details cd WHERE ${sp("cd.phone_number")} = ${sp("la.full_phone")})
         OR EXISTS (SELECT 1 FROM remaining_complaints rc WHERE ${sp("rc.phone_number")} = ${sp("la.full_phone")})
         OR EXISTS (SELECT 1 FROM ticket_dsl_current td WHERE td.close_date IS NULL AND ${sp("td.phone_number")} = ${sp("la.full_phone")})
         OR EXISTS (SELECT 1 FROM manual_faults mf WHERE ${sp("mf.phone_short")} = ${sp("la.full_phone")} OR ${sp("mf.full_phone")} = ${sp("la.full_phone")})
-      )`);
+      )`;
+    if (hasComplaint === "1" || hasComplaint === "true") {
+      conds.push(complaintExistsClause);
+    } else if (hasComplaint === "0" || hasComplaint === "false") {
+      conds.push(`NOT ${complaintExistsClause}`);
     }
     if (central) { params.push(central); conds.push(`pl.central = $${params.length}`); }
     if (cabin) { params.push(cabin); conds.push(`pl.cabin_number = $${params.length}`); }

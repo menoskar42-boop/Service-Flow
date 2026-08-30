@@ -28,6 +28,8 @@ import { RefreshButton } from "@/components/RefreshButton";
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
 type DZSItem = { account: string; complaint?: string | null; short?: string | null; full?: string | null };
+type ComplaintFilter = "all" | "has" | "none";
+
 const buildDZSUrl = (items: DZSItem[], force = false) => {
   const accounts = items.map((it) => it.account);
   // force = جاى من تقرير "الخطوط أسكورها أعلى من 100" → السكربت يعمل real-time فعلى حتى لو الخط
@@ -119,8 +121,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   // هو التقرير اللى بيتقاس منه بالجملة دايماً؛ الباقى المستخدم هو اللى يقرّر.
   const [excludeQueued, setExcludeQueued] = useState(!!neverMeasured);
   const [staleOn, setStaleOn] = useState(false);
-  // زر (فى تقرير «لم تُقَس»): يفلتر الأرقام التى لها شكوى
-  const [hasComplaintOn, setHasComplaintOn] = useState(false);
+  // فلتر الشكوى: الكل / لها شكوى / ليس لها شكوى
+  const [complaintFilter, setComplaintFilter] = useState<ComplaintFilter>("all");
   const [editingPhone, setEditingPhone] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
@@ -148,7 +150,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, hasComplaintOn, excludeQueued],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, complaintFilter, excludeQueued],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (central) params.set("central", central);
@@ -158,7 +160,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (excludeQueued) params.set("excludeQueued", "1");
-      if (hasComplaintOn) params.set("hasComplaint", "1");
+      if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -264,7 +266,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (excludeQueued) params.set("excludeQueued", "1");
-      if (hasComplaintOn) params.set("hasComplaint", "1");
+      if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (accountQ.trim()) params.set("accountQ", accountQ.trim());
@@ -312,7 +314,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
       if (!box && boxTo)   params.set("boxTo",   boxTo);
       if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (excludeQueued) params.set("excludeQueued", "1");
-      if (hasComplaintOn) params.set("hasComplaint", "1");
+      if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
       if (scoreGt != null) params.set("scoreGt", String(scoreGt));
       if (neverMeasured) params.set("neverMeasured", "1");
       if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -341,7 +343,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (!box && boxTo)   params.set("boxTo",   boxTo);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (excludeQueued) params.set("excludeQueued", "1");
-    if (hasComplaintOn) params.set("hasComplaint", "1");
+    if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -386,7 +388,7 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (box) params.set("box", box);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
       if (excludeQueued) params.set("excludeQueued", "1");
-    if (hasComplaintOn) params.set("hasComplaint", "1");
+    if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
@@ -566,16 +568,25 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded.toLocaleString("ar-EG")})` : ""}`
                 : "استبعاد اللى فى الطابور"}
             </Button>
-            {/* زر «لها شكوى» — يفلتر الأرقام التى لها رقم شكوى (سابقة) — فى كل التقارير */}
-            <Button
-              variant={hasComplaintOn ? "default" : "outline"}
-              size="sm"
-              onClick={() => { setHasComplaintOn((v) => !v); setPage(1); }}
-              className={`gap-1 ${hasComplaintOn ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-purple-700 border-purple-200"}`}
-              title="عرض فقط الأرقام التى لها رقم شكوى"
+            {/* فلتر الشكوى — نفس الاختيار يُطبّق على الجدول والقياس والتصدير */}
+            <select
+              value={complaintFilter}
+              onChange={(e) => { setComplaintFilter(e.target.value as ComplaintFilter); setPage(1); }}
+              className={`h-9 rounded-md border px-2 text-sm bg-white ${
+                complaintFilter === "has"
+                  ? "border-purple-300 text-purple-700"
+                  : complaintFilter === "none"
+                    ? "border-orange-300 text-orange-700"
+                    : "border-gray-200 text-gray-700"
+              }`}
+              title="فلترة الأرقام حسب وجود الشكوى"
+              aria-label="فلتر الشكوى"
+              dir="rtl"
             >
-              {hasComplaintOn ? "لها شكوى ✓" : "لها شكوى"}
-            </Button>
+              <option value="all">الشكوى: الكل</option>
+              <option value="has">لها شكوى</option>
+              <option value="none">ليس لها شكوى</option>
+            </select>
             {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} disabled={dzsLoading} className="text-blue-700 border-blue-200 gap-1">
               {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radar className="w-4 h-4" />} قياس DZS
