@@ -166,7 +166,7 @@ export function RepeatedWithinMonthReport() {
       "آخر اسكور": r.lastMeasScore,
       "السرعة الحالية": r.lineCurrentSpeed,
       "أقصى سرعة": r.lineMaxSpeed,
-      "تاريخ آخر قياس": fmtDt(r.lastMeasTime),
+      "توقيت آخر قياس للخط": fmtDt(r.lastMeasTime),
     }));
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -182,8 +182,8 @@ export function RepeatedWithinMonthReport() {
     const totalPages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>عدد التكرار</th>
-      <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th>
-        <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th>
+        <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th>
+        <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th><th>توقيت آخر قياس للخط</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -204,7 +204,8 @@ export function RepeatedWithinMonthReport() {
           <td>${esc(r.dpTerminal)}</td>
            <td>${esc(r.workerCode)}</td>
           <td>${esc(r.techName)}</td>
-          <td>${esc(r.lastMeasScore)}</td>
+           <td>${esc(r.lastMeasScore)}</td>
+           <td style="font-size:9px">${esc(fmtDt(r.lastMeasTime))}</td>
         </tr>`).join("");
       pages += `
         <section class="page">
@@ -361,7 +362,7 @@ export function RepeatedWithinMonthReport() {
                  <TableHead className="text-right font-bold text-white">كود الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">آخر اسكور</TableHead>
-                <TableHead className="text-right font-bold text-white">تاريخ آخر قياس</TableHead>
+                 <TableHead className="text-right font-bold text-white">توقيت آخر قياس للخط</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
