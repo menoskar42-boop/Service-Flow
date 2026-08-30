@@ -30,9 +30,11 @@ interface RepeatedRow {
   lastComplainNo: string | null;
   lastComplainTime: string | null;
   lastCloseCode: string | null;
+  lastCloseBy: string | null;
   prevComplainNo: string | null;
   prevComplainTime: string | null;
   prevCloseCode: string | null;
+  prevCloseBy: string | null;
   repeatCount: number | null;
   accountNo: string | null;
   lastMeasScore: number | null;
@@ -160,9 +162,11 @@ export function RepeatedWithinMonthReport() {
       "رقم آخر شكوى": r.lastComplainNo,
       "تاريخ آخر شكوى": fmtDt(r.lastComplainTime),
       "سبب إغلاق آخر شكوى": closeReason(r.lastCloseCode) || r.lastCloseCode || "-",
+      "فني إغلاق آخر شكوى": r.lastCloseBy || "-",
       "رقم الشكوى السابقة": r.prevComplainNo,
       "تاريخ الشكوى السابقة": fmtDt(r.prevComplainTime),
       "سبب إغلاق الشكوى السابقة": closeReason(r.prevCloseCode) || r.prevCloseCode || "-",
+      "فني إغلاق الشكوى السابقة": r.prevCloseBy || "-",
       "الكابينه": r.cabinetNo,
       "البكس": r.boxNo,
       "ترمنال": r.dpTerminal,
@@ -188,7 +192,9 @@ export function RepeatedWithinMonthReport() {
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>عدد التكرار</th>
         <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>سبب إغلاق آخر شكوى</th>
+        <th>فني إغلاق آخر شكوى</th>
         <th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th><th>سبب إغلاق الشكوى السابقة</th>
+        <th>فني إغلاق الشكوى السابقة</th>
         <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th><th>توقيت آخر قياس للخط</th>
     </tr>`;
     let pages = "";
@@ -204,9 +210,11 @@ export function RepeatedWithinMonthReport() {
           <td>${esc(r.lastComplainNo)}</td>
           <td style="font-size:9px">${esc(fmtDt(r.lastComplainTime))}</td>
            <td>${esc(closeReason(r.lastCloseCode) || r.lastCloseCode || "-")}</td>
+           <td>${esc(r.lastCloseBy || "-")}</td>
           <td>${esc(r.prevComplainNo)}</td>
           <td style="font-size:9px">${esc(fmtDt(r.prevComplainTime))}</td>
            <td>${esc(closeReason(r.prevCloseCode) || r.prevCloseCode || "-")}</td>
+           <td>${esc(r.prevCloseBy || "-")}</td>
           <td>${esc(r.cabinetNo)}</td>
           <td>${esc(r.boxNo)}</td>
           <td>${esc(r.dpTerminal)}</td>
@@ -363,9 +371,11 @@ export function RepeatedWithinMonthReport() {
                  <TableHead className="text-right font-bold text-white">رقم آخر شكوى</TableHead>
                  <TableHead className="text-right font-bold text-white">تاريخ آخر شكوى</TableHead>
                  <TableHead className="text-right font-bold text-white">سبب إغلاق آخر شكوى</TableHead>
+                 <TableHead className="text-right font-bold text-white">فني إغلاق آخر شكوى</TableHead>
                  <TableHead className="text-right font-bold text-white">رقم الشكوى السابقة</TableHead>
                  <TableHead className="text-right font-bold text-white">تاريخ الشكوى السابقة</TableHead>
                  <TableHead className="text-right font-bold text-white">سبب إغلاق الشكوى السابقة</TableHead>
+                 <TableHead className="text-right font-bold text-white">فني إغلاق الشكوى السابقة</TableHead>
                 <TableHead className="text-right font-bold text-white">الكابينه</TableHead>
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
@@ -378,7 +388,7 @@ export function RepeatedWithinMonthReport() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={16} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={20} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أرقام مكررة خلال شهر في هذه الفترة"}
                   </TableCell>
                 </TableRow>
@@ -422,9 +432,11 @@ export function RepeatedWithinMonthReport() {
                   <TableCell dir="ltr" className="text-left font-mono">{r.lastComplainNo || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.lastComplainTime)}</TableCell>
                    <TableCell className="whitespace-nowrap">{closeReason(r.lastCloseCode) || r.lastCloseCode || "-"}</TableCell>
+                   <TableCell className="whitespace-nowrap">{r.lastCloseBy || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{r.prevComplainNo || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.prevComplainTime)}</TableCell>
                    <TableCell className="whitespace-nowrap">{closeReason(r.prevCloseCode) || r.prevCloseCode || "-"}</TableCell>
+                   <TableCell className="whitespace-nowrap">{r.prevCloseBy || "-"}</TableCell>
                   <TableCell>{r.cabinetNo || "-"}</TableCell>
                   <TableCell>{r.boxNo || "-"}</TableCell>
                   <TableCell>{r.dpTerminal || "-"}</TableCell>
