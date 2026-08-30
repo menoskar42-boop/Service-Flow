@@ -15,21 +15,14 @@
 <nav class="navbar navbar-expand-md navbar-dark bg-primary">
   <div class="container-fluid">
     <a class="navbar-brand fw-bold" href="/"><i class="bi bi-box-seam me-1"></i> نظام صيانة البوكسات</a>
+    <a class="btn btn-light btn-sm fw-bold text-primary text-nowrap me-2" id="sfHomeLink" href="#" title="العودة إلى Service-Flow">
+      <i class="bi bi-box-arrow-in-right"></i> العودة إلى Service-Flow
+    </a>
     <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#nav" style="padding:.4rem .6rem">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
-        <!-- زر العودة إلى Service-Flow: href يتظبط بالـ JS (location.origin + '/') عشان يفوت
-             طبقة البادئة اللى بتحوّل أى /x لـ /maintenance/x — فيرجّع لجذر Service-Flow الحقيقى.
-             مايظهرش لفنى الصيانة (technician) لأنه بيفتح الصيانة فقط وبيترد لها لو رجع. -->
-        <% if (user.role !== 'technician') { %>
-        <li class="nav-item">
-          <a class="nav-link fw-bold" id="sfHomeLink" href="#" title="العودة إلى Service-Flow">
-            <i class="bi bi-box-arrow-in-right"></i> العودة إلى Service-Flow
-          </a>
-        </li>
-        <% } %>
         <% if (user.role === 'admin' || user.role === 'inspector') { %>
           <li class="nav-item"><a class="nav-link" href="/boxes"><i class="bi bi-box2"></i> البوكسات</a></li>
           <li class="nav-item"><a class="nav-link" href="/boxes/exchanges"><i class="bi bi-diagram-3"></i> السنترالات</a></li>
