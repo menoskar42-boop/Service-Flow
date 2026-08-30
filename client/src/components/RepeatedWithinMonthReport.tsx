@@ -183,7 +183,7 @@ export function RepeatedWithinMonthReport() {
     const headRow = `<tr>
       <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>عدد التكرار</th>
       <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th>
-      <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>اسم الفنى</th><th>آخر اسكور</th>
+        <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -202,6 +202,7 @@ export function RepeatedWithinMonthReport() {
           <td>${esc(r.cabinetNo)}</td>
           <td>${esc(r.boxNo)}</td>
           <td>${esc(r.dpTerminal)}</td>
+           <td>${esc(r.workerCode)}</td>
           <td>${esc(r.techName)}</td>
           <td>${esc(r.lastMeasScore)}</td>
         </tr>`).join("");
@@ -357,6 +358,7 @@ export function RepeatedWithinMonthReport() {
                 <TableHead className="text-right font-bold text-white">الكابينه</TableHead>
                 <TableHead className="text-right font-bold text-white">البكس</TableHead>
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
+                 <TableHead className="text-right font-bold text-white">كود الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">آخر اسكور</TableHead>
                 <TableHead className="text-right font-bold text-white">تاريخ آخر قياس</TableHead>
@@ -365,7 +367,7 @@ export function RepeatedWithinMonthReport() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={15} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={16} className="text-center py-16 text-muted-foreground">
                     {isFetching ? "جاري التحميل..." : "لا توجد أرقام مكررة خلال شهر في هذه الفترة"}
                   </TableCell>
                 </TableRow>
@@ -413,6 +415,7 @@ export function RepeatedWithinMonthReport() {
                   <TableCell>{r.cabinetNo || "-"}</TableCell>
                   <TableCell>{r.boxNo || "-"}</TableCell>
                   <TableCell>{r.dpTerminal || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left font-mono">{r.workerCode || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{r.techName || "-"}</TableCell>
                   <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.lastMeasTime)}</TableCell>
