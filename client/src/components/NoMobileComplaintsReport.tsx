@@ -76,7 +76,7 @@ export function NoMobileComplaintsReport() {
   });
 
   const queryKey = [ENDPOINT, dateFrom, dateTo, central, cabin, box, phoneFrom, phoneTo, search, page];
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -274,6 +274,10 @@ export function NoMobileComplaintsReport() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : isError ? (
+        <div className="py-12 text-center text-red-700">
+          تعذّر تحميل التقرير: {error instanceof Error ? error.message : "خطأ غير معروف"}
+        </div>
       ) : (
         <>
           <div className="overflow-x-auto">

@@ -4143,9 +4143,9 @@ export async function registerRoutes(
         ),
         normalized AS (
           SELECT s.*,
-                 ${sp('"s."phoneValue"')} AS "phoneShort",
-                 CASE WHEN ${sp('s."phoneValue"')} <> ''
-                      THEN '88' || ${sp('s."phoneValue"')}
+                  ${sp('s."phoneValue"')} AS "phoneShort",
+                  CASE WHEN ${sp('s."phoneValue"')} <> ''
+                       THEN '88' || ${sp('s."phoneValue"')}
                       ELSE '' END AS "fullPhone"
           FROM deduped s
         ),
