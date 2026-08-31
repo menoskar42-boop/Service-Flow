@@ -10279,10 +10279,44 @@ export async function registerRoutes(
     if (!phone) return res.json({ history: [] });
     const short = phone.replace(/^88/, ""); const full = phone.startsWith("88") ? phone : "88" + phone;
     const { rows: mr } = await pool.query(`SELECT (regularized_at AT TIME ZONE 'Africa/Cairo') AS at, close_code AS code, regularized_by AS by FROM manual_faults WHERE status='regularized' AND (phone_short=$1 OR full_phone=$2) ORDER BY regularized_at DESC`, [short, full]);
-    const { rows: dr } = await pool.query(`SELECT (close_time AT TIME ZONE 'Africa/Cairo') AS at, close_code AS code, close_by AS by, (complain_time AT TIME ZONE 'Africa/Cairo') AS "complainAt" FROM complaint_details WHERE phone_number=$1 AND close_time IS NOT NULL ORDER BY close_time DESC`, [short]);
+    const { rows: dr } = await pool.query(`
+      SELECT complain_no AS "complainNo",
+             (close_time AT TIME ZONE 'Africa/Cairo') AS at,
+             close_code AS code,
+             close_by AS by,
+             (complain_time AT TIME ZONE 'Africa/Cairo') AS "complainAt",
+             'details' AS source
+      FROM complaint_details
+      WHERE phone_number IN ($1, $2)
+      UNION ALL
+      SELECT complain_no AS "complainNo",
+             (close_time AT TIME ZONE 'Africa/Cairo') AS at,
+             close_code AS code,
+             close_by AS by,
+             (complain_time AT TIME ZONE 'Africa/Cairo') AS "complainAt",
+             'remaining' AS source
+      FROM remaining_complaints
+      WHERE phone_number IN ($1, $2)
+        AND FLOOR(status_code::numeric)::int IN (135, 138)
+      ORDER BY "complainAt" DESC NULLS LAST, at DESC NULLS LAST
+    `, [short, full]);
+    // نفس الشكوى قد تكون موجودة فى جدول التفاصيل وفى جدول المتبقى؛ نعرض نسخة واحدة
+    // مع تفضيل سجل التفاصيل، كما يفعل تقرير التكرار المجمّع.
+    const byComplaint = new Map<string, any>();
+    for (const row of dr as any[]) {
+      const key = String(row.complainNo ?? "");
+      if (!key || !byComplaint.has(key) || row.source === "details") byComplaint.set(key, row);
+    }
     const history = [
       ...(mr as any[]).map((r) => ({ date: r.at, closeCode: r.code, by: r.by, source: "manual" })),
-      ...(dr as any[]).map((r) => ({ date: r.at, closeCode: r.code, by: r.by, complainAt: r.complainAt, source: "430d" })),
+      ...[...byComplaint.values()].map((r) => ({
+        complainNo: r.complainNo,
+        date: r.at,
+        closeCode: r.code,
+        by: r.by,
+        complainAt: r.complainAt,
+        source: r.source,
+      })),
     ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     res.json({ history });
   });

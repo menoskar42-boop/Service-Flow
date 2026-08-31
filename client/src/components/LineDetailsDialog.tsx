@@ -18,8 +18,8 @@ const fmt = (d: string | null | undefined) => {
 };
 
 interface FaultRow {
-  at: string | null;
-  code: string | null;
+  date: string | null;
+  closeCode: string | null;
   by: string | null;
   complainAt?: string | null;
   complainNo?: string | null;
@@ -40,13 +40,13 @@ export function LineDetailsDialog({
     queryKey: ["/api/line-fault-history", phone],
     queryFn: async () => {
       const res = await fetch(`/api/line-fault-history?phone=${encodeURIComponent(phone)}`, { credentials: "include" });
-      if (!res.ok) return { closes: [] as FaultRow[] };
-      return res.json() as Promise<{ closes?: FaultRow[] }>;
+      if (!res.ok) return { history: [] as FaultRow[] };
+      return res.json() as Promise<{ history?: FaultRow[] }>;
     },
   });
 
   const l = data?.found ? data.line : null;
-  const closes = hist?.closes ?? [];
+  const closes = hist?.history ?? [];
 
   const Row = ({ k, v }: { k: string; v: any }) => (
     <div className="flex gap-2 py-1.5 border-b last:border-0">
@@ -119,8 +119,8 @@ export function LineDetailsDialog({
                       return (
                         <tr key={i} className={`border-t ${hot ? "bg-amber-50 font-semibold" : ""}`}>
                           <td className="p-1.5 whitespace-nowrap">{fmt(c.complainAt)}</td>
-                          <td className="p-1.5 whitespace-nowrap">{fmt(c.at)}</td>
-                          <td className="p-1.5">{c.code || "-"}</td>
+                          <td className="p-1.5 whitespace-nowrap">{fmt(c.date)}</td>
+                          <td className="p-1.5">{c.closeCode || "-"}</td>
                           <td className="p-1.5 whitespace-nowrap">{c.by || "-"}</td>
                         </tr>
                       );
