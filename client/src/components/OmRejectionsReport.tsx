@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { ROLES, REJECTION_REASONS } from "@shared/schema";
 import { TechActionModal } from "@/components/TechActionModal";
+import { isBoxBrokenReason, matchesBoxScoreFilter } from "@shared/om-box-score";
 
 interface Row {
   id: number;
@@ -49,6 +50,8 @@ interface Row {
   respExternalResponseAt: string | null;
   /** عدد الخطوط الشغّالة على البكس اللى الفنى كتبه (الشغّال = ليه بورت) */
   boxWorkingCount: number | null;
+  boxAvgScore: number | null;
+  boxMeasuredCount: number | null;
 }
 
 // نص حالة رد الفنى على المتعذر (نفس مسمّيات قسم الطلبات)
@@ -94,6 +97,8 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   // فلتر «الشغال على البكس أقل من N» — بيظهر بس المتعذرات اللى البكس بتاعها عليه
   // أقل من العدد ده من الخطوط الشغّالة (الشغّال = الخط اللى ليه بورت).
   const [workingLt, setWorkingLt] = useState("");
+  const [boxBrokenOnly, setBoxBrokenOnly] = useState(false);
+  const [boxScoreLt, setBoxScoreLt] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const { user } = useAuth();
@@ -322,6 +327,12 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           if (!(r.boxWorkingCount < lim)) return false;
         }
       }
+      const boxBroken = isBoxBrokenReason(
+        r.respRejectionReason,
+        r.respExternalRejectionReason,
+        REJECTION_REASONS.BOX_BROKEN,
+      );
+      if (!matchesBoxScoreFilter(boxBroken, r.boxAvgScore, boxBrokenOnly, boxScoreLt)) return false;
       // فلتر رد الفنى / سبب التعذر
       if (respFilter) {
         const st = r.respStatus || "pending";
@@ -333,7 +344,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
       }
       return true;
     });
-  }, [rows, yearFilter, respFilter, workingLt]);
+  }, [rows, yearFilter, respFilter, workingLt, boxBrokenOnly, boxScoreLt]);
 
   const assignTech = async (msanCode: string, techName: string) => {
     try {
@@ -413,6 +424,21 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
     ["كود MSAN", (r) => r.msanCode],
     ["FCC", (r) => r.fccExchange],
     ["سبب التعذر", (r) => r.errorName],
+    ...(bucket === "current"
+      ? ([[
+          "متوسط Score البكس",
+          (r: Row) => {
+            const boxBroken = isBoxBrokenReason(
+              r.respRejectionReason,
+              r.respExternalRejectionReason,
+              REJECTION_REASONS.BOX_BROKEN,
+            );
+            return boxBroken && r.boxAvgScore != null
+              ? r.boxAvgScore.toLocaleString("ar-EG", { maximumFractionDigits: 1 })
+              : "-";
+          },
+        ]] as [string, (r: Row) => any][])
+      : []),
     ["الموبايل", (r) => r.customerMobile],
     // رد الفنى وسبب التعذر — للمتعذرات الحالية، وبيظهروا **لكل** من يفتح التقرير
     // (ومنهم أدمن المبيعات) لأنهم معلومة، مش إجراء.
