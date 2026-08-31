@@ -82,6 +82,13 @@ interface LineData {
 const dash = (v: unknown) =>
   v === null || v === undefined || String(v).trim() === "" ? "-" : String(v);
 
+// تطبيع رقم المحمول للاتصال: أرقام فقط + إضافة صفر بادئ لو ناقص (1552… → 01552…)
+const dialMobile = (raw: string | null): string => {
+  const mobile = String(raw || "").replace(/\D/g, "");
+  if (!mobile) return "";
+  return mobile.startsWith("0") ? mobile : `0${mobile}`;
+};
+
 const fmtDate = (d: string | null) => {
   if (!d) return "-";
   const t = new Date(d);
@@ -235,12 +242,12 @@ export function PhoneLookupReport() {
       : (
         <span className="inline-flex items-center gap-2">
           <span className="font-semibold" dir="ltr">{line.mobile || "-"}</span>
-          {(() => { const d = String(line.mobile || "").replace(/\D/g, ""); const dial = d ? (d.startsWith("0") ? d : "0" + d) : ""; return dial ? (
-            <a href={`tel:${dial}`} title={`اتصال بالعميل: ${dial}`}
+          {dialMobile(line.mobile) ? (
+            <a href={`tel:${dialMobile(line.mobile)}`} title={`اتصال بالعميل: ${dialMobile(line.mobile)}`}
               className="md:hidden inline-flex items-center gap-1 text-[11px] text-emerald-700 border border-emerald-300 rounded px-1.5 py-0.5 hover:bg-emerald-50">
               <Phone className="w-3 h-3" /> اتصال
             </a>
-          ) : null; })()}
+          ) : null}
           <button onClick={() => { setMobileInput(line.mobile ?? ""); setEditingMobile(true); }}
             className="text-[11px] text-blue-600 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50">
             {line.mobile ? "تعديل" : "＋ إضافة"}

@@ -13,7 +13,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 interface Row {
   id: number;
   ticketId: string | null;
-  source: "تفاصيل" | "متبقى" | "خارج الشاشة";
+  source: "تفاصيل" | "متبقى" | "خارج الشاشة" | "الأعطال الحالية" | "منتظم اليوم";
   fullPhone: string;
   phoneShort: string | null;
   central: string | null;
@@ -303,7 +303,12 @@ export function NoMobileComplaintsReport() {
                 ) : data?.data.map((row) => (
                   <TableRow key={`${row.source}-${row.id}`} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="whitespace-nowrap">
-                      <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${row.source === "خارج الشاشة" ? "bg-purple-100 text-purple-800" : "bg-amber-100 text-amber-800"}`}>{row.source}</span>
+                       <span className={`text-[11px] px-2 py-0.5 rounded font-semibold ${
+                         row.source === "خارج الشاشة" ? "bg-purple-100 text-purple-800" :
+                         row.source === "الأعطال الحالية" ? "bg-red-100 text-red-800" :
+                         row.source === "منتظم اليوم" ? "bg-blue-100 text-blue-800" :
+                         "bg-amber-100 text-amber-800"
+                       }`}>{row.source}</span>
                     </TableCell>
                     <TableCell className="font-mono">{row.ticketId || `يدوي #${row.id}`}</TableCell>
                     <TableCell className="font-mono font-semibold text-blue-700">{row.fullPhone || "-"}</TableCell>

@@ -3951,12 +3951,41 @@ export async function registerRoutes(
         "(mf.regularized_at AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
         "(mf.regularized_at AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
       ];
+      // نفس تعريف تقرير «الأعطال الحالية» المفتوح، مع تطبيق نطاق التاريخ على تاريخ الشكوى.
+      const currentConds: string[] = [
+        "t.close_date IS NULL",
+        "(t.status_code ~ '^(160|173|122|73|72|60|81)' OR t.complain_type_name ~ '^(160|173|122|73|72|60|81)')",
+        "t.central_name ILIKE '%غنايم%'",
+        "(t.complaint_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
+        "(t.complaint_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
+      ];
+      // «المنتظمة اليوم» لها مصدران مطابقان للتقرير الأصلي:
+      // إغلاق اليوم من الملف الحالي، أو اختفاء شكوى من لقطة بداية اليوم.
+      const regularizedTodayCurrentConds: string[] = [
+        "t.close_date IS NOT NULL",
+        "(t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')",
+        "t.central_name ILIKE '%غنايم%'",
+        "(t.close_date AT TIME ZONE 'Africa/Cairo')::date = (now() AT TIME ZONE 'Africa/Cairo')::date",
+        "(t.close_date AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
+        "(t.close_date AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
+      ];
+      const regularizedTodaySodConds: string[] = [
+        "(s.status_code ~ '^(160|173|122|73|72|60)' OR s.complain_type_name ~ '^(160|173|122|73|72|60)')",
+        "s.central_name ILIKE '%غنايم%'",
+        "NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)",
+        "NOT (s.status_code ~ '^(135|138)')",
+        "(now() AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
+        "(now() AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
+      ];
       if (central) {
         params.push(central);
         const p = `$${params.length}`;
         cdConds.push(`cd.exchange_name = ${p}`);
         rcConds.push(`rc.exchange_name = ${p}`);
         mfConds.push(`mf.central = ${p}`);
+        currentConds.push(`t.central_name = ${p}`);
+        regularizedTodayCurrentConds.push(`t.central_name = ${p}`);
+        regularizedTodaySodConds.push(`s.central_name = ${p}`);
       }
       const q = search.trim();
       if (q) {
@@ -4036,12 +4065,81 @@ export async function registerRoutes(
             mf.regularized_by::text AS "sourceTech"
           FROM manual_faults mf
           WHERE ${mfConds.join(" AND ")}
+
+          UNION ALL
+
+          -- ===== الأعطال الحالية المفتوحة داخل الشاشة =====
+          SELECT
+            t.ticket_id::text AS "ticketId",
+            t.ticket_id::text AS "recordId",
+            'الأعطال الحالية'::text AS "source",
+            t.phone_number::text AS "phoneValue",
+            t.central_name::text AS "sourceCentral",
+            t.cabinet_no::text AS "sourceCabin",
+            NULL::text AS "sourceBox",
+            NULL::text AS "sourceMsan",
+            NULL::text AS "closeCode",
+            t.complain_type_name::text AS "complaintTypeName",
+            t.complaint_time AS "complaintTime",
+            NULL::timestamptz AS "closeDate",
+            NULL::timestamptz AS "regularizedAt",
+            NULL::text AS "sourceTech"
+          FROM ticket_dsl_current t
+          WHERE ${currentConds.join(" AND ")}
+
+          UNION ALL
+
+          -- ===== الأعطال المنتظمة اليوم: أُغلقت اليوم من الملف الحالي =====
+          SELECT
+            t.ticket_id::text AS "ticketId",
+            t.ticket_id::text AS "recordId",
+            'منتظم اليوم'::text AS "source",
+            t.phone_number::text AS "phoneValue",
+            t.central_name::text AS "sourceCentral",
+            t.cabinet_no::text AS "sourceCabin",
+            NULL::text AS "sourceBox",
+            NULL::text AS "sourceMsan",
+            NULL::text AS "closeCode",
+            t.complain_type_name::text AS "complaintTypeName",
+            t.complaint_time AS "complaintTime",
+            t.close_date AS "closeDate",
+            t.close_date AS "regularizedAt",
+            NULL::text AS "sourceTech"
+          FROM ticket_dsl_current t
+          WHERE ${regularizedTodayCurrentConds.join(" AND ")}
+
+          UNION ALL
+
+          -- ===== الأعطال المنتظمة اليوم: اختفت من لقطة بداية اليوم =====
+          SELECT
+            s.ticket_id::text AS "ticketId",
+            s.ticket_id::text AS "recordId",
+            'منتظم اليوم'::text AS "source",
+            s.phone_number::text AS "phoneValue",
+            s.central_name::text AS "sourceCentral",
+            s.cabinet_no::text AS "sourceCabin",
+            NULL::text AS "sourceBox",
+            NULL::text AS "sourceMsan",
+            NULL::text AS "closeCode",
+            s.complain_type_name::text AS "complaintTypeName",
+            s.complaint_time AS "complaintTime",
+            NULL::timestamptz AS "closeDate",
+            now() AS "regularizedAt",
+            NULL::text AS "sourceTech"
+          FROM ticket_dsl_sod s
+          WHERE ${regularizedTodaySodConds.join(" AND ")}
         ),
         deduped AS (
           SELECT DISTINCT ON (COALESCE("ticketId", "source" || ':' || "recordId")) *
           FROM source_rows
           ORDER BY COALESCE("ticketId", "source" || ':' || "recordId"),
-                   CASE "source" WHEN 'تفاصيل' THEN 0 WHEN 'متبقى' THEN 1 ELSE 2 END
+                   CASE "source"
+                     WHEN 'تفاصيل' THEN 0
+                     WHEN 'متبقى' THEN 1
+                     WHEN 'منتظم اليوم' THEN 2
+                     WHEN 'الأعطال الحالية' THEN 3
+                     ELSE 4
+                   END
         ),
         normalized AS (
           SELECT s.*,
@@ -4118,7 +4216,7 @@ export async function registerRoutes(
       if (pFromParam) outerConds.push(`e."phoneShort" ~ '^[0-9]{1,18}$' AND e."phoneShort"::bigint >= ${pFromParam}::bigint`);
       if (pToParam) outerConds.push(`e."phoneShort" ~ '^[0-9]{1,18}$' AND e."phoneShort"::bigint <= ${pToParam}::bigint`);
       const where = `WHERE ${outerConds.join(" AND ")}`;
-      const totalRes = await pool.query(`SELECT COUNT(*)::int AS c FROM enriched e ${where}`, params);
+      const totalRes = await pool.query(`${sourceSql} SELECT COUNT(*)::int AS c FROM enriched e ${where}`, params);
       const total = totalRes.rows[0].c as number;
       const offset = (pageNum - 1) * pageSize;
       params.push(pageSize, offset);
