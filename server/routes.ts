@@ -10661,7 +10661,8 @@ export async function registerRoutes(
              -- اتسجّل مرتين) يتحسبوا تكرار.
              CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''
                        AND cd.complain_time IS NOT NULL
-                       AND EXISTS (
+                        AND (
+                          EXISTS (
                          SELECT 1 FROM complaint_details cd2
                          WHERE cd2.complain_no <> cd.complain_no
                            AND cd2.close_time IS NOT NULL
@@ -10669,9 +10670,10 @@ export async function registerRoutes(
                            AND cd2.complain_time IS NOT NULL
                             AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
                             AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
-                           AND cd2.complain_time::date <> cd.complain_time::date
-                       )
-                        OR EXISTS (
+                            AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date <>
+                                (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date
+                          )
+                          OR EXISTS (
                           SELECT 1 FROM remaining_complaints rc2
                           WHERE rc2.complain_no <> cd.complain_no
                             AND rc2.status_code IN ('138', '135')
@@ -10679,7 +10681,9 @@ export async function registerRoutes(
                             AND rc2.complain_time IS NOT NULL
                             AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
                             AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
-                            AND rc2.complain_time::date <> cd.complain_time::date
+                            AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date <>
+                                (cd.complain_time AT TIME ZONE 'Africa/Cairo')::date
+                          )
                         )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
              -- Status Code من شيت 430D (تفاصيل متبقى) بمطابقة رقم الشكوى —
@@ -10760,7 +10764,8 @@ export async function registerRoutes(
               -- مع فحص شيت التفاصيل وشيت المتبقى معاً.
              CASE WHEN rc.phone_number IS NOT NULL AND rc.phone_number <> ''
                        AND rc.complain_time IS NOT NULL
-                       AND EXISTS (
+                        AND (
+                          EXISTS (
                           SELECT 1 FROM complaint_details cd2
                           WHERE cd2.complain_no <> rc.complain_no
                             AND cd2.close_time IS NOT NULL
@@ -10768,9 +10773,10 @@ export async function registerRoutes(
                             AND cd2.complain_time IS NOT NULL
                             AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
                             AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
-                            AND cd2.complain_time::date <> rc.complain_time::date
-                        )
-                        OR EXISTS (
+                            AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date <>
+                                (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date
+                          )
+                          OR EXISTS (
                          SELECT 1 FROM remaining_complaints rc2
                          WHERE rc2.complain_no <> rc.complain_no
                            AND rc2.status_code IN ('138', '135')
@@ -10778,8 +10784,10 @@ export async function registerRoutes(
                            AND rc2.complain_time IS NOT NULL
                             AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
                             AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
-                           AND rc2.complain_time::date <> rc.complain_time::date
-                       )
+                            AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date <>
+                                (rc.complain_time AT TIME ZONE 'Africa/Cairo')::date
+                          )
+                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
              rc.status_code           AS "statusCode",
              rc.close_code            AS "closeCode",
