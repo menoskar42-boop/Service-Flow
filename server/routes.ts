@@ -10589,12 +10589,12 @@ export async function registerRoutes(
         rcConds.push(`rc.exchange_name = $${params.length}`);
       }
       {
-        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date`);
-        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $1::date`);
+        cdConds.push(`(cd.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date`);
+        rcConds.push(`(rc.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date`);
       }
       {
-        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date`);
-        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $2::date`);
+        cdConds.push(`(cd.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date`);
+        rcConds.push(`(rc.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date`);
       }
       if (q.trim()) {
         params.push(arQ(q));
@@ -10655,9 +10655,8 @@ export async function registerRoutes(
              cd.complain_no           AS "ticketId",
              cd.exchange_name         AS "centralName",
              cd.phone_number          AS "phoneShort",
-             -- مكرر: شكوى تانية لنفس الرقم فى نفس الشهر وبيوم مختلف.
-             -- المقارنة بـ **تاريخ الشكوى** مش تاريخ الإغلاق (شكوى من الشهر اللى فات
-             -- اتقفلت الشهر ده مش تكرار للشهر ده) — نفس تعريف باقى التقارير بالظبط.
+              -- مكرر: شكوى تانية لنفس الرقم داخل نفس الفترة المحددة وبيوم مختلف.
+              -- المقارنة بـ **تاريخ الشكوى** مش تاريخ الإغلاق، وفحص المصدرين معاً.
              -- وشرط «يوم مختلف» بيمنع إن شكويتين اتعملوا فى نفس اليوم (نفس العطل
              -- اتسجّل مرتين) يتحسبوا تكرار.
              CASE WHEN cd.phone_number IS NOT NULL AND cd.phone_number <> ''
@@ -10666,11 +10665,22 @@ export async function registerRoutes(
                          SELECT 1 FROM complaint_details cd2
                          WHERE cd2.complain_no <> cd.complain_no
                            AND cd2.close_time IS NOT NULL
-                           AND cd2.phone_number = cd.phone_number
+                            AND ${sp("cd2.phone_number")} = ${sp("cd.phone_number")}
                            AND cd2.complain_time IS NOT NULL
-                           AND date_trunc('month', cd2.complain_time) = date_trunc('month', cd.complain_time)
+                            AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                            AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
                            AND cd2.complain_time::date <> cd.complain_time::date
                        )
+                        OR EXISTS (
+                          SELECT 1 FROM remaining_complaints rc2
+                          WHERE rc2.complain_no <> cd.complain_no
+                            AND rc2.status_code IN ('138', '135')
+                            AND ${sp("rc2.phone_number")} = ${sp("cd.phone_number")}
+                            AND rc2.complain_time IS NOT NULL
+                            AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                            AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+                            AND rc2.complain_time::date <> cd.complain_time::date
+                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
              -- Status Code من شيت 430D (تفاصيل متبقى) بمطابقة رقم الشكوى —
              -- شيت "التفاصيل" نفسه مافيهوش العمود ده، فنجيبه من المتبقى (آخر حالة)
@@ -10746,20 +10756,28 @@ export async function registerRoutes(
              rc.complain_no           AS "ticketId",
              rc.exchange_name         AS "centralName",
              rc.phone_number          AS "phoneShort",
-             -- مكرر: شكوى تانية لنفس الرقم **فى نفس الشهر وبيوم مختلف** — نفس تعريف
-             -- «مكرر» المستخدَم فى فرع «التفاصيل» وفى الأعطال الحالية بالظبط.
-             -- ⚠️ الشرط ده كان ناقص القيد الزمنى خالص: أى شكوى 138/135 تانية لنفس الرقم
-             -- فى **أى وقت** (حتى من شهور فاتت) كانت بتخلّى الصف يتعلّم «مكرر» للأبد،
-             -- فأرقام مالهاش غير شكوى واحدة الشهر ده كانت بتظهر مكررة.
+              -- مكرر: شكوى تانية لنفس الرقم داخل نفس الفترة المحددة وبيوم مختلف،
+              -- مع فحص شيت التفاصيل وشيت المتبقى معاً.
              CASE WHEN rc.phone_number IS NOT NULL AND rc.phone_number <> ''
                        AND rc.complain_time IS NOT NULL
                        AND EXISTS (
+                          SELECT 1 FROM complaint_details cd2
+                          WHERE cd2.complain_no <> rc.complain_no
+                            AND cd2.close_time IS NOT NULL
+                            AND ${sp("cd2.phone_number")} = ${sp("rc.phone_number")}
+                            AND cd2.complain_time IS NOT NULL
+                            AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                            AND (cd2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
+                            AND cd2.complain_time::date <> rc.complain_time::date
+                        )
+                        OR EXISTS (
                          SELECT 1 FROM remaining_complaints rc2
                          WHERE rc2.complain_no <> rc.complain_no
                            AND rc2.status_code IN ('138', '135')
-                           AND rc2.phone_number = rc.phone_number
+                            AND ${sp("rc2.phone_number")} = ${sp("rc.phone_number")}
                            AND rc2.complain_time IS NOT NULL
-                           AND date_trunc('month', rc2.complain_time) = date_trunc('month', rc.complain_time)
+                            AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date
+                            AND (rc2.complain_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date
                            AND rc2.complain_time::date <> rc.complain_time::date
                        )
                   THEN 'مكرر' ELSE '' END AS "repeatStatus",
