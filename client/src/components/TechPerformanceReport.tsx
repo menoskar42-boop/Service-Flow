@@ -23,6 +23,7 @@ interface RepDetailRow {
   msanCode: string | null; frame: string | null; appearances: number; complainNo: string;
   complainTime: string | null; closeTime: string | null; closeCode: string | null;
   closeByName: string; closeByManual?: boolean; areaTechName: string;
+  subName: string | null; subAdd: string | null;
 }
 interface Beyond24Row {
   complainNo: string; phoneNumber: string; centralName: string; cabinetNo: string;
@@ -507,13 +508,15 @@ export function TechPerformanceReport() {
     printTablePDF({
       title: `تفصيل الخطوط المكررة (${dateFrom || "البداية"} إلى ${dateTo || "النهاية"})`,
       columns: [
-        "#", "رقم التليفون", "رقم الموبايل", "السنترال", "الكابينة", "البكس",
+        "#", "رقم التليفون", "رقم الموبايل", "اسم العميل", "العنوان", "السنترال", "الكابينة", "البكس",
         "MSAN", "مرات", "تاريخ الشكوى", "تاريخ الإغلاق", "فنى الإغلاق", "فنى المنطقة",
       ],
       rows: repFiltered.map((r, i) => [
         i + 1,
         r.phoneNumber,
         repMobileLookup[phoneLookupKey(r.phoneNumber)] || "",
+        r.subName ?? "-",
+        r.subAdd ?? "-",
         r.centralName,
         r.lineCabin ?? "-",
         r.lineBox ?? "-",
