@@ -10138,7 +10138,7 @@ export async function registerRoutes(
       const defaultFrom = `${cairoToday.slice(0, 8)}01`;
       const from = isTech ? defaultFrom : (dateFrom || defaultFrom);
       const to = isTech ? cairoToday : (dateTo || cairoToday);
-      const params: any[] = [];
+      const params: any[] = [from, to]; // $1 = from، $2 = to
 
       // نبنى شرطين منفصلين بنفس أرقام البارامترات — يُشاركان $1..$n فى الـ UNION
       const cdConds: string[] = [
@@ -10155,15 +10155,13 @@ export async function registerRoutes(
         cdConds.push(`cd.exchange_name = $${params.length}`);
         rcConds.push(`rc.exchange_name = $${params.length}`);
       }
-      if (dateFrom) {
-        params.push(dateFrom);
-        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
-        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`);
+      {
+        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date`);
+        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $1::date`);
       }
-      if (dateTo) {
-        params.push(dateTo);
-        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
-        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`);
+      {
+        cdConds.push(`(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date`);
+        rcConds.push(`(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $2::date`);
       }
       if (q.trim()) {
         params.push(arQ(q));
@@ -10184,6 +10182,26 @@ export async function registerRoutes(
       if (excludeQueuedOn(req)) {
         cdConds.push(notQueuedSql("c138p.account_no"));
         rcConds.push(notQueuedSql("rc138p.account_no"));
+      }
+      // الفني يرى الأعطال التابعة له فقط. نستخدم فنى المنطقة الفعلى فى يوم الشكوى
+      // مع دعم تغطية الزميل أثناء الوردية.
+      if (isTech) {
+        const workerCode = String(req.user?.workerCode || "").trim();
+        if (!workerCode) return res.json([]);
+        const { rows: techRows } = await pool.query(
+          `SELECT tech_name FROM technician_names WHERE worker_code = $1 LIMIT 1`,
+          [workerCode],
+        );
+        const techName = String(techRows[0]?.tech_name || "").trim();
+        if (!techName) return res.json([]);
+        params.push(techName);
+        const techParam = `$${params.length}`;
+        cdConds.push(`btrim(COALESCE(${areaTechSql(
+          "cd.exchange_name", "cd.cabinet_no", "cd.complain_time", "cd.phone_number",
+        )}, '')) = btrim(${techParam})`);
+        rcConds.push(`btrim(COALESCE(${areaTechSql(
+          "rc.exchange_name", "rc.cabinet_no", "rc.complain_time", "rc.phone_number",
+        )}, '')) = btrim(${techParam})`);
       }
       const cdWhere = "WHERE " + cdConds.join(" AND ");
       const rcWhere = "WHERE " + rcConds.join(" AND ");
@@ -10423,25 +10441,12 @@ export async function registerRoutes(
       const rcCentral = central ? `AND rc.exchange_name = ${centralParam}` : "";
       const phoneQ = q.trim() ? `AND ${n("lc.phone")} LIKE ${qParam}` : "";
       let techClause = "";
-      if (isTech) {
+      if (req.user?.role === ROLES.TECH) {
         const workerCode = String(req.user.workerCode || "").trim();
         // عدم وجود كود مربوط لا يعنى عرض كل البيانات للفنى.
         if (!workerCode) return res.json([]);
-        const { rows: techRows } = await pool.query(
-          `SELECT tech_name FROM technician_names WHERE worker_code = $1 LIMIT 1`,
-          [workerCode],
-        );
-        const techName = String(techRows[0]?.tech_name || "").trim();
-        if (!techName) return res.json([]);
-        params.push(techName);
-        // التصفية تعتمد على فنى المنطقة الفعلى فى يوم الشكوى، مع دعم فنى التغطية
-        // أثناء الوردية من خلال areaTechSql.
-        techClause = ` AND btrim(COALESCE(${areaTechSql(
-          "COALESCE(pl.central, qual.central)",
-          "COALESCE(pl.cabin_number, qual.cabinet)",
-          "qual.last_time",
-          "qual.phone",
-        )}, '')) = btrim($${params.length})`;
+        params.push(workerCode);
+        techClause = ` AND btrim(COALESCE(ct.worker_code, '')) = btrim($${params.length})`;
       }
 
       const { rows } = await pool.query(

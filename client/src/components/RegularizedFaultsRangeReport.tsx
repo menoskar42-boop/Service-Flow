@@ -14,6 +14,8 @@ import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { closeReason } from "@/lib/close-codes";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 interface RegularizedFault extends Measurement138 {
   ticketId: string | null;
   centralName: string | null;
@@ -92,17 +94,19 @@ const buildDZSUrl = (items: DZSItem[]) => {
 export function RegularizedFaultsRangeReport() {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
+  const { user } = useAuth();
+  const isTechnician = user?.role === ROLES.TECH;
   useSpeedToolSource("الأعطال المنتظمة (مدى)");
   const [central, setCentral] = useState("");
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+    return `${today.slice(0, 8)}01`;
   });
   const [dateTo, setDateTo] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
   });
+  const [measuredBefore, setMeasuredBefore] = useState("");
   const [repeatedOnly, setRepeatedOnly] = useState(false);
   const [closeReasonF, setCloseReasonF] = useState(""); // فلتر سبب الإغلاق (مثال: عطل يخص راوتر العميل)
   // استبعاد أرقام الأكونت الموجودة فى أى باتش قياس/رفع سرعة/إيقاف ما زال فى الطابور
@@ -110,13 +114,14 @@ export function RegularizedFaultsRangeReport() {
 
   // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
-    queryKey: ["/api/reports/regularized-faults-range", central, q, dateFrom, dateTo, excludeQueued],
+    queryKey: ["/api/reports/regularized-faults-range", central, q, dateFrom, dateTo, measuredBefore, excludeQueued, isTechnician],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (central) p.set("central", central);
       if (q) p.set("q", q);
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
+      if (measuredBefore) p.set("measuredBefore", measuredBefore);
       if (excludeQueued) p.set("excludeQueued", "1");
       const res = await fetch(`/api/reports/regularized-faults-range?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
@@ -197,6 +202,10 @@ export function RegularizedFaultsRangeReport() {
       "ترمنال": f.dpTerminal,
       "وقت الشكوي": fmtDt(f.complainTime),
       "ComplainTypeName": f.complainTypeName,
+      "السرعة الحالية": f.lineCurrentSpeed,
+      "أقصى سرعة": f.lineMaxSpeed,
+      "الاسكور": f.lastMeasScore,
+      "تاريخ آخر قياس": fmtDt(f.lastMeasTime ?? null),
       "حالة الانتظام": f.regStatus,
       "أول إغلاق": fmtDt(f.firstCloseDate),
       "آخر إغلاق": fmtDt(f.lastCloseDate),
@@ -229,6 +238,7 @@ export function RegularizedFaultsRangeReport() {
       <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
+      <th>السرعة الحالية</th><th>أقصى سرعة</th><th>الاسكور</th><th>تاريخ آخر قياس</th>
       <th>حالة الانتظام</th><th>أول إغلاق</th><th>آخر إغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
     </tr>`;
     let pages = "";
@@ -253,6 +263,10 @@ export function RegularizedFaultsRangeReport() {
           <td>${esc(f.dpTerminal)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
+           <td>${esc(f.lineCurrentSpeed)}</td>
+           <td>${esc(f.lineMaxSpeed)}</td>
+           <td>${esc(f.lastMeasScore)}</td>
+           <td style="font-size:9px">${esc(fmtDt(f.lastMeasTime ?? null))}</td>
           <td>${esc(f.regStatus)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.firstCloseDate))}</td>
           <td style="font-size:9px">${esc(fmtDt(f.lastCloseDate))}</td>
@@ -316,8 +330,10 @@ export function RegularizedFaultsRangeReport() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
+            disabled={isTechnician}
             className="text-sm w-auto"
             dir="ltr"
+            title={isTechnician ? "التاريخ مثبت للفني على الشهر الحالي" : undefined}
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -326,10 +342,38 @@ export function RegularizedFaultsRangeReport() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
+            disabled={isTechnician}
             className="text-sm w-auto"
             dir="ltr"
+            title={isTechnician ? "التاريخ مثبت للفني على الشهر الحالي" : undefined}
           />
         </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground whitespace-nowrap">استبعد القياس بعد:</span>
+          <Input
+            type="datetime-local"
+            value={measuredBefore}
+            onChange={(e) => setMeasuredBefore(e.target.value)}
+            className="text-sm w-auto"
+            dir="ltr"
+            title="يستبعد الخطوط التي تم قياسها بعد هذا التاريخ والوقت، ويُبقي الخطوط التي لم تُقَس أو قِيسَت قبله"
+          />
+          {measuredBefore && (
+            <button
+              type="button"
+              onClick={() => setMeasuredBefore("")}
+              className="text-muted-foreground hover:text-foreground"
+              title="مسح فلتر القياس"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {isTechnician && (
+          <span className="text-xs text-muted-foreground bg-slate-100 rounded px-2 py-1">
+            التاريخ: الشهر الحالي فقط
+          </span>
+        )}
         <select
           value={central}
           onChange={(e) => setCentral(e.target.value)}
@@ -432,6 +476,10 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
+                 <TableHead className="text-right font-bold text-white">السرعة الحالية</TableHead>
+                 <TableHead className="text-right font-bold text-white">أقصى سرعة</TableHead>
+                 <TableHead className="text-right font-bold text-white">الاسكور</TableHead>
+                 <TableHead className="text-right font-bold text-white whitespace-nowrap">تاريخ آخر قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>
                 <TableHead className="text-right font-bold text-white">أول إغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">آخر إغلاق</TableHead>
@@ -454,7 +502,7 @@ export function RegularizedFaultsRangeReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={27} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={35} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
                       : repeatedOnly
@@ -490,6 +538,10 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell>{f.dpTerminal || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
+                   <TableCell className="font-mono">{f.lineCurrentSpeed || "-"}</TableCell>
+                   <TableCell className="font-mono">{f.lineMaxSpeed || "-"}</TableCell>
+                   <TableCell>{f.lastMeasScore ?? "-"}</TableCell>
+                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.lastMeasTime ?? null)}</TableCell>
                   <TableCell>
                     <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-800">
                       {f.regStatus || "-"}

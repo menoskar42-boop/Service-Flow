@@ -310,8 +310,15 @@ export default function Dashboard() {
 
   // قائمة التقارير على الموبايل: مطوية افتراضياً، تُفتح بزر
   const [navOpen, setNavOpen] = useState(false);
+  const displayReportLabel = (item: { id: ReportTab; label: string }) =>
+    item.id === "regularized-faults-range" && user?.role === ROLES.TECH
+      ? "الأعطال المنتظمة هذا الشهر"
+      : item.label;
   const currentReportLabel =
-    REPORT_GROUPS.flatMap((g) => g.items).find((it) => it.id === reportTab)?.label ?? "اختر التقرير";
+    (() => {
+      const item = REPORT_GROUPS.flatMap((g) => g.items).find((it) => it.id === reportTab);
+      return item ? displayReportLabel(item) : "اختر التقرير";
+    })();
 
   useWebSocket();
   // منع الكمبيوتر من النوم طالما الموقع مفتوح (مهم للتحديث التلقائى وجهاز التنفيذ)
@@ -603,7 +610,7 @@ export default function Dashboard() {
                               : "text-foreground hover:bg-muted/40"
                             }`}
                         >
-                          {item.label}
+                          {displayReportLabel(item)}
                         </button>
                       ))}
                     </div>
