@@ -1261,6 +1261,10 @@ function normCentral(s: string | null | undefined): string {
 
 // تجميع مجاميع القياسات لكل (سنترال، كابينة، بكس) للخطوط التى لها أكونت — مع كاش قصير
 let boxAggCache: { at: number; map: Map<string, { sum: number; measured: number; lines: number }> } | null = null;
+function invalidateBoxScoreAggCache() {
+  boxAggCache = null;
+}
+
 async function getBoxScoreAgg() {
   const now = Date.now();
   if (boxAggCache && now - boxAggCache.at < 60_000) return boxAggCache.map;
@@ -4949,6 +4953,7 @@ export async function registerRoutes(
              updated_at = now()`,
       [fullPhone, newNo, req.user.id, req.user.username],
     );
+    invalidateBoxScoreAggCache();
     // write audit log entry
     await pool.query(
       `INSERT INTO line_account_edits (full_phone, old_account_no, new_account_no, edited_by_id, edited_by_name)
@@ -5045,6 +5050,7 @@ export async function registerRoutes(
     if (req.user.role === ROLES.SALES) return res.status(403).json({ message: "غير مصرح" });
     const { fullPhone } = req.params;
     await pool.query(`DELETE FROM line_accounts WHERE full_phone = $1`, [fullPhone]);
+    invalidateBoxScoreAggCache();
     res.json({ ok: true });
   });
 
@@ -5107,6 +5113,7 @@ export async function registerRoutes(
         saved++;
       }
       await client.query("COMMIT");
+      if (saved > 0) invalidateBoxScoreAggCache();
       res.json({ ok: true, saved, duplicates });
     } catch (err: any) {
       await client.query("ROLLBACK");
@@ -7373,6 +7380,7 @@ export async function registerRoutes(
       }
       return { inserted };
       });
+      invalidateBoxScoreAggCache();
       res.json({ inserted, total: inserts.length });
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
@@ -7459,6 +7467,7 @@ export async function registerRoutes(
       );
       inserted++;
     }
+    if (inserted > 0) invalidateBoxScoreAggCache();
     res.json({ inserted });
   });
 
@@ -8261,6 +8270,7 @@ export async function registerRoutes(
         saved++;
       }
       await client.query("COMMIT");
+      if (saved > 0 || clearedAccounts > 0) invalidateBoxScoreAggCache();
       res.json({ saved, markedNoAccount, clearedAccounts });
     } catch (err: any) {
       await client.query("ROLLBACK");

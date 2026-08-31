@@ -180,6 +180,30 @@ test("OM report enriches only broken-box rows from latest valid Service-Flow sco
     assert.equal(bySerial.get(serials.empty)?.boxMeasuredCount, 0);
     assert.equal(bySerial.get(serials.otherReason)?.boxAvgScore, null);
     assert.equal(bySerial.get(serials.otherReason)?.boxMeasuredCount, 0);
+
+    // The first report populated the short-lived aggregate cache. A newer
+    // Service-Flow measurement must invalidate it before the next report.
+    const measurementUpdate = await fetch(`${baseUrl}/api/case-138/measurements`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-dzs-token": "sf-dzs-138-ingest-2026",
+      },
+      body: JSON.stringify({
+        items: [{ fullPhone: phones.first, accountNo: `account-${phones.first}`, score: 40 }],
+      }),
+    });
+    assert.equal(measurementUpdate.status, 200);
+    assert.deepEqual(await measurementUpdate.json(), { inserted: 1 });
+
+    const refreshedReport = await fetch(`${baseUrl}/api/ftth-orders?bucket=current`, {
+      headers: { cookie },
+    });
+    assert.equal(refreshedReport.status, 200);
+    const refreshedRows = await refreshedReport.json() as Array<Record<string, any>>;
+    const refreshedBySerial = new Map(refreshedRows.map((row) => [row.serialNumber, row]));
+    assert.equal(refreshedBySerial.get(serials.measured)?.boxAvgScore, 60);
+    assert.equal(refreshedBySerial.get(serials.measured)?.boxMeasuredCount, 2);
   } finally {
     await new Promise<void>((resolve) => {
       if (!httpServer.listening) return resolve();
