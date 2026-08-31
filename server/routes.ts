@@ -10297,7 +10297,6 @@ export async function registerRoutes(
              'remaining' AS source
       FROM remaining_complaints
       WHERE phone_number IN ($1, $2)
-        AND FLOOR(status_code::numeric)::int IN (135, 138)
       ORDER BY "complainAt" DESC NULLS LAST, at DESC NULLS LAST
     `, [short, full]);
     // نفس الشكوى قد تكون موجودة فى جدول التفاصيل وفى جدول المتبقى؛ نعرض نسخة واحدة
@@ -11866,6 +11865,7 @@ export async function registerRoutes(
           SELECT
             cd.exchange_name AS central_name,
             cd.phone_number,
+            ${phoneNormSql("cd.phone_number")} AS phone_key,
             cd.close_time,
             cd.complain_time,
             ${effTechSql("cd.complain_no", "cd.close_by", "cd.exchange_name", "cd.cabinet_no", "cd.complain_time", "cd.phone_number")} AS tech_name
@@ -11876,10 +11876,10 @@ export async function registerRoutes(
         ),
         ranked AS (
           SELECT
-            central_name, phone_number, tech_name,
-            COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
+            central_name, phone_number, phone_key, tech_name,
+            COUNT(*) OVER (PARTITION BY phone_key)                                        AS appearances,
             -- rk=1 = صاحب إغلاق أول شكوى (الأقدم بتاريخ الشكوى) — عليه يُحسب التكرار
-            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
+            ROW_NUMBER() OVER (PARTITION BY phone_key ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
           FROM phone_occ
         )
         SELECT
@@ -11930,21 +11930,20 @@ export async function registerRoutes(
           SELECT
             rc.exchange_name AS central_name,
             rc.phone_number,
+            ${phoneNormSql("rc.phone_number")} AS phone_key,
             rc.close_time,
             rc.complain_time,
             ${effTechSql("rc.complain_no", "rc.close_by", "rc.exchange_name", "rc.cabinet_no", "rc.complain_time", "rc.phone_number")} AS tech_name
           FROM remaining_complaints_current rc
           WHERE rc.exchange_name ILIKE '%غنايم%'
-            AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
-            AND (FLOOR(rc.status_code::numeric)::int = 135 OR rc.close_time IS NOT NULL)
             ${dateClause}
         ),
         ranked AS (
           SELECT
-            central_name, phone_number, tech_name,
-            COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
+            central_name, phone_number, phone_key, tech_name,
+            COUNT(*) OVER (PARTITION BY phone_key)                                        AS appearances,
             -- rk=1 = صاحب إغلاق أول شكوى (الأقدم بتاريخ الشكوى) — عليه يُحسب التكرار
-            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
+            ROW_NUMBER() OVER (PARTITION BY phone_key ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
           FROM phone_occ
         )
         SELECT
@@ -11996,22 +11995,23 @@ export async function registerRoutes(
 
       const { rows } = await pool.query(`
         WITH src_raw AS (
-          SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 1 AS src_priority
+          SELECT complain_no, exchange_name, phone_number, ${phoneNormSql("phone_number")} AS phone_key,
+                 complain_time, close_time, close_by, cabinet_no, 1 AS src_priority
           FROM complaint_details
           WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           UNION ALL
-          -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
-          SELECT complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no, 2 AS src_priority
+          -- كل حالات المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى
+          -- أى حالة عند رفع ملف أحدث؛ التكرار لا يقتصر على 135 و138.
+          SELECT complain_no, exchange_name, phone_number, ${phoneNormSql("phone_number")} AS phone_key,
+                 complain_time, close_time, close_by, cabinet_no, 2 AS src_priority
           FROM remaining_complaints
           WHERE exchange_name ILIKE '%غنايم%'
-            AND FLOOR(status_code::numeric)::int IN (135, 138)
-            AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
         ),
         -- توحيد العطل الواحد: لو نفس complain_no ظهر في الجدولين (مفتوح ثم مغلق)
         -- يُحسب مرة واحدة، مع تفضيل النسخة المغلقة (src_priority=1) للتبعية الصحيحة
         src AS (
           SELECT DISTINCT ON (complain_no)
-            complain_no, exchange_name, phone_number, complain_time, close_time, close_by, cabinet_no
+            complain_no, exchange_name, phone_number, phone_key, complain_time, close_time, close_by, cabinet_no
           FROM src_raw
           ORDER BY complain_no, src_priority
         ),
@@ -12019,6 +12019,7 @@ export async function registerRoutes(
           SELECT
             po.exchange_name AS central_name,
             po.phone_number,
+            po.phone_key,
             po.close_time,
             po.complain_time,
             ${effTechSql("po.complain_no", "po.close_by", "po.exchange_name", "po.cabinet_no", "po.complain_time", "po.phone_number")} AS tech_name
@@ -12027,10 +12028,10 @@ export async function registerRoutes(
         ),
         ranked AS (
           SELECT
-            central_name, phone_number, tech_name,
-            COUNT(*) OVER (PARTITION BY phone_number)                                     AS appearances,
+            central_name, phone_number, phone_key, tech_name,
+            COUNT(*) OVER (PARTITION BY phone_key)                                        AS appearances,
             -- rk=1 = صاحب إغلاق أول شكوى (الأقدم بتاريخ الشكوى) — عليه يُحسب التكرار
-            ROW_NUMBER() OVER (PARTITION BY phone_number ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
+            ROW_NUMBER() OVER (PARTITION BY phone_key ORDER BY complain_time ASC NULLS LAST, close_time ASC NULLS LAST) AS rk
           FROM phone_occ
         )
         SELECT
@@ -12222,33 +12223,38 @@ export async function registerRoutes(
       if (srcTab === "closed") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code
+            SELECT complain_no, exchange_name, cabinet_no, phone_number,
+                   ${phoneNormSql("phone_number")} AS phone_key,
+                   complain_time, close_time, close_by, close_code
             FROM complaint_details
             WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
           )`;
       } else if (srcTab === "open") {
         srcCTE = `
           WITH src AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code
+            SELECT complain_no, exchange_name, cabinet_no, phone_number,
+                   ${phoneNormSql("phone_number")} AS phone_key,
+                   complain_time, close_time, close_by, close_code
             FROM remaining_complaints_current
             WHERE exchange_name ILIKE '%غنايم%'
-              AND FLOOR(status_code::numeric)::int IN (135, 138)
-              AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           )`;
       } else {
         srcCTE = `
           WITH src_raw AS (
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 1 AS sp
+            SELECT complain_no, exchange_name, cabinet_no, phone_number,
+                   ${phoneNormSql("phone_number")} AS phone_key,
+                   complain_time, close_time, close_by, close_code, 1 AS sp
             FROM complaint_details WHERE close_time IS NOT NULL AND exchange_name ILIKE '%غنايم%'
             UNION ALL
-            -- المتبقى من الجدول التاريخى الدائم (وليس _current) حتى لا تختفى المُزالة عند رفعة أحدث
-            SELECT complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code, 2 AS sp
+            -- كل حالات المتبقى من الجدول التاريخى الدائم، وليس 135 و138 فقط
+            SELECT complain_no, exchange_name, cabinet_no, phone_number,
+                   ${phoneNormSql("phone_number")} AS phone_key,
+                   complain_time, close_time, close_by, close_code, 2 AS sp
             FROM remaining_complaints WHERE exchange_name ILIKE '%غنايم%'
-              AND FLOOR(status_code::numeric)::int IN (135, 138)
-              AND (FLOOR(status_code::numeric)::int = 135 OR close_time IS NOT NULL)
           ),
           src AS (
-            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number, complain_time, close_time, close_by, close_code
+            SELECT DISTINCT ON (complain_no) complain_no, exchange_name, cabinet_no, phone_number,
+                   phone_key, complain_time, close_time, close_by, close_code
             FROM src_raw ORDER BY complain_no, sp
           )`;
       }
@@ -12258,8 +12264,8 @@ export async function registerRoutes(
         phone_occ AS (
           SELECT
             po.complain_no, po.exchange_name AS central_name, po.cabinet_no,
-            po.phone_number, po.complain_time, po.close_time, po.close_by, po.close_code,
-            COUNT(*) OVER (PARTITION BY po.phone_number) AS appearances
+            po.phone_number, po.phone_key, po.complain_time, po.close_time, po.close_by, po.close_code,
+            COUNT(*) OVER (PARTITION BY po.phone_key) AS appearances
           FROM src po
           WHERE TRUE ${dateClause}
         ),
@@ -12270,11 +12276,12 @@ export async function registerRoutes(
         SELECT d.*,
           -- الفنى المحمَّل على الرقم = فنى إغلاق أول شكوى (الأقدم)، أو فنى المنطقة لو الإغلاق غير معروف
           FIRST_VALUE(CASE WHEN d."closeByName" <> 'غير معروف' THEN d."closeByName" ELSE d."areaTechName" END)
-            OVER (PARTITION BY d."phoneNumber" ORDER BY d."complainTime" ASC NULLS LAST, d."closeTime" ASC NULLS LAST) AS "chargedTech"
+              OVER (PARTITION BY d."phoneKey" ORDER BY d."complainTime" ASC NULLS LAST, d."closeTime" ASC NULLS LAST) AS "chargedTech"
         FROM (
         SELECT
           r.complain_no                                                                AS "complainNo",
           r.phone_number                                                               AS "phoneNumber",
+            r.phone_key                                                                  AS "phoneKey",
           r.central_name                                                               AS "centralName",
           r.cabinet_no                                                                 AS "cabinetNo",
           r.complain_time                                                              AS "complainTime",
