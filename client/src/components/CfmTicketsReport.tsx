@@ -110,6 +110,8 @@ export function CfmTicketsReport() {
   const [filterCabinet, setFilterCabinet] = useState("");
   const [filterBoxFrom, setFilterBoxFrom] = useState("");
   const [filterBoxTo, setFilterBoxTo] = useState("");
+  const [filterBoxAvgScoreFrom, setFilterBoxAvgScoreFrom] = useState("");
+  const [filterBoxAvgScoreTo, setFilterBoxAvgScoreTo] = useState("");
   const [filterStatus, setFilterStatus] = useState("open");
   const [filterFaults, setFilterFaults] = useState<"all" | "has" | "none">("all");
 
@@ -286,6 +288,17 @@ export function CfmTicketsReport() {
         const hi = filterBoxTo   ? parseInt(filterBoxTo)   : Infinity;
         if (!boxes.some(b => { const n = parseInt(b); return n >= lo && n <= hi; })) return false;
       }
+      if (filterBoxAvgScoreFrom.trim() || filterBoxAvgScoreTo.trim()) {
+        const minScore = filterBoxAvgScoreFrom.trim() ? Number(filterBoxAvgScoreFrom) : -Infinity;
+        const maxScore = filterBoxAvgScoreTo.trim() ? Number(filterBoxAvgScoreTo) : Infinity;
+        if (
+          !Number.isFinite(minScore) && minScore !== -Infinity ||
+          !Number.isFinite(maxScore) && maxScore !== Infinity ||
+          t.boxAvgScore == null ||
+          t.boxAvgScore < minScore ||
+          t.boxAvgScore > maxScore
+        ) return false;
+      }
       if (filterFaults !== "all" && preTicketMap != null) {
         const n = preTicketMap.get(t.id) ?? 0;
         if (filterFaults === "has"  && n === 0) return false;
@@ -293,7 +306,7 @@ export function CfmTicketsReport() {
       }
       return true;
     });
-  }, [data, filterCentral, filterCabinet, filterStatus, filterBoxFrom, filterBoxTo, filterFaults, preTicketMap]);
+  }, [data, filterCentral, filterCabinet, filterStatus, filterBoxFrom, filterBoxTo, filterBoxAvgScoreFrom, filterBoxAvgScoreTo, filterFaults, preTicketMap]);
 
   // --- totals for filtered data ---
   const totals = useMemo(() => {
@@ -470,7 +483,7 @@ export function CfmTicketsReport() {
     if (w) { w.document.write(html); w.document.close(); }
   };
 
-  const hasFilters = !!(filterCentral || filterCabinet || filterBoxFrom || filterBoxTo || filterStatus || filterFaults !== "all");
+  const hasFilters = !!(filterCentral || filterCabinet || filterBoxFrom || filterBoxTo || filterBoxAvgScoreFrom || filterBoxAvgScoreTo || filterStatus || filterFaults !== "all");
 
   return (
     <div className="space-y-4" dir="rtl">
@@ -553,6 +566,18 @@ export function CfmTicketsReport() {
               className="border rounded px-2 py-1 text-sm w-20 bg-white" placeholder="99" />
           </div>
           <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground font-medium">متوسط Score من</label>
+            <input type="number" min="0" max="100" step="0.1" value={filterBoxAvgScoreFrom}
+              onChange={e => setFilterBoxAvgScoreFrom(e.target.value)}
+              className="border rounded px-2 py-1 text-sm w-24 bg-white" placeholder="0" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground font-medium">متوسط Score إلى</label>
+            <input type="number" min="0" max="100" step="0.1" value={filterBoxAvgScoreTo}
+              onChange={e => setFilterBoxAvgScoreTo(e.target.value)}
+              className="border rounded px-2 py-1 text-sm w-24 bg-white" placeholder="100" />
+          </div>
+          <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground font-medium">الحالة</label>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
               className="border rounded px-2 py-1 text-sm bg-white min-w-[130px]">
@@ -571,7 +596,7 @@ export function CfmTicketsReport() {
           </div>
           {hasFilters && (
             <Button variant="ghost" size="sm" className="self-end text-xs"
-              onClick={() => { setFilterCentral(""); setFilterCabinet(""); setFilterBoxFrom(""); setFilterBoxTo(""); setFilterStatus(""); setFilterFaults("all"); }}>
+              onClick={() => { setFilterCentral(""); setFilterCabinet(""); setFilterBoxFrom(""); setFilterBoxTo(""); setFilterBoxAvgScoreFrom(""); setFilterBoxAvgScoreTo(""); setFilterStatus(""); setFilterFaults("all"); }}>
               مسح الفلاتر
             </Button>
           )}
