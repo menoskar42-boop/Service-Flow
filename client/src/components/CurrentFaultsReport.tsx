@@ -51,6 +51,7 @@ interface CurrentFault extends Measurement138 {
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
   mobile: string | null;
+  customerAddress: string | null;
 }
 
 // مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
@@ -563,6 +564,8 @@ export function CurrentFaultsReport() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-100 rounded overflow-hidden">
                   {([
                     ["السنترال", repeatFor.centralName],
+                    ["اسم العميل", repeatFor.customerName],
+                    ["العنوان", repeatFor.customerAddress],
                     ["رقم الموبايل", repeatFor.mobile],
                     ["الكابينة", repeatFor.cabinetNo],
                     ["البكس", repeatFor.boxNo],

@@ -989,6 +989,9 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
        LEFT JOIN phone_lines pl ON pl.tel_no = t.phone_number
        LEFT JOIN cabinet_technicians ct ON ct.central_name = t.central_name AND ct.cabin_number = t.cabinet_no
        LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
+            -- اسم وعنوان العميل المراجعان من FCC؛ المطابقة بالتليفون الموحّد
+            LEFT JOIN line_subscriber_info si
+              ON ${sp("si.phone_number")} = ${sp("t.phone_number")}
        -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
        LEFT JOIN LATERAL (
          SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
@@ -9969,7 +9972,8 @@ export async function registerRoutes(
              pl.dp_terminal          AS "dpTerminal",
              t.complaint_time        AS "complainTime",
              t.complain_type_name    AS "complainTypeName",
-             NULL                    AS "customerName",
+              si.sub_name             AS "customerName",
+              si.sub_add              AS "customerAddress",
              -- التصنيف بيتبع **الوقت الفعلى** (نفس رقم عمود «الوقت الفعلى») مش الزمن
              -- الخام — عشان الشارة والعمود مايتعارضوش، وعشان يتفق مع الإحصائيات
              -- اللى أصلاً بتحسب بالساعات الفعلية.
