@@ -4130,9 +4130,9 @@ export async function registerRoutes(
           WHERE ${regularizedTodaySodConds.join(" AND ")}
         ),
         deduped AS (
-          SELECT DISTINCT ON (COALESCE("ticketId", "source" || ':' || "recordId")) *
+          SELECT DISTINCT ON (COALESCE(NULLIF(btrim("ticketId"), ''), "source" || ':' || "recordId")) *
           FROM source_rows
-          ORDER BY COALESCE("ticketId", "source" || ':' || "recordId"),
+          ORDER BY COALESCE(NULLIF(btrim("ticketId"), ''), "source" || ':' || "recordId"),
                    CASE "source"
                      WHEN 'تفاصيل' THEN 0
                      WHEN 'متبقى' THEN 1
