@@ -34,13 +34,13 @@ export const normBox = (s: unknown): string => {
 };
 
 /** فكّ بكسيات التكت: «1:5» → 1..5 | «1&15» → 1,15 | «1*15» → 1,15 | «1:5&8» → 1..5,8 | «4» → 4
- *  الفواصل (& ، , *) بتتفك الأول وبعدين النطاق جوه كل جزء — قبل كده «1:5&8» كانت
+ *  الفواصل (& ، , ، . ، *) بتتفك الأول وبعدين النطاق جوه كل جزء — قبل كده «1:5&8» كانت
  *  بتتقرا 1..58 فتكت واحدة تمنع 57 بكس ملهومش دعوة. */
 export function expandBoxes(boxStr: unknown): string[] {
   const s = toAsciiDigits(String(boxStr ?? "")).trim();
   if (!s) return [];
   const out: string[] = [];
-  for (const part of s.split(/[&*،,]/)) {
+  for (const part of s.split(/[&*،,.]/)) {
     const seg = part.trim();
     if (!seg) continue;
     if (seg.includes(":")) {

@@ -572,6 +572,29 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             </div>
           )}
           {bucket === "current" && (
+            <Button
+              variant={boxBrokenOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setBoxBrokenOnly((v) => !v)}
+              className={boxBrokenOnly ? "bg-orange-600 hover:bg-orange-700" : "text-orange-700 border-orange-300"}
+              title="عرض حالات سببها بوكس معطل فقط"
+            >
+              بوكس معطل
+            </Button>
+          )}
+          {bucket === "current" && (
+            <Input
+              type="number"
+              min={0}
+              placeholder="متوسط Score أقل من..."
+              value={boxScoreLt}
+              onChange={(e) => setBoxScoreLt(e.target.value)}
+              className="w-full sm:w-44 text-sm"
+              dir="rtl"
+              title="يعرض حالات البوكس المعطل التي متوسط Score لها أقل من القيمة"
+            />
+          )}
+          {bucket === "current" && (
             <select
               value={respFilter}
               onChange={(e) => setRespFilter(e.target.value)}
@@ -611,9 +634,9 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
           <label className="text-xs text-muted-foreground whitespace-nowrap">إلى:</label>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
             className="border rounded-md text-sm px-2 py-1.5 bg-white" />
-          {(msanFilter || fccFilter || techFilter || respFilter || workingLt || dateFrom || dateTo) && (
+          {(msanFilter || fccFilter || techFilter || respFilter || workingLt || boxBrokenOnly || boxScoreLt || dateFrom || dateTo) && (
             <button
-              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setRespFilter(""); setWorkingLt(""); setDateFrom(""); setDateTo(""); }}
+              onClick={() => { setMsanFilter(""); setFccFilter(""); setTechFilter(""); setRespFilter(""); setWorkingLt(""); setBoxBrokenOnly(false); setBoxScoreLt(""); setDateFrom(""); setDateTo(""); }}
               className="text-xs text-red-500 hover:text-red-700 underline whitespace-nowrap"
             >مسح الفلاتر</button>
           )}

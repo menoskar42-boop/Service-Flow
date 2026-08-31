@@ -5,6 +5,23 @@ export const isBoxBrokenReason = (
 ): boolean =>
   rejectionReason === boxBrokenReason || externalRejectionReason === boxBrokenReason;
 
+export interface BoxScoreAggregate {
+  sum: number;
+  measured: number;
+}
+
+export function boxAverageFromAggregate(
+  aggregate: BoxScoreAggregate | null | undefined,
+): { avgScore: number | null; measuredCount: number } {
+  if (!aggregate || aggregate.measured <= 0) {
+    return { avgScore: null, measuredCount: 0 };
+  }
+  return {
+    avgScore: Math.round((aggregate.sum / aggregate.measured) * 10) / 10,
+    measuredCount: aggregate.measured,
+  };
+}
+
 export function matchesBoxScoreFilter(
   isBoxBroken: boolean,
   avgScore: number | null | undefined,

@@ -26,6 +26,7 @@ import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
 import { normCab, expandBoxes } from "@shared/cab-norm";
 import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
+import { boxAverageFromAggregate, isBoxBrokenReason } from "@shared/om-box-score";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -9264,8 +9265,6 @@ export async function registerRoutes(
       conds.push(`(COALESCE(tn.tech_name, mto.tech_name) = $${params.length} OR (tn.tech_name IS NULL AND mto.tech_name IS NULL))`);
     }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
-    params.push(REJECTION_REASONS.BOX_BROKEN);
-    const boxBrokenReasonParam = params.length;
     const yearCol = bucket === "archive" ? `fo.archived_year AS "archivedYear",` : "";
     const { rows } = await pool.query(
       `SELECT fo.id, ${yearCol} fo.service_order_id AS "serviceOrderId", fo.customer_order_id AS "customerOrderId",
@@ -9297,8 +9296,6 @@ export async function registerRoutes(
               -- عدد الخطوط الشغّالة على البكس اللى الفنى كتبه فى رده. «شغّال» = ليه بورت
               -- (فريم) فى ملف المنافذ؛ أى خط من غير بورت مابيتحسبش.
               bx.c AS "boxWorkingCount"
-               ,bs.avg_score AS "boxAvgScore"
-               ,bs.measured_count AS "boxMeasuredCount"
        FROM ${table} fo
        LEFT JOIN om_responses orp ON orp.serial_number = fo.serial_number
        LEFT JOIN LATERAL (
@@ -9310,32 +9307,6 @@ export async function registerRoutes(
             AND (COALESCE(btrim(orp.central_name), '') = '' OR btrim(pl2.central) = btrim(orp.central_name))
             AND ${hasFrameSql("pl2.full_phone")}
        ) bx ON true
-        LEFT JOIN LATERAL (
-          SELECT
-            ROUND(AVG(CASE
-              WHEN latest.score IS NOT NULL AND latest.score <= 100 THEN latest.score
-            END)::numeric, 1) AS avg_score,
-            COUNT(DISTINCT CASE
-              WHEN latest.score IS NOT NULL AND latest.score <= 100 THEN pl3.full_phone
-            END)::int AS measured_count
-          FROM phone_lines pl3
-          LEFT JOIN LATERAL (
-            SELECT c.score
-            FROM case_138 c
-            WHERE c.full_phone = pl3.full_phone
-            ORDER BY c.id DESC
-            LIMIT 1
-          ) latest ON true
-          WHERE ($${boxBrokenReasonParam} = orp.rejection_reason
-                 OR $${boxBrokenReasonParam} = orp.external_rejection_reason)
-            AND COALESCE(btrim(orp.box_number), '') <> ''
-            AND btrim(pl3.box_number) = btrim(orp.box_number)
-            AND (COALESCE(btrim(orp.cabin_number), '') = ''
-                 OR btrim(pl3.cabin_number) = btrim(orp.cabin_number))
-            AND (COALESCE(btrim(orp.central_name), '') = ''
-                 OR btrim(pl3.central) = btrim(orp.central_name))
-            AND ${hasFrameSql("pl3.full_phone")}
-        ) bs ON true
        LEFT JOIN LATERAL (
          SELECT tn.tech_name
          FROM cabinet_technicians ct
@@ -9363,6 +9334,30 @@ export async function registerRoutes(
        LIMIT 5000`,
       params,
     );
+     // متوسط Score محسوب من نفس التجميع المخبأ المستخدم في تقارير البكسات،
+     // ولا نطلبه إلا للحالات التي سببها «بوكس معطل».
+     let scoreAgg: Awaited<ReturnType<typeof getBoxScoreAgg>> | null = null;
+     try {
+       scoreAgg = await getBoxScoreAgg();
+     } catch (e) {
+       console.warn("[om-rejections] box score enrichment unavailable:", e);
+     }
+     for (const row of rows) {
+       const broken = isBoxBrokenReason(
+         row.respRejectionReason,
+         row.respExternalRejectionReason,
+         REJECTION_REASONS.BOX_BROKEN,
+       );
+       if (!broken) {
+         row.boxAvgScore = null;
+         row.boxMeasuredCount = 0;
+         continue;
+       }
+       const key = `${normCentral(row.respCentralName)}|${String(row.respCabinNumber ?? "").trim()}|${String(row.respBoxNumber ?? "").trim()}`;
+       const score = boxAverageFromAggregate(scoreAgg?.get(key));
+       row.boxAvgScore = score.avgScore;
+       row.boxMeasuredCount = score.measuredCount;
+     }
     res.json(rows);
   });
 
