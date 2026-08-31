@@ -6300,23 +6300,6 @@ export async function registerRoutes(
           LIMIT 20000`,
         params,
       );
-      // استرجاع تلقائى: لو ظهر خط معلَّم «بدون أكونت» داخل النطاق المعروض،
-      // ألغِ العلامة بنفس أثر زر الاسترجاع فى تقرير الأرقام المعلَّمة. نستخدم
-      // مطابقة الرقم الكامل/القصير بعد التطبيع، ونتجنب التنفيذ لحسابات المبيعات
-      // لأن مسار الاسترجاع اليدوى يمنعها بنفس القاعدة.
-      if (req.user?.role !== ROLES.SALES) {
-        const regularizedPhones = rows
-          .map((row: any) => String(row.phoneShort ?? "").trim())
-          .filter(Boolean);
-        if (regularizedPhones.length > 0) {
-          await pool.query(
-            `DELETE FROM lines_no_account na
-             USING unnest($1::text[]) AS candidate(phone)
-             WHERE ${sp("na.full_phone")} = ${sp("candidate.phone")}`,
-            [regularizedPhones],
-          );
-        }
-      }
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -10853,6 +10836,23 @@ export async function registerRoutes(
         ORDER BY d."lastCloseDate" ASC NULLS LAST`,
         params,
       );
+      // استرجاع تلقائى: لو ظهر خط معلَّم «بدون أكونت» داخل النطاق المعروض،
+      // ألغِ العلامة بنفس أثر زر الاسترجاع فى تقرير الأرقام المعلَّمة. نستخدم
+      // مطابقة الرقم الكامل/القصير بعد التطبيع، ونتجنب التنفيذ لحسابات المبيعات
+      // لأن مسار الاسترجاع اليدوى يمنعها بنفس القاعدة.
+      if (req.user?.role !== ROLES.SALES) {
+        const regularizedPhones = rows
+          .map((row: any) => String(row.phoneShort ?? "").trim())
+          .filter(Boolean);
+        if (regularizedPhones.length > 0) {
+          await pool.query(
+            `DELETE FROM lines_no_account na
+             USING unnest($1::text[]) AS candidate(phone)
+             WHERE ${sp("na.full_phone")} = ${sp("candidate.phone")}`,
+            [regularizedPhones],
+          );
+        }
+      }
       res.json(rows);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
