@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ChevronRight, ChevronLeft, Loader2, Phone, Check, X, CheckCheck, Undo2, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { NoMobileComplaintsReport } from "@/components/NoMobileComplaintsReport";
 
 // «أرقام بدون رقم موبايل» — نفس عمود بيان التليفونات، بس مقصور على الأرقام اللى
 // مالهاش رقم موبايل من أى مصدر (يدوى/أوامر شغل/طلبات FTTH). الغرض: تجميع أرقام
@@ -45,6 +46,8 @@ interface Props {
 export function LinesNoMobileReport({ checked = false }: Props) {
   const endpoint = checked ? "/api/phone-lines/mobile-checked" : "/api/phone-lines/no-mobile";
   const heading = checked ? "أرقام تم الفحص وتحتاج أرقام محمول" : "أرقام بدون رقم موبايل تحت الفحص";
+  const [reportMode, setReportMode] = useState<"no-mobile" | "complaints">("no-mobile");
+  const isComplaintsReport = !checked && reportMode === "complaints";
   // فلتر (فى تقرير «تم الفحص» بس): الأرقام اللى ليها شكوى مفتوحة فى الأعطال الحالية
   const [onlyCurrentFault, setOnlyCurrentFault] = useState(false);
   // علامة «اتفحص» — بتشيل الرقم من «تحت الفحص» وتوديه للتقرير التانى (والعكس)
@@ -88,6 +91,7 @@ export function LinesNoMobileReport({ checked = false }: Props) {
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: Row[]; total: number; page: number; pageSize: number }>;
     },
+    enabled: !isComplaintsReport,
     refetchOnMount: "always",
   });
 
@@ -192,6 +196,25 @@ export function LinesNoMobileReport({ checked = false }: Props) {
 
   return (
     <div className="space-y-4" dir="rtl">
+      {!checked && (
+        <div className="flex flex-wrap gap-2 border-b pb-2">
+          <Button
+            variant={reportMode === "no-mobile" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setReportMode("no-mobile")}
+          >
+            أرقام تحت الفحص
+          </Button>
+          <Button
+            variant={reportMode === "complaints" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setReportMode("complaints")}
+          >
+            أرقام لها شكاوى بدون رقم موبايل
+          </Button>
+        </div>
+      )}
+      {isComplaintsReport ? <NoMobileComplaintsReport /> : (
       <Card className="overflow-hidden shadow-sm border-0 bg-white">
         <div className="p-4 border-b flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -402,6 +425,7 @@ export function LinesNoMobileReport({ checked = false }: Props) {
           </>
         )}
       </Card>
+      )}
     </div>
   );
 }

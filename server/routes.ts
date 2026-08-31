@@ -3908,6 +3908,240 @@ export async function registerRoutes(
     res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
   });
 
+  // GET /api/phone-lines/no-mobile-complaints — الشكاوى المنتظمة التى ليس لها موبايل.
+  // يجمع نفس مصدرى تقرير الأعطال المنتظمة (التفاصيل + المتبقى 138/135) مع
+  // الأعطال اليدوية المنتظمة خارج الشاشة، لكن يظل هذا التقرير مستقلاً عن تقرير
+  // «تحت الفحص» العام حتى لا تتغير قواعده أو عداده.
+  app.get("/api/phone-lines/no-mobile-complaints", requireAuth, async (req: any, res) => {
+    try {
+      const {
+        search = "", central = "", cabin = "", box = "",
+        phoneFrom = "", phoneTo = "", dateFrom = "", dateTo = "",
+        page = "1", limit = "50",
+      } = req.query as Record<string, string>;
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
+
+      const cairoParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Africa/Cairo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+      const cairoPart = (type: string) => cairoParts.find((p) => p.type === type)?.value || "";
+      const cairoToday = `${cairoPart("year")}-${cairoPart("month")}-${cairoPart("day")}`;
+      const from = dateFrom || `${cairoToday.slice(0, 8)}01`;
+      const to = dateTo || cairoToday;
+      const params: any[] = [from, to]; // $1 = من، $2 = إلى
+
+      const cdConds: string[] = [
+        "cd.close_time IS NOT NULL",
+        "cd.exchange_name ILIKE '%غنايم%'",
+        "(cd.close_time AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
+        "(cd.close_time AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
+      ];
+      const rcConds: string[] = [
+        "rc.status_code IN ('138', '135')",
+        "rc.exchange_name ILIKE '%غنايم%'",
+        "(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
+        "(COALESCE(rc.close_time, rc.complain_time) AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
+      ];
+      const mfConds: string[] = [
+        "mf.status = 'regularized'",
+        "(mf.regularized_at AT TIME ZONE 'Africa/Cairo')::date >= $1::date",
+        "(mf.regularized_at AT TIME ZONE 'Africa/Cairo')::date <= $2::date",
+      ];
+      if (central) {
+        params.push(central);
+        const p = `$${params.length}`;
+        cdConds.push(`cd.exchange_name = ${p}`);
+        rcConds.push(`rc.exchange_name = ${p}`);
+        mfConds.push(`mf.central = ${p}`);
+      }
+      const q = search.trim();
+      if (q) {
+        params.push(arQ(q));
+      }
+      const qParam = q ? `$${params.length}` : "";
+      const digitFrom = String(phoneFrom || "").replace(/\D/g, "").replace(/^0+/, "").replace(/^88(?=\d{7,}$)/, "");
+      const digitTo = String(phoneTo || "").replace(/\D/g, "").replace(/^0+/, "").replace(/^88(?=\d{7,}$)/, "");
+      let pFrom = digitFrom;
+      let pTo = digitTo;
+      if (pFrom && pTo && BigInt(pFrom) > BigInt(pTo)) {
+        const swap = pFrom;
+        pFrom = pTo;
+        pTo = swap;
+      }
+      if (pFrom) params.push(pFrom);
+      const pFromParam = pFrom ? `$${params.length}` : "";
+      if (pTo) params.push(pTo);
+      const pToParam = pTo ? `$${params.length}` : "";
+
+      const sourceSql = `
+        WITH source_rows AS (
+          SELECT
+            cd.complain_no::text AS "ticketId",
+            cd.complain_no::text AS "recordId",
+            'تفاصيل'::text AS "source",
+            cd.phone_number::text AS "phoneValue",
+            cd.exchange_name::text AS "sourceCentral",
+            cd.cabinet_no::text AS "sourceCabin",
+            NULL::text AS "sourceBox",
+            cd.msan_id::text AS "sourceMsan",
+            cd.close_code::text AS "closeCode",
+            cd.complain_type_name::text AS "complaintTypeName",
+            cd.complain_time AS "complaintTime",
+            cd.close_time AS "closeDate",
+            NULL::timestamptz AS "regularizedAt",
+            cd.close_by::text AS "sourceTech"
+          FROM complaint_details cd
+          WHERE ${cdConds.join(" AND ")}
+
+          UNION ALL
+
+          SELECT
+            rc.complain_no::text AS "ticketId",
+            rc.complain_no::text AS "recordId",
+            'متبقى'::text AS "source",
+            rc.phone_number::text AS "phoneValue",
+            rc.exchange_name::text AS "sourceCentral",
+            rc.cabinet_no::text AS "sourceCabin",
+            NULL::text AS "sourceBox",
+            rc.msan_id::text AS "sourceMsan",
+            rc.close_code::text AS "closeCode",
+            rc.complain_type::text AS "complaintTypeName",
+            rc.complain_time AS "complaintTime",
+            rc.close_time AS "closeDate",
+            NULL::timestamptz AS "regularizedAt",
+            rc.close_by::text AS "sourceTech"
+          FROM remaining_complaints rc
+          WHERE ${rcConds.join(" AND ")}
+
+          UNION ALL
+
+          SELECT
+            NULL::text AS "ticketId",
+            mf.id::text AS "recordId",
+            'خارج الشاشة'::text AS "source",
+            COALESCE(mf.full_phone, mf.phone_short)::text AS "phoneValue",
+            mf.central::text AS "sourceCentral",
+            mf.cabin_number::text AS "sourceCabin",
+            mf.box_number::text AS "sourceBox",
+            mf.msan_code::text AS "sourceMsan",
+            mf.close_code::text AS "closeCode",
+            NULL::text AS "complaintTypeName",
+            NULL::timestamptz AS "complaintTime",
+            NULL::timestamptz AS "closeDate",
+            mf.regularized_at AS "regularizedAt",
+            mf.regularized_by::text AS "sourceTech"
+          FROM manual_faults mf
+          WHERE ${mfConds.join(" AND ")}
+        ),
+        deduped AS (
+          SELECT DISTINCT ON (COALESCE("ticketId", "source" || ':' || "recordId")) *
+          FROM source_rows
+          ORDER BY COALESCE("ticketId", "source" || ':' || "recordId"),
+                   CASE "source" WHEN 'تفاصيل' THEN 0 WHEN 'متبقى' THEN 1 ELSE 2 END
+        ),
+        normalized AS (
+          SELECT s.*,
+                 ${sp('"s."phoneValue"')} AS "phoneShort",
+                 CASE WHEN ${sp('s."phoneValue"')} <> ''
+                      THEN '88' || ${sp('s."phoneValue"')}
+                      ELSE '' END AS "fullPhone"
+          FROM deduped s
+        ),
+        enriched AS (
+          SELECT n.*,
+                 COALESCE(pl.central, n."sourceCentral") AS central,
+                 COALESCE(pl.cabin_number, n."sourceCabin") AS "cabinNumber",
+                 COALESCE(pl.box_number, n."sourceBox") AS "boxNumber",
+                 COALESCE(pp.msan_code, n."sourceMsan") AS "msanCode",
+                 si.sub_name AS "subName",
+                 si.sub_add AS "subAdd",
+                 COALESCE(tn.tech_name, n."sourceTech") AS "techName"
+          FROM normalized n
+          LEFT JOIN LATERAL (
+            SELECT p.* FROM phone_lines p
+            WHERE ${sp("p.full_phone")} = n."phoneShort"
+            ORDER BY p.id LIMIT 1
+          ) pl ON true
+          LEFT JOIN LATERAL (
+            SELECT p.* FROM phone_ports p
+            WHERE ${sp("p.phone_number")} = n."phoneShort"
+            ORDER BY length(p.phone_number) DESC LIMIT 1
+          ) pp ON true
+          LEFT JOIN LATERAL (
+            SELECT i.sub_name, i.sub_add
+            FROM line_subscriber_info i
+            WHERE ${sp("i.phone_number")} = n."phoneShort"
+            LIMIT 1
+          ) si ON true
+          LEFT JOIN LATERAL (
+            SELECT t.tech_name
+            FROM cabinet_technicians ct
+            JOIN technician_names t ON t.worker_code = ct.worker_code
+            WHERE ct.central_name = COALESCE(pl.central, n."sourceCentral")
+              AND ct.cabin_number = COALESCE(pl.cabin_number, n."sourceCabin")
+            ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, t.tech_name NULLS LAST
+            LIMIT 1
+          ) tn ON true
+        )
+      `;
+      const outerConds: string[] = [
+        `e."fullPhone" <> ''`,
+        `NOT EXISTS (SELECT 1 FROM ${HAS_MOBILE_SET} hm WHERE hm.ph = ${sp('e."fullPhone"')})`,
+        `NOT EXISTS (SELECT 1 FROM line_mobile_checked mc WHERE ${sp("mc.full_phone")} = ${sp('e."fullPhone"')})`,
+      ];
+      if (central) {
+        params.push(central);
+        outerConds.push(`e.central = $${params.length}`);
+      }
+      if (cabin) {
+        params.push(cabin);
+        outerConds.push(`e."cabinNumber" = $${params.length}`);
+      }
+      if (box) {
+        params.push(box);
+        outerConds.push(`e."boxNumber" = $${params.length}`);
+      }
+      if (qParam) {
+        outerConds.push(`(
+          ${n('e."fullPhone"')} LIKE ${qParam} OR ${n('e."phoneShort"')} LIKE ${qParam} OR
+          ${n('e."ticketId"')} LIKE ${qParam} OR ${n('e."source"')} LIKE ${qParam} OR
+          ${n("e.central")} LIKE ${qParam} OR ${n('e."cabinNumber"')} LIKE ${qParam} OR
+          ${n('e."boxNumber"')} LIKE ${qParam} OR ${n('e."subName"')} LIKE ${qParam} OR
+          ${n('e."subAdd"')} LIKE ${qParam} OR ${n('e."closeCode"')} LIKE ${qParam} OR
+          ${n('e."complaintTypeName"')} LIKE ${qParam}
+        )`);
+      }
+      if (pFromParam) outerConds.push(`e."phoneShort" ~ '^[0-9]{1,18}$' AND e."phoneShort"::bigint >= ${pFromParam}::bigint`);
+      if (pToParam) outerConds.push(`e."phoneShort" ~ '^[0-9]{1,18}$' AND e."phoneShort"::bigint <= ${pToParam}::bigint`);
+      const where = `WHERE ${outerConds.join(" AND ")}`;
+      const totalRes = await pool.query(`SELECT COUNT(*)::int AS c FROM enriched e ${where}`, params);
+      const total = totalRes.rows[0].c as number;
+      const offset = (pageNum - 1) * pageSize;
+      params.push(pageSize, offset);
+      const dataRes = await pool.query(
+        `${sourceSql}
+         SELECT
+           ROW_NUMBER() OVER (ORDER BY COALESCE(e."closeDate", e."regularizedAt") DESC NULLS LAST, e."recordId")::int AS id,
+           e."ticketId", e."source", e."fullPhone", e."phoneShort",
+           e.central, e."cabinNumber", e."boxNumber", e."msanCode",
+           e."subName", e."subAdd", e."closeCode", e."complaintTypeName",
+           e."complaintTime", e."closeDate", e."regularizedAt", e."techName"
+         FROM enriched e
+         ${where}
+         ORDER BY COALESCE(e."closeDate", e."regularizedAt") DESC NULLS LAST, e."recordId"
+         LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params,
+      );
+      res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // POST /api/line-mobile-checked { fullPhone, note? } — علّم إن الرقم اتفحص وطلع فعلاً
   // مالوش رقم محمول. بيشيله من «تحت الفحص» وبيوديه لتقرير «تم الفحص وتحتاج أرقام محمول».
   app.post("/api/line-mobile-checked", requireAuth, async (req: any, res) => {
