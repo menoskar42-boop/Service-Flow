@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, Cable, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // أوامر شغل لسه مالهاش كمية سلك. كمية السلك مابتيجيش من ملف أوامر الشغل خالص —
 // الفنى بيدخّلها من «استكمال بيانات»، فالتقرير ده بيوضّح اللى لسه ناقص إدخال.
@@ -34,7 +35,7 @@ const fmtDate = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
-const COLS = ["#", "رقم امر الشغل", "رقم التليفون", "اسم السنترال", "نوع الخدمة", "اسم الصنف", "اسم الفنى", "تاريخ الاغلاق"];
+const COLS = ["#", "رقم امر الشغل", "رقم التليفون", "رقم الموبايل", "اسم السنترال", "نوع الخدمة", "اسم الصنف", "اسم الفنى", "تاريخ الاغلاق"];
 
 export function WorkOrdersNoCableReport() {
   // الافتراضى: من أول يوم فى الشهر الحالى إلى اليوم — وقابل للتغيير
@@ -54,6 +55,7 @@ export function WorkOrdersNoCableReport() {
     },
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup(rows.map((r) => r.phoneNumber));
 
   // بحث محلى فورى (أرقام فقط لرقم التليفون/أمر الشغل، ونص للأسماء)
   const shown = useMemo(() => {
@@ -169,6 +171,7 @@ export function WorkOrdersNoCableReport() {
                     <TableCell className="text-center text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="text-center font-mono">{r.workOrderId ?? "-"}</TableCell>
                     <TableCell className="text-center font-mono font-semibold text-blue-700">{r.phoneNumber ?? "-"}</TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.phoneNumber)]} /></TableCell>
                     <TableCell>{r.centralName ?? "-"}</TableCell>
                     <TableCell className="text-center">{r.serviceType ?? "-"}</TableCell>
                     <TableCell className="text-center">{r.itemName ?? "-"}</TableCell>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 import * as XLSX from "xlsx";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,7 @@ export function SubscriberInfoReport() {
       return res.json();
     },
   });
+  const mobileLookup = useMobileLookup(rows.map((r) => r.phoneNumber));
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
@@ -92,6 +94,7 @@ export function SubscriberInfoReport() {
               <TableRow>
                 <TableHead className="text-right font-bold w-8">#</TableHead>
                 <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                <TableHead className="text-right font-bold">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold">السنترال</TableHead>
                 <TableHead className="text-right font-bold">اسم العميل</TableHead>
                 <TableHead className="text-right font-bold">العنوان</TableHead>
@@ -113,6 +116,7 @@ export function SubscriberInfoReport() {
                 <TableRow key={r.phoneNumber} className="hover:bg-muted/30">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono text-xs">{r.phoneNumber}</TableCell>
+                  <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.phoneNumber)]} /></TableCell>
                   <TableCell className="whitespace-nowrap text-xs">{r.central || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="whitespace-normal break-words min-w-[140px]">{r.subName || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="whitespace-normal break-words min-w-[200px] max-w-[320px]">{r.subAdd || <span className="text-muted-foreground">—</span>}</TableCell>

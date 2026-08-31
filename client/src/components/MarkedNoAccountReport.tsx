@@ -12,6 +12,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { openCustomer360 } from "@/lib/customer360";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // تقرير الأرقام المعلَّمة "بدون رقم أكونت" — اتشالت من تقرير الخطوط بدون أكونت بالحذف اليدوى،
 // أو Customer360 رجّع "this subscriber does not exist". المصدر = جدول lines_no_account.
@@ -59,6 +60,7 @@ export function MarkedNoAccountReport() {
       return res.json();
     },
   });
+  const mobileLookup = useMobileLookup(rows.map((r) => r.telNo || r.fullPhone));
 
   // استرجاع: إلغاء تعليم "بدون أكونت" → الخط يرجع لتقرير الخطوط بدون أكونت
   const handleRestore = async (fullPhone: string) => {
@@ -175,6 +177,7 @@ export function MarkedNoAccountReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم التليفون الكامل</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم التليفون</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم الكابينة</TableHead>
                 <TableHead className="text-right font-bold text-white">رقم البكس</TableHead>
@@ -196,6 +199,7 @@ export function MarkedNoAccountReport() {
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell className="font-mono font-semibold text-blue-700">{r.fullPhone}</TableCell>
                   <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
+                  <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)]} /></TableCell>
                   <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
                   <TableCell>{r.cabinNumber || "-"}</TableCell>
                   <TableCell>{r.boxNumber || "-"}</TableCell>

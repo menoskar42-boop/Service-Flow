@@ -18,6 +18,7 @@ import { ChevronRight, ChevronLeft, Loader2, Save, SaveAll, IdCard, Ban } from "
 import { openCustomer360 } from "@/lib/customer360";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 
@@ -102,6 +103,7 @@ export function RegularizedNoAccountReport() {
     },
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup((data?.data ?? []).map((r) => r.telNo || r.fullPhone));
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
@@ -324,6 +326,7 @@ export function RegularizedNoAccountReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">IDU</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">ODU</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
@@ -380,6 +383,7 @@ export function RegularizedNoAccountReport() {
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
+                      <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)]} /></TableCell>
                       <TableCell>{r.iduNo || "-"}</TableCell>
                       <TableCell>{r.oduNo || "-"}</TableCell>
                       <TableCell>{r.dpTerminal || "-"}</TableCell>

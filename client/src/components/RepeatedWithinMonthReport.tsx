@@ -14,6 +14,7 @@ import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { LineDetailsDialog } from "@/components/LineDetailsDialog";
 import { closeReason } from "@/lib/close-codes";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -108,6 +109,7 @@ export function RepeatedWithinMonthReport() {
     : tech === NO_TECH
       ? allRows.filter((r) => !(r.techName || "").trim())
       : allRows.filter((r) => (r.techName || "").trim() === tech);
+  const mobileLookup = useMobileLookup(rows.map((r) => r.phoneShort));
 
   const rangeLabel = `تاريخ آخر شكوى من ${dateFrom || "البداية"} إلى ${dateTo || "النهاية"}`;
 
@@ -157,6 +159,7 @@ export function RepeatedWithinMonthReport() {
       "#": i + 1,
       "السنترال": r.centralName,
       "رقم التليفون": r.phoneShort,
+      "رقم الموبايل": mobileLookup[phoneLookupKey(r.phoneShort)] || "",
       "رقم الأكونت": r.accountNo,
       "عدد التكرار خلال الشهر": r.repeatCount,
       "رقم آخر شكوى": r.lastComplainNo,
@@ -190,7 +193,7 @@ export function RepeatedWithinMonthReport() {
     const ROWS_PER_PAGE = 12;
     const totalPages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>عدد التكرار</th>
+       <th>#</th><th>السنترال</th><th>التليفون</th><th>رقم الموبايل</th><th>الأكونت</th><th>عدد التكرار</th>
         <th>رقم آخر شكوى</th><th>تاريخ آخر شكوى</th><th>سبب إغلاق آخر شكوى</th>
         <th>فني إغلاق آخر شكوى</th>
         <th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th><th>سبب إغلاق الشكوى السابقة</th>
@@ -205,6 +208,7 @@ export function RepeatedWithinMonthReport() {
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
           <td>${esc(r.centralName)}</td>
           <td>${esc(r.phoneShort)}</td>
+           <td>${esc(mobileLookup[phoneLookupKey(r.phoneShort)])}</td>
           <td>${esc(r.accountNo)}</td>
           <td>${esc(r.repeatCount)}</td>
           <td>${esc(r.lastComplainNo)}</td>
@@ -366,6 +370,7 @@ export function RepeatedWithinMonthReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold text-white">الأكونت</TableHead>
                 <TableHead className="text-right font-bold text-white">عدد التكرار خلال الشهر</TableHead>
                  <TableHead className="text-right font-bold text-white">رقم آخر شكوى</TableHead>
@@ -415,6 +420,7 @@ export function RepeatedWithinMonthReport() {
                       )}
                     </span>
                   </TableCell>
+                  <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.phoneShort)]} /></TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">
                     <span className="inline-flex items-center gap-1.5">
                       {r.accountNo || "-"}

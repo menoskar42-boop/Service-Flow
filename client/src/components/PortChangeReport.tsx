@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, RefreshCw, FileSpreadsheet, ArrowLeftRight, Search } from "lucide-react";
 import * as XLSX from "xlsx";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «متابعة تغيير البورت» — نتائج طلبات تغيير البورت من Provisioning Portal (اللى السكربت بيتابعها).
 // COMPLETED → اتحدّث بيان البورت تلقائياً. غير COMPLETED (زى FAIL_TO_RESERVE) → متسجّل هنا للمتابعة.
@@ -37,6 +38,7 @@ export function PortChangeReport() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [onlyFailed, setOnlyFailed] = useState(false);
+  const mobileLookup = useMobileLookup(rows.map((r) => r.phoneNumber));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,8 +59,8 @@ export function PortChangeReport() {
   };
 
   const shown = onlyFailed ? rows.filter((r) => !r.completed) : rows;
-  const COLUMNS = ["Request ID", "رقم التليفون", "الحالة", "MSAN القديم", "MSAN الجديد", "Frame الجديد", "نوع البورت", "طلبها", "الجهاز الطالب", "الجهاز المنفّذ", "وقت التنفيذ", "Reservation Code", "تاريخ الطلب", "وقت التسجيل"];
-  const toRow = (r: Row) => [r.requestId, r.phoneNumber || "-", r.status || "-", r.oldMsan || "-", r.newMsan || "-", r.newFrame || "-", r.portType || "-", r.requestedBy || "-", r.requestedFrom || "-", r.executedBy || "-", fmt(r.executedAt), r.reservationCode || "-", r.requestDate || "-", fmt(r.recordedAt)];
+  const COLUMNS = ["Request ID", "رقم التليفون", "رقم الموبايل", "الحالة", "MSAN القديم", "MSAN الجديد", "Frame الجديد", "نوع البورت", "طلبها", "الجهاز الطالب", "الجهاز المنفّذ", "وقت التنفيذ", "Reservation Code", "تاريخ الطلب", "وقت التسجيل"];
+  const toRow = (r: Row) => [r.requestId, r.phoneNumber || "-", mobileLookup[phoneLookupKey(r.phoneNumber)] || "-", r.status || "-", r.oldMsan || "-", r.newMsan || "-", r.newFrame || "-", r.portType || "-", r.requestedBy || "-", r.requestedFrom || "-", r.executedBy || "-", fmt(r.executedAt), r.reservationCode || "-", r.requestDate || "-", fmt(r.recordedAt)];
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.aoa_to_sheet([COLUMNS, ...shown.map(toRow)]);
@@ -114,7 +116,7 @@ export function PortChangeReport() {
                           </button>
                         )}
                       </span>
-                    ) : cell}
+                    ) : j === 2 ? <MobileValue mobile={mobileLookup[phoneLookupKey(r.phoneNumber)]} /> : cell}
                   </TableCell>
                 ))}
               </TableRow>

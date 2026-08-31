@@ -16,6 +16,7 @@ import { Measurement138Button, type Measurement138 } from "@/components/Measurem
 import { closeReason } from "@/lib/close-codes";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 interface RegularizedFault extends Measurement138 {
   ticketId: string | null;
   centralName: string | null;
@@ -148,6 +149,7 @@ export function RegularizedFaultsRangeReport() {
   // عند تفعيل زر "المكرر فقط" نعرض/نصدّر الأعطال المكررة فقط + فلتر سبب الإغلاق لو متحدّد.
   const displayed = (repeatedOnly ? faults.filter((f) => f.repeatStatus === "مكرر") : faults)
     .filter((f) => !closeReasonF || closeReason(f.closeCode) === closeReasonF);
+  const mobileLookup = useMobileLookup(displayed.map((f) => f.phoneShort));
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -537,16 +539,7 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">
                     <span className="inline-flex items-center gap-2">
-                      <span className="font-mono">{f.mobile || "-"}</span>
-                      {dialMobile(f.mobile) ? (
-                        <a
-                          href={`tel:${dialMobile(f.mobile)}`}
-                          title={`اتصال بالعميل: ${dialMobile(f.mobile)}`}
-                          className="md:hidden inline-flex items-center gap-1 text-[11px] text-emerald-700 border border-emerald-300 rounded px-1.5 py-0.5 hover:bg-emerald-50"
-                        >
-                          <Phone className="w-3 h-3" /> اتصال
-                        </a>
-                      ) : null}
+                       <MobileValue mobile={mobileLookup[phoneLookupKey(f.phoneShort)] ?? f.mobile} />
                     </span>
                   </TableCell>
                   <TableCell>

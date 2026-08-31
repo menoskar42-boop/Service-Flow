@@ -7,6 +7,7 @@ import { Loader2, RefreshCw, FileSpreadsheet, FileText, Repeat } from "lucide-re
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { closeReason } from "@/lib/close-codes";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «الأعطال المنتظمة خارج الشاشة لفترة» — الأعطال اليدوية اللى اتنظمت (أرشيف دائم بفلتر تاريخ).
 interface Row {
@@ -39,6 +40,7 @@ export function ManualRegularizedFaultsRangeReport() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mobileLookup = useMobileLookup(rows.map((x) => x.phoneShort || x.fullPhone));
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -51,8 +53,8 @@ export function ManualRegularizedFaultsRangeReport() {
   }, [from, to]);
   useEffect(() => { load(); }, [load]);
 
-  const COLUMNS = ["تاريخ الانتظام", "رقم التليفون", "رقم الأكونت", "السنترال", "الكابينة", "البكس", "سبب الإغلاق", "فنى الانتظام", "تاريخ العطل", "سجّل العطل"];
-  const toRow = (x: Row) => [fmt(x.regularizedAt), x.fullPhone || x.phoneShort || "-", x.accountNo || "-", x.central || "-", x.cabinNumber || "-", x.boxNumber || "-", closeReason(x.closeCode) || x.closeCode || "-", x.regularizedBy || "-", fmt(x.flaggedAt), x.flaggedBy || "-"];
+  const COLUMNS = ["تاريخ الانتظام", "رقم التليفون", "رقم الموبايل", "رقم الأكونت", "السنترال", "الكابينة", "البكس", "سبب الإغلاق", "فنى الانتظام", "تاريخ العطل", "سجّل العطل"];
+  const toRow = (x: Row) => [fmt(x.regularizedAt), x.fullPhone || x.phoneShort || "-", mobileLookup[phoneLookupKey(x.phoneShort || x.fullPhone)] || "-", x.accountNo || "-", x.central || "-", x.cabinNumber || "-", x.boxNumber || "-", closeReason(x.closeCode) || x.closeCode || "-", x.regularizedBy || "-", fmt(x.flaggedAt), x.flaggedBy || "-"];
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.aoa_to_sheet([COLUMNS, ...rows.map(toRow)]);
@@ -93,6 +95,7 @@ export function ManualRegularizedFaultsRangeReport() {
               <TableRow key={x.id}>
                 <TableCell className="whitespace-nowrap">{fmt(x.regularizedAt)}</TableCell>
                 <TableCell className="whitespace-nowrap font-medium">{x.fullPhone || x.phoneShort || "-"}</TableCell>
+                <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(x.phoneShort || x.fullPhone)]} /></TableCell>
                 <TableCell className="whitespace-nowrap">{x.accountNo || "-"}</TableCell>
                 <TableCell className="whitespace-nowrap">{x.central || "-"}</TableCell>
                 <TableCell>{x.cabinNumber || "-"}</TableCell>

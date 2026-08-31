@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, HardHat, FileSpreadsheet, ClipboardCopy, Wrench } from "lucide-react";
 import * as XLSX from "xlsx";
 import { copyHtmlTable } from "@/lib/copy-table";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «أعطال التفتيش الهندسى» — تكتب الأرقام والنظام يبني جدول إيميل «اغلاق تفتيش هندسى» بنفس الأعمدة،
 // مع زر «نسخ الجدول» للصقه فى الإيميل مباشرة (بحدود). البيانات تُجلب من بحث برقم التليفون/الشكاوى.
@@ -39,6 +40,7 @@ export function EngineeringInspectionReport() {
   const [email, setEmail] = useState(DEFAULT_EMAIL);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
+  const mobileLookup = useMobileLookup(rows.map((x) => x.phoneShort));
 
   const build = async () => {
     const phones = phonesText.split(/[\s,;]+/).map((s) => s.replace(/\D/g, "")).filter(Boolean);
@@ -51,9 +53,9 @@ export function EngineeringInspectionReport() {
     } catch { setRows([]); } finally { setLoading(false); }
   };
 
-  const COLUMNS = ["كود المحافظة", "رقم التليفون", "اسم السنترال", "كود السنترال", "رقم الكابينة الحالى", "سبب رفع التفتيش", "تاريخ", "تاريخ شكوى المشترك", "ايميل مرسل الطلب"];
+  const COLUMNS = ["كود المحافظة", "رقم التليفون", "رقم الموبايل", "اسم السنترال", "كود السنترال", "رقم الكابينة الحالى", "سبب رفع التفتيش", "تاريخ", "تاريخ شكوى المشترك", "ايميل مرسل الطلب"];
   const toRow = (x: Row) => [
-    GOV_CODE, x.phoneShort || "", x.central || "", x.centralCode || "", x.currentCabin || "",
+    GOV_CODE, x.phoneShort || "", mobileLookup[phoneLookupKey(x.phoneShort)] || "", x.central || "", x.centralCode || "", x.currentCabin || "",
     reason, todayStr(), fmtComplain(x.lastComplaintAt), email,
   ];
 
@@ -122,7 +124,7 @@ export function EngineeringInspectionReport() {
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">اكتب الأرقام واضغط «بناء الجدول»</TableCell></TableRow>
             ) : rows.map((x, i) => (
               <TableRow key={i}>
-                {toRow(x).map((cell, j) => <TableCell key={j} className="whitespace-nowrap">{cell || "-"}</TableCell>)}
+                 {toRow(x).map((cell, j) => <TableCell key={j} className="whitespace-nowrap">{j === 2 ? <MobileValue mobile={mobileLookup[phoneLookupKey(x.phoneShort)]} /> : (cell || "-")}</TableCell>)}
               </TableRow>
             ))}
           </TableBody>

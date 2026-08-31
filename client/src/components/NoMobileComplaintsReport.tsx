@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ChevronRight, ChevronLeft, Loader2, Phone, Check, X, CheckCheck } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface Row {
   id: number;
@@ -94,6 +95,7 @@ export function NoMobileComplaintsReport() {
     },
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup((data?.data ?? []).map((row) => row.phoneShort || row.fullPhone));
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
@@ -325,10 +327,13 @@ export function NoMobileComplaintsReport() {
                           </button>
                           <button onClick={cancelEdit} title="إلغاء" className="text-gray-500 hover:text-gray-700"><X className="w-4 h-4" /></button>
                         </span>
-                      ) : (
-                        <button onClick={() => startEdit(row)} className="inline-flex items-center gap-1 text-xs text-blue-700 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50" title="إضافة رقم موبايل">
-                          <Phone className="w-3 h-3" /> + إضافة
-                        </button>
+                       ) : (
+                         <span className="inline-flex items-center gap-1">
+                           <MobileValue mobile={mobileLookup[phoneLookupKey(row.phoneShort || row.fullPhone)]} />
+                           <button onClick={() => startEdit(row)} className="inline-flex items-center gap-1 text-xs text-blue-700 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50" title="إضافة رقم موبايل">
+                             <Phone className="w-3 h-3" /> + إضافة
+                           </button>
+                         </span>
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{formatDate(row.complaintTime)}</TableCell>

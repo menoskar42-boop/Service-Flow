@@ -12,6 +12,7 @@ import { ROLES } from "@shared/schema";
 import { CLOSE_CODE_REASONS } from "@/lib/close-codes";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { arNorm } from "@shared/ar-norm";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «الأعطال الحالية خارج الشاشة» — الأعطال اليدوية (زر «الخط به عطل») اللى لسه ماانتظمتش.
 interface Row {
@@ -53,6 +54,7 @@ export function ManualCurrentFaultsReport() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mobileLookup = useMobileLookup(rows.map((x) => x.phoneShort || x.fullPhone));
 
   // انتظام العطل — نفس منطق «بحث برقم التليفون» (سبب إغلاق + فنى للسوبر أدمن + قياس أوتوماتيك).
   const { user } = useAuth();
@@ -133,14 +135,14 @@ export function ManualCurrentFaultsReport() {
   const COLUMNS = [
     // «سجّل العطل» (اسم اللى بلّغ) جنب التاريخ والرقم — كان آخر عمود فمكانش بيبان
     // للفنى غير بعد تمرير أفقى طويل.
-    "تاريخ العطل", "رقم التليفون", "سجّل العطل", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم",
+    "تاريخ العطل", "رقم التليفون", "رقم الموبايل", "سجّل العطل", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم",
     "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس", "القياس الحالى",
     "Shelf", "Slot", "Port", "Port Type", "voice", "data", "operator", "ONU",
     "آخر رفع سرعة", "آخر إيقاف PO",
   ];
   const dash = (v: any) => (v == null || v === "" ? "-" : String(v));
   const toRow = (x: Row) => [
-    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", dash(x.flaggedBy),
+    fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", mobileLookup[phoneLookupKey(x.phoneShort || x.fullPhone)] || "-", dash(x.flaggedBy),
     dash(x.central), dash(x.cabinNumber), dash(x.boxNumber), dash(x.msanCode), dash(x.techName), dash(x.frame),
     dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed), dash(x.lastMeasScore), fmt(x.lastMeasTime), dash(x.curMeasScore),
     dash(x.shelf), dash(x.slot), dash(x.portNumber), dash(x.portType),
@@ -210,7 +212,7 @@ export function ManualCurrentFaultsReport() {
                             </a>
                           )}
                         </span>
-                      ) : (val || "-")}
+                      ) : i === 2 ? <MobileValue mobile={mobileLookup[phoneLookupKey(x.phoneShort || x.fullPhone)] ?? x.mobile} /> : (val || "-")}
                     </TableCell>
                   ))}
                 </TableRow>

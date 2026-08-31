@@ -7,6 +7,7 @@ import { Loader2, RefreshCw, FileSpreadsheet, FileText, AlertOctagon, ClipboardC
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { copyHtmlTable } from "@/lib/copy-table";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «الأعطال الجسيمة» — الخطوط اللى حالتها «9999 / أعطال تنتظر الحل» (تُعرض 99-DSL).
 // نعيد استخدام بيانات «الأعطال الحالية» ونفلتر الحالة دى، ونعرضها بشكل جدول إيميل «اغلاق جسيم».
@@ -41,6 +42,7 @@ export function MajorFaultsReport() {
   const [raiseDate, setRaiseDate] = useState(todayISO());
   const [reason, setReason] = useState("صيانة");
   const [element, setElement] = useState("بكسيات");
+  const mobileLookup = useMobileLookup(rows.map((f) => f.phoneShort));
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -55,13 +57,14 @@ export function MajorFaultsReport() {
 
   // أعمدة جدول «اغلاق جسيم» (بترتيب الإيميل). الأعمدة الفاضية تُملأ يدوياً بعد التصدير.
   const COLUMNS = [
-    "كود المحافظة", "رقم التليفون", "اسم السنترال", "كود السنترال",
+    "كود المحافظة", "رقم التليفون", "رقم الموبايل", "اسم السنترال", "كود السنترال",
     "رقم العنصر المرفوع جسيم", "رقم الكابينة الحالى", "سبب رفع الجسيم",
     "تاريخ رفع الجسيم", "تاريخ شكوي المشترك", "ايميل مرسل الطلب",
   ];
   const toRow = (f: Fault) => [
     "88",                       // كود المحافظة (أسيوط)
-    f.phoneShort || "",         // رقم التليفون
+     f.phoneShort || "",         // رقم التليفون
+     mobileLookup[phoneLookupKey(f.phoneShort)] || "", // رقم الموبايل
     f.centralName || "",        // اسم السنترال
     f.centralCode || "",        // كود السنترال (GHNAT/…)
     element,                    // رقم العنصر المرفوع جسيم (من الدروب ليست: بكسيات/الكابينة)
@@ -133,7 +136,7 @@ export function MajorFaultsReport() {
               <TableRow><TableCell colSpan={COLUMNS.length} className="text-center h-24 text-muted-foreground">لا توجد أعطال جسيمة حالياً</TableCell></TableRow>
             ) : rows.map((f, i) => {
               const r = toRow(f);
-              return <TableRow key={i}>{r.map((cell, j) => <TableCell key={j} className="whitespace-nowrap">{cell || "-"}</TableCell>)}</TableRow>;
+              return <TableRow key={i}>{r.map((cell, j) => <TableCell key={j} className="whitespace-nowrap">{j === 2 ? <MobileValue mobile={mobileLookup[phoneLookupKey(rows[i]?.phoneShort)]} /> : (cell || "-")}</TableCell>)}</TableRow>;
             })}
           </TableBody>
         </Table>

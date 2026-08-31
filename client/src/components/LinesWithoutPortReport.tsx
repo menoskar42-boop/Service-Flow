@@ -11,6 +11,7 @@ import { Loader2, PlugZap, Search, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { arNorm, arIncludes } from "@shared/ar-norm";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // أرقام لها بيان فنى (131) لكن مالهاش بورت/فريم على المسان.
 // دى بالظبط الأرقام اللى بتتستبعد من تقارير القياسات وبيان التليفونات.
@@ -79,14 +80,16 @@ export function LinesWithoutPortReport() {
         .some((v) => arIncludes(String(v ?? ""), s));
     });
   }, [all, search]);
+  const mobileLookup = useMobileLookup(rows.map((r) => r.telNo || r.fullPhone));
 
-  const COLS = ["#", "رقم التليفون", "اسم العميل", "العنوان", "رقم الأكونت",
+  const COLS = ["#", "رقم التليفون", "رقم الموبايل", "اسم العميل", "العنوان", "رقم الأكونت",
     "السنترال", "الكابينة", "البكس", "DP Terminal",
     "IDU", "ODU", "Primary Block", "Cabinet In", "Sec Block", "Cabinet Out",
     "البورت (131)", "LEN", "آخر قياس"];
 
   const asRow = (r: Row, i: number) => [
-    i + 1, r.telNo ?? r.fullPhone, r.subName ?? "—", r.subAdd ?? "—", r.accountNo ?? "—",
+    i + 1, r.telNo ?? r.fullPhone, mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)] || "—",
+    r.subName ?? "—", r.subAdd ?? "—", r.accountNo ?? "—",
     r.central ?? "—", r.cabinNumber ?? "—", r.boxNumber ?? "—",
     r.dpTerminal ?? "—", r.iduNo ?? "—", r.oduNo ?? "—", r.primaryBlockNo ?? "—", r.cabinetIn ?? "—",
     r.secBlockNo ?? "—", r.cabinetOut ?? "—", r.port131 ?? "—", r.len ?? "—",
@@ -105,9 +108,10 @@ export function LinesWithoutPortReport() {
     printTablePDF({
       title: "أرقام لها بيان فنى وليس لها بورت",
       // نختصر الأعمدة فى الـ PDF عشان تبقى مقروءة
-      columns: ["#", "رقم التليفون", "اسم العميل", "العنوان", "رقم الأكونت", "السنترال", "الكابينة", "البكس", "DP Terminal"],
+       columns: ["#", "رقم التليفون", "رقم الموبايل", "اسم العميل", "العنوان", "رقم الأكونت", "السنترال", "الكابينة", "البكس", "DP Terminal"],
       rows: rows.map((r, i) => [
-        i + 1, r.telNo ?? r.fullPhone, r.subName ?? "—", r.subAdd ?? "—", r.accountNo ?? "—",
+         i + 1, r.telNo ?? r.fullPhone, mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)] || "—",
+         r.subName ?? "—", r.subAdd ?? "—", r.accountNo ?? "—",
         r.central ?? "—", r.cabinNumber ?? "—", r.boxNumber ?? "—", r.dpTerminal ?? "—",
       ]),
     });
@@ -198,6 +202,7 @@ export function LinesWithoutPortReport() {
                   <TableRow key={r.fullPhone} className="hover:bg-muted/30">
                     <TableCell className="text-center text-muted-foreground">{i + 1}</TableCell>
                     <TableCell className="text-center font-mono font-semibold text-blue-700">{r.telNo ?? r.fullPhone}</TableCell>
+                   <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)]} /></TableCell>
                     <TableCell className="whitespace-nowrap font-medium">{r.subName ?? "—"}</TableCell>
                     <TableCell className="max-w-[260px] truncate" title={r.subAdd ?? ""}>{r.subAdd ?? "—"}</TableCell>
                     <TableCell className="text-center font-mono">{r.accountNo ?? "—"}</TableCell>

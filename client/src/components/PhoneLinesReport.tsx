@@ -22,6 +22,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
@@ -117,6 +118,7 @@ export function PhoneLinesReport() {
     },
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup((data?.data ?? []).map((r) => r.telNo ?? r.fullPhone));
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
@@ -390,6 +392,7 @@ export function PhoneLinesReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
+                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">كود كابينة المسان</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الفريم</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">الحالة</TableHead>
@@ -435,6 +438,7 @@ export function PhoneLinesReport() {
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
+                      <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo ?? r.fullPhone)]} /></TableCell>
                       <TableCell className="font-mono">{r.msanCode || "-"}</TableCell>
                       <TableCell className="font-mono">{r.frameNo || "-"}</TableCell>
                       <TableCell>

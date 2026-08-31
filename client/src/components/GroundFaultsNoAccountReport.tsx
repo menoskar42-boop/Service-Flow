@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface OpenTicketLine {
   telNo: string;
@@ -45,6 +46,7 @@ export function GroundFaultsNoAccountReport() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saveState, setSaveState] = useState<Record<string, string>>({});
   const [bulkSaving, setBulkSaving] = useState(false);
+  const mobileLookup = useMobileLookup(lines.map((l) => l.telNo || l.fullPhone));
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -292,6 +294,7 @@ export function GroundFaultsNoAccountReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">IDU</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
                 </TableRow>
@@ -351,6 +354,7 @@ export function GroundFaultsNoAccountReport() {
                     <TableCell className="font-medium">{l.cabinNumber || "-"}</TableCell>
                     <TableCell className="font-medium">{l.boxNumber || "-"}</TableCell>
                     <TableCell className="font-mono text-muted-foreground">{l.telNo || "-"}</TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(l.telNo || l.fullPhone)]} /></TableCell>
                     <TableCell>{l.iduNo || "-"}</TableCell>
                     <TableCell>{l.dpTerminal || "-"}</TableCell>
                   </TableRow>

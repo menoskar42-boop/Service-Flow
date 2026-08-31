@@ -8,6 +8,7 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { Loader2, Search, X, FileSpreadsheet, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «جدول الخطوط المرفوعة»: أرقام كان لها بورت واختفت من شيت البورتات الجديد.
 // بتتنقل هنا ببياناتها الأخيرة بدل ما تتمسح، ولو رجعت فى شيت بعدين بتتشال من هنا
@@ -70,10 +71,16 @@ export function RemovedPortsReport() {
   });
 
   const rows = data?.data ?? [];
+  const mobileLookup = useMobileLookup(rows.map((r) => r.phoneNumber));
+  const columns = [
+    ["رقم التليفون", (r: Row) => r.phoneNumber],
+    ["رقم الموبايل", (r: Row) => mobileLookup[phoneLookupKey(r.phoneNumber)] || ""],
+    ...COLS.slice(1),
+  ] as [string, (r: Row) => any][];
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
-      rows.map((r) => Object.fromEntries(COLS.map(([h, f]) => [h, f(r) ?? ""]))),
+      rows.map((r) => Object.fromEntries(columns.map(([h, f]) => [h, f(r) ?? ""]))),
     );
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الخطوط المرفوعة");
@@ -83,8 +90,8 @@ export function RemovedPortsReport() {
   const handleExportPDF = () => {
     printTablePDF({
       title: "جدول الخطوط المرفوعة (اتشال بورتها من الشيت)",
-      columns: COLS.map(([h]) => h),
-      rows: rows.map((r) => COLS.map(([, f]) => f(r) ?? "-")),
+      columns: columns.map(([h]) => h),
+      rows: rows.map((r) => columns.map(([, f]) => f(r) ?? "-")),
     });
   };
 
@@ -135,13 +142,17 @@ export function RemovedPortsReport() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow>{COLS.map(([h]) => <TableHead key={h} className="text-right whitespace-nowrap">{h}</TableHead>)}</TableRow>
+              <TableRow>{columns.map(([h]) => <TableHead key={h} className="text-right whitespace-nowrap">{h}</TableHead>)}</TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((r) => (
                 <TableRow key={r.phoneNumber}>
-                  {COLS.map(([h, f]) => (
-                    <TableCell key={h} className="whitespace-nowrap text-sm">{f(r) ?? "-"}</TableCell>
+                  {columns.map(([h, f]) => (
+                    <TableCell key={h} className="whitespace-nowrap text-sm">
+                      {h === "رقم الموبايل"
+                        ? <MobileValue mobile={f(r)} />
+                        : f(r) ?? "-"}
+                    </TableCell>
                   ))}
                 </TableRow>
               ))}

@@ -7,6 +7,7 @@ import { Loader2, RefreshCw, FileSpreadsheet, FileText, ListChecks } from "lucid
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { arNorm, arIncludes } from "@shared/ar-norm";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface ExecJobRow {
   id: number;
@@ -106,6 +107,7 @@ export function ExecJobsReport() {
       arIncludes((j.source || ""), s),
     );
   }, [jobs, q]);
+  const mobileLookup = useMobileLookup(displayed.map((j) => j.phone));
 
   // إحصائية المعروض: خلص كام من كام + تفريق «تم فعلًا» عن «تم بإيرور»
   const stats = useMemo(() => {
@@ -128,11 +130,12 @@ export function ExecJobsReport() {
     [displayed],
   );
 
-  const COLUMNS = ["التاريخ", "النوع", "رقم التليفون", "رقم الأكونت", "طلبها", "من تقرير", "الباتش", "الحالة"];
+  const COLUMNS = ["التاريخ", "النوع", "رقم التليفون", "رقم الموبايل", "رقم الأكونت", "طلبها", "من تقرير", "الباتش", "الحالة"];
   const toRow = (j: ExecJobRow) => [
     fmt(j.createdAt),
     TYPE_LABEL[j.type] || j.type,
     j.phone || "-",
+    mobileLookup[phoneLookupKey(j.phone)] || "-",
     j.account || "-",
     j.requestedBy || "-",
     j.source || "-",
@@ -257,6 +260,9 @@ export function ExecJobsReport() {
                       );
                     })()}
                   </TableCell>
+                   <TableCell className="align-top">
+                     <MobileValue mobile={mobileLookup[phoneLookupKey(j.phone.split("،")[0]?.trim())]} />
+                   </TableCell>
                   <TableCell className="align-top">
                     {(() => {
                       const accts = (j.account || "").split("،").map((x) => x.trim()).filter(Boolean);

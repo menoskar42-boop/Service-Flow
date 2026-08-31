@@ -21,6 +21,7 @@ import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -135,6 +136,7 @@ export function ComplaintNoMeasureReport() {
     },
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup((data?.data ?? []).map((r) => r.telNo || r.fullPhone));
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
@@ -341,6 +343,7 @@ export function ComplaintNoMeasureReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">DP Terminal</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">آخر رفع سرعة</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">آخر إيقاف PO</TableHead>
@@ -374,6 +377,7 @@ export function ComplaintNoMeasureReport() {
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
                       <TableCell className="font-mono text-muted-foreground">{r.telNo || "-"}</TableCell>
+                      <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)]} /></TableCell>
                       <TableCell>{r.dpTerminal || "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtPoDt(r.lastPoRaiseAt)}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtPoDt(r.lastPoStopAt)}</TableCell>

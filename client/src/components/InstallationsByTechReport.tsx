@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, RefreshCw, FileSpreadsheet, AlertTriangle, Wrench } from "lucide-react";
 import * as XLSX from "xlsx";
+import { phoneLookupKey, dialMobile } from "@/lib/mobile-lookup";
 
 // «نسبة التركيبات لكل فنى» — نسبة إنجاز التركيبات خلال 24 ساعة (Success فقط)، مع زر «تجاوزات 24 ساعة»
 // يعرض خطوط التركيبات المتجاوزة. الفنى يشوف أرقامه فقط؛ الإدارة/الشئون الخارجية تشوف الكل.
@@ -74,15 +75,21 @@ export function InstallationsByTechReport() {
       const r = await fetch(`/api/reports/installations-by-tech?${p}`, { credentials: "include" });
       const d = await r.json();
       const list: LineRow[] = Array.isArray(d.lines) ? d.lines : [];
+      const lookupRes = await fetch("/api/phone-lines/mobile-lookup", {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phones: Array.from(new Set(list.map((l) => phoneLookupKey(l.phoneNumber)).filter(Boolean))) }),
+      });
+      const mobileData = lookupRes.ok ? await lookupRes.json() as { data?: Array<{ phone: string; mobile: string | null }> } : { data: [] };
+      const mobiles = Object.fromEntries((mobileData.data ?? []).filter((m) => m.mobile).map((m) => [phoneLookupKey(m.phone), m.mobile]));
       const esc = (s: any) => String(s ?? "-").replace(/[&<>]/g, (c) => (({ "&": "&amp;", "<": "&lt;", ">": "&gt;" } as any)[c]));
       const body = list.length
-        ? list.map((l) => `<tr><td>${esc(l.techName)}</td><td>${esc(l.centralName)}</td><td>${esc(l.workOrderId)}</td><td>${esc(l.phoneNumber)}</td><td>${esc(l.serviceType)}</td><td>${esc(fmt(l.creationDate))}</td><td>${esc(fmt(l.closeDate))}</td><td class="hrs">${esc(l.hours)}</td></tr>`).join("")
+        ? list.map((l) => { const mobile = mobiles[phoneLookupKey(l.phoneNumber)] as string | undefined; const dial = dialMobile(mobile); return `<tr><td>${esc(l.techName)}</td><td>${esc(l.centralName)}</td><td>${esc(l.workOrderId)}</td><td>${esc(l.phoneNumber)}</td><td>${esc(mobile)}${dial ? ` <a href="tel:${esc(dial)}" class="call">☎</a>` : ""}</td><td>${esc(l.serviceType)}</td><td>${esc(fmt(l.creationDate))}</td><td>${esc(fmt(l.closeDate))}</td><td class="hrs">${esc(l.hours)}</td></tr>`; }).join("")
         : `<tr><td colspan="8" style="text-align:center;color:#666">لا توجد تركيبات متجاوزة 24 ساعة</td></tr>`;
       w.document.open();
       w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>خطوط التركيبات المتجاوزة 24 ساعة (${list.length})</title><style>${style}</style></head><body>
         <button onclick="try{window.close()}catch(e){};setTimeout(function(){history.length>1?history.back():location.href='/'},150)" style="padding:6px 14px;background:#475569;color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px;margin-left:8px">↩ رجوع</button><button onclick="window.print()">🖨️ طباعة</button>
         <h2>⚠️ خطوط التركيبات المتجاوزة 24 ساعة (${list.length})</h2>
-        <table><thead><tr><th>اسم الفنى</th><th>السنترال</th><th>رقم الأمر</th><th>رقم التليفون</th><th>النوع</th><th>تاريخ الفتح</th><th>تاريخ الإغلاق</th><th>المدة (ساعة)</th></tr></thead><tbody>${body}</tbody></table>
+         <table><thead><tr><th>اسم الفنى</th><th>السنترال</th><th>رقم الأمر</th><th>رقم التليفون</th><th>رقم الموبايل</th><th>النوع</th><th>تاريخ الفتح</th><th>تاريخ الإغلاق</th><th>المدة (ساعة)</th></tr></thead><tbody>${body}</tbody></table>
         </body></html>`);
       w.document.close();
     } catch (e) {

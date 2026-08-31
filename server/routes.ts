@@ -3908,6 +3908,62 @@ export async function registerRoutes(
     res.json({ data: dataRes.rows, total, page: pageNum, pageSize });
   });
 
+  // POST /api/phone-lines/mobile-lookup — جلب أرقام المحمول دفعة واحدة لتقارير الخطوط.
+  // التقرير يرسل أرقام الأرضى الظاهرة فقط، والنتيجة تستخدم نفس الأولوية المشتركة:
+  // إدخال يدوى، ثم أوامر الشغل الحالية/التاريخية، ثم طلبات FTTH.
+  app.post("/api/phone-lines/mobile-lookup", requireAuth, async (req: any, res) => {
+    try {
+      const phones = Array.from(new Set(
+        (Array.isArray(req.body?.phones) ? req.body.phones : [])
+          .map((value: unknown) => String(value ?? "").trim())
+          .filter(Boolean),
+      )).slice(0, 20000);
+      if (!phones.length) return res.json({ data: [] });
+
+      const { rows } = await pool.query(
+        `WITH requested AS (
+           SELECT DISTINCT ${phoneNormSql("p")} AS phone
+           FROM unnest($1::text[]) AS input(p)
+           WHERE ${phoneNormSql("p")} <> ''
+         )
+         SELECT r.phone, mob.mobile
+         FROM requested r
+         LEFT JOIN LATERAL (
+           SELECT x.m AS mobile
+           FROM (
+             SELECT lm.mobile AS m, 0 AS pr
+             FROM line_mobiles lm
+             WHERE ${phoneNormSql("lm.full_phone")} = r.phone
+             UNION ALL
+             SELECT mo.mobile AS m, 1 AS pr
+             FROM maintenance_orders mo
+             WHERE ${phoneNormSql("mo.phone_number")} = r.phone
+               AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+             UNION ALL
+             SELECT wc.mobile AS m, 1 AS pr
+             FROM wfm_current wc
+             WHERE ${phoneNormSql("wc.phone_number")} = r.phone
+               AND wc.mobile !~ '[A-Za-z=/]' AND wc.mobile ~ '[0-9]{5,}'
+             UNION ALL
+             SELECT fo.customer_mobile AS m, 2 AS pr
+             FROM ftth_orders_current fo
+             WHERE ${phoneNormSql("fo.service_number")} = r.phone
+               AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+           ) x
+           WHERE NULLIF(btrim(x.m), '') IS NOT NULL
+             AND x.m !~ '[A-Za-z=/]' AND x.m ~ '[0-9]{5,}'
+           ORDER BY x.pr
+           LIMIT 1
+         ) mob ON true
+         ORDER BY r.phone`,
+        [phones],
+      );
+      res.json({ data: rows });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   // GET /api/phone-lines/no-mobile-complaints — الشكاوى المنتظمة التى ليس لها موبايل.
   // يجمع نفس مصدرى تقرير الأعطال المنتظمة (التفاصيل + المتبقى 138/135) مع
   // الأعطال اليدوية المنتظمة خارج الشاشة، لكن يظل هذا التقرير مستقلاً عن تقرير

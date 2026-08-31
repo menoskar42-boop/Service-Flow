@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
 import { format } from "date-fns";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface Row {
   phoneNumber: string;
@@ -41,12 +42,14 @@ export function PortsSuspendFreeReport() {
       return res.json();
     },
   });
+  const mobileLookup = useMobileLookup(rows.map((r) => r.phoneNumber));
 
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
       rows.map((r, i) => ({
         "#": i + 1,
         "رقم التليفون": r.phoneNumber,
+         "رقم الموبايل": mobileLookup[phoneLookupKey(r.phoneNumber)] || "",
         "السنترال": r.central ?? "",
         "اسم العميل": r.subName ?? "",
         "العنوان": r.subAdd ?? "",
@@ -70,7 +73,7 @@ export function PortsSuspendFreeReport() {
     const ROWS_PER_PAGE = 20;
     const totalPages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>رقم التليفون</th><th>السنترال</th><th>اسم العميل</th><th>العنوان</th>
+       <th>#</th><th>رقم التليفون</th><th>رقم الموبايل</th><th>السنترال</th><th>اسم العميل</th><th>العنوان</th>
       <th>تاريخ الأمر</th><th>رقم الأمر</th><th>MSAN</th><th>Frame</th><th>المنفذ</th><th>الصوت</th><th>الداتا</th>
     </tr>`;
     let pages = "";
@@ -80,6 +83,7 @@ export function PortsSuspendFreeReport() {
         <tr>
           <td>${p * ROWS_PER_PAGE + ci + 1}</td>
           <td>${esc(r.phoneNumber)}</td>
+           <td>${esc(mobileLookup[phoneLookupKey(r.phoneNumber)] || "")}</td>
           <td>${esc(r.central)}</td>
           <td>${esc(r.subName)}</td>
           <td>${esc(r.subAdd)}</td>
@@ -168,6 +172,7 @@ export function PortsSuspendFreeReport() {
               <TableRow>
                 <TableHead className="text-right font-bold w-8">#</TableHead>
                 <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                <TableHead className="text-right font-bold">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold">السنترال</TableHead>
                 <TableHead className="text-right font-bold">اسم العميل</TableHead>
                 <TableHead className="text-right font-bold">العنوان</TableHead>
@@ -181,14 +186,15 @@ export function PortsSuspendFreeReport() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 ? (
-                <TableRow><TableCell colSpan={12} className="text-center py-16 text-muted-foreground">
+               {rows.length === 0 ? (
+                 <TableRow><TableCell colSpan={13} className="text-center py-16 text-muted-foreground">
                   {isFetching ? "جاري التحميل..." : "لا توجد أرقام بحالة ALL_SUSPEND / FREE"}
                 </TableCell></TableRow>
               ) : rows.map((r, i) => (
                 <TableRow key={r.phoneNumber} className="hover:bg-muted/30">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono text-xs">{r.phoneNumber}</TableCell>
+                   <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.phoneNumber)]} /></TableCell>
                   <TableCell className="whitespace-nowrap text-xs">{r.central || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="whitespace-normal break-words min-w-[140px]">{r.subName || <span className="text-muted-foreground">—</span>}</TableCell>
                   <TableCell className="whitespace-normal break-words min-w-[200px] max-w-[320px]">{r.subAdd || <span className="text-muted-foreground">—</span>}</TableCell>

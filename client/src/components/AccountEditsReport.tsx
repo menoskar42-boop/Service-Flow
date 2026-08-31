@@ -10,6 +10,7 @@ import {
 import { Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface EditRow {
   id: number;
@@ -48,6 +49,7 @@ export function AccountEditsReport() {
     },
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup(rows.map((r) => r.fullPhone));
 
   const doSearch = () => { setSearchPhone(phoneFilter); setSearchEditor(editorFilter); };
 
@@ -130,6 +132,7 @@ export function AccountEditsReport() {
                 <TableRow>
                   <TableHead className="text-right font-bold whitespace-nowrap">#</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
+                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الأكونت القديم</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الأكونت الجديد</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">القائم بالتعديل</TableHead>
@@ -141,6 +144,7 @@ export function AccountEditsReport() {
                   <TableRow key={r.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-muted-foreground text-xs">{r.id}</TableCell>
                     <TableCell className="font-mono font-semibold text-blue-700">{r.fullPhone}</TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.fullPhone)]} /></TableCell>
                     <TableCell dir="ltr" className="font-mono text-left text-muted-foreground">
                       {r.oldAccountNo ?? <span className="italic text-gray-400">جديد</span>}
                     </TableCell>

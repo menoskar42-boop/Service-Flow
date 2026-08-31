@@ -15,6 +15,7 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { ROLES } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { dispatchSpeedTool, openOpSite, SITE_WIDE_KEY } from "@/lib/exec-queue";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface WorkOrder {
   id: number;
@@ -61,6 +62,7 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
       return res.json();
     },
   });
+  const mobileLookup = useMobileLookup(allOrders.map((o) => o.phoneNumber));
 
   // آخر وقت رفع لجدول أوامر الشغل — عشان تتأكد إن رفع سكربت WFM (أو الرفع اليدوى)
   // وصل فعلاً للموقع من غير ما تحتاج تدوّر فى الصفوف.
@@ -344,6 +346,7 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
                 <TableHead className="text-right font-bold">اسم السنترال</TableHead>
                 <TableHead className="text-right font-bold">رقم امر الشغل</TableHead>
                 <TableHead className="text-right font-bold">رقم التليفون</TableHead>
+                <TableHead className="text-right font-bold">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold">نوع الخدمه</TableHead>
                 <TableHead className="text-right font-bold">تاريخ الاغلاق</TableHead>
                 <TableHead className="text-right font-bold">اسم الصنف</TableHead>
@@ -371,6 +374,7 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
                       <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{o.workOrderId}</span>
                     </TableCell>
                     <TableCell dir="ltr" className="text-left">{o.phoneNumber}</TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(o.phoneNumber)]} /></TableCell>
                     <TableCell>
                       <span className={`text-xs px-2 py-0.5 rounded font-medium ${o.serviceType.trim() === "نقل" ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>
                         {o.serviceType.trim()}

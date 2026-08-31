@@ -10,6 +10,7 @@ import { ChevronRight, ChevronLeft, Loader2, Phone, Check, X, CheckCheck, Undo2,
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { NoMobileComplaintsReport } from "@/components/NoMobileComplaintsReport";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // «أرقام بدون رقم موبايل» — نفس عمود بيان التليفونات، بس مقصور على الأرقام اللى
 // مالهاش رقم موبايل من أى مصدر (يدوى/أوامر شغل/طلبات FTTH). الغرض: تجميع أرقام
@@ -94,6 +95,7 @@ export function LinesNoMobileReport({ checked = false }: Props) {
     enabled: !isComplaintsReport,
     refetchOnMount: "always",
   });
+  const mobileLookup = useMobileLookup((data?.data ?? []).map((r) => r.telNo || r.fullPhone));
 
   const cabins = central && filterOptions ? (filterOptions.cabins[central] ?? []) : [];
   const boxes = central && cabin && filterOptions ? (filterOptions.boxes[`${central}||${cabin}`] ?? []) : [];
@@ -356,13 +358,12 @@ export function LinesNoMobileReport({ checked = false }: Props) {
                             </button>
                           </span>
                         ) : (
-                          <button
-                            onClick={() => startEdit(r)}
-                            className="inline-flex items-center gap-1 text-xs text-blue-700 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50"
-                            title="إضافة رقم موبايل"
-                          >
-                            <Phone className="w-3 h-3" /> + إضافة
-                          </button>
+                          <span className="inline-flex items-center gap-1">
+                            <MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)]} />
+                            <button onClick={() => startEdit(r)} className="inline-flex items-center gap-1 text-xs text-blue-700 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50" title="إضافة رقم موبايل">
+                              <Phone className="w-3 h-3" /> + إضافة
+                            </button>
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>

@@ -18,6 +18,7 @@ import { Measurement138Button, type Measurement138 } from "@/components/Measurem
 import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface CurrentFault extends Measurement138 {
   ticketId: string | null;
@@ -178,6 +179,7 @@ export function CurrentFaultsReport() {
     .filter((f) => (repeatedOnly ? f.repeatStatus === "مكرر" : true))
     .filter((f) => (monthRepeatOnly ? f.monthRepeat === true : true))
     .filter((f) => (returnedOnly ? dispStatus(f.statusCode) === "DSL-173" : true));
+  const mobileLookup = useMobileLookup(displayed.map((f) => f.phoneShort));
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -447,6 +449,7 @@ export function CurrentFaultsReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                 <TableHead className="text-right font-bold text-white">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -496,6 +499,7 @@ export function CurrentFaultsReport() {
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell>{f.centralName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(f.phoneShort)] ?? f.mobile} /></TableCell>
                     <TableCell>
                       {f.repeatStatus === "مكرر" ? (
                         <button

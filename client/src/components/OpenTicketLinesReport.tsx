@@ -12,6 +12,7 @@ import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 const buildDZSUrl = (accounts: string[]) =>
@@ -66,6 +67,7 @@ export function OpenTicketLinesReport() {
   const [filterCabinet, setFilterCabinet] = useState("");
   const [onlyWithAccount, setOnlyWithAccount] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
+  const mobileLookup = useMobileLookup(lines.map((l) => l.telNo || l.fullPhone));
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -256,6 +258,7 @@ export function OpenTicketLinesReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التذكرة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">نوع العطل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">آخر قياس</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
@@ -295,6 +298,7 @@ export function OpenTicketLinesReport() {
                         </button>
                       )}
                     </TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(l.telNo || l.fullPhone)]} /></TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{l.accountNo || "-"}</TableCell>
                     <TableCell>{scoreBadge(l.lastMeasScore)}</TableCell>
                     <TableCell className="font-mono">{l.lineCurrentSpeed ?? "-"}</TableCell>

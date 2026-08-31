@@ -13,6 +13,7 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { openCustomer360 } from "@/lib/customer360";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 // خطوط تليفون مختلفة لكن لها نفس رقم الأكونت — تجميع لكل رقم أكونت الخطوط المتعارضة معه
 interface DupRow {
@@ -54,6 +55,7 @@ export function DuplicateAccountsReport() {
     refetchOnMount: "always",
   });
   const rows = data?.data ?? [];
+  const mobileLookup = useMobileLookup(rows.map((r) => r.telNo || r.fullPhone));
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["/api/reports/duplicate-accounts"] });
@@ -192,6 +194,7 @@ export function DuplicateAccountsReport() {
                 <TableRow>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الكابينة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">البكس</TableHead>
@@ -250,6 +253,7 @@ export function DuplicateAccountsReport() {
                           )}
                         </TableCell>
                         <TableCell className="font-mono font-semibold text-blue-700" dir="ltr">{r.telNo ?? r.fullPhone}</TableCell>
+                        <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(r.telNo || r.fullPhone)]} /></TableCell>
                         <TableCell>{r.central ?? "—"}</TableCell>
                         <TableCell className="text-center">{r.cabinNumber ?? "—"}</TableCell>
                         <TableCell className="text-center">{r.boxNumber ?? "—"}</TableCell>

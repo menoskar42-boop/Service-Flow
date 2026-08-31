@@ -15,6 +15,7 @@ import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { format } from "date-fns";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface RegularizedFault extends Measurement138 {
   ticketId: string | null;
@@ -144,6 +145,7 @@ export function RegularizedFaultsReport() {
       return res.json();
     },
   });
+  const mobileLookup = useMobileLookup(faults.map((f) => f.phoneShort));
 
   // تقسيم الإجمالى: عدد أعطال الداتا وعدد أعطال الصوت
   const dataCount  = faults.filter(isDataFault).length;
@@ -397,6 +399,7 @@ export function RegularizedFaultsReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                <TableHead className="text-right font-bold text-white">رقم الموبايل</TableHead>
                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -441,6 +444,7 @@ export function RegularizedFaultsReport() {
                     <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                     <TableCell>{f.centralName || "-"}</TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
+                    <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(f.phoneShort)]} /></TableCell>
                     <TableCell>
                       {f.repeatStatus === "مكرر" ? (
                         <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>

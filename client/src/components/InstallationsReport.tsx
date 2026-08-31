@@ -10,6 +10,7 @@ import {
 import { Loader2, FileSpreadsheet, Printer } from "lucide-react";
 import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { format } from "date-fns";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface Installation {
   centralName: string | null;
@@ -90,6 +91,7 @@ export function InstallationsReport({
       return res.json();
     },
   });
+  const mobileLookup = useMobileLookup(items.map((o) => o.phoneNumber));
 
   const handleExportExcel = () => {
     const rows = items.map((o, i) => ({
@@ -331,7 +333,7 @@ export function InstallationsReport({
                     <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{o.workOrderId ?? "-"}</span>
                   </TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{o.phoneNumber || "-"}</TableCell>
-                  <TableCell dir="ltr" className="text-left font-mono">{o.mobile || "-"}</TableCell>
+                   <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(o.phoneNumber)] ?? o.mobile} /></TableCell>
                   <TableCell className="max-w-[180px] whitespace-normal break-words align-top">{o.customerName || "-"}</TableCell>
                   <TableCell className="max-w-[260px] whitespace-normal break-words align-top">{o.address || "-"}</TableCell>
                   <TableCell className="font-medium" title={o.workOrderType || ""}>{displayType(o.workOrderType)}</TableCell>
