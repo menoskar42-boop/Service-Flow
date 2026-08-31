@@ -54,10 +54,31 @@ export const faultTypes = pgTable("fault_types", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export type AssociatedMaterial = {
+  taskTypeId: string;
+  defaultQuantity: number;
+};
+
+export type WorkEntryItem = {
+  id: string;
+  workTypeId: string;
+  quantity: number;
+  excavationWorkerId?: string;
+  excavationLength?: number;
+  excavationWidth?: number;
+  excavationDepth?: number;
+};
+
+export type UsedTaskEntryItem = {
+  id: string;
+  taskTypeId: string;
+  quantity: number;
+};
+
 export const workTypes = pgTable("work_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  associatedMaterials: jsonb("associated_materials").$type<{taskTypeId: string, defaultQuantity: number}[]>(),
+  associatedMaterials: jsonb("associated_materials").$type<AssociatedMaterial[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -129,7 +150,7 @@ export const workEntries = pgTable("work_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ticketId: varchar("ticket_id").notNull().references(() => tickets.id, { onDelete: 'cascade' }),
   measurementId: varchar("measurement_id").references(() => measurementEntries.id, { onDelete: 'cascade' }),
-  items: json("items").notNull().$type<Array<{id: string, workTypeId: string, quantity: number, excavationWorkerId?: string, excavationLength?: number, excavationWidth?: number, excavationDepth?: number}>>(),
+  items: json("items").notNull().$type<WorkEntryItem[]>(),
   notes: text("notes"),
   performedBy: text("performed_by").notNull(),
   worksBy: text("works_by"),
@@ -143,7 +164,7 @@ export const usedTaskEntries = pgTable("used_task_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ticketId: varchar("ticket_id").notNull().references(() => tickets.id, { onDelete: 'cascade' }),
   measurementId: varchar("measurement_id").references(() => measurementEntries.id, { onDelete: 'cascade' }),
-  items: json("items").notNull().$type<Array<{id: string, taskTypeId: string, quantity: number}>>(),
+  items: json("items").notNull().$type<UsedTaskEntryItem[]>(),
   notes: text("notes"),
   performedBy: text("performed_by").notNull(),
   createdBy: varchar("created_by").notNull().references(() => cfmUsers.id),
@@ -204,13 +225,34 @@ export const inventoryTransactionsRelations = relations(inventoryTransactions, (
 export const insertCentralSchema = createInsertSchema(centrals).omit({ id: true, createdAt: true });
 export const insertCableSchema = createInsertSchema(cables).omit({ id: true, createdAt: true });
 export const insertFaultTypeSchema = createInsertSchema(faultTypes).omit({ id: true, createdAt: true });
-export const insertWorkTypeSchema = createInsertSchema(workTypes).omit({ id: true, createdAt: true });
+export const insertWorkTypeSchema = createInsertSchema(workTypes, {
+  associatedMaterials: z.array(z.object({
+    taskTypeId: z.string(),
+    defaultQuantity: z.number(),
+  })).nullable().optional(),
+}).omit({ id: true, createdAt: true });
 export const insertTaskTypeSchema = createInsertSchema(taskTypes).omit({ id: true, createdAt: true });
 export const insertContractorSchema = createInsertSchema(contractors).omit({ id: true, createdAt: true });
 export const insertExcavationWorkerSchema = createInsertSchema(excavationWorkers).omit({ id: true, createdAt: true });
 export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, ticketNumber: true, createdAt: true, updatedAt: true });
-export const insertWorkEntrySchema = createInsertSchema(workEntries).omit({ id: true, createdAt: true });
-export const insertUsedTaskEntrySchema = createInsertSchema(usedTaskEntries).omit({ id: true, createdAt: true });
+export const insertWorkEntrySchema = createInsertSchema(workEntries, {
+  items: z.array(z.object({
+    id: z.string(),
+    workTypeId: z.string(),
+    quantity: z.number(),
+    excavationWorkerId: z.string().optional(),
+    excavationLength: z.number().optional(),
+    excavationWidth: z.number().optional(),
+    excavationDepth: z.number().optional(),
+  })),
+}).omit({ id: true, createdAt: true });
+export const insertUsedTaskEntrySchema = createInsertSchema(usedTaskEntries, {
+  items: z.array(z.object({
+    id: z.string(),
+    taskTypeId: z.string(),
+    quantity: z.number(),
+  })),
+}).omit({ id: true, createdAt: true });
 export const insertMeasurementEntrySchema = createInsertSchema(measurementEntries).omit({ id: true, createdAt: true });
 export const insertInventoryTransactionSchema = createInsertSchema(inventoryTransactions).omit({ id: true, createdAt: true });
 
