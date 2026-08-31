@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle, Search, EyeOff } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle, Search, EyeOff, Filter } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openProfileOptimization } from "@/lib/profile-optimization";
@@ -131,6 +131,9 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // زر «استبعاد اللى فى الطابور»: بيشيل الأرقام اللى ليها مهمة منتظرة/شغّالة فى طابور
   // التنفيذ عشان مايتبعتوش تانى ويتكرّر نفس الشغل. مطفى افتراضياً — المستخدم هو اللى يقرّر.
   const [excludeQueued, setExcludeQueued] = useState(false);
+  // فلتر اختيارى لاستبعاد الخطوط التى أحدث قياس لها اسكور 0.
+  // الفلترة على السيرفر لتسرى على الجدول والعداد والتصدير وأدوات التنفيذ.
+  const [excludeZeroScore, setExcludeZeroScore] = useState(false);
   const isNeedsSpeed = endpoint.includes("needs-speed");
 
   useEffect(() => {
@@ -159,13 +162,14 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (excludeQueued) params.set("excludeQueued", "1");
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (showMeasuredFilter && measuredBefore) params.set("measuredBefore", measuredBefore);
+    if (excludeZeroScore && isNeedsSpeed) params.set("excludeZeroScore", "1");
     if (requireComplaint) params.set("requireComplaint", "1");
     if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, search, page, requireComplaint, complaintAny, showExcludedCabins, excludeQueued],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, search, page, requireComplaint, complaintAny, showExcludedCabins, excludeQueued, excludeZeroScore],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -400,6 +404,18 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded})` : ""}`
                 : "استبعاد اللى فى الطابور"}
             </Button>
+            {isNeedsSpeed && (
+              <Button
+                variant={excludeZeroScore ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setExcludeZeroScore((v) => !v); setPage(1); }}
+                className={`gap-1 ${excludeZeroScore ? "bg-indigo-600 hover:bg-indigo-700 text-white" : "text-indigo-700 border-indigo-300"}`}
+                title="استبعاد الخطوط التى اسكور آخر قياس لها يساوى 0"
+              >
+                <Filter className="w-4 h-4" />
+                {excludeZeroScore ? "استبعاد اسكور 0 ✓" : "استبعاد اسكور 0"}
+              </Button>
+            )}
             {!requireComplaint && endpoint.includes("needs-speed") && (
               <Button
                 variant={complaintAny ? "default" : "outline"}

@@ -4783,7 +4783,7 @@ export async function registerRoutes(
   // (شرط (أ) بيقع على الاسكور، وشرط (ب) بيقع على السرعة) — فمافيش تكرار بين التقريرين.
   app.get(["/api/phone-lines/needs-speed", "/api/phone-lines/needs-speed-lowscore"], requireAuth, async (req, res) => {
     const lowScoreMode = req.path.endsWith("/needs-speed-lowscore");
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", measuredBefore = "", search = "", includeExcluded = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", poStoppedBefore = "", measuredBefore = "", search = "", includeExcluded = "", excludeZeroScore = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
@@ -4895,6 +4895,8 @@ export async function registerRoutes(
     // فلتر مطابق لفلتر إيقاف PO: يستبعد القياسات الأحدث من التاريخ/الوقت المحدد
     // (بتوقيت القاهرة)، ويُبقى الخطوط التى لم تُقَس أو قِيسَت قبله.
     if (measuredBefore) { params.push(measuredBefore); conds.push(`(m.uploaded_at IS NULL OR (m.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    // فلتر اختيارى من التقرير: استبعاد الخطوط التى اسكور آخر قياس لها يساوى صفر.
+    if (excludeZeroScore === "1" || excludeZeroScore === "true") conds.push(`m.score <> 0`);
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
     if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
