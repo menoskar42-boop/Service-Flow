@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 // نافذة «تفاصيل الخط» المشتركة — بتتفتح من أى تقرير فيه رقم تليفون.
 // مصدر البيانات هو نفس مصادر «بحث برقم التليفون» بالظبط عشان مايبقاش فيه مصدرين
@@ -54,12 +55,20 @@ export function LineDetailsDialog({
     </div>
   );
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9999] bg-black/50 flex items-start justify-center p-3 overflow-auto" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8" dir="rtl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8" dir="rtl" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-2 border-b bg-blue-50">
           <h3 className="font-bold text-sm">تفاصيل الخط — <bdi dir="ltr">{phone}</bdi></h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-5 h-5" /></button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="إغلاق تفاصيل الخط"
+            title="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="p-4">
@@ -123,6 +132,7 @@ export function LineDetailsDialog({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

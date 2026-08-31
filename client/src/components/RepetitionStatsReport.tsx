@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, FileSpreadsheet, Printer, Repeat2, Pencil, Save, X } from "lucide-react";
 import { format } from "date-fns";
+import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface RepRow {
   centralName: string | null;
@@ -331,6 +333,7 @@ export function RepetitionStatsReport() {
     if (!repDetailTech) return repDetailData;
     return repDetailData.filter((r) => r.chargedTech === repDetailTech);
   }, [repDetailData, repDetailTech]);
+  const repDetailMobileLookup = useMobileLookup(repDetailFiltered.map((r) => r.phoneNumber));
 
   const exportRepDetailExcel = () => {
     if (!repDetailFiltered.length) return;
@@ -356,6 +359,34 @@ export function RepetitionStatsReport() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الخطوط المكررة");
     XLSX.writeFile(wb, `repetition-detail-${activeTab}-${dateFrom}-${dateTo}.xlsx`);
+  };
+
+  const exportRepDetailPDF = () => {
+    if (!repDetailFiltered.length) return;
+    printTablePDF({
+      title: `تفصيل الخطوط المكررة — ${activeTab === "combined" ? "إجمالية" : activeTab === "closed" ? "مغلقة" : "مفتوحة"} — ${dateFrom} إلى ${dateTo}`,
+      columns: [
+        "#", "رقم التليفون", "رقم الموبايل", "اسم العميل", "العنوان", "السنترال",
+        "الكابينه", "البكس", "كود MSAN", "عدد المرات", "تاريخ الشكوى",
+        "تاريخ الإغلاق", "فنى الإغلاق", "فنى المنطقة",
+      ],
+      rows: repDetailFiltered.map((r, i) => [
+        i + 1,
+        r.phoneNumber,
+        repDetailMobileLookup[phoneLookupKey(r.phoneNumber)] || "",
+        r.subName ?? "—",
+        r.subAdd ?? "—",
+        r.centralName,
+        r.lineCabin ?? r.cabinetNo ?? "—",
+        r.lineBox ?? "—",
+        r.msanCode ?? "—",
+        r.appearances,
+        r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "—",
+        r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "—",
+        r.closeByName || "غير معروف",
+        r.areaTechName || "غير معروف",
+      ]),
+    });
   };
 
   return (
@@ -583,6 +614,11 @@ export function RepetitionStatsReport() {
                 className="text-green-700 border-green-200 gap-1 text-xs">
                 <FileSpreadsheet className="w-3 h-3" /> تصدير Excel
               </Button>
+               <Button variant="outline" size="sm" onClick={exportRepDetailPDF}
+                 disabled={!repDetailFiltered.length}
+                 className="text-red-700 border-red-200 gap-1 text-xs">
+                 <Printer className="w-3 h-3" /> تصدير PDF
+               </Button>
             </div>
           </div>
           {repDetailLoading && (
@@ -595,6 +631,7 @@ export function RepetitionStatsReport() {
                   <TableRow>
                     <TableHead className="text-white font-bold text-right">#</TableHead>
                     <TableHead className="text-white font-bold text-right">رقم التليفون</TableHead>
+                     <TableHead className="text-white font-bold text-right">رقم الموبايل</TableHead>
                     <TableHead className="text-white font-bold text-right">اسم العميل</TableHead>
                     <TableHead className="text-white font-bold text-right">العنوان</TableHead>
                     <TableHead className="text-white font-bold text-right">السنترال</TableHead>
@@ -617,6 +654,9 @@ export function RepetitionStatsReport() {
                       className={`hover:bg-purple-50 ${i > 0 && repDetailFiltered[i-1].phoneNumber === r.phoneNumber ? "border-t-0" : "border-t-2 border-purple-200"}`}>
                       <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                       <TableCell className="font-bold text-purple-900">{r.phoneNumber}</TableCell>
+                      <TableCell>
+                        <MobileValue mobile={repDetailMobileLookup[phoneLookupKey(r.phoneNumber)]} />
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">{r.subName ?? "—"}</TableCell>
                       <TableCell className="max-w-[220px] truncate" title={r.subAdd ?? ""}>{r.subAdd ?? "—"}</TableCell>
                       <TableCell>{r.centralName}</TableCell>
