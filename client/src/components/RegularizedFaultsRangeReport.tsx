@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff, Phone } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -20,6 +20,7 @@ interface RegularizedFault extends Measurement138 {
   ticketId: string | null;
   centralName: string | null;
   phoneShort: string | null;
+  mobile: string | null;
   repeatStatus: string;
   statusCode: string | null;
   closeCode: string | null;
@@ -56,6 +57,13 @@ const fmtDt = (d: string | null) => {
   if (isNaN(t.getTime())) return "-";
   const p = (n: number) => String(n).padStart(2, "0");
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
+};
+
+// تطبيع رقم المحمول للاتصال: أرقام فقط + إضافة صفر بادئ لو ناقص (1552… → 01552…)
+const dialMobile = (raw: string | null): string => {
+  const mobile = String(raw || "").replace(/\D/g, "");
+  if (!mobile) return "";
+  return mobile.startsWith("0") ? mobile : `0${mobile}`;
 };
 
 // يختصر الـ status code: "DSL-هوائية-160160" → "DSL-160"
@@ -189,6 +197,7 @@ export function RegularizedFaultsRangeReport() {
       "المصدر": f.dataSource === "متبقى" ? "تحت الفحص" : "مؤرشفة",
       "Field1": f.centralName,
       "رقم التلفون": f.phoneShort,
+      "رقم الموبايل": f.mobile,
       "رقم الأكونت": f.accountNo,
       "القياس الحالى (نفس الشكوى)": f.curMeasScore,
       "آخر قياس للرقم": f.lastMeasScore,
@@ -235,7 +244,7 @@ export function RegularizedFaultsRangeReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
+       <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>رقم الموبايل</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>السرعة الحالية</th><th>أقصى سرعة</th><th>الاسكور</th><th>تاريخ آخر قياس</th>
@@ -250,6 +259,7 @@ export function RegularizedFaultsRangeReport() {
           <td style="font-size:9px;color:${f.dataSource === 'متبقى' ? '#92400e' : '#166534'}">${esc(f.dataSource === 'متبقى' ? 'تحت الفحص' : 'مؤرشفة')}</td>
           <td>${esc(f.centralName)}</td>
           <td>${esc(f.phoneShort)}</td>
+           <td>${esc(f.mobile)}</td>
           <td>${esc(f.accountNo)}</td>
           <td>${esc(f.curMeasScore)}</td>
           <td>${esc(f.lastMeasScore)}</td>
@@ -465,8 +475,9 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white w-8">#</TableHead>
                 <TableHead className="text-right font-bold text-white">المصدر</TableHead>
                 <TableHead className="text-right font-bold text-white">السنترال</TableHead>
-                <TableHead className="text-right font-bold text-white">التليفون</TableHead>
-                <TableHead className="text-right font-bold text-white">تكرار</TableHead>
+                 <TableHead className="text-right font-bold text-white">التليفون</TableHead>
+                 <TableHead className="text-right font-bold text-white whitespace-nowrap">رقم الموبايل</TableHead>
+                 <TableHead className="text-right font-bold text-white">تكرار</TableHead>
                 <TableHead className="text-right font-bold text-white">Status Code</TableHead>
                 <TableHead className="text-right font-bold text-white">سبب الإغلاق</TableHead>
                 <TableHead className="text-right font-bold text-white">MSAN</TableHead>
@@ -502,7 +513,7 @@ export function RegularizedFaultsRangeReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={35} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={36} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
                       : repeatedOnly
@@ -524,6 +535,20 @@ export function RegularizedFaultsRangeReport() {
                   </TableCell>
                   <TableCell>{f.centralName || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left font-mono">{f.phoneShort || "-"}</TableCell>
+                  <TableCell dir="ltr" className="text-left whitespace-nowrap">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="font-mono">{f.mobile || "-"}</span>
+                      {dialMobile(f.mobile) ? (
+                        <a
+                          href={`tel:${dialMobile(f.mobile)}`}
+                          title={`اتصال بالعميل: ${dialMobile(f.mobile)}`}
+                          className="md:hidden inline-flex items-center gap-1 text-[11px] text-emerald-700 border border-emerald-300 rounded px-1.5 py-0.5 hover:bg-emerald-50"
+                        >
+                          <Phone className="w-3 h-3" /> اتصال
+                        </a>
+                      ) : null}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     {f.repeatStatus === "مكرر" ? (
                       <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">مكرر</span>

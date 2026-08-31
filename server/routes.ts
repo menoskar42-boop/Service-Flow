@@ -10741,8 +10741,9 @@ export async function registerRoutes(
                  MAX("closeDate") AS last_close
           FROM combined GROUP BY "ticketId"
         )
-        SELECT d.*, (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
-               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt" FROM (
+         SELECT d.*, mob.m AS "mobile",
+                (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
+                (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt" FROM (
           -- شكوى واحدة لكل complain_no: نحتفظ بأحدث سجل (آخر تاريخ إغلاق) فيكون
           -- الـ Status Code هو الأخير، ونرفق أول/آخر تاريخ إغلاق
           SELECT DISTINCT ON (c."ticketId")
@@ -10752,7 +10753,29 @@ export async function registerRoutes(
           FROM combined c
           JOIN agg a ON a.k = c."ticketId"
           ORDER BY c."ticketId", c."closeDate" DESC NULLS LAST
-        ) d
+         ) d
+         LEFT JOIN LATERAL (
+           -- رقم الموبايل: نفس أولوية تقرير الأعطال الحالية
+           -- (إدخال يدوي ثم أوامر الشغل ثم طلبات FTTH)، مع تطبيع رقم الخط.
+           SELECT m FROM (
+             SELECT lm.mobile AS m, 0 AS pr
+               FROM line_mobiles lm
+              WHERE ${sp("lm.full_phone")} = ${sp('d."phoneShort"')}
+             UNION ALL
+             SELECT mo.mobile AS m, 1 AS pr
+               FROM maintenance_orders mo
+              WHERE ${sp("mo.phone_number")} = ${sp('d."phoneShort"')}
+                AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+             UNION ALL
+             SELECT fo.customer_mobile AS m, 2 AS pr
+               FROM ftth_orders_current fo
+              WHERE ${sp("fo.service_number")} = ${sp('d."phoneShort"')}
+                AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+           ) mobile_sources
+           WHERE NULLIF(btrim(m), '') IS NOT NULL
+           ORDER BY pr
+           LIMIT 1
+         ) mob ON true
         LEFT JOIN line_po_events pe ON pe.account_no = d."accountNo"
         ORDER BY d."lastCloseDate" ASC NULLS LAST`,
         params,
