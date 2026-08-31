@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge, Undo2 } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, History, Gauge, Undo2, Phone } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { closeReason } from "@/lib/close-codes";
@@ -53,6 +53,13 @@ interface CurrentFault extends Measurement138 {
   mobile: string | null;
   customerAddress: string | null;
 }
+
+// تطبيع رقم المحمول للاتصال: أرقام فقط + إضافة صفر بادئ لو ناقص (1552… → 01552…)
+const dialMobile = (raw: string | null): string => {
+  const mobile = String(raw || "").replace(/\D/g, "");
+  if (!mobile) return "";
+  return mobile.startsWith("0") ? mobile : `0${mobile}`;
+};
 
 // مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
 const fmtDur = (h: number | null | undefined) => {
@@ -575,7 +582,20 @@ export function CurrentFaultsReport() {
                   ] as [string, any][]).map(([k, v]) => (
                     <div key={k} className="bg-white px-3 py-2 flex justify-between gap-2">
                       <span className="text-muted-foreground text-xs">{k}</span>
-                      <span className="font-semibold text-xs">{v || "-"}</span>
+                       <span className="font-semibold text-xs">
+                         {k === "رقم الموبايل" && dialMobile(v) ? (
+                           <span className="inline-flex items-center gap-2">
+                             <span dir="ltr">{v}</span>
+                             <a
+                               href={`tel:${dialMobile(v)}`}
+                               title={`اتصال بالعميل: ${dialMobile(v)}`}
+                               className="md:hidden inline-flex items-center gap-1 text-[11px] text-emerald-700 border border-emerald-300 rounded px-1.5 py-0.5 hover:bg-emerald-50"
+                             >
+                               <Phone className="w-3 h-3" /> اتصال
+                             </a>
+                           </span>
+                         ) : (v || "-")}
+                       </span>
                     </div>
                   ))}
                 </div>
