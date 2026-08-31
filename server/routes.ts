@@ -1199,8 +1199,11 @@ async function checkAndSnapshot() {
 // (cron داخلى — عند صحيان السيرفر يلتقط لقطة الساعة 11 خلال 15 دقيقة كحد أقصى،
 //  ولو كان نائماً يُعوّض بمجرد وصول أى طلب يوقظه.)
 function startDailySnapshotScheduler() {
-  setTimeout(checkAndSnapshot, 10_000);           // بعد الإقلاع بقليل
-  setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة
+  const wakeup = setTimeout(checkAndSnapshot, 10_000);           // بعد الإقلاع بقليل
+  const interval = setInterval(checkAndSnapshot, 15 * 60 * 1000);  // كل 15 دقيقة
+  // لا تمنع المؤقتات الاختبارات أو أدوات التشغيل القصيرة من إنهاء العملية.
+  wakeup.unref();
+  interval.unref();
 }
 
 // ── Cable-Fault-Manager live proxy ──────────────────────────────────────────
@@ -1263,8 +1266,8 @@ async function getBoxScoreAgg() {
   if (boxAggCache && now - boxAggCache.at < 60_000) return boxAggCache.map;
   const { rows } = await pool.query(`
     SELECT t.central, t.cabin_number, t.box_number,
-           COUNT(*) FILTER (WHERE t.score IS NOT NULL AND t.score <= 100)::int AS measured,
-           COALESCE(SUM(t.score) FILTER (WHERE t.score IS NOT NULL AND t.score <= 100), 0)::numeric AS sum_score,
+           COUNT(*) FILTER (WHERE t.score IS NOT NULL AND t.score BETWEEN 0 AND 100)::int AS measured,
+           COALESCE(SUM(t.score) FILTER (WHERE t.score IS NOT NULL AND t.score BETWEEN 0 AND 100), 0)::numeric AS sum_score,
            COUNT(*)::int AS lines
     FROM (
       SELECT pl.central, pl.cabin_number, pl.box_number, pl.full_phone,
@@ -9379,7 +9382,7 @@ export async function registerRoutes(
          row.boxMeasuredCount = 0;
          continue;
        }
-       const key = `${normCentral(row.respCentralName)}|${String(row.respCabinNumber ?? "").trim()}|${String(row.respBoxNumber ?? "").trim()}`;
+       const key = boxKey(row.respCentralName, row.respCabinNumber, row.respBoxNumber);
        const score = boxAverageFromAggregate(scoreAgg?.get(key));
        row.boxAvgScore = score.avgScore;
        row.boxMeasuredCount = score.measuredCount;
