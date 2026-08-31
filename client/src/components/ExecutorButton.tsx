@@ -27,12 +27,18 @@ function startSilentKeepAlive(): () => void {
     gain.gain.value = 0;                  // سكوت تام
     osc.connect(gain); gain.connect(ctx!.destination);
     osc.start();
-    // بعض المتصفحات بتوقف الـ context لو اتفتح قبل الـ gesture — بنحاول نرجّعه
+    // المتصفح بيرفض تشغيل الصوت من غير تفاعل مستخدم، فالـ context بيفضل "suspended".
+    // ⚠️ ده بيحصل **بعد كل ريفريش** للصفحة: التفعيل بيترجع من localStorage من غير
+    // ضغطة، فالتاب يفضل من غير حماية ويتخنق. فبنحاول نرجّعه كمان مع أول تفاعل
+    // حقيقى (ضغطة/زرار/لمسة) — مش بس عند تغيّر ظهور التاب.
     const resume = () => { try { ctx && ctx.state === "suspended" && ctx.resume(); } catch {} };
     resume();
     document.addEventListener("visibilitychange", resume);
+    const GESTURES = ["pointerdown", "keydown", "touchstart"] as const;
+    for (const g of GESTURES) document.addEventListener(g, resume, { passive: true });
     return () => {
       document.removeEventListener("visibilitychange", resume);
+      for (const g of GESTURES) document.removeEventListener(g, resume);
       try { osc.stop(); } catch {}
       try { ctx && ctx.close(); } catch {}
     };
@@ -85,13 +91,20 @@ export function ExecutorButton() {
   const [execDown, setExecDown] = useState<{ lastSeenSec: number | null; who: string | null } | null>(null);
   const [autoReloading, setAutoReloading] = useState(false);
   const autoReloadBusy = useRef(false);
+  // اتبعت طلب ريفريش للانقطاع الحالى — بيتصفّر لما الجهاز يرجع شغّال
+  const autoReloadSent = useRef(false);
 
-  // التاب المتجمّد لا يستطيع تنفيذ JavaScript أثناء التجميد نفسه، لذلك الصفحة
-  // المفتوحة على جهاز آخر تراقب آخر نبضة وتطلب ريفرش صامتاً كل 5 ثوانٍ.
-  // الطلب يظل محفوظاً على السيرفر، وأول ما تاب جهاز التنفيذ يفوق يقرأه وينفّذ
-  // window.location.reload() من خلال النبضة التالية.
+  // التاب المتجمّد مابيقدرش ينفّذ JavaScript وهو متجمّد، فصفحة مفتوحة على جهاز تانى
+  // بتراقب آخر نبضة وتطلب ريفريش. الطلب بيتخزّن على السيرفر، وأول ما تاب جهاز
+  // التنفيذ يفوق بياخده مع النبضة وينفّذ window.location.reload().
+  //
+  // ⚠️ **طلب واحد لكل انقطاع** مش كل 5 ثوانى: الطلب بيتستهلك مرة واحدة على
+  // السيرفر، والمراقب مابيطلبش تانى غير لما الجهاز يرجع شغّال وينقطع من جديد.
+  // ⚠️ والعتبة 150 ثانية (نفس نافذة «مفعّل») مش 45: المتصفح بيخنق التاب اللى فى
+  // الخلفية لنبضة كل دقيقة، فعتبة 45 ثانية بتعتبر تاب سليم شغّال «واقف» وتفضل
+  // تعمله ريفريش كل دقيقة — وكل ريفريش بيقتل الباتش الشغّال.
   const requestAutomaticReload = async () => {
-    if (autoReloadBusy.current) return;
+    if (autoReloadBusy.current || autoReloadSent.current) return;
     autoReloadBusy.current = true;
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 4000);
@@ -101,7 +114,7 @@ export function ExecutorButton() {
         credentials: "include",
         signal: ctrl.signal,
       });
-      if (r.ok) setAutoReloading(true);
+      if (r.ok) { autoReloadSent.current = true; setAutoReloading(true); }
     } catch {
       // المحاولة التالية بعد 5 ثوانٍ
     } finally {
@@ -121,13 +134,15 @@ export function ExecutorButton() {
         setPending(p?.pending ?? 0);
         const lastSeenSec = typeof st?.lastSeenSec === "number" ? st.lastSeenSec : null;
         const knownExecutor = !!st?.lastExecutor;
-        const heartbeatStalled = knownExecutor && lastSeenSec != null && lastSeenSec >= 45;
+        // متوقف فعلاً = خرج من نافذة «مفعّل» (150ث). التاب المخنوق بيبعت نبضة كل
+        // دقيقة فبيفضل جوّه النافذة ومابيتعملّوش ريفريش وهو شغّال.
+        const heartbeatStalled = knownExecutor && !st?.active && lastSeenSec != null && lastSeenSec >= 150;
         setExecDown(st?.active ? null : { lastSeenSec, who: st?.lastExecutor ?? null });
         if (heartbeatStalled) {
-          // لا ننتظر انتهاء نافذة active (150 ثانية)؛ نبدأ الريفريش
-          // بعد فقدان أكثر من نبضتين، ثم نكرر المحاولة كل 5 ثوانٍ.
           void requestAutomaticReload();
         } else {
+          // الجهاز رجع شغّال → نصفّر عشان أى انقطاع جاى يتبعتله طلب جديد
+          autoReloadSent.current = false;
           setAutoReloading(false);
         }
       } catch {}
@@ -199,13 +214,10 @@ export function ExecutorButton() {
     // بنبعت هوية الجهاز مع النبضة ومع كل سحب — عشان يتسجّل على المهمة نفسها
     // وتعرف الرقابة الطلب اتنفّذ من أى جهاز/متصفح.
     const device = execDeviceLabel();
-    // رمز إعادة التحميل الجاى مع النبضة: أول قراءة بنسجّلها وبس، وأى **تغيير** بعدها
-    // معناه إن سوبر أدمن طلب ريفريش لجهاز التنفيذ (من الموبايل مثلاً) → بنعمل reload.
-    // بيتنفّذ خلال أقل من نبضة (~20 ثانية) ومن غير أى اتصال إضافى.
-    // ⚠️ undefined = «لسه ماقريناش أى رمز»، null = «قرينا ومفيش طلب».
-    // لازم نفرّق بينهم: لو استخدمنا null للاتنين، الجهاز اللى اتفعّل **قبل** أى طلب
-    // ريفريش هيسجّل أول رمز حقيقى على إنه «القراءة الأولى» ويبلع الطلب من غير ما ينفّذه.
-    let lastReloadToken: string | null | undefined = undefined;
+    // السيرفر بيمسح رمز إعادة التحميل أول ما يقراه، فأى رمز بيرجع مع النبضة معناه
+    // «فيه طلب ريفريش لسه ماتنفّذش» → ننفّذه على طول. مافيش مقارنة رموز خالص:
+    // المقارنة القديمة كانت بتعمل حلقة لا نهائية مع المراقب التلقائى (كل رمز جديد
+    // = ريفريش، والمراقب بيكتب رمز كل 5 ثوانى).
     // آخر نبضة **نجحت** فعلاً — أساس الحارس اللى بيكتشف إن التاب كان متجمّد
     let lastBeatOk = Date.now();
     const heartbeat = () => {
@@ -216,12 +228,7 @@ export function ExecutorButton() {
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => {
           if (j) { lastBeatOk = Date.now(); setStale(false); }
-          const tok = j && j.reload ? String(j.reload) : null;
-          if (lastReloadToken === undefined) { lastReloadToken = tok; return; }  // أول قراءة
-          if (tok && tok !== lastReloadToken) {
-            lastReloadToken = tok;
-            try { window.location.reload(); } catch (e) {}
-          }
+          if (j && j.reload) { try { window.location.reload(); } catch (e) {} }
         })
         .catch(() => {});
     };

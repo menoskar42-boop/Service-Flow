@@ -47,7 +47,11 @@ test("box score filter without a limit can show all broken boxes", () => {
 });
 
 test("OM report enriches only broken-box rows from latest valid Service-Flow scores", async (t) => {
-  if (!process.env.DATABASE_URL) {
+  // `npm test` بيحط عنوان نائب (no-db.invalid) لو مفيش قاعدة، عشان استيراد
+  // server/db مايرميش وباقى اختبارات الوحدات تعدّى. الاختبار ده محتاج قاعدة
+  // حقيقية فبيتخطّى فى الحالة دى بدل ما يحاول يتصل ويفشل.
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl || dbUrl.includes("no-db.invalid")) {
     t.skip("DATABASE_URL is not configured");
     return;
   }
