@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { type Order, ROLES, CONTRACT_STATUS, ORDER_STATUS } from "@shared/schema";
+import { type Order, ROLES, CONTRACT_STATUS, ORDER_STATUS, REJECTION_REASONS } from "@shared/schema";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { TechActionModal } from "./TechActionModal";
@@ -32,6 +32,7 @@ import { useOrders } from "@/hooks/use-orders";
 import { useUsers } from "@/hooks/use-users";
 import { Search, RotateCcw, Loader2, FileCheck, Undo2, RefreshCw } from "lucide-react";
 import { arNorm, arIncludes } from "@shared/ar-norm";
+import { isBoxBrokenReason } from "@shared/om-box-score";
 
 interface OrdersTableProps {
   orders: Order[];
@@ -76,6 +77,15 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   )).sort((a, b) => a.localeCompare(b, "ar"));
 
   const techUsers = users?.filter(u => u.role === ROLES.TECH) ?? [];
+  const getBoxAvgScore = (order: Order) => {
+    const enriched = order as Order & { boxAvgScore?: number | null };
+    const isBroken = isBoxBrokenReason(
+      order.rejectionReason,
+      order.externalRejectionReason,
+      REJECTION_REASONS.BOX_BROKEN,
+    );
+    return isBroken && enriched.boxAvgScore != null ? enriched.boxAvgScore : null;
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -431,6 +441,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               )}
               <TableHead className="text-right font-bold">الفني</TableHead>
               <TableHead className="text-right font-bold">رد الفني</TableHead>
+              <TableHead className="text-right font-bold">متوسط Score البكس</TableHead>
               {(seesFullOrderData || roleIs(ROLES.EXTERNAL)) && (
                 <TableHead className="text-right font-bold">رد الشئون الخارجية</TableHead>
               )}
@@ -502,6 +513,16 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                     </div>
                   ) : (
                     <span className="text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+
+                <TableCell className="text-right">
+                  {getBoxAvgScore(order) == null ? (
+                    <span className="text-muted-foreground">-</span>
+                  ) : (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      {getBoxAvgScore(order)!.toLocaleString("ar-EG", { maximumFractionDigits: 1 })}
+                    </Badge>
                   )}
                 </TableCell>
 

@@ -22,6 +22,18 @@ export function boxAverageFromAggregate(
   };
 }
 
+export function boxAverageFromAggregates(
+  aggregates: Array<BoxScoreAggregate | null | undefined>,
+): { avgScore: number | null; measuredCount: number } {
+  const total: BoxScoreAggregate = { sum: 0, measured: 0 };
+  for (const aggregate of aggregates) {
+    if (!aggregate || aggregate.measured <= 0) continue;
+    total.sum += aggregate.sum;
+    total.measured += aggregate.measured;
+  }
+  return boxAverageFromAggregate(total);
+}
+
 export function matchesBoxScoreFilter(
   isBoxBroken: boolean,
   avgScore: number | null | undefined,

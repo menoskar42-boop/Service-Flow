@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boxAverageFromAggregate, matchesBoxScoreFilter } from "@shared/om-box-score";
+import { boxAverageFromAggregate, boxAverageFromAggregates, matchesBoxScoreFilter } from "@shared/om-box-score";
 
 test("box average uses valid latest-score aggregate values and rounds to one decimal", () => {
   assert.deepEqual(boxAverageFromAggregate({ sum: 37, measured: 3 }), {
@@ -14,6 +14,17 @@ test("box average uses valid latest-score aggregate values and rounds to one dec
   assert.deepEqual(boxAverageFromAggregate(undefined), {
     avgScore: null,
     measuredCount: 0,
+  });
+});
+
+test("box average combines measured lines from multiple boxes", () => {
+  assert.deepEqual(boxAverageFromAggregates([
+    { sum: 20, measured: 2 },
+    { sum: 15, measured: 1 },
+    null,
+  ]), {
+    avgScore: 11.7,
+    measuredCount: 3,
   });
 });
 

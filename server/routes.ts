@@ -24,9 +24,9 @@ import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
-import { normCab, expandBoxes } from "@shared/cab-norm";
+import { normCab, expandBoxes, boxKey } from "@shared/cab-norm";
 import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
-import { boxAverageFromAggregate, isBoxBrokenReason } from "@shared/om-box-score";
+import { boxAverageFromAggregate, boxAverageFromAggregates, isBoxBrokenReason } from "@shared/om-box-score";
 
 const scryptAsync = promisify(scrypt);
 const MemStore = MemoryStore(session);
@@ -1276,11 +1276,37 @@ async function getBoxScoreAgg() {
   `);
   const map = new Map<string, { sum: number; measured: number; lines: number }>();
   for (const r of rows) {
-    const key = `${normCentral(r.central)}|${String(r.cabin_number ?? "").trim()}|${String(r.box_number ?? "").trim()}`;
+    const key = boxKey(r.central, r.cabin_number, r.box_number);
     map.set(key, { sum: Number(r.sum_score) || 0, measured: Number(r.measured) || 0, lines: Number(r.lines) || 0 });
   }
   boxAggCache = { at: now, map };
   return map;
+}
+
+async function attachOrderBoxScores(orders: any[]): Promise<any[]> {
+  let scoreAgg: Awaited<ReturnType<typeof getBoxScoreAgg>> | null = null;
+  try {
+    scoreAgg = await getBoxScoreAgg();
+  } catch (e) {
+    console.warn("[orders] box score enrichment unavailable:", e);
+  }
+
+  return orders.map((order) => {
+    const techBroken = order.rejectionReason === REJECTION_REASONS.BOX_BROKEN;
+    const externalBroken = order.externalRejectionReason === REJECTION_REASONS.BOX_BROKEN;
+    if (!techBroken && !externalBroken) {
+      return { ...order, boxAvgScore: null, boxMeasuredCount: 0 };
+    }
+
+    // استخدم موقع الرد الذي يحمل سبب «بوكس معطل»؛
+    // رد الشئون الخارجية قد يحدد موقعًا مختلفًا عن رد الفني.
+    const central = externalBroken && !techBroken ? order.externalCentralName : order.centralName;
+    const cabin = externalBroken && !techBroken ? order.externalCabinNumber : order.cabinNumber;
+    const box = externalBroken && !techBroken ? order.externalBoxNumber : order.boxNumber;
+    const aggregates = expandBoxes(box).map((boxNumber) => scoreAgg?.get(boxKey(central, cabin, boxNumber)));
+    const score = boxAverageFromAggregates(aggregates);
+    return { ...order, boxAvgScore: score.avgScore, boxMeasuredCount: score.measuredCount };
+  });
 }
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -3082,14 +3108,14 @@ export async function registerRoutes(
       const allOrders = await storage.getOrdersBySalesId(user.id);
       // Sales sees non-contracted orders only
       const filteredOrders = allOrders.filter(o => o.contractStatus === CONTRACT_STATUS.NOT_CONTRACTED);
-      return res.json(filteredOrders);
+      return res.json(await attachOrderBoxScores(filteredOrders));
     }
 
     if (user.role === ROLES.EXTERNAL) {
       // الشئون الخارجية (ومنها مهندس الكوابل) تقدر تشوف كل الطلبات؛
       // الفلترة لـ«الطلبات المطلوب الرد عليها» (needs_external) بتتم فى الواجهة (تبديل بزر).
       const orders = await storage.getOrders();
-      return res.json(await attachCabinetTech(orders));
+      return res.json(await attachOrderBoxScores(await attachCabinetTech(orders)));
     }
 
     if (user.role === ROLES.TECH) {
@@ -3104,12 +3130,12 @@ export async function registerRoutes(
         }
         return o.techId === user.id || o.assignedTechId === user.id;
       });
-      return res.json(await attachCabinetTech(techOrders));
+      return res.json(await attachOrderBoxScores(await attachCabinetTech(techOrders)));
     }
 
     // Admin sees all orders
     const orders = await storage.getOrders();
-    res.json(await attachCabinetTech(orders));
+    res.json(await attachOrderBoxScores(await attachCabinetTech(orders)));
   });
 
   // PUT /api/orders/:id/assign — الأدمن بيعمل assign لطلب قيد الانتظار لفنى محدد (techId=null لإلغاء التعيين)
