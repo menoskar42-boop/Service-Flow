@@ -15,6 +15,8 @@ import { closeReason } from "@/lib/close-codes";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { printTablePDF } from "@/lib/print-pdf";
+import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
 
 interface RepDetailRow {
   phoneNumber: string; centralName: string; lineCabin: string | null; lineBox: string | null;
@@ -459,6 +461,7 @@ export function TechPerformanceReport() {
     const d = repDetailData ?? [];
     return detailTech ? d.filter((r: any) => r.closeByName === detailTech || r.areaTechName === detailTech) : d;
   }, [repDetailData, detailTech]);
+  const repMobileLookup = useMobileLookup(repFiltered.map((r) => r.phoneNumber));
   const b24Filtered = useMemo(() => {
     const d = b24Data ?? [];
     return detailTech ? d.filter((r: any) => r.closeByName === detailTech || r.areaTechName === detailTech) : d;
@@ -498,6 +501,30 @@ export function TechPerformanceReport() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الأرقام المكررة");
     XLSX.writeFile(wb, `repeated-${dateFrom}-${dateTo}.xlsx`);
+  };
+  const exportRepPDF = () => {
+    if (!repFiltered.length) return;
+    printTablePDF({
+      title: `تفصيل الخطوط المكررة (${dateFrom || "البداية"} إلى ${dateTo || "النهاية"})`,
+      columns: [
+        "#", "رقم التليفون", "رقم الموبايل", "السنترال", "الكابينة", "البكس",
+        "MSAN", "مرات", "تاريخ الشكوى", "تاريخ الإغلاق", "فنى الإغلاق", "فنى المنطقة",
+      ],
+      rows: repFiltered.map((r, i) => [
+        i + 1,
+        r.phoneNumber,
+        repMobileLookup[phoneLookupKey(r.phoneNumber)] || "",
+        r.centralName,
+        r.lineCabin ?? "-",
+        r.lineBox ?? "-",
+        r.msanCode ?? "-",
+        r.appearances,
+        fmtDT(r.complainTime),
+        fmtDT(r.closeTime),
+        r.closeByName || "-",
+        r.areaTechName || "-",
+      ]),
+    });
   };
   const exportB24 = () => {
     if (!b24Filtered.length) return;
@@ -653,6 +680,9 @@ export function TechPerformanceReport() {
             <Button variant="outline" size="sm" onClick={exportRep} disabled={!repFiltered.length} className="text-green-700 border-green-200 gap-1">
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
+             <Button variant="outline" size="sm" onClick={exportRepPDF} disabled={!repFiltered.length} className="text-red-700 border-red-200 gap-1">
+               <Printer className="w-4 h-4" /> PDF
+             </Button>
           </div>
           <div ref={repScrollRef} tabIndex={0} className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {repLoading ? (
@@ -663,7 +693,7 @@ export function TechPerformanceReport() {
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader>
                   <TableRow className="bg-purple-800 hover:bg-purple-800">
-                    {["#", "رقم التليفون", "تفاصيل", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
+                    {["#", "رقم التليفون", "رقم الموبايل", "تفاصيل", "السنترال", "الكابينة", "البكس", "MSAN", "الفريم", "مرات", "رقم الشكوى", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة"].map((h) => (
                       <TableHead key={h} className="text-white font-bold text-center whitespace-nowrap">{h}</TableHead>
                     ))}
                   </TableRow>
@@ -673,6 +703,9 @@ export function TechPerformanceReport() {
                     <TableRow key={r.complainNo + "-" + i} className="hover:bg-muted/30">
                       <TableCell className="text-center">{i + 1}</TableCell>
                       <TableCell className="text-center">{r.phoneNumber}</TableCell>
+                       <TableCell className="text-center">
+                         <MobileValue mobile={repMobileLookup[phoneLookupKey(r.phoneNumber)]} />
+                       </TableCell>
                       <TableCell className="text-center">
                         <button
                           type="button"
