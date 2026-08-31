@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff, Phone } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -17,6 +17,7 @@ import { closeReason } from "@/lib/close-codes";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
+
 interface RegularizedFault extends Measurement138 {
   ticketId: string | null;
   centralName: string | null;
@@ -137,7 +138,6 @@ export function RegularizedFaultsRangeReport() {
       return res.json();
     },
   });
-
   const rangeLabel = dateFrom || dateTo
     ? `من ${dateFrom || "البداية"} إلى ${dateTo || "النهاية"}`
     : "كل الفترات";
@@ -515,7 +515,7 @@ export function RegularizedFaultsRangeReport() {
             <TableBody>
               {displayed.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={36} className="text-center py-16 text-muted-foreground">
+                   <TableCell colSpan={36} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
                       : repeatedOnly
