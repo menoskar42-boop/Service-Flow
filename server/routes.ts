@@ -9996,6 +9996,7 @@ export async function registerRoutes(
              c138c.current_speed     AS "curMeasCurrentSpeed",
              c138c.max_speed         AS "curMeasMaxSpeed",
              (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
+              mob.m                  AS "mobile",
              -- الوقت الفعلى للشكوى = (الآن − وقت الشكوى) − الوقت الذى قضته على الحالة 135/138
              -- يُحسب من شيت تفاصيل المتبقى (430D) بمطابقة رقم الشكوى: delta = full − except135
              -- لو time_till_now_full فارغ: نقدّر وقت الحالة 135 = (uploaded_at − complain_time) − time_till_now
@@ -10036,6 +10037,28 @@ export async function registerRoutes(
              FROM remaining_complaints rc WHERE rc.complain_no = t.ticket_id
              ORDER BY rc.id DESC LIMIT 1
            ) rcd ON true
+            LEFT JOIN LATERAL (
+              -- رقم الموبايل المسجّل: الأولوية للمُدخل يدوياً ثم أوامر الشغل ثم FTTH.
+              -- المصادر المختلفة قد تخزّن الرقم الكامل أو القصير، لذلك نطابق بالصيغتين.
+              SELECT m FROM (
+                SELECT lm.mobile AS m, 0 AS pr
+                  FROM line_mobiles lm
+                 WHERE lm.full_phone = '88' || t.phone_number
+                UNION ALL
+                SELECT mo.mobile AS m, 1 AS pr
+                  FROM maintenance_orders mo
+                 WHERE mo.phone_number IN (t.phone_number, '88' || t.phone_number)
+                   AND mo.mobile !~ '[A-Za-z=/]' AND mo.mobile ~ '[0-9]{5,}'
+                UNION ALL
+                SELECT fo.customer_mobile AS m, 2 AS pr
+                  FROM ftth_orders_current fo
+                 WHERE fo.service_number IN (t.phone_number, '88' || t.phone_number)
+                   AND fo.customer_mobile !~ '[A-Za-z=/]' AND fo.customer_mobile ~ '[0-9]{5,}'
+              ) mobile_sources
+              WHERE NULLIF(btrim(m), '') IS NOT NULL
+              ORDER BY pr
+              LIMIT 1
+            ) mob ON true
            ${where}
            ORDER BY t.ticket_id, t.id DESC
          ) x

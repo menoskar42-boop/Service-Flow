@@ -50,6 +50,7 @@ interface CurrentFault extends Measurement138 {
   effectiveFaultHours: number | null;
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
+  mobile: string | null;
 }
 
 // مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
@@ -562,6 +563,7 @@ export function CurrentFaultsReport() {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-100 rounded overflow-hidden">
                   {([
                     ["السنترال", repeatFor.centralName],
+                    ["رقم الموبايل", repeatFor.mobile],
                     ["الكابينة", repeatFor.cabinetNo],
                     ["البكس", repeatFor.boxNo],
                     ["الفريم", repeatFor.frame],
