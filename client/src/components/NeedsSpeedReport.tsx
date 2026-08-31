@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, AlertTriangle, Search, EyeOff, Filter } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, X, Gauge, Search, EyeOff, Filter } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { openProfileOptimization } from "@/lib/profile-optimization";
@@ -100,10 +100,12 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // لتقرير «تحتاج إيقاف PO» كمان، فكان المصدر متكتوب ثابت «محتاجة رفع سرعة» — يعنى
   // باتشات إيقاف PO كانت بتتسجّل باسم تقرير غلط (وكمان بتاخد أولوية 1 بالغلط لأن
   // السيرفر بيحدّد الأولوية من نص الـ note). دلوقتى بنشتقّه من الـ endpoint.
+  const [complaintFilter, setComplaintFilter] = useState<"all" | "has" | "none">("all");
   const sourceName =
     endpoint.includes("needs-po-stop") ? "تحتاج إيقاف PO"
     : endpoint.includes("needs-speed-lowscore") ? "اسكور منخفض وسرعة عالية"
-    : requireComplaint ? "محتاجة رفع سرعة (لها شكوى)"
+    : complaintFilter === "has" || requireComplaint ? "محتاجة رفع سرعة (لها شكوى)"
+    : complaintFilter === "none" ? "محتاجة رفع سرعة (ليس لها شكوى)"
     : "محتاجة رفع سرعة";
   useSpeedToolSource(sourceName);
   const [central, setCentral] = useState("");
@@ -122,9 +124,6 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [page, setPage] = useState(1);
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
-  // زر «لها شكوى (داخل/خارج الشاشة)» — يفلتر على الأرقام اللى ليها أى شكوى (مفتوحة على الشاشة أو
-  // مغلقة/مؤرشفة خارجها). متاح فقط على تقرير «الكل» (مش على تاب «لها شكوى» اللى أصلاً مفلتر بالشهر).
-  const [complaintAny, setComplaintAny] = useState(false);
   // كباين مستثناة من التقرير افتراضياً (قرار تشغيلى) — الزر بيرجّعها لما تحتاجها.
   // الفلترة على السيرفر فبتسرى على الجدول والعدّاد وتصدير Excel/PDF مع بعض.
   const [showExcludedCabins, setShowExcludedCabins] = useState(false);
@@ -164,12 +163,14 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (showMeasuredFilter && measuredBefore) params.set("measuredBefore", measuredBefore);
     if (excludeZeroScore && isNeedsSpeed) params.set("excludeZeroScore", "1");
     if (requireComplaint) params.set("requireComplaint", "1");
-    if (complaintAny && !requireComplaint) params.set("requireComplaintAny", "1");
+    if (!requireComplaint && complaintFilter !== "all") {
+      params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
+    }
     return params;
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, search, page, requireComplaint, complaintAny, showExcludedCabins, excludeQueued, excludeZeroScore],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, search, page, requireComplaint, complaintFilter, showExcludedCabins, excludeQueued, excludeZeroScore],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -416,16 +417,25 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 {excludeZeroScore ? "استبعاد اسكور 0 ✓" : "استبعاد اسكور 0"}
               </Button>
             )}
-            {!requireComplaint && endpoint.includes("needs-speed") && (
-              <Button
-                variant={complaintAny ? "default" : "outline"}
-                size="sm"
-                onClick={() => { setComplaintAny((v) => !v); setPage(1); }}
-                className={`gap-1 ${complaintAny ? "bg-purple-600 hover:bg-purple-700 text-white" : "text-purple-700 border-purple-200"}`}
-                title="عرض الأرقام المحتاجة رفع سرعة ولها شكوى (مفتوحة على الشاشة أو مغلقة/مؤرشفة خارجها)"
+            {!requireComplaint && isNeedsSpeed && (
+              <select
+                value={complaintFilter}
+                onChange={(e) => { setComplaintFilter(e.target.value as "all" | "has" | "none"); setPage(1); }}
+                className={`h-9 rounded-md border px-2 text-sm bg-white ${
+                  complaintFilter === "has"
+                    ? "border-purple-300 text-purple-700"
+                    : complaintFilter === "none"
+                      ? "border-orange-300 text-orange-700"
+                      : "border-gray-200 text-gray-700"
+                }`}
+                title="فلترة الأرقام حسب وجود الشكوى"
+                aria-label="فلتر الشكوى"
+                dir="rtl"
               >
-                <AlertTriangle className="w-4 h-4" /> {complaintAny ? "لها شكوى ✓" : "لها شكوى"}
-              </Button>
+                <option value="all">الشكوى: الكل</option>
+                <option value="has">لها شكوى</option>
+                <option value="none">ليس لها شكوى</option>
+              </select>
             )}
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
