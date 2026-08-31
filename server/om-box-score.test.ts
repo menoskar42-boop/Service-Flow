@@ -83,6 +83,7 @@ test("OM report enriches only broken-box rows from latest valid Service-Flow sco
 
   const deleteFixtures = async () => {
     await pool.query(`DELETE FROM case_138 WHERE full_phone = ANY($1::text[])`, [allPhones]);
+    await pool.query(`DELETE FROM line_account_edits WHERE full_phone = ANY($1::text[])`, [allPhones]);
     await pool.query(`DELETE FROM line_accounts WHERE full_phone = ANY($1::text[])`, [allPhones]);
     await pool.query(`DELETE FROM phone_lines WHERE full_phone = ANY($1::text[])`, [allPhones]);
     await pool.query(`DELETE FROM om_responses WHERE serial_number = ANY($1::text[])`, [allSerials]);
@@ -95,7 +96,7 @@ test("OM report enriches only broken-box rows from latest valid Service-Flow sco
     const salt = randomBytes(16).toString("hex");
     const passwordHash = await scryptAsync(testPassword, salt, 64) as Buffer;
     await pool.query(
-      `INSERT INTO users (username, password, role) VALUES ($1, $2, 'sales')`,
+      `INSERT INTO users (username, password, role) VALUES ($1, $2, 'admin')`,
       [testUsername, `${passwordHash.toString("hex")}.${salt}`],
     );
     await pool.query(
@@ -180,6 +181,66 @@ test("OM report enriches only broken-box rows from latest valid Service-Flow sco
     assert.equal(bySerial.get(serials.empty)?.boxMeasuredCount, 0);
     assert.equal(bySerial.get(serials.otherReason)?.boxAvgScore, null);
     assert.equal(bySerial.get(serials.otherReason)?.boxMeasuredCount, 0);
+
+    const fetchMeasuredBox = async () => {
+      const response = await fetch(`${baseUrl}/api/ftth-orders?bucket=current`, {
+        headers: { cookie },
+      });
+      assert.equal(response.status, 200);
+      const reportRows = await response.json() as Array<Record<string, any>>;
+      const measuredRow = reportRows.find((row) => row.serialNumber === serials.measured);
+      assert.ok(measuredRow, "measured order should be present in the report");
+      return measuredRow;
+    };
+
+    // Deleting a line-account link must immediately remove that line from the
+    // cached box aggregate.
+    const deletedLink = await fetch(`${baseUrl}/api/line-accounts/${phones.second}`, {
+      method: "DELETE",
+      headers: { cookie },
+    });
+    assert.equal(deletedLink.status, 200);
+    assert.deepEqual(await deletedLink.json(), { ok: true });
+    const afterIndividualDelete = await fetchMeasuredBox();
+    assert.equal(afterIndividualDelete.boxAvgScore, 90);
+    assert.equal(afterIndividualDelete.boxMeasuredCount, 1);
+
+    // Re-adding the link through the individual endpoint must invalidate the
+    // cache again and restore the line to the aggregate.
+    const restoredLink = await fetch(`${baseUrl}/api/line-accounts/${phones.second}`, {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ accountNo: `restored-account-${phones.second}` }),
+    });
+    assert.equal(restoredLink.status, 200);
+    assert.deepEqual(await restoredLink.json(), { ok: true, restored: false });
+    const afterIndividualRestore = await fetchMeasuredBox();
+    assert.equal(afterIndividualRestore.boxAvgScore, 85);
+    assert.equal(afterIndividualRestore.boxMeasuredCount, 2);
+
+    // Exercise the bulk save path as well: after another deletion, a bulk
+    // insert must not serve the stale one-line aggregate.
+    const deletedAgain = await fetch(`${baseUrl}/api/line-accounts/${phones.second}`, {
+      method: "DELETE",
+      headers: { cookie },
+    });
+    assert.equal(deletedAgain.status, 200);
+    const afterSecondDelete = await fetchMeasuredBox();
+    assert.equal(afterSecondDelete.boxAvgScore, 90);
+    assert.equal(afterSecondDelete.boxMeasuredCount, 1);
+
+    const bulkRestore = await fetch(`${baseUrl}/api/line-accounts/bulk`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        entries: [{ fullPhone: phones.second, accountNo: `bulk-account-${phones.second}` }],
+      }),
+    });
+    assert.equal(bulkRestore.status, 200);
+    assert.deepEqual(await bulkRestore.json(), { ok: true, saved: 1, duplicates: [] });
+    const afterBulkRestore = await fetchMeasuredBox();
+    assert.equal(afterBulkRestore.boxAvgScore, 85);
+    assert.equal(afterBulkRestore.boxMeasuredCount, 2);
 
     // The first report populated the short-lived aggregate cache. A newer
     // Service-Flow measurement must invalidate it before the next report.
