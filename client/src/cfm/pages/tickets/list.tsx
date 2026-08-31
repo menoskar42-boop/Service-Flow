@@ -39,6 +39,8 @@ export default function TicketList() {
   const [activeTab, setActiveTab] = useState("open");   // الافتراضى: المفتوحة
   // فلتر «به متعذرات» — التكتات اللى على بكسها متعذرات «بوكس معطل» (OM أو طلبات)
   const [onlyWithCases, setOnlyWithCases] = useState(false);
+  const [scoreFrom, setScoreFrom] = useState("");
+  const [scoreTo, setScoreTo] = useState("");
   
   // API-fetched data
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -185,6 +187,18 @@ export default function TicketList() {
 
     const matchesSearch = !searchLower || arIncludes(haystack, searchLower);
     if (!matchesSearch) return false;
+
+    if (scoreFrom.trim() || scoreTo.trim()) {
+      const minScore = scoreFrom.trim() ? Number(scoreFrom) : -Infinity;
+      const maxScore = scoreTo.trim() ? Number(scoreTo) : Infinity;
+      if (
+        (!Number.isFinite(minScore) && minScore !== -Infinity) ||
+        (!Number.isFinite(maxScore) && maxScore !== Infinity) ||
+        ticket.boxAvgScore == null ||
+        ticket.boxAvgScore < minScore ||
+        ticket.boxAvgScore > maxScore
+      ) return false;
+    }
 
     // فلتر «به متعذرات»: التكتات اللى على بكسها متعذرات «بوكس معطل» (OM أو طلبات).
     // العدد من بيانات Service-Flow مباشرةً — نفس مصدر عمود «متعذرات» فى الجدول.
@@ -448,6 +462,32 @@ export default function TicketList() {
               className="pl-9 bg-secondary/50 border-transparent focus:bg-background focus:border-input transition-all"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Score من</span>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              placeholder="0"
+              value={scoreFrom}
+              onChange={(e) => setScoreFrom(e.target.value)}
+              className="w-20 bg-secondary/50"
+              aria-label="متوسط Score من"
+            />
+            <span className="text-xs text-muted-foreground">إلى</span>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              placeholder="100"
+              value={scoreTo}
+              onChange={(e) => setScoreTo(e.target.value)}
+              className="w-20 bg-secondary/50"
+              aria-label="متوسط Score إلى"
             />
           </div>
         </div>
