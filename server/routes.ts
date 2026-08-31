@@ -3005,7 +3005,7 @@ export async function registerRoutes(
 
   app.delete(api.users.delete.path, requireAuth, requireUserManager, async (req, res) => {
     try {
-      const userId = parseInt(req.params.id);
+      const userId = parseInt(String(req.params.id));
       const currentUser = req.user as any;
 
       if (userId === currentUser.id) {
@@ -3029,7 +3029,7 @@ export async function registerRoutes(
 
   app.put(api.users.suspend.path, requireAuth, requireUserManager, async (req, res) => {
     try {
-      const userId = parseInt(req.params.id);
+      const userId = parseInt(String(req.params.id));
       const currentUser = req.user as any;
       const { suspended } = req.body;
 
@@ -3055,7 +3055,7 @@ export async function registerRoutes(
   // 🆕 تعيين رقم العامل لمستخدم (للفنيين) — يربط الحساب ببياناته فى التقارير
   app.put(api.users.setWorkerCode.path, requireAuth, requireAdmin, async (req, res) => {
     try {
-      const userId = parseInt(req.params.id);
+      const userId = parseInt(String(req.params.id));
       const currentUser = req.user as any;
       const { workerCode } = req.body;
       const userToEdit = await storage.getUser(userId);
@@ -3114,7 +3114,7 @@ export async function registerRoutes(
   // PUT /api/orders/:id/assign — الأدمن بيعمل assign لطلب قيد الانتظار لفنى محدد (techId=null لإلغاء التعيين)
   app.put("/api/orders/:id/assign", requireAuth, requireAdmin, async (req: any, res) => {
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       const { techId } = req.body;
       const cur = await pool.query(`SELECT id, status FROM orders WHERE id = $1`, [id]);
       if (!cur.rows.length) return res.status(404).json({ message: "Order not found" });
@@ -3315,7 +3315,7 @@ export async function registerRoutes(
     }
 
     try {
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       const input = updateOrderSchema.parse(req.body);
       
       // Determine status
@@ -3382,7 +3382,7 @@ export async function registerRoutes(
       if (!hasAdminAccess(user.role) && user.role !== ROLES.SALES_ADMIN) {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
 
       const existingOrder = await storage.getOrder(id);
       if (!existingOrder) {
@@ -3401,7 +3401,7 @@ export async function registerRoutes(
   app.put(api.orders.updateContractStatus.path, requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
       const { contractStatus } = req.body;
 
       if (contractStatus !== CONTRACT_STATUS.CONTRACTED && contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) {
@@ -3450,7 +3450,7 @@ export async function registerRoutes(
   app.post(api.orders.requestExternalReview.path, requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
 
       if (user.role !== ROLES.SALES && user.role !== ROLES.SALES_ADMIN && !hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only Sales or Admin can request external review" });
@@ -3481,7 +3481,7 @@ export async function registerRoutes(
   app.put(api.orders.externalResponse.path, requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
-      const id = parseInt(req.params.id);
+      const id = parseInt(String(req.params.id));
 
       if (user.role !== ROLES.EXTERNAL && !hasAdminAccess(user.role)) {
         return res.status(403).json({ message: "Only External Affairs can respond to orders" });
