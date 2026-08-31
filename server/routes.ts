@@ -24,7 +24,7 @@ import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
-import { normCab } from "@shared/cab-norm";
+import { normCab, expandBoxes } from "@shared/cab-norm";
 import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
 
 const scryptAsync = promisify(scrypt);
@@ -1247,27 +1247,7 @@ async function maintFetch(path: string): Promise<Response> {
 // تفكيك رقم البكس فى تذاكر Cable Guardian إلى قائمة أرقام بكسات:
 //   "1:15" → من 1 إلى 15 (مدى)   |   "1&15" → [1, 15] (مجموعة)   |   "5" → [5]
 function parseTicketBoxes(boxStr: string | null | undefined): string[] {
-  if (!boxStr) return [];
-  const s = String(boxStr).trim();
-  if (!s) return [];
-  // مدى: 1:15
-  if (s.includes(":")) {
-    const parts = s.split(":").map((x) => parseInt(x.replace(/[^0-9]/g, ""), 10));
-    const [a, b] = parts;
-    if (Number.isFinite(a) && Number.isFinite(b)) {
-      const lo = Math.min(a, b), hi = Math.max(a, b);
-      const out: string[] = [];
-      for (let i = lo; i <= hi && i - lo < 1000; i++) out.push(String(i));
-      return out;
-    }
-  }
-  // مجموعة: 1&15 (أو 1،15 / 1,15)
-  if (/[&،,]/.test(s)) {
-    return s.split(/[&،,]/).map((x) => x.replace(/[^0-9]/g, "")).filter(Boolean);
-  }
-  // بكس واحد
-  const single = s.replace(/[^0-9]/g, "");
-  return single ? [single] : [];
+  return expandBoxes(boxStr);
 }
 
 // توحيد اسم السنترال للمطابقة بين النظامين (إزالة المسافات حول الشرطات)

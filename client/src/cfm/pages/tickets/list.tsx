@@ -312,6 +312,7 @@ export default function TicketList() {
       t.status,
       t.openedBy,
       "متعذرات",
+      "متوسط Score البكسات",
       t.created,
       t.hasWorks,
       t.hasTasks,
@@ -338,6 +339,7 @@ export default function TicketList() {
         t[ticket.status as keyof typeof t] || ticket.status,
         creator,
         pendingCases(ticket, central, cable?.number).total || '',
+        ticket.boxAvgScore ?? '',
         new Date(ticket.createdAt).toLocaleDateString(),
         ticket.works && ticket.works.length > 0 ? t.yes : t.no,
         ticket.usedTasks && ticket.usedTasks.length > 0 ? t.yes : t.no,
@@ -463,6 +465,7 @@ export default function TicketList() {
                 <TableHead className="font-semibold">{t.status}</TableHead>
                 <TableHead className="font-semibold hidden lg:table-cell">{t.openedBy}</TableHead>
                 <TableHead className="font-semibold whitespace-nowrap">متعذرات</TableHead>
+                 <TableHead className="font-semibold whitespace-nowrap">متوسط Score البكسات</TableHead>
                 <TableHead className="font-semibold text-center text-xs px-1">{t.hasWorks}</TableHead>
                 <TableHead className="font-semibold text-center text-xs px-1">{t.hasTasks}</TableHead>
                 <TableHead className="font-semibold text-center text-xs px-1">{t.hasMeasurements}</TableHead>
@@ -474,7 +477,7 @@ export default function TicketList() {
             <TableBody>
               {filteredTickets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={15} className="h-32 text-center text-muted-foreground">
+                   <TableCell colSpan={16} className="h-32 text-center text-muted-foreground">
                     No tickets found.
                   </TableCell>
                 </TableRow>
@@ -522,6 +525,14 @@ export default function TicketList() {
                             </span>
                           : <span className="text-muted-foreground">-</span>}
                       </TableCell>
+                       <TableCell className="whitespace-nowrap text-sm font-mono">
+                         {ticket.boxAvgScore != null
+                           ? <span className="rounded bg-blue-100 px-2 py-0.5 text-blue-800 font-medium"
+                                   title={`${ticket.boxMeasuredLines ?? 0} خط مقاس على بكسيات التذكرة`}>
+                               {ticket.boxAvgScore.toLocaleString('ar-EG', { maximumFractionDigits: 1 })}
+                             </span>
+                           : <span className="text-muted-foreground">-</span>}
+                       </TableCell>
                       <TableCell className="text-center">
                         {(ticket.works?.length ?? 0) > 0 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-muted-foreground">-</span>}
                       </TableCell>

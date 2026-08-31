@@ -150,6 +150,8 @@ export interface Ticket {
   works?: WorkEntry[];
   usedTasks?: UsedTaskEntry[];
   measurements?: MeasurementEntry[];
+  boxAvgScore?: number | null;
+  boxMeasuredLines?: number;
 }
 
 export interface InventoryTransaction {

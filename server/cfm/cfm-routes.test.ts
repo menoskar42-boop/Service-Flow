@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import type { Express } from "express";
-import { registerCfmRoutes } from "./routes";
+import { calculateTicketBoxScore, registerCfmRoutes } from "./routes";
 import { storage } from "./storage";
+import { boxKey } from "@shared/cab-norm";
 
 type RouteHandler = (req: any, res: any, next?: (error?: unknown) => void) => unknown;
 type RegisteredRoute = {
@@ -166,4 +167,27 @@ test("task route accepts valid items and creates matching inventory transactions
     performedBy: "technician-1",
     createdBy: "cfm-user-1",
   });
+});
+
+test("ticket box score averages unique measured lines across wildcard box lists", () => {
+  const scoreLines = new Map([
+    [boxKey("Central A", "7", "2"), [
+      { fullPhone: "p-1", score: 10 },
+      { fullPhone: "p-2", score: 30 },
+      { fullPhone: "p-invalid", score: 101 },
+    ]],
+    [boxKey("Central A", "7", "6"), [
+      { fullPhone: "p-1", score: 10 },
+      { fullPhone: "p-3", score: null },
+    ]],
+  ]);
+
+  assert.deepEqual(
+    calculateTicketBoxScore({
+      central: { name: "Central A" },
+      cable: { number: "7" },
+      box: "2*6",
+    }, scoreLines),
+    { averageScore: 20, measuredLines: 2 },
+  );
 });

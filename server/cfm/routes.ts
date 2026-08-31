@@ -10,6 +10,7 @@ import bcrypt from "bcryptjs";  // نسخة JS خالصة — تتحقق من ه
 import { storage } from "./storage";
 import { pool } from "../db";
 import { findOpenTicketCoveringCableBox } from "../box-fault-ticket";
+import { boxKey, expandBoxes } from "@shared/cab-norm";
 import {
   insertCfmUserSchema as insertUserSchema,
   insertCentralSchema,
@@ -36,6 +37,95 @@ declare module "express-session" {
 function sanitizeUser(user: User) {
   const { password, ...userWithoutPassword } = user;
   return userWithoutPassword;
+}
+
+type TicketBoxScoreLine = {
+  fullPhone: string;
+  score: number | null;
+};
+
+let ticketBoxScoreCache: {
+  at: number;
+  boxes: Map<string, TicketBoxScoreLine[]>;
+} | null = null;
+
+async function getTicketBoxScoreLines(): Promise<Map<string, TicketBoxScoreLine[]>> {
+  const now = Date.now();
+  if (ticketBoxScoreCache && now - ticketBoxScoreCache.at < 60_000) {
+    return ticketBoxScoreCache.boxes;
+  }
+
+  const { rows } = await pool.query(`
+    SELECT
+      pl.central,
+      pl.cabin_number,
+      pl.box_number,
+      pl.full_phone,
+      latest.score
+    FROM line_accounts la
+    JOIN phone_lines pl ON pl.full_phone = la.full_phone
+    LEFT JOIN LATERAL (
+      SELECT c.score
+      FROM case_138 c
+      WHERE c.full_phone = la.full_phone
+      ORDER BY c.id DESC
+      LIMIT 1
+    ) latest ON true
+  `);
+
+  const boxes = new Map<string, TicketBoxScoreLine[]>();
+  for (const row of rows) {
+    const key = boxKey(row.central, row.cabin_number, row.box_number);
+    if (!key.endsWith("|")) {
+      const lines = boxes.get(key) ?? [];
+      lines.push({
+        fullPhone: String(row.full_phone ?? "").trim(),
+        score: row.score == null ? null : Number(row.score),
+      });
+      boxes.set(key, lines);
+    }
+  }
+
+  ticketBoxScoreCache = { at: now, boxes };
+  return boxes;
+}
+
+export function calculateTicketBoxScore(
+  ticket: any,
+  scoreLines: Map<string, TicketBoxScoreLine[]>,
+) {
+  const central = ticket?.central?.name ?? ticket?.centralDepartment;
+  const cabinet = ticket?.cable?.number ?? ticket?.cabinet;
+  const seenPhones = new Set<string>();
+  let sum = 0;
+  let measured = 0;
+
+  for (const box of expandBoxes(ticket?.box)) {
+    const key = boxKey(central, cabinet, box);
+    for (const line of scoreLines.get(key) ?? []) {
+      const phoneKey = line.fullPhone || `${key}|${measured}`;
+      if (seenPhones.has(phoneKey)) continue;
+      seenPhones.add(phoneKey);
+      if (line.score != null && Number.isFinite(line.score) && line.score <= 100) {
+        sum += line.score;
+        measured++;
+      }
+    }
+  }
+
+  return {
+    averageScore: measured > 0 ? Math.round((sum / measured) * 10) / 10 : null,
+    measuredLines: measured,
+  };
+}
+
+function enrichTicketWithBoxScore(ticket: any, scoreLines: Map<string, TicketBoxScoreLine[]>) {
+  const score = calculateTicketBoxScore(ticket, scoreLines);
+  return {
+    ...ticket,
+    boxAvgScore: score.averageScore,
+    boxMeasuredLines: score.measuredLines,
+  };
 }
 
 // الجلسة كانت بتخزّن صورة كاملة من المستخدم — تنزيل رتبة/إيقاف/حذف حساب ماكانش
@@ -787,7 +877,13 @@ export function registerCfmRoutes(app: Express) {
   app.get("/api/cfm/tickets", requireAuth, async (req, res) => {
     try {
       const tickets = await storage.getAllTickets();
-      res.json(tickets.map(sanitizeTicket));
+      let scoreLines = new Map<string, TicketBoxScoreLine[]>();
+      try {
+        scoreLines = await getTicketBoxScoreLines();
+      } catch (error) {
+        console.error("Get ticket box scores error:", error);
+      }
+      res.json(tickets.map((ticket) => sanitizeTicket(enrichTicketWithBoxScore(ticket, scoreLines))));
     } catch (error) {
       console.error("Get tickets error:", error);
       res.status(500).json({ error: "Internal server error" });
