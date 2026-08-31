@@ -48,6 +48,12 @@ export function LineDetailsDialog({
   const l = data?.found ? data.line : null;
   const closes = hist?.history ?? [];
 
+  const handleClose = (e?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    onClose();
+  };
+
   const Row = ({ k, v }: { k: string; v: any }) => (
     <div className="flex gap-2 py-1.5 border-b last:border-0">
       <span className="text-muted-foreground w-32 shrink-0 text-xs">{k}</span>
@@ -56,14 +62,20 @@ export function LineDetailsDialog({
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-black/50 flex items-start justify-center p-3 overflow-auto" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[9999] bg-black/50 flex items-start justify-center p-3 overflow-auto"
+      onClick={(e) => { if (e.target === e.currentTarget) handleClose(e); }}
+      onPointerDown={(e) => { if (e.target === e.currentTarget) handleClose(e); }}
+    >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl my-8" dir="rtl" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-2 border-b bg-blue-50">
           <h3 className="font-bold text-sm">تفاصيل الخط — <bdi dir="ltr">{phone}</bdi></h3>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            className="text-muted-foreground hover:text-foreground"
+            onPointerDown={handleClose}
+            onMouseDown={handleClose}
+            onClick={handleClose}
+            className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
             aria-label="إغلاق تفاصيل الخط"
             title="إغلاق"
           >
