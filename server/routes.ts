@@ -10122,8 +10122,22 @@ export async function registerRoutes(
   // المصدر 2: remaining_complaints (شيت المتبقى) — فقط status_code 138 و 135 منتظمة.
   app.get("/api/reports/regularized-faults-range", requireAuth, async (req, res) => {
     try {
-      const { central = "", q = "", dateFrom = "", dateTo = "" } =
+      const { central = "", q = "", dateFrom = "", dateTo = "", measuredBefore = "" } =
         req.query as Record<string, string>;
+      const isTech = req.user?.role === ROLES.TECH;
+      // التاريخ الافتراضى هو الشهر الحالى بتوقيت القاهرة. للفنى نثبت الشهر الحالى
+      // على السيرفر أيضاً حتى لا يستطيع تغيير النطاق من خلال الطلب مباشرة.
+      const cairoParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Africa/Cairo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
+      const cairoPart = (type: string) => cairoParts.find((p) => p.type === type)?.value || "";
+      const cairoToday = `${cairoPart("year")}-${cairoPart("month")}-${cairoPart("day")}`;
+      const defaultFrom = `${cairoToday.slice(0, 8)}01`;
+      const from = isTech ? defaultFrom : (dateFrom || defaultFrom);
+      const to = isTech ? cairoToday : (dateTo || cairoToday);
       const params: any[] = [];
 
       // نبنى شرطين منفصلين بنفس أرقام البارامترات — يُشاركان $1..$n فى الـ UNION
@@ -10156,6 +10170,13 @@ export async function registerRoutes(
         const p = `$${params.length}`;
         cdConds.push(`(${n("cd.phone_number")} LIKE ${p} OR ${n("cd.cabinet_no")} LIKE ${p} OR ${n("cd.close_code")} LIKE ${p} OR ${n("pl.box_number")} LIKE ${p})`);
         rcConds.push(`(${n("rc.phone_number")} LIKE ${p} OR ${n("rc.cabinet_no")} LIKE ${p} OR ${n("rc.status_code")} LIKE ${p})`);
+      }
+      // مطابق لفلتر «استبعد القياس بعد» فى تقرير محتاجة رفع سرعة:
+      // نُبقى الخطوط التى لم تُقَس أو كان آخر قياس لها قبل/عند التاريخ المحدد.
+      if (measuredBefore) {
+        params.push(measuredBefore);
+        cdConds.push(`(c138p.uploaded_at IS NULL OR (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`);
+        rcConds.push(`(rc138p.uploaded_at IS NULL OR (rc138p.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`);
       }
       // نفس زر «استبعاد اللى فى الطابور» الموجود فى تقارير القياسات:
       // استبعاد الرقم لو له أى مهمة قياس/رفع سرعة/إيقاف داخل باتش ما زال نشطاً.
@@ -10401,16 +10422,26 @@ export async function registerRoutes(
       const cdCentral = central ? `AND cd.exchange_name = ${centralParam}` : "";
       const rcCentral = central ? `AND rc.exchange_name = ${centralParam}` : "";
       const phoneQ = q.trim() ? `AND ${n("lc.phone")} LIKE ${qParam}` : "";
-      // الفني يرى خطوطه فقط. نربط مباشرة بكود العامل الموجود فى حسابه مع
-      // كود الفني المسند للكابينة، بدل الاعتماد على تحويل الكود إلى اسم ثم
-      // مقارنته — لأن الاسم قد يتغير أو توجد مسافات/اختلافات فى كتابته.
       let techClause = "";
-      if (req.user?.role === ROLES.TECH) {
+      if (isTech) {
         const workerCode = String(req.user.workerCode || "").trim();
         // عدم وجود كود مربوط لا يعنى عرض كل البيانات للفنى.
         if (!workerCode) return res.json([]);
-        params.push(workerCode);
-        techClause = ` AND btrim(COALESCE(ct.worker_code, '')) = btrim($${params.length})`;
+        const { rows: techRows } = await pool.query(
+          `SELECT tech_name FROM technician_names WHERE worker_code = $1 LIMIT 1`,
+          [workerCode],
+        );
+        const techName = String(techRows[0]?.tech_name || "").trim();
+        if (!techName) return res.json([]);
+        params.push(techName);
+        // التصفية تعتمد على فنى المنطقة الفعلى فى يوم الشكوى، مع دعم فنى التغطية
+        // أثناء الوردية من خلال areaTechSql.
+        techClause = ` AND btrim(COALESCE(${areaTechSql(
+          "COALESCE(pl.central, qual.central)",
+          "COALESCE(pl.cabin_number, qual.cabinet)",
+          "qual.last_time",
+          "qual.phone",
+        )}, '')) = btrim($${params.length})`;
       }
 
       const { rows } = await pool.query(
