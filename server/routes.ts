@@ -2083,10 +2083,16 @@ export async function registerRoutes(
   // حسب created_at)، بدل ما تتلغى. المهام المنتظرة الأخرى تفضل زى ما هى ويكمّلها الجهاز.
   app.post("/api/exec-queue/reset-orphaned", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {
-      // نزوّد attempts هنا كمان — الاسترجاع اليدوى ده إعادة محاولة برضه، فلو مهمة فضلت
-      // تعلق كل مرة تتحسب صح وتتلغى فى النهاية بدل ما تلفّ فى الطابور للأبد.
-      const { rowCount } = await pool.query(`UPDATE exec_jobs SET status = 'pending', claimed_at = NULL, attempts = attempts + 1 WHERE status = 'claimed'`);
-      res.json({ ok: true, requeued: rowCount ?? 0 });
+      // ⚠️ بيتنادى مع **كل** فتح/ريفريش لتاب جهاز التنفيذ. كان بيرجّع كل مهمة
+      // status='claimed' ويزوّد attempts من غير أى شرط وقت — يعنى أى ريفريش
+      // بيحرق محاولة على المهمة اللى **لسه شغّالة**. المهام الطويلة (تحديث
+      // الملفات اليومية/البورتات: 30 دقيقة) بتحرق محاولاتها التلاتة فى تلات
+      // ريفريشات وتتلغى (stale) — فتحديث الملفات كل نص ساعة بيقف خالص.
+      // (اتأكد بالتجربة: 4 ريفريشات → attempts = 4 والمهمة اتلغت.)
+      // العلاج: نفس قواعد الإنقاذ التلقائى — مهلة لكل نوع — فالمهمة الشغّالة
+      // مابتتلمسش، واللى ماتت فعلاً بترجع فى ميعادها.
+      const requeued = await expireOrphanedExecJobs();
+      res.json({ ok: true, requeued });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
@@ -2504,7 +2510,8 @@ export async function registerRoutes(
     }
   };
 
-  const expireOrphanedExecJobs = async () => {
+  const expireOrphanedExecJobs = async (): Promise<number> => {
+    let requeued = 0;
     try {
       // المهمة بتعلق فى claimed لما التاب يتقفل أو التنفيذ يفشل من غير ما يبعت /done.
       // من غير علاج بتفضل claimed للأبد فتعمل تلات مشاكل:
@@ -2546,7 +2553,7 @@ export async function registerRoutes(
         WHEN e.type IN ('c360','wfmreport')    THEN interval '45 minutes'
         WHEN e.type = 'measure'                THEN interval '5 minutes'
         ELSE interval '20 minutes' END)`;
-      await pool.query(
+      const requeuedRes = await pool.query(
         `UPDATE exec_jobs e
             SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1
           WHERE e.status = 'claimed'
@@ -2563,6 +2570,7 @@ export async function registerRoutes(
             )`,
         [MAX_ATTEMPTS, LONG_TYPES],
       );
+      requeued = requeuedRes.rowCount ?? 0;
 
       // (3) استنفدت المحاولات ولسه عالقة → نعلّمها stale بنتيجة واضحة تظهر فى تقرير
       //     الباتشات (بدل ما تختفى من غير سبب).
@@ -2583,6 +2591,7 @@ export async function registerRoutes(
          WHERE status = 'claimed' AND claimed_at < now() - interval '6 hours'`,
       );
     } catch { /* تنظيف إضافى — لو فشل نكمّل عادى */ }
+    return requeued;
   };
 
   // كام رقم اتنفّذ فعلاً من مهمة (بعد بدء تنفيذها claimed_at):
