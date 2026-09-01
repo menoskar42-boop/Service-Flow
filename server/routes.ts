@@ -11845,7 +11845,8 @@ export async function registerRoutes(
   });
 
   // GET /api/reports/combined-stats — إحصائيات الأعطال الإجمالية
-  // = (الأعطال المغلقة complaint_details) + (الأعطال المفتوحة remaining_complaints 135/138)
+  // = (الأعطال المغلقة complaint_details) + (remaining_complaints بحالات 135/138)
+  // ويُطبَّق نطاق التاريخ على تاريخ الشكوى complain_time فى المصدرين.
   // النِسب تُحسب على إجمالى الأعطال مجتمعة. ?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD
   app.get("/api/reports/combined-stats", requireAuth, async (req, res) => {
     try {
@@ -11873,11 +11874,10 @@ export async function registerRoutes(
           -- الأعطال المتبقية (135/138): تُقرأ من الجدول التاريخى الدائم remaining_complaints
           -- (وليس _current المتطاير) حتى لا تختفى الأعطال المُزالة عند رفع ملف 430D أحدث.
           SELECT rc.complain_no, rc.exchange_name, rc.complain_time, rc.close_time, rc.close_by, rc.cabinet_no,
-                 rc.phone_number, (FLOOR(rc.status_code::numeric)::int = 135 AND rc.close_time IS NULL) AS is_open, rc.time_till_now, 2 AS pr
+                 rc.phone_number, (rc.close_time IS NULL) AS is_open, rc.time_till_now, 2 AS pr
           FROM remaining_complaints rc
           WHERE rc.exchange_name ILIKE '%غنايم%'
             AND FLOOR(rc.status_code::numeric)::int IN (135, 138)
-            AND (FLOOR(rc.status_code::numeric)::int = 135 OR rc.close_time IS NOT NULL)
         ),
         -- إزالة التكرار بمفتاح رقم الشكوى — تفضيل السجل المغلق (pr=1) على المتبقى (pr=2)
         src AS (
