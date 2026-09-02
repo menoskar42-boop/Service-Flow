@@ -48,6 +48,54 @@ const WEOAS_URL = "https://we-oas.te.eg/bi-security-login/login.jsp?msi=false&mt
 // والاسم الثابت بيمنع تراكم التابات لو حصل فتح متتالى على نفس الموقع.
 // (subinfo استثناء: سكربت FCC بيقرأ الرقم من اسم النافذة نفسه.)
 const PROV_TAB = "sf_prov", WFM_TAB = "sf_wfm", C360_TAB = "sf_c360";
+const RESERVED_OP_WINDOWS = new Map<ExecJobType, Window>();
+
+const opTabName = (type: ExecJobType): string | null => {
+  switch (type) {
+    case "c360": return "sf_exec_reserved_c360";
+    case "portchange":
+    case "portcheck":
+    case "ports": return "sf_exec_reserved_ports";
+    case "wfmcancel":
+    case "wfmreport":
+    case "wfmdaily": return "sf_exec_reserved_wfm";
+    case "fccdaily": return "sf_exec_reserved_fcc";
+    case "ossdaily": return "sf_exec_reserved_oss";
+    case "weoas": return "sf_exec_reserved_430d";
+    default: return null;
+  }
+};
+
+// يحجز تاباً داخل ضغطة المستخدم. جهاز التنفيذ يستهلكه لاحقاً عند سحب المهمة،
+// فيتجنب حجب popup الناتج عن window.open بعد await.
+export function reserveOpWindow(type: ExecJobType): Window | null {
+  const name = opTabName(type);
+  if (!name) return null;
+  try {
+    const previous = RESERVED_OP_WINDOWS.get(type);
+    if (previous && !previous.closed) previous.close();
+    const win = window.open("about:blank", name);
+    if (win) RESERVED_OP_WINDOWS.set(type, win);
+    return win;
+  } catch { return null; }
+}
+
+function takeReservedOpWindow(type: ExecJobType): Window | null {
+  const win = RESERVED_OP_WINDOWS.get(type) || null;
+  RESERVED_OP_WINDOWS.delete(type);
+  if (!win || win.closed) return null;
+  return win;
+}
+
+function openUrl(url: string, target: string, existing?: Window | null): Window | null {
+  try {
+    if (existing && !existing.closed) {
+      existing.location.href = url;
+      return existing;
+    }
+  } catch {}
+  return window.open(url, target);
+}
 
 // سكربت FCC بيقرا الرقم المطلوب من اسم النافذة (window.name = "sf_subinfo_one:<رقم>")،
 // والهاش للتوضيح بس. نفس اللى بيعمله زر «مراجعة» لما بينفّذ محلياً.
@@ -65,39 +113,39 @@ const DZS_MEASURE_TARGET = "dzs_measure";
 
 // فتح موقع العملية للأنواع «الجديدة» (كل واحدة على دومينها). بترجّع التاب عشان جهاز التنفيذ
 // يعرف إنه اتقفل (= خلص) — القفل هو الإشارة الأساسية، والأثر فى قاعدة البيانات إشارة إضافية.
-export function openOpSite(type: ExecJobType, key: string, params?: ExecJobParams | null): Window | null {
+export function openOpSite(type: ExecJobType, key: string, params?: ExecJobParams | null, existing?: Window | null): Window | null {
   const k = String(key ?? "").trim();
   const short = k.replace(/\D/g, "").replace(/^88/, ""); // الرقم القصير (بدون 88) للبوابات
   switch (type) {
     case "c360":
       // الأرقام بتتبعت كلها فى الهاش — السكربت بيلفّ عليها جوّه نفس التاب (تسجيل دخول واحد).
-      return window.open(`${C360_URL}#sf_phones=${encodeURIComponent(k)}`, C360_TAB);
+      return openUrl(`${C360_URL}#sf_phones=${encodeURIComponent(k)}`, C360_TAB, existing);
     case "portchange": {
       const qs = new URLSearchParams({
         sf_msan: "1", old: String(params?.old || ""), new: String(params?.new || ""),
         phone: short, area: "88", pt: String(params?.pt || "SV"), sp: String(params?.sp || "WE30"),
       });
-      return window.open(`${PROV_URL}?${qs.toString()}#/login`, PROV_TAB);
+      return openUrl(`${PROV_URL}?${qs.toString()}#/login`, PROV_TAB, existing);
     }
     case "portcheck": {
       const qs = new URLSearchParams({ sf_pcheck: "1", phone: short, old: String(params?.old || ""), pt: String(params?.pt || "SV") });
-      return window.open(`${PROV_URL}?${qs.toString()}#/login`, PROV_TAB);
+      return openUrl(`${PROV_URL}?${qs.toString()}#/login`, PROV_TAB, existing);
     }
     case "ports":
-      return window.open(`${PROV_URL}?sf_ports=1#/login`, PROV_TAB);
+      return openUrl(`${PROV_URL}?sf_ports=1#/login`, PROV_TAB, existing);
     case "wfmcancel": {
       // من WFM العادى: السكربت بيدخل Dispatcher ← Tasks Queue ← يبحث بالرقم.
       // sf_mode بيحدّد البند: cancel أو reassign، وsf_worker كود العامل للإسناد.
       const mode = String(params?.mode || "cancel");
       const w = String(params?.worker || "").trim();
       const extra = "&sf_mode=" + encodeURIComponent(mode) + (w ? "&sf_worker=" + encodeURIComponent(w) : "");
-      return window.open(`${WFM_HOME_URL}#sf_cancel=${encodeURIComponent(short)}${extra}`, WFM_TAB);
+      return openUrl(`${WFM_HOME_URL}#sf_cancel=${encodeURIComponent(short)}${extra}`, WFM_TAB, existing);
     }
-    case "wfmreport":  return window.open(WFM_REPORTS_URL, WFM_TAB);
-    case "wfmdaily":   return window.open(WFM_LOGIN_URL, WFM_TAB);
-    case "fccdaily":   return window.open(FCC_URL, "fcc_daily");
-    case "ossdaily":   return window.open(OSS_URL, "oss_daily");
-    case "weoas":      return window.open(WEOAS_URL, "weoas_430d");
+    case "wfmreport":  return openUrl(WFM_REPORTS_URL, WFM_TAB, existing);
+    case "wfmdaily":   return openUrl(WFM_LOGIN_URL, WFM_TAB, existing);
+    case "fccdaily":  return openUrl(FCC_URL, "fcc_daily", existing);
+    case "ossdaily":  return openUrl(OSS_URL, "oss_daily", existing);
+    case "weoas":     return openUrl(WEOAS_URL, "weoas_430d", existing);
     default: return null;
   }
 }
@@ -123,7 +171,7 @@ export function executeBatch(type: ExecJobType, accounts: (string | number)[], o
   // العمليات الجديدة: c360 بياخد كل الأرقام مرة واحدة، والباقى رقم واحد لكل مهمة.
   if (type === "c360") return openOpSite("c360", accs.join(","));
   if (type !== "measure" && type !== "raise" && type !== "stop" && type !== "subinfo") {
-    return openOpSite(type, accs[0], opts?.params);
+    return openOpSite(type, accs[0], opts?.params, takeReservedOpWindow(type));
   }
   // المراجعة بتتعمل رقم-رقم (سكربت FCC بياخد رقم واحد فى النافذة)، والطابور أصلاً بيقسّم
   // كل طلب لمهمة لكل رقم، فالمصفوفة هنا بتبقى رقم واحد.

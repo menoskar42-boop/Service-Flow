@@ -12,8 +12,7 @@ import { ROLES } from "@shared/schema";
 import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
-import { runDailyUpdate as runDailyUpdateLib } from "@/lib/daily-update";
-import { openOpSite } from "@/lib/exec-queue";
+import { runDailyUpdate as runDailyUpdateLib, runManualSiteUpdate } from "@/lib/daily-update";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -428,16 +427,14 @@ export function FileUploadSection() {
   // (DailyAutoRefresh) بيشتغل على أى تاب — مش بس وإنت فى قسم رفع الملفات.
   const runDailyUpdate = () => runDailyUpdateLib(uploadTimesRef.current, { manual: true });
 
-  // الضغط اليدوى على «تحديث منافذ MSAN» و«430D» يفتح البوابة فوراً داخل ضغطة المستخدم
-  // حتى لا يحجبها المتصفح؛ التشغيل التلقائى من DailyAutoRefresh هو الذى يمر بالطابور.
+  // الضغط اليدوى والتشغيل التلقائى يمران بطابور التنفيذ حتى لا يتعارض موقع مع مهمة
+  // أخرى على نفس الدومين؛ الضغط اليدوى يحجز نافذة مسبقاً لتفادى حجب popup.
   const runPortsCapture = () => {
-    // افتح التاب داخل ضغطة المستخدم؛ الانتظار قبل window.open كان يسبب حجب النافذة.
+    runManualSiteUpdate("ports");
     fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
-    openOpSite("ports", "");
   };
   const run430D = () => {
-    // 430D تشغيل يدوى مباشر لتفادي حجب popup بعد await. التشغيل الدورى له مسار الطابور.
-    openOpSite("weoas", "");
+    runManualSiteUpdate("weoas");
   };
 
   // زر «التحديث كل نص ساعة»: بيقلب العلامة فى localStorage ويبلّغ المكوّن الخلفى (نفس التاب)
