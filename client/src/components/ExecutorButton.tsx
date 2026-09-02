@@ -491,10 +491,6 @@ export function ExecutorButton() {
         .then((r) => r.json()).then((d) => setPending(d?.pending ?? 0)).catch(() => {});
     };
 
-    // الصوت الصامت + قفل الشاشة: بيمنعوا المتصفح من تجميد التاب أو خنق مؤقتاته
-    const stopAudio = startSilentKeepAlive();
-    const stopWake = startWakeLock();
-
     heartbeat(); refreshPending();
     const hb = setInterval(heartbeat, 20 * 1000);
     const poll = setInterval(() => { claimAndRun(); refreshPending(); }, 4 * 1000);
@@ -505,7 +501,6 @@ export function ExecutorButton() {
       window.removeEventListener("focus", onWake);
       window.removeEventListener("online", onWake);
       document.removeEventListener("resume", onWake as any);
-      stopAudio(); stopWake();
       // امسح النبضة عند إيقاف التفعيل/مغادرة الصفحة عشان مايفضلش «مفعّل» بالغلط
       fetch("/api/exec-queue/offline", { method: "POST", credentials: "include" }).catch(() => {});
     };

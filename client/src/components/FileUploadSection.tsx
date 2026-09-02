@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import { Upload, Loader2, Wrench, PhoneCall, FileSearch, Wifi, Gauge, Network, ClipboardList, Users, RefreshCw, BarChart3, Clock } from "lucide-react";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 import { runDailyUpdate as runDailyUpdateLib } from "@/lib/daily-update";
-import { dispatchSpeedTool, openOpSite, SITE_WIDE_KEY } from "@/lib/exec-queue";
+import { openOpSite } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -426,17 +426,17 @@ export function FileUploadSection() {
   // ─── «حدّث التقارير اليومية» (زر يدوى) ─────────────────────────────────────────
   // المنطق اتنقل لـ lib/daily-update. المؤقّت التلقائى كل نص ساعة اتنقل لمكوّن خلفى
   // (DailyAutoRefresh) بيشتغل على أى تاب — مش بس وإنت فى قسم رفع الملفات.
-  const runDailyUpdate = () => runDailyUpdateLib(uploadTimesRef.current);
+  const runDailyUpdate = () => runDailyUpdateLib(uploadTimesRef.current, { manual: true });
 
-  // «تحديث منافذ MSAN» و«430D» بيمرّوا بطابور التنفيذ: بوابة البروفيجن مسار واحد مع تغيير/تحديث
-  // البورت (مايفتحوش مع بعض)، وWE OAS مسار مستقل. لو مفيش جهاز تنفيذ مفعّل → فتح محلى زى الأول.
-  const runPortsCapture = async () => {
-    await fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
-    if (await dispatchSpeedTool("ports", [SITE_WIDE_KEY], true)) return;
+  // الضغط اليدوى على «تحديث منافذ MSAN» و«430D» يفتح البوابة فوراً داخل ضغطة المستخدم
+  // حتى لا يحجبها المتصفح؛ التشغيل التلقائى من DailyAutoRefresh هو الذى يمر بالطابور.
+  const runPortsCapture = () => {
+    // افتح التاب داخل ضغطة المستخدم؛ الانتظار قبل window.open كان يسبب حجب النافذة.
+    fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
     openOpSite("ports", "");
   };
-  const run430D = async () => {
-    if (await dispatchSpeedTool("weoas", [SITE_WIDE_KEY], true)) return;
+  const run430D = () => {
+    // 430D تشغيل يدوى مباشر لتفادي حجب popup بعد await. التشغيل الدورى له مسار الطابور.
     openOpSite("weoas", "");
   };
 

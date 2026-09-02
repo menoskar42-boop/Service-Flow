@@ -1,8 +1,8 @@
 // ============================================================================
 // client/src/lib/daily-update.ts
 // «حدّث التقارير اليومية»: يفتح FCC + WFM + OSS، وبورتال البورتات (بشرط تعدّى 7:45
-// وإن البورتات ماتحدّثتش بعد 7:45 النهارده). يُستدعى من الزر اليدوى ومن المؤقّت الخلفى
-// (DailyAutoRefresh) — نفس المنطق فى مكان واحد.
+// وإن البورتات ماتحدّثتش بعد 7:45 النهارده). التشغيل اليدوى يفتح المواقع داخل ضغطة الزر
+// حتى لا يمنع المتصفح النوافذ المنبثقة؛ المؤقّت الخلفى يستخدم الطابور على جهاز التنفيذ.
 // ============================================================================
 import { dispatchSpeedTool, openOpSite, SITE_WIDE_KEY, type ExecJobType } from "./exec-queue";
 
@@ -22,16 +22,26 @@ async function queueOrOpen(type: ExecJobType): Promise<void> {
   openOpSite(type, "");
 }
 
-export function runDailyUpdate(uploadTimes: Record<string, string | null> | undefined) {
+export function runDailyUpdate(
+  uploadTimes: Record<string, string | null> | undefined,
+  opts?: { manual?: boolean },
+) {
   // FCC + WFM + OSS — تابات بأسماء ثابتة تُعاد استخدامها (مفيش تكديس)
   fetch("/api/fcc-export/arm", { method: "POST", credentials: "include" }).catch(() => {});
-  void queueOrOpen("fccdaily");
-  void queueOrOpen("wfmdaily");
-  void queueOrOpen("ossdaily");
-
-  // 430D (WE OAS BI): نفس لينك زر «430D» بالظبط — سكربت Tampermonkey بيسجّل الدخول
-  // ويشغّل التفاصيل + المتبقى وينزّلهم ثم يقفل التاب. تاب باسم ثابت (مفيش تكديس).
-  void queueOrOpen("weoas");
+  if (opts?.manual) {
+    // لازم تكون الاستدعاءات متزامنة مع onClick؛ أى await قبل window.open يجعل Chrome/Edge يحجب التاب.
+    openOpSite("fccdaily", "");
+    openOpSite("wfmdaily", "");
+    openOpSite("ossdaily", "");
+    // 430D (WE OAS BI): نفس لينك زر «430D» بالظبط — سكربت Tampermonkey بيسجّل الدخول
+    // ويشغّل التفاصيل + المتبقى ثم يقفل التاب.
+    openOpSite("weoas", "");
+  } else {
+    void queueOrOpen("fccdaily");
+    void queueOrOpen("wfmdaily");
+    void queueOrOpen("ossdaily");
+    void queueOrOpen("weoas");
+  }
 
   // بورتال منافذ MSAN: مرة واحدة يومياً بعد 7:45 (المصدر بيتحدّث حوالى 8 إلا ربع)
   const today = cairoDay(new Date());
@@ -46,6 +56,7 @@ export function runDailyUpdate(uploadTimes: Record<string, string | null> | unde
   const nowAfterThreshold = cairoMinOfDay(new Date()) >= PORTS_THRESHOLD_MIN;
   if (queryLoaded && nowAfterThreshold && !portsDoneToday) {
     fetch("/api/ports-auto/arm", { method: "POST", credentials: "include" }).catch(() => {});
-    void queueOrOpen("ports");
+    if (opts?.manual) openOpSite("ports", "");
+    else void queueOrOpen("ports");
   }
 }
