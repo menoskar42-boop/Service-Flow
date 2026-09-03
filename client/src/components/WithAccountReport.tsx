@@ -423,10 +423,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
                 {staleOn && data.grandTotal != null && data.grandTotal !== data.total && (
                   <span className="text-purple-600"> {" "}(من إجمالى {data.grandTotal.toLocaleString("ar-EG")} — بعد فلتر «أقدم من {staleDays} يوم»)</span>
                 )}
-                {/* الأرقام اللى فى طابور القياس دلوقتى بتتشال من النتيجة عشان مايتقاسش
-                    نفس الرقم مرتين — بنقول للمستخدم اتشال كام. */}
+                {/* الأرقام اللى فى طابور التنفيذ دلوقتى بتتشال من النتيجة عشان مايتكررش
+                    نفس الشغل — بنقول للمستخدم اتشال كام. */}
                 {!!data.queuedExcluded && (
-                  <span className="text-amber-700"> {" "}— مستبعَد {data.queuedExcluded.toLocaleString("ar-EG")} رقم موجود فى طابور القياس</span>
+                  <span className="text-amber-700"> {" "}— مستبعَد {data.queuedExcluded.toLocaleString("ar-EG")} رقم موجود فى طابور التنفيذ</span>
                 )}
               </p>
             )}
