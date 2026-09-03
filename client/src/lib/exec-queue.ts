@@ -74,11 +74,17 @@ export function reserveOpWindow(type: ExecJobType): Window | null {
   try {
     const previous = RESERVED_OP_WINDOWS.get(type);
     if (previous && !previous.closed) previous.close();
-    // 430D كان يترك التاب على about:blank إلى أن يسحب جهاز التنفيذ المهمة.
-    // لو كان الجهاز الآخر متأخراً/غير متاح، المستخدم يظل أمام صفحة بيضاء.
+    // التقارير اليومية كانت تترك التاب على about:blank إلى أن يسحب جهاز التنفيذ
+    // المهمة. لو كان الجهاز الآخر متأخراً/غير متاح، المستخدم يظل أمام صفحة بيضاء.
     // فتح رابط البوابة مباشرة داخل gesture يمنع ذلك، بينما يظل التاب محجوزاً
     // للطابور ليُعاد استخدامه عند تنفيذ المهمة على نفس المتصفح.
-    const initialUrl = type === "weoas" ? WEOAS_URL : "about:blank";
+    const initialUrl: Partial<Record<ExecJobType, string>> = {
+      fccdaily: FCC_URL,
+      wfmdaily: WFM_LOGIN_URL,
+      ossdaily: OSS_URL,
+      ports: `${PROV_URL}?sf_ports=1#/login`,
+      weoas: WEOAS_URL,
+    }[type] || "about:blank";
     const win = window.open(initialUrl, name);
     if (win) RESERVED_OP_WINDOWS.set(type, win);
     return win;
