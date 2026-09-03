@@ -44,6 +44,9 @@ export function DailyAutoRefresh() {
     // مفيش تشغيل فورى عند التركيب — بس فحص دورى كل 60ث؛ يشغّل أول ما يعدّى 30 دقيقة من آخر تشغيل.
     // كده ما بيطلعش الصفحات لمجرّد ما نفتح الموقع/نبدّل تاب، وبيلحق أى موعد فات خلال دقيقة.
     const check = () => { if (Date.now() - readLast() >= AUTO_INTERVAL_MS) tick(); };
+    // عند فتح الموقع من جديد بعد إغلاقه/تحديثه، افحص فوراً بدل انتظار أول دورة
+    // من المؤقت؛ لو مرّت 30 دقيقة منذ آخر تشغيل يبدأ التحديث مباشرة.
+    check();
     const id = setInterval(check, 60 * 1000);
     const onWake = () => { if (document.visibilityState === "visible") check(); };
     document.addEventListener("visibilitychange", onWake);
