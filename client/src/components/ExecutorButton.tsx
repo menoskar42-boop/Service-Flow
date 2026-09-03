@@ -86,6 +86,9 @@ export function ExecutorButton() {
   const lastMeasureWin = useRef<Window | null>(null);
   // يمنع إرسال أكثر من طلب إعادة تشغيل لنفس مهمة القياس أثناء انتظار الريفريش.
   const measureRefreshBusy = useRef(false);
+  // يمنع إعادة تشغيل نفس الباتش أكثر من مرة أثناء انتقال صفحة جهاز التنفيذ.
+  const batchRefreshBusy = useRef(false);
+  const batchRefreshTriggered = useRef(false);
 
   // استطلاع دائم لعدد المهام فى الطابور (للسوبر أدمن) — حتى لو الجهاز مش مفعّل — عشان يظهر زر المسح
   // + حالة جهاز التنفيذ: لو فيه مهام مستنية ومفيش جهاز شغّال، الطابور واقف فعلاً
@@ -291,11 +294,79 @@ export function ExecutorButton() {
       } catch { return { active: true, preempt: false, measured: 0, total: 0 }; }
     };
 
+    // بعد ريفرش جهاز التنفيذ عند الدقيقة الثالثة، نعيد تشغيل الباتش كله عند الدقيقة الرابعة
+    // بنفس منطق زر «إعادة تشغيل» اليدوى فى شاشة الطابور. العلامة بتعيش فى localStorage
+    // عشان تفضل موجودة بعد window.location.reload().
+    const BATCH_REFRESH_KEY = "sf_exec_batch_refresh_deadlines";
+    const BATCH_REFRESH_DELAY_MS = 60 * 1000;
+    const readBatchRefreshDeadlines = (): Record<string, number> => {
+      try {
+        const raw = JSON.parse(localStorage.getItem(BATCH_REFRESH_KEY) || "{}");
+        if (!raw || typeof raw !== "object") return {};
+        const valid: Record<string, number> = {};
+        for (const [key, value] of Object.entries(raw)) {
+          if (typeof value === "number" && Number.isFinite(value)) valid[key] = value;
+        }
+        return valid;
+      } catch { return {}; }
+    };
+    const writeBatchRefreshDeadlines = (deadlines: Record<string, number>) => {
+      try { localStorage.setItem(BATCH_REFRESH_KEY, JSON.stringify(deadlines)); } catch {}
+    };
+    const scheduleBatchRefresh = (batchId?: string | null) => {
+      const id = String(batchId || "").trim();
+      if (!id) return;
+      const deadlines = readBatchRefreshDeadlines();
+      // لا نؤخر الموعد لو كان هناك طلب أقدم لنفس الباتش.
+      deadlines[id] = Math.min(deadlines[id] || Infinity, Date.now() + BATCH_REFRESH_DELAY_MS);
+      writeBatchRefreshDeadlines(deadlines);
+    };
+    const clearBatchRefresh = (batchId: string) => {
+      const deadlines = readBatchRefreshDeadlines();
+      delete deadlines[batchId];
+      writeBatchRefreshDeadlines(deadlines);
+    };
+
+    // لو حان موعد ريفرش الباتش، استخدم نفس endpoint زر «إعادة تشغيل» اليدوى.
+    // نعيد تحميل الصفحة بعد نجاحه لإغلاق أى حالة/تاب قديم قبل سحب الباتش من جديد.
+    const refreshDueBatch = async () => {
+      if (batchRefreshBusy.current || batchRefreshTriggered.current || stopped) return;
+      const deadlines = readBatchRefreshDeadlines();
+      const due = Object.entries(deadlines)
+        .filter(([, deadline]) => deadline <= Date.now())
+        .sort((a, b) => a[1] - b[1]);
+      if (!due.length) return;
+      const [batchId] = due[0];
+      batchRefreshBusy.current = true;
+      try {
+        const r = await fetch("/api/exec-queue/requeue", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batchId }),
+        });
+        if (!r.ok) return; // نترك العلامة للمحاولة التالية
+        const d = await r.json().catch(() => ({}));
+        clearBatchRefresh(batchId);
+        if (Number(d?.requeued || 0) > 0) {
+          batchRefreshTriggered.current = true;
+          try {
+            if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close();
+          } catch {}
+          try { window.location.reload(); } catch {}
+        }
+      } catch {
+        // المحاولة التالية بعد 4 ثوانٍ
+      } finally {
+        batchRefreshBusy.current = false;
+      }
+    };
+
     // لو مفيش تقدّم فى القياس لمدة ٣ دقائق (DZS وقف على خط فيه إيرور مثلاً)،
     // نعيد تشغيل جهاز التنفيذ بدل ما نترك المهمة معلّقة.
     const STALL_MS = 3 * 60 * 1000;
 
-    const refreshAfterMeasureTimeout = async (jobId: number): Promise<boolean> => {
+    const refreshAfterMeasureTimeout = async (jobId: number, batchId?: string | null): Promise<boolean> => {
       if (measureRefreshBusy.current) return false;
       measureRefreshBusy.current = true;
       try {
@@ -305,6 +376,9 @@ export function ExecutorButton() {
           credentials: "include",
         });
         if (!r.ok) return false;
+        // الموعد = بعد دقيقة من نجاح إنقاذ جهاز التنفيذ، أى عند الدقيقة الرابعة
+        // من نفس التسلسل. يظل محفوظاً بعد ريفرش الصفحة.
+        scheduleBatchRefresh(batchId);
         try { window.location.reload(); } catch {}
         return true;
       } catch {
@@ -316,7 +390,7 @@ export function ExecutorButton() {
     // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |
     // "timeout" علّق/وقف بدون تقدّم | "stopped" جهاز التنفيذ اتقفل | "canceled" اتمسح من الطابور يدوياً |
     // "preempted" اتقطع لصالح طلب عاجل.
-    const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number, note?: string | null, params?: any): Promise<string> => {
+    const runBatch = async (type: ExecJob["type"], accs: string[], jobId: number, note?: string | null, params?: any, batchId?: string | null): Promise<string> => {
       const last = accs[accs.length - 1];
       const canPreempt = accs.length > 3; // الباتش الكبير بس هو اللى يتقطع
       // العمليات اللى بتفتح موقع خارجى وتخلص لوحدها (جلب أكونت/تغيير أو تحديث بورت/إلغاء إسناد/
@@ -384,7 +458,7 @@ export function ExecutorButton() {
           if (canPreempt && chk.preempt) { closeWin(); return "preempted"; } // طلب عاجل يقطع
           if (Date.now() - measureStartedAt >= STALL_MS) {
             closeWin();
-            return (await refreshAfterMeasureTimeout(jobId)) ? "preempted" : "timeout";
+            return (await refreshAfterMeasureTimeout(jobId, batchId)) ? "preempted" : "timeout";
           }
         }
         closeWin();
@@ -441,7 +515,7 @@ export function ExecutorButton() {
     const MAX_LANES = 8;
 
     const claimAndRun = async () => {
-      if (busy.current || stopped) return;
+      if (busy.current || stopped || batchRefreshBusy.current || batchRefreshTriggered.current) return;
       busy.current = true;
       try {
         // بنفضل نسحب لحد ما السيرفر يقول «مفيش مهمة مؤهّلة» — كده كل المسارات
@@ -479,7 +553,8 @@ export function ExecutorButton() {
           void (async () => {
             let result: string | null = null;
             try {
-              if (accs.length && !stopped) result = await runBatch(job.type, accs, job.id, job.note, job.params);
+              if (accs.length && !stopped) result = await runBatch(job.type, accs, job.id, job.note, job.params, job.batchId);
+              if (batchRefreshTriggered.current) return;
               if (result === null && stopped) {
                 // الجهاز اتقفل قبل ما المهمة تشتغل أصلاً — ماتتعلّمش done وهى
                 // ماتنفّذتش (كانت بتظهر «تمّت» كذباً). نسيبها claimed وآلية
@@ -514,9 +589,9 @@ export function ExecutorButton() {
         .then((r) => r.json()).then((d) => setPending(d?.pending ?? 0)).catch(() => {});
     };
 
-    heartbeat(); refreshPending();
+    heartbeat(); refreshPending(); void refreshDueBatch();
     const hb = setInterval(heartbeat, 20 * 1000);
-    const poll = setInterval(() => { claimAndRun(); refreshPending(); }, 4 * 1000);
+    const poll = setInterval(() => { void refreshDueBatch(); claimAndRun(); refreshPending(); }, 4 * 1000);
     const wd = setInterval(watchdog, 30 * 1000);
     return () => {
       stopped = true; clearInterval(hb); clearInterval(poll); clearInterval(wd);

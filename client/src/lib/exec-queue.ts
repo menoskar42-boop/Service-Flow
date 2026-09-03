@@ -26,7 +26,7 @@ export interface ExecJobParams {
   /** كود العامل للفنى المختار (لـ Re-assign) + اسمه للعرض فى السجل */
   worker?: string; workerName?: string;
 }
-export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; site?: string | null; params?: ExecJobParams | null; }
+export interface ExecJob { id: number; type: ExecJobType; accounts: string[]; requestedBy?: string | null; note?: string | null; site?: string | null; batchId?: string | null; params?: ExecJobParams | null; }
 
 // مصدر «بحث برقم التليفون» — القياس اللى بييجى منه بيختار «A recent fix (past 24h)» فى شاشة DZS.
 export const PHONE_LOOKUP_SOURCE = "بحث برقم التليفون";

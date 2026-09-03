@@ -1869,7 +1869,8 @@ export async function registerRoutes(
                                  CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
                                  e.created_at, e.id
                         LIMIT 1 FOR UPDATE SKIP LOCKED)
-           RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site, params`,
+           RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site,
+                     batch_id AS "batchId", params`,
           [execIdentity(req)]);
         return rows[0] || null;
       });
