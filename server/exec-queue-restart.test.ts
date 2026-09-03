@@ -325,14 +325,20 @@ test("batch restart endpoints preserve the preempt, requeue, claim contract", ()
   assert.match(preemptRoute, /if \(remaining\.length\)/);
 });
 
-test("claim endpoint serializes the site check without changing queue ordering", () => {
+test("claim endpoint locks sites independently without changing queue ordering", () => {
   const claimStart = routes.indexOf('app.post("/api/exec-queue/claim"');
   const doneStart = routes.indexOf('app.post("/api/exec-queue/:id/done"', claimStart);
   assert.ok(claimStart >= 0 && doneStart > claimStart);
   const claimRoute = routes.slice(claimStart, doneStart);
 
   assert.match(claimRoute, /withTx\(async \(tx\) =>/);
-  assert.match(claimRoute, /SELECT pg_advisory_xact_lock\(872634501\)/);
+  assert.doesNotMatch(claimRoute, /pg_advisory_xact_lock\(872634501\)/);
+  assert.match(
+    claimRoute,
+    /pg_try_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)/,
+  );
+  assert.match(claimRoute, /skippedSites/);
+  assert.match(claimRoute, /<> ALL\(\$1::text\[\]\)/);
   assert.match(
     claimRoute,
     /b\.status = 'claimed'[\s\S]*?COALESCE\(b\.site, '10\.42\.187\.101'\) = COALESCE\(e\.site, '10\.42\.187\.101'\)/,

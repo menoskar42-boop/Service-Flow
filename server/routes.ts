@@ -1853,26 +1853,59 @@ export async function registerRoutes(
       // (أو تابين فى نفس الطلب) يسحبوا مهمتين لنفس الموقع (fcc.te.eg) فى نفس اللحظة —
       // وده بالظبط اللى كان بيفتح تابين مراجعة على نفس جلسة FCC ويلخبط خانة البحث
       // (أرقام بتتلزّق ورا بعض فى الحقل، لأن ADF بيشارك الـ view state بين التابات).
-      // الإصلاح: قفل transaction-level فى استعلام BEGIN منفصل *قبل* فحص NOT EXISTS —
-      // بيضمن إن السحب لأى موقع يبقى متسلسل بالكامل مهما كان عدد التابات/الأجهزة.
+      // القفل transaction-level هنا مرتبط بالموقع فقط. نستخدم try-lock حتى لا تنتظر
+      // مطالبة لموقع آخر مطالبةً لنفس الموقع؛ لو الموقع الأول مقفول نجرّب المرشح
+      // التالى بنفس ترتيب الطابور. وبعد أخذ القفل نعيد فحص NOT EXISTS داخل UPDATE
+      // نفسه، فتظل المطالبتان لنفس الموقع مستحيلتين حتى مع تسابق القراءات.
       const row = await withTx(async (tx) => {
-        await tx.query("SELECT pg_advisory_xact_lock(872634501)");
-        const { rows } = await tx.query(
-          `UPDATE exec_jobs SET status = 'claimed', claimed_at = now(), executed_by = $1
-           WHERE id = (SELECT e.id FROM exec_jobs e
-                        WHERE e.status = 'pending' AND e.paused_at IS NULL
-                          -- الدومين لازم يكون فاضى: مفيش مهمة شغّالة على نفس الموقع دلوقتى
-                          AND NOT EXISTS (SELECT 1 FROM exec_jobs b
-                                           WHERE b.status = 'claimed'
-                                             AND COALESCE(b.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101'))
-                        ORDER BY e.priority DESC,
-                                 CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
-                                 e.created_at, e.id
-                        LIMIT 1 FOR UPDATE SKIP LOCKED)
-           RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site,
-                     batch_id AS "batchId", params`,
-          [execIdentity(req)]);
-        return rows[0] || null;
+        const skippedSites: string[] = [];
+        while (true) {
+          const { rows: candidates } = await tx.query(
+            `SELECT e.id, COALESCE(e.site, '10.42.187.101') AS site
+               FROM exec_jobs e
+              WHERE e.status = 'pending' AND e.paused_at IS NULL
+                AND COALESCE(e.site, '10.42.187.101') <> ALL($1::text[])
+                -- الدومين لازم يكون فاضى: مفيش مهمة شغّالة على نفس الموقع دلوقتى
+                AND NOT EXISTS (SELECT 1 FROM exec_jobs b
+                                  WHERE b.status = 'claimed'
+                                    AND COALESCE(b.site, '10.42.187.101') = COALESCE(e.site, '10.42.187.101'))
+              ORDER BY e.priority DESC,
+                       CASE WHEN e.queue_order > 0 THEN e.queue_order ELSE 9223372036854775807 END ASC,
+                       e.created_at, e.id
+              LIMIT 1`,
+            [skippedSites],
+          );
+          const candidate = candidates[0];
+          if (!candidate) return null;
+
+          // 64-bit hash يقلل احتمالية تصادم مفاتيح المواقع المختلفة. والـ
+          // transaction-level lock يتحرر تلقائياً عند COMMIT/ROLLBACK.
+          const { rows: lockRows } = await tx.query(
+            `SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked`,
+            [`exec-queue-site:${candidate.site}`],
+          );
+          if (!lockRows[0]?.locked) {
+            skippedSites.push(String(candidate.site));
+            continue;
+          }
+
+          const { rows } = await tx.query(
+            `UPDATE exec_jobs SET status = 'claimed', claimed_at = now(), executed_by = $1
+             WHERE id = $2 AND status = 'pending' AND paused_at IS NULL
+               AND NOT EXISTS (SELECT 1 FROM exec_jobs b
+                                WHERE b.status = 'claimed'
+                                  AND COALESCE(b.site, '10.42.187.101') =
+                                      $3)
+             RETURNING id, type, accounts, requested_by AS "requestedBy", note, priority, site,
+                       batch_id AS "batchId", params`,
+            [execIdentity(req), candidate.id, candidate.site],
+          );
+          if (rows[0]) return rows[0];
+
+          // تغير المرشح أثناء القراءة (مثلاً claim/done متزامن)؛ لا نعيد
+          // محاولة نفس الموقع داخل هذه المعاملة.
+          skippedSites.push(String(candidate.site));
+        }
       });
       res.json(row);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
