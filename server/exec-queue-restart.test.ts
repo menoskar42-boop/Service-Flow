@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { promisify } from "node:util";
+import { randomBytes, scrypt } from "node:crypto";
 import { readFileSync } from "node:fs";
+import express from "express";
+import { createServer } from "node:http";
 import test from "node:test";
 import {
   EXEC_BATCH_REFRESH_DELAY_MS,
@@ -9,6 +13,8 @@ import {
   refreshDueExecBatch,
   recoverTimedOutMeasure,
 } from "../client/src/lib/exec-queue";
+
+const scryptAsync = promisify(scrypt);
 
 const client = readFileSync(
   new URL("../client/src/components/ExecutorButton.tsx", import.meta.url),
@@ -335,4 +341,188 @@ test("claim endpoint serializes the site check without changing queue ordering",
     claimRoute,
     /ORDER BY e\.priority DESC,[\s\S]*?e\.queue_order[\s\S]*?e\.created_at, e\.id/,
   );
+});
+
+test("PostgreSQL claims serialize one site and preserve the real queue order", async (t) => {
+  // npm test supplies no-db.invalid when no database is configured so the
+  // source-level queue tests can still run. This integration test must never
+  // fall back to that placeholder.
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl || dbUrl.includes("no-db.invalid")) {
+    t.skip("DATABASE_URL is not configured for PostgreSQL integration tests");
+    return;
+  }
+
+  const [{ pool }, { registerRoutes }] = await Promise.all([
+    import("./db"),
+    import("./routes"),
+  ]);
+  const suffix = `${process.pid}_${Date.now()}`;
+  const testUsername = `exec-queue-test-${suffix}`;
+  const testPassword = `exec-queue-password-${suffix}`;
+  const batchId = `exec-queue-test-batch-${suffix}`;
+  const siteA = `exec-queue-test-site-a-${suffix}`;
+  const siteB = `exec-queue-test-site-b-${suffix}`;
+  const siteC = `exec-queue-test-site-c-${suffix}`;
+  const app = express();
+  app.use(express.json());
+  const httpServer = createServer(app);
+  let baseUrl = "";
+
+  const deleteFixtures = async () => {
+    await pool.query(`DELETE FROM exec_jobs WHERE batch_id = $1`, [batchId]);
+    await pool.query(`DELETE FROM users WHERE username = $1`, [testUsername]);
+  };
+
+  const postJson = async (
+    path: string,
+    cookie: string,
+    body: Record<string, unknown> = {},
+  ) => {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.equal(response.status, 200, `${path} should succeed`);
+    return await response.json() as Record<string, any> | null;
+  };
+
+  try {
+    await deleteFixtures();
+    const salt = randomBytes(16).toString("hex");
+    const passwordHash = await scryptAsync(testPassword, salt, 64) as Buffer;
+    await pool.query(
+      `INSERT INTO users (username, password, role) VALUES ($1, $2, 'super_admin')`,
+      [testUsername, `${passwordHash.toString("hex")}.${salt}`],
+    );
+
+    // A1 must win by priority. The remaining A jobs exercise queue_order,
+    // then created_at and id. B1 and C1 are inserted after the same-site
+    // race so a separate concurrent wave can prove different sites proceed.
+    const fixtures = [
+      { key: "a1", site: siteA, priority: 3, queueOrder: 0, createdAt: "2020-01-01T00:00:01Z" },
+      { key: "a2", site: siteA, priority: 2, queueOrder: 2, createdAt: "2020-01-01T00:00:04Z" },
+      { key: "a3", site: siteA, priority: 2, queueOrder: 7, createdAt: "2020-01-01T00:00:03Z" },
+      { key: "a4", site: siteA, priority: 2, queueOrder: 0, createdAt: "2020-01-01T00:00:00Z" },
+      { key: "a5", site: siteA, priority: 2, queueOrder: 0, createdAt: "2020-01-01T00:00:00Z" },
+    ];
+    const ids = new Map<string, number>();
+    const insertJob = async (fixture: {
+      key: string;
+      site: string;
+      priority: number;
+      queueOrder: number;
+      createdAt: string;
+    }) => {
+      const { rows } = await pool.query(
+        `INSERT INTO exec_jobs
+           (type, accounts, status, requested_by, batch_id, site, priority, queue_order, created_at)
+         VALUES ('measure', $1::jsonb, 'pending', $2, $3, $4, $5, $6, $7)
+         RETURNING id`,
+        [
+          JSON.stringify([fixture.key]),
+          testUsername,
+          batchId,
+          fixture.site,
+          fixture.priority,
+          fixture.queueOrder,
+          fixture.createdAt,
+        ],
+      );
+      ids.set(fixture.key, rows[0].id);
+    };
+    for (const fixture of fixtures) await insertJob(fixture);
+
+    await registerRoutes(httpServer, app);
+    await new Promise<void>((resolve) => {
+      httpServer.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = httpServer.address();
+    assert.ok(address && typeof address !== "string");
+    baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const login = await fetch(`${baseUrl}/api/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: testUsername, password: testPassword }),
+    });
+    assert.equal(login.status, 200);
+    const setCookie = login.headers.get("set-cookie");
+    assert.ok(setCookie, "login should return a session cookie");
+    const cookie = setCookie.split(";")[0];
+
+    const claim = () => postJson("/api/exec-queue/claim", cookie);
+    const [firstClaim, secondClaim] = await Promise.all([claim(), claim()]);
+    const sameSiteClaims = [firstClaim, secondClaim].filter(Boolean);
+    assert.equal(sameSiteClaims.length, 1, "only one same-site claim should succeed");
+    assert.deepEqual(
+      sameSiteClaims.map((row) => row?.id),
+      [ids.get("a1")],
+      "the winning same-site claim should take the highest-priority A1",
+    );
+
+    const claimedRows = await pool.query(
+      `SELECT id, status, site FROM exec_jobs WHERE batch_id = $1 ORDER BY id`,
+      [batchId],
+    );
+    assert.deepEqual(
+      claimedRows.rows
+        .filter((row) => row.status === "claimed")
+        .map((row) => row.id)
+        .sort((a, b) => a - b),
+      [ids.get("a1")],
+    );
+    assert.equal(
+      claimedRows.rows.filter((row) => row.status === "pending").length,
+      4,
+      "the losing same-site claim must leave A2-A5 pending",
+    );
+
+    await postJson(`/api/exec-queue/${ids.get("a1")}/done`, cookie, { result: "done" });
+    const nextA = await claim();
+    assert.equal(nextA?.id, ids.get("a2"), "the next A claim should follow queue_order");
+
+    await insertJob({ key: "b1", site: siteB, priority: 1, queueOrder: 0, createdAt: "2020-01-01T00:00:02Z" });
+    await insertJob({ key: "c1", site: siteC, priority: 1, queueOrder: 0, createdAt: "2020-01-01T00:00:02Z" });
+    const [differentSiteFirst, differentSiteSecond] = await Promise.all([claim(), claim()]);
+    const differentSiteClaims = [differentSiteFirst, differentSiteSecond].filter(Boolean);
+    assert.deepEqual(
+      new Set(differentSiteClaims.map((row) => row?.site)),
+      new Set([siteB, siteC]),
+      "different sites should both be claimable in the same concurrent wave",
+    );
+    assert.deepEqual(
+      new Set(differentSiteClaims.map((row) => row?.id)),
+      new Set([ids.get("b1"), ids.get("c1")]),
+    );
+
+    await Promise.all([
+      postJson(`/api/exec-queue/${ids.get("a2")}/done`, cookie, { result: "done" }),
+      postJson(`/api/exec-queue/${ids.get("b1")}/done`, cookie, { result: "done" }),
+      postJson(`/api/exec-queue/${ids.get("c1")}/done`, cookie, { result: "done" }),
+    ]);
+
+    // With A1 and A2 complete, the next A claims follow the production SQL's
+    // priority DESC, queue_order ASC, created_at ASC, id ASC ordering.
+    for (const key of ["a3", "a4", "a5"]) {
+      const next = await claim();
+      assert.equal(next?.id, ids.get(key), `next claim should be ${key}`);
+      await postJson(`/api/exec-queue/${ids.get(key)}/done`, cookie, { result: "done" });
+    }
+
+    const finalRows = await pool.query(
+      `SELECT status, COUNT(*)::int AS count
+         FROM exec_jobs WHERE batch_id = $1 GROUP BY status ORDER BY status`,
+      [batchId],
+    );
+    assert.deepEqual(finalRows.rows, [{ status: "done", count: 7 }]);
+  } finally {
+    await new Promise<void>((resolve) => {
+      if (!httpServer.listening) return resolve();
+      httpServer.close(() => resolve());
+    });
+    await deleteFixtures();
+    await pool.end();
+  }
 });
