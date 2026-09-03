@@ -100,6 +100,7 @@ class SiteClaimQueue {
 test("measurement timeout survives reload and resumes only unfinished work", async () => {
   assert.equal(EXEC_MEASURE_STALL_MS, 3 * 60 * 1000);
   assert.equal(EXEC_BATCH_REFRESH_DELAY_MS, 60 * 1000);
+  assert.match(routes, /WHEN e\.type = 'measure'\s+THEN interval '4 minutes'/);
   assert.match(client, /const STALL_MS = EXEC_MEASURE_STALL_MS/);
   assert.match(client, /requestExecPreempt\(id\)/);
   assert.match(client, /fetch\("\/api\/exec-queue\/requeue"/);

@@ -2574,8 +2574,8 @@ export async function registerRoutes(
       // عالقة لحد السقف المطلق. ده بالظبط اللى كان بيوقّف القياسات: تاب DZS يتقفل
       // من غير ما يتعلّم done، فالمسار يفضل مقفول والصفحة اللى بعدها ماتفتحش.
       // المهل (متطابقة مع شارة «عالق» فى شاشة الطابور — stuckMinsFor):
-      //   • القياس 5 دقايق — مهمة القياس خط واحد (بتتقسّم رقم-رقم) ومهلته فى جهاز
-      //     التنفيذ 2.5 دقيقة، فـ5 ضعف المهلة وسقف آمن وسريع.
+      //   • القياس 4 دقايق — الإنقاذ داخل تاب جهاز التنفيذ يبدأ بعد 3 دقايق،
+      //     وده حدّ خادمى احتياطى لو التاب متجمّد ومابعتش طلب preempt/ريفريش.
       //   • أى عملية تانية 20 دقيقة.
       //   • استثناءات لازمة — دول مهلتهم فى جهاز التنفيذ **أطول من 20**، ولو
       //     رجّعناهم وهم شغّالين هيتسحبوا تانى ويتفتح تاب جديد فوق القديم (ده
@@ -2585,7 +2585,7 @@ export async function registerRoutes(
       const maxRunSql = `(CASE
         WHEN e.type = ANY($2::text[])          THEN interval '60 minutes'
         WHEN e.type IN ('c360','wfmreport')    THEN interval '45 minutes'
-        WHEN e.type = 'measure'                THEN interval '5 minutes'
+        WHEN e.type = 'measure'                THEN interval '4 minutes'
         ELSE interval '20 minutes' END)`;
       const requeuedRes = await pool.query(
         `UPDATE exec_jobs e
