@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { closeReason } from "@/lib/close-codes";
 
 // نافذة «تفاصيل الخط» المشتركة — بتتفتح من أى تقرير فيه رقم تليفون.
 // مصدر البيانات هو نفس مصادر «بحث برقم التليفون» بالظبط عشان مايبقاش فيه مصدرين
@@ -132,7 +133,9 @@ export function LineDetailsDialog({
                         <tr key={i} className={`border-t ${hot ? "bg-amber-50 font-semibold" : ""}`}>
                           <td className="p-1.5 whitespace-nowrap">{fmt(c.complainAt)}</td>
                           <td className="p-1.5 whitespace-nowrap">{fmt(c.date)}</td>
-                          <td className="p-1.5">{c.closeCode || "-"}</td>
+                          <td className="p-1.5" title={c.closeCode ? `كود ${c.closeCode}` : undefined}>
+                            {closeReason(c.closeCode) || c.closeCode || "-"}
+                          </td>
                           <td className="p-1.5 whitespace-nowrap">{c.by || "-"}</td>
                         </tr>
                       );
