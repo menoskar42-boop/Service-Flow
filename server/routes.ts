@@ -6731,22 +6731,38 @@ export async function registerRoutes(
 
   // POST /api/manual-close-by — تعيين/تحديث فنى إغلاق يدوى لشكوى (مرجعية أولى)
   app.post("/api/manual-close-by", requireAdmin, async (req: any, res) => {
-    const { complainNo, techName } = req.body as Record<string, string>;
-    const no = String(complainNo ?? "").trim();
-    const tech = String(techName ?? "").trim();
-    if (!no) return res.status(400).json({ message: "رقم الشكوى مطلوب" });
-    if (!tech) return res.status(400).json({ message: "اسم الفنى مطلوب" });
-    await pool.query(
-      `INSERT INTO manual_close_by (complain_no, tech_name, assigned_by_id, assigned_by_name)
-       VALUES ($1,$2,$3,$4)
-       ON CONFLICT (complain_no)
-       DO UPDATE SET tech_name = EXCLUDED.tech_name,
-                     assigned_by_id = EXCLUDED.assigned_by_id,
-                     assigned_by_name = EXCLUDED.assigned_by_name,
-                     updated_at = now()`,
-      [no, tech, req.user.id, req.user.username],
-    );
-    res.json({ ok: true });
+    try {
+      const { complainNo, techName } = req.body as Record<string, string>;
+      const no = String(complainNo ?? "").trim();
+      const tech = String(techName ?? "").trim();
+      if (!no) return res.status(400).json({ message: "رقم الشكوى مطلوب" });
+      if (!tech) return res.status(400).json({ message: "اسم الفنى مطلوب" });
+
+      // بعض الجلسات القديمة/جلسات الدخول الموحد قد لا تحتوي كل حقول المستخدم
+      // بنفس الشكل؛ لا نرسل undefined إلى PostgreSQL، خصوصاً مع NOT NULL/FK.
+      const rawAssignedById = req.user?.id;
+      const numericAssignedById = Number(rawAssignedById);
+      const assignedById = Number.isSafeInteger(numericAssignedById) && numericAssignedById > 0
+        ? numericAssignedById
+        : null;
+      const assignedByName = String(
+        req.user?.username ?? req.user?.fullName ?? req.user?.full_name ?? "النظام",
+      ).trim() || "النظام";
+      await pool.query(
+        `INSERT INTO manual_close_by (complain_no, tech_name, assigned_by_id, assigned_by_name)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (complain_no)
+         DO UPDATE SET tech_name = EXCLUDED.tech_name,
+                       assigned_by_id = EXCLUDED.assigned_by_id,
+                       assigned_by_name = EXCLUDED.assigned_by_name,
+                       updated_at = now()`,
+        [no, tech, assignedById, assignedByName],
+      );
+      res.json({ ok: true, complainNo: no, techName: tech });
+    } catch (e: any) {
+      console.error("[manual-close-by] save failed:", e?.stack || e);
+      res.status(500).json({ message: e?.message || "تعذّر حفظ فنى الإغلاق" });
+    }
   });
 
   // DELETE /api/manual-close-by/:complainNo — إلغاء التعيين اليدوى

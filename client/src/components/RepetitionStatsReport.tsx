@@ -114,7 +114,14 @@ export function RepetitionStatsReport() {
         credentials: "include",
         body: JSON.stringify({ complainNo, techName: tech }),
       });
-      if (!res.ok) throw new Error("فشل الحفظ");
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = await res.json();
+          detail = body?.message || body?.error || "";
+        } catch { /* response may not be JSON */ }
+        throw new Error(detail || `HTTP ${res.status}`);
+      }
       // تحديث البيانات المحلية مباشرةً بدون إعادة جلب
       setRepDetailData((prev) =>
         prev
@@ -122,8 +129,8 @@ export function RepetitionStatsReport() {
           : prev,
       );
       setEditingTech(null);
-    } catch {
-      alert("تعذّر حفظ فنى الإغلاق");
+    } catch (e: any) {
+      alert(`تعذّر حفظ فنى الإغلاق${e?.message ? `: ${e.message}` : ""}`);
     } finally {
       setSavingTech(false);
     }

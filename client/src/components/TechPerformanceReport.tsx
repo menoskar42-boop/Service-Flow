@@ -144,12 +144,19 @@ export function TechPerformanceReport() {
         credentials: "include",
         body: JSON.stringify({ complainNo, techName: tech }),
       });
-      if (!res.ok) throw new Error("فشل الحفظ");
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = await res.json();
+          detail = body?.message || body?.error || "";
+        } catch { /* response may not be JSON */ }
+        throw new Error(detail || `HTTP ${res.status}`);
+      }
       setRepDetailData((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech, closeByManual: true } : r) : prev);
       setB24Data((prev) => prev ? prev.map((r) => r.complainNo === complainNo ? { ...r, closeByName: tech, closeByManual: true } : r) : prev);
       setEditingTech(null);
-    } catch {
-      alert("تعذّر حفظ فنى الإغلاق");
+    } catch (e: any) {
+      alert(`تعذّر حفظ فنى الإغلاق${e?.message ? `: ${e.message}` : ""}`);
     } finally {
       setSavingTech(false);
     }
