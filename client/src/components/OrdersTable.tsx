@@ -38,7 +38,17 @@ interface OrdersTableProps {
   orders: Order[];
 }
 
-type StatusFilter = "all" | "pending" | "pending_unassigned" | "feasible" | "not_feasible" | "needs_external" | "external_feasible" | "external_not_feasible";
+type StatusFilter =
+  | "all"
+  | "pending"
+  | "pending_unassigned"
+  | "feasible"
+  | "not_feasible"
+  | "needs_external"
+  | "external_feasible"
+  | "external_not_feasible"
+  | `not_feasible_reason:${string}`
+  | `external_not_feasible_reason:${string}`;
 type ContractFilter = "all" | "contracted" | "not_contracted";
 
 export function OrdersTable({ orders }: OrdersTableProps) {
@@ -65,6 +75,7 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const [techFilter, setTechFilter] = useState("");
   const [myRejectionsOnly, setMyRejectionsOnly] = useState(false);
   const [cabinetTechFilter, setCabinetTechFilter] = useState(""); // أدمن: متعذرات فنى منطقة محدد
+  const [boxScoreLte, setBoxScoreLte] = useState("");
 
   // الهدف لفلتر "متعذرات الكابينه": اسم الفنى المسجَّل (للفنى) أو المختار (للأدمن)
   const cabinetTechTarget = myRejectionsOnly ? (user?.username ?? null) : (cabinetTechFilter || null);
@@ -138,7 +149,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       if ((order as any).cabinetTechName !== cabinetTechTarget) return false;
     }
 
-    if (statusFilter === "pending_unassigned") {
+    if (statusFilter.startsWith("not_feasible_reason:")) {
+      const reason = statusFilter.slice("not_feasible_reason:".length);
+      if (order.status !== ORDER_STATUS.NOT_FEASIBLE || order.rejectionReason !== reason) return false;
+    } else if (statusFilter.startsWith("external_not_feasible_reason:")) {
+      const reason = statusFilter.slice("external_not_feasible_reason:".length);
+      if (order.status !== ORDER_STATUS.EXTERNAL_NOT_FEASIBLE || order.externalRejectionReason !== reason) return false;
+    } else if (statusFilter === "pending_unassigned") {
       // قيد الانتظار وغير مُسنَد لأى فنى
       if (order.status !== ORDER_STATUS.PENDING || (order as any).assignedTechId != null) return false;
     } else if (statusFilter !== "all" && order.status !== statusFilter) {
@@ -158,6 +175,13 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     if (seesFullOrderData && contractFilter !== "all") {
       if (contractFilter === "contracted" && order.contractStatus !== CONTRACT_STATUS.CONTRACTED) return false;
       if (contractFilter === "not_contracted" && order.contractStatus !== CONTRACT_STATUS.NOT_CONTRACTED) return false;
+    }
+
+    // فلتر متوسط Score البكس — لا يظهر إلا الطلبات التي لها Score مقاس.
+    if (boxScoreLte.trim() !== "") {
+      const limit = Number(boxScoreLte);
+      const boxScore = getBoxAvgScore(order);
+      if (!Number.isFinite(limit) || boxScore == null || boxScore > limit) return false;
     }
 
     if (!searchQuery.trim()) return true;
@@ -185,15 +209,18 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     return searchableFields.some(field => arIncludes(field, query));
   });
 
+  const scopedOrders = isExternalUser && externalView === "transferred"
+    ? orders.filter(isExternalRouted)
+    : orders;
   const statusCounts = {
-    all: orders.length,
-    pending: orders.filter(o => o.status === ORDER_STATUS.PENDING).length,
-    pending_unassigned: orders.filter(o => o.status === ORDER_STATUS.PENDING && (o as any).assignedTechId == null).length,
-    feasible: orders.filter(o => o.status === ORDER_STATUS.FEASIBLE).length,
-    not_feasible: orders.filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE).length,
-    needs_external: orders.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL).length,
-    external_feasible: orders.filter(o => o.status === ORDER_STATUS.EXTERNAL_FEASIBLE).length,
-    external_not_feasible: orders.filter(o => o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE).length,
+    all: scopedOrders.length,
+    pending: scopedOrders.filter(o => o.status === ORDER_STATUS.PENDING).length,
+    pending_unassigned: scopedOrders.filter(o => o.status === ORDER_STATUS.PENDING && (o as any).assignedTechId == null).length,
+    feasible: scopedOrders.filter(o => o.status === ORDER_STATUS.FEASIBLE).length,
+    not_feasible: scopedOrders.filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE).length,
+    needs_external: scopedOrders.filter(o => o.status === ORDER_STATUS.NEEDS_EXTERNAL).length,
+    external_feasible: scopedOrders.filter(o => o.status === ORDER_STATUS.EXTERNAL_FEASIBLE).length,
+    external_not_feasible: scopedOrders.filter(o => o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE).length,
   };
 
   const contractCounts = {
@@ -210,16 +237,25 @@ export function OrdersTable({ orders }: OrdersTableProps) {
     );
   }
 
-  // Build status tabs based on role
-  // النوع صريح: الفرع اللى بيرجّع مصفوفة حرفية كان بيوسّع key لـ string، فالتبويبات
-  // كلها تبقى string وsetStatusFilter وstatusCounts يفقدوا الأمان.
-  const buildStatusTabs = (): { key: StatusFilter; label: string }[] => {
-    const tabs: { key: StatusFilter; label: string }[] = [
+  const countForStatusFilter = (filter: StatusFilter) => {
+    if (filter.startsWith("not_feasible_reason:")) {
+      const reason = filter.slice("not_feasible_reason:".length);
+      return scopedOrders.filter(o => o.status === ORDER_STATUS.NOT_FEASIBLE && o.rejectionReason === reason).length;
+    }
+    if (filter.startsWith("external_not_feasible_reason:")) {
+      const reason = filter.slice("external_not_feasible_reason:".length);
+      return scopedOrders.filter(o => o.status === ORDER_STATUS.EXTERNAL_NOT_FEASIBLE && o.externalRejectionReason === reason).length;
+    }
+    return statusCounts[filter as keyof typeof statusCounts] ?? 0;
+  };
+
+  // خيارات قائمة الحالات، مع أسباب عدم الإمكانية داخل نفس القائمة بدل تبويبات كثيرة.
+  const buildStatusOptions = (): { key: StatusFilter; label: string }[] => {
+    const options: { key: StatusFilter; label: string }[] = [
       { key: "all", label: "الكل" },
     ];
     if (isExternalUser) {
       if (externalView === "transferred") {
-        // وضع «المحوّلة إليك»: تبويبات الرد الخارجى فقط
         return [
           { key: "needs_external", label: "يحتاج ردك" },
           { key: "external_feasible", label: "ردّيت: يمكن" },
@@ -227,33 +263,40 @@ export function OrdersTable({ orders }: OrdersTableProps) {
           { key: "all", label: "كل المحوّلة" },
         ];
       }
-      // وضع «كل الطلبات»: نفس تبويبات صفحة الطلبات الكاملة
-      tabs.push({ key: "feasible", label: "يمكن التنفيذ" });
-      tabs.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
-      tabs.push({ key: "pending", label: "قيد الانتظار" });
-      tabs.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
-      tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
-      tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
-      return tabs;
+      options.push({ key: "feasible", label: "يمكن التنفيذ" });
+      options.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
+      options.push({ key: "pending", label: "قيد الانتظار" });
+      options.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
+      options.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
+      options.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
+      return options;
     }
-    tabs.push({ key: "feasible", label: "يمكن التنفيذ" });
-    tabs.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
-    tabs.push({ key: "pending", label: "قيد الانتظار" });
+    options.push({ key: "feasible", label: "يمكن التنفيذ" });
+    options.push({ key: "not_feasible", label: "لا يمكن التنفيذ" });
+    options.push({ key: "pending", label: "قيد الانتظار" });
     if (roleIs(ROLES.ADMIN)) {
-      tabs.push({ key: "pending_unassigned", label: "قيد الانتظار (بدون تعيين)" });
-      tabs.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
-      tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
-      tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
+      options.push({ key: "pending_unassigned", label: "قيد الانتظار (بدون تعيين)" });
+      options.push({ key: "needs_external", label: "يحتاج رد الشئون الخارجية" });
+      options.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
+      options.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
     }
     if (roleIs(ROLES.SALES)) {
-      tabs.push({ key: "needs_external", label: "قيد المراجعة الخارجية" });
-      tabs.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
-      tabs.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
+      options.push({ key: "needs_external", label: "قيد المراجعة الخارجية" });
+      options.push({ key: "external_feasible", label: "يمكن (شئون خارجية)" });
+      options.push({ key: "external_not_feasible", label: "لا يمكن (شئون خارجية)" });
     }
-    return tabs;
+    return options;
   };
 
-  const statusTabs = buildStatusTabs();
+  const statusOptions = buildStatusOptions();
+  const notFeasibleReasonOptions = Object.values(REJECTION_REASONS).map((reason) => ({
+    key: `not_feasible_reason:${reason}` as StatusFilter,
+    label: `لا يمكن التنفيذ — ${reason}`,
+  }));
+  const externalNotFeasibleReasonOptions = Object.values(REJECTION_REASONS).map((reason) => ({
+    key: `external_not_feasible_reason:${reason}` as StatusFilter,
+    label: `لا يمكن التنفيذ (شئون خارجية) — ${reason}`,
+  }));
 
   const contractTabs: { key: ContractFilter; label: string }[] = [
     { key: "all", label: "الكل" },
@@ -305,30 +348,42 @@ export function OrdersTable({ orders }: OrdersTableProps) {
           </div>
         </div>
       )}
-      {/* Status Filter Tabs */}
-      {statusTabs.length > 1 && (
-        <div className="border-b overflow-x-auto">
-          <div className="flex min-w-max" dir="rtl">
-            {statusTabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setStatusFilter(tab.key)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  statusFilter === tab.key
-                    ? "border-primary text-primary bg-primary/5"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-                data-testid={`tab-${tab.key}`}
-              >
-                {tab.label}
-                <span className={`mr-2 px-2 py-0.5 rounded-full text-xs ${
-                  statusFilter === tab.key ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                }`}>
-                  {statusCounts[tab.key]}
-                </span>
-              </button>
+      {/* Status Filter Dropdown */}
+      {statusOptions.length > 1 && (
+        <div className="border-b p-3 bg-muted/20 flex flex-wrap items-center gap-2" dir="rtl">
+          <label htmlFor="orders-status-filter" className="text-sm text-muted-foreground whitespace-nowrap">حالة الطلب:</label>
+          <select
+            id="orders-status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            className="border rounded-md px-3 py-2 text-sm bg-white min-w-[240px]"
+            dir="rtl"
+            data-testid="select-status-filter"
+          >
+            {statusOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label} ({countForStatusFilter(option.key)})
+              </option>
             ))}
-          </div>
+            {statusOptions.some((option) => option.key === "not_feasible") && (
+              <optgroup label="لا يمكن التنفيذ — حسب السبب">
+                {notFeasibleReasonOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label} ({countForStatusFilter(option.key)})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {statusOptions.some((option) => option.key === "external_not_feasible") && (
+              <optgroup label="لا يمكن التنفيذ (شئون خارجية) — حسب السبب">
+                {externalNotFeasibleReasonOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label} ({countForStatusFilter(option.key)})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
         </div>
       )}
 
@@ -357,8 +412,8 @@ export function OrdersTable({ orders }: OrdersTableProps) {
       )}
 
       <div className="p-4 border-b">
-        <div className="flex gap-2 items-center" dir="rtl">
-          <div className="relative flex-1">
+        <div className="flex flex-wrap gap-2 items-center" dir="rtl">
+          <div className="relative flex-1 min-w-[220px]">
             <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="بحث في جميع الحقول..."
@@ -409,8 +464,20 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               متعذراتى فقط
             </button>
           )}
+          <Input
+            type="number"
+            min={0}
+            step="any"
+            placeholder="متوسط Score ≤ ..."
+            value={boxScoreLte}
+            onChange={(e) => setBoxScoreLte(e.target.value)}
+            className="w-full sm:w-44 text-sm"
+            dir="rtl"
+            title="يعرض الطلبات التي متوسط Score البكس لها أقل من أو يساوي القيمة"
+            data-testid="input-box-score-lte"
+          />
         </div>
-        {(searchQuery || statusFilter !== "all" || contractFilter !== "all" || techFilter || cabinetTechFilter || myRejectionsOnly) && (
+        {(searchQuery || statusFilter !== "all" || contractFilter !== "all" || techFilter || cabinetTechFilter || myRejectionsOnly || boxScoreLte) && (
           <p className="text-sm text-muted-foreground mt-2">
             عدد النتائج: {filteredOrders.length} من {orders.length}
           </p>
