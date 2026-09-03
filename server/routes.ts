@@ -2698,6 +2698,20 @@ export async function registerRoutes(
     }
   });
 
+  // التحقق من نتيجة المقاطعة بعد فقدان رد POST. وجود done/preempted يثبت أن
+  // الخادم قبل الطلب حتى لو لم يصل الرد إلى جهاز التنفيذ.
+  app.get("/api/exec-queue/:id/preempt", requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { rows } = await pool.query(
+        `SELECT status, result FROM exec_jobs WHERE id = $1`, [id]);
+      const job = rows[0];
+      if (!job) return res.json({ ok: false, accepted: false, status: "missing", result: null });
+      const accepted = job.status === "done" && job.result === "preempted";
+      res.json({ ok: accepted, accepted, status: job.status, result: job.result || null });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // مقاطعة مهمة جارية: نعلّمها done (result=preempted) ونرجّع الأرقام المتبقية كمهمة جديدة
   // أولويتها 0 (تكملة) — فتتكمّل بعد الطلبات العاجلة كلها.
   app.post("/api/exec-queue/:id/preempt", requireAuth, requireSuperAdmin, async (req, res) => {
@@ -2713,7 +2727,7 @@ export async function registerRoutes(
       const up = await pool.query(
         `UPDATE exec_jobs SET status = 'done', done_at = now(), result = 'preempted'
           WHERE id = $1 AND status = 'claimed'`, [id]);
-      if (!up.rowCount) return res.json({ ok: true, remaining: 0, newId: null, duplicate: true });
+      if (!up.rowCount) return res.json({ ok: true, accepted: true, remaining: 0, newId: null, duplicate: true });
       let newId: number | null = null;
       if (remaining.length) {
         const note = (job.note ? job.note + " " : "") + "(تكملة)";
@@ -2729,7 +2743,7 @@ export async function registerRoutes(
            job.requested_from || null]);
         newId = ins[0].id;
       }
-      res.json({ ok: true, remaining: remaining.length, newId });
+      res.json({ ok: true, accepted: true, remaining: remaining.length, newId });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 

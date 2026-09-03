@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2, Trash2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { execDeviceLabel, executeBatch, EXEC_MEASURE_STALL_MS, latestOpAt, latestPoEventAt, latestSubInfoAt, refreshDueExecBatch, recoverTimedOutMeasure, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
+import { execDeviceLabel, executeBatch, EXEC_MEASURE_STALL_MS, latestOpAt, latestPoEventAt, latestSubInfoAt, refreshDueExecBatch, recoverTimedOutMeasure, requestExecPreempt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
 
 // ── إبقاء تاب جهاز التنفيذ صاحى ─────────────────────────────────────────────
 // المشكلة اللى بتوقف الطابور: Edge/Chrome بيعملوا للتاب اللى فى الخلفية
@@ -340,11 +340,11 @@ export function ExecutorButton() {
         busy: measureRefreshBusy.current,
         completed: measureRefreshCompleted.current,
         preempt: async (id) => {
-          const r = await fetch(`/api/exec-queue/${id}/preempt`, {
-            method: "POST",
-            credentials: "include",
-          });
-          return { ok: r.ok };
+          const outcome = await requestExecPreempt(id);
+          if (outcome === "response_lost") {
+            console.warn("[exec] تم قبول المقاطعة لكن الرد انقطع؛ تمت مصالحة الحالة من الخادم");
+          }
+          return { ok: outcome !== "send_failed" };
         },
         reload: () => { try { window.location.reload(); } catch {} },
       });
@@ -425,7 +425,7 @@ export function ExecutorButton() {
             // أسفل الحلقة، لأن ذلك كان يسبب طلبين متتاليين لنفس المهمة.
             return (await refreshAfterMeasureTimeout(jobId, batchId)) === "handled"
               ? "preempted_by_timeout"
-              : "timeout";
+              : "preempt_pending";
           }
         }
         closeWin();
@@ -530,9 +530,17 @@ export function ExecutorButton() {
               }
               if (result === "preempted") {
                 // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
-                await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});
+                const outcome = await requestExecPreempt(job.id);
+                if (outcome === "response_lost") {
+                  console.warn("[exec] تم قبول المقاطعة لكن الرد انقطع؛ تمت مصالحة الحالة من الخادم");
+                } else if (outcome === "send_failed") {
+                  console.error("[exec] تعذر إرسال المقاطعة؛ لن تُسجّل المهمة كمنتهية");
+                }
               } else if (result === "preempted_by_timeout") {
                 // preempt اتبعت ونجحت داخل refreshAfterMeasureTimeout؛ لا ترسل طلباً ثانياً.
+              } else if (result === "preempt_pending") {
+                // لم نعرف هل وصل preempt؛ لا ترسل /done بنتيجة timeout فوق مقاطعة
+                // ربما قبلها الخادم. آلية إنقاذ المهام العالقة تعيد المحاولة لاحقاً.
               } else if (result === "canceled") {
                 // اتمسحت من الطابور يدوياً (بقت stale أصلاً) → مانعملش حاجة
               } else {

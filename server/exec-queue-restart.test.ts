@@ -41,7 +41,7 @@ test("measurement timeout survives reload and resumes only unfinished work", asy
   assert.equal(EXEC_MEASURE_STALL_MS, 3 * 60 * 1000);
   assert.equal(EXEC_BATCH_REFRESH_DELAY_MS, 60 * 1000);
   assert.match(client, /const STALL_MS = EXEC_MEASURE_STALL_MS/);
-  assert.match(client, /fetch\(`\/api\/exec-queue\/\$\{id\}\/preempt`/);
+  assert.match(client, /requestExecPreempt\(id\)/);
   assert.match(client, /fetch\("\/api\/exec-queue\/requeue"/);
   assert.match(client, /refreshDueExecBatch\(/);
 

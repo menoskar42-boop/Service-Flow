@@ -180,6 +180,46 @@ export interface MeasureTimeoutRecoveryOptions {
   storage?: ExecQueueStorage | null;
 }
 
+export type ExecPreemptOutcome = "accepted" | "response_lost" | "send_failed";
+
+// طلب المقاطعة مع مصالحة بعد انقطاع الشبكة:
+// قد يكون POST وصل للخادم ونفّذ بنجاح، لكن Response لم يصل للمتصفح. فى هذه
+// الحالة نقرأ الحالة من الخادم قبل أن نسمح لأى مسار إكمال بتسجيل نتيجة متناقضة.
+export async function requestExecPreempt(
+  jobId: number,
+  fetcher: typeof fetch = fetch,
+): Promise<ExecPreemptOutcome> {
+  const reconcile = async (): Promise<ExecPreemptOutcome> => {
+    try {
+      const statusResponse = await fetcher(`/api/exec-queue/${jobId}/preempt`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (!statusResponse.ok) return "send_failed";
+      const status = await statusResponse.json().catch(() => null);
+      if (status?.accepted === true && status?.result === "preempted") {
+        return "response_lost";
+      }
+    } catch {}
+    return "send_failed";
+  };
+
+  try {
+    const response = await fetcher(`/api/exec-queue/${jobId}/preempt`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) return "send_failed";
+    const result = await response.json().catch(() => null);
+    if (result?.accepted === true) return "accepted";
+    // نجاح HTTP بلا body صالح يعني أن الطلب ربما قُبل لكن الرد انقطع.
+    if (result == null) return reconcile();
+    return "send_failed";
+  } catch {
+    return reconcile();
+  }
+}
+
 // ينقذ مهمة القياس مرة واحدة: preempt يعيد المتبقى، ثم يحفظ موعد إعادة تشغيل
 // الباتش قبل reload. مجموعتا busy/completed تمنعان طلبين لنفس المهمة أثناء
 // السباق بين مسار المهلة ومسار إكمال المهمة.
