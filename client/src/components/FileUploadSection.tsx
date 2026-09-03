@@ -452,7 +452,7 @@ export function FileUploadSection() {
     // عند التفعيل: شغّل مرة فوراً (ضغطة المستخدم → النوافذ المنبثقة مسموحة، بما فيها تاب 430D)
     // ويظبط عدّاد الـ 30 دقيقة فالتشغيل التالى بعد نص ساعة.
     if (nv) {
-      runDailyUpdate(undefined, { manual: true });
+      runDailyUpdate();
       try { localStorage.setItem("sf_hourly_last", String(Date.now())); window.dispatchEvent(new Event("sf-hourly-ran")); } catch {}
     }
   };

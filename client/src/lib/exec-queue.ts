@@ -78,13 +78,13 @@ export function reserveOpWindow(type: ExecJobType): Window | null {
     // المهمة. لو كان الجهاز الآخر متأخراً/غير متاح، المستخدم يظل أمام صفحة بيضاء.
     // فتح رابط البوابة مباشرة داخل gesture يمنع ذلك، بينما يظل التاب محجوزاً
     // للطابور ليُعاد استخدامه عند تنفيذ المهمة على نفس المتصفح.
-    const initialUrl: Partial<Record<ExecJobType, string>> = {
+    const initialUrl = ({
       fccdaily: FCC_URL,
       wfmdaily: WFM_LOGIN_URL,
       ossdaily: OSS_URL,
       ports: `${PROV_URL}?sf_ports=1#/login`,
       weoas: WEOAS_URL,
-    }[type] || "about:blank";
+    } as Partial<Record<ExecJobType, string>>)[type] || "about:blank";
     const win = window.open(initialUrl, name);
     if (win) RESERVED_OP_WINDOWS.set(type, win);
     return win;
