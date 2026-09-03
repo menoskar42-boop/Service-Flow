@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 import { FileSpreadsheet, Printer } from "lucide-react";
 
 // تفصيلى الباتش — للرقابة. بيوضّح لكل مهمة **الأثر الفعلى** فى قاعدة البيانات مش
@@ -134,6 +135,7 @@ export function ExecBatchDetails({ batchId, typeLabel, onClose }:
     title: `تفصيلى الباتش — ${typeLabel} (${batchId})`,
     columns: COLS, rows: jobs.map((j, i) => asRow(j, i).map((v) => String(v ?? "—"))),
   });
+  const detailScroll = useHorizontalKeyboardScroll(!isLoading && jobs.length > 0);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-auto p-4" dir="rtl"
@@ -159,7 +161,7 @@ export function ExecBatchDetails({ batchId, typeLabel, onClose }:
           </div>
         </div>
 
-        <div className="overflow-auto max-h-[70vh]">
+        <div ref={detailScroll.ref} tabIndex={0} onKeyDown={detailScroll.onKeyDown} aria-label="جدول تفاصيل الباتش — استخدم السهمين يمين ويسار للتحرك أفقياً" className="overflow-auto max-h-[70vh] outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
           {isLoading ? (
             <div className="py-14 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div>
           ) : jobs.length === 0 ? (

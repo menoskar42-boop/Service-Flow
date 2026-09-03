@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 
 interface RepDetailRow {
   phoneNumber: string; centralName: string; lineCabin: string | null; lineBox: string | null;
@@ -102,12 +103,8 @@ export function TechPerformanceReport() {
   const [b24Loading, setB24Loading] = useState(false);
   const [central, setCentral]   = useState("");
 
-  // جداول التفاصيل مفيهاش tabindex افتراضياً فمفاتيح الأسهم ما كانتش بتحرّك السكرول جواها إلا لو
-  // المستخدم يلمس شريط السكرول بالماوس الأول. بنعمل focus عليها برمجياً لحظة فتح كل حوار.
-  const repScrollRef = useRef<HTMLDivElement>(null);
-  const b24ScrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (repOpen) requestAnimationFrame(() => repScrollRef.current?.focus()); }, [repOpen]);
-  useEffect(() => { if (b24Open) requestAnimationFrame(() => b24ScrollRef.current?.focus()); }, [b24Open]);
+  const repScroll = useHorizontalKeyboardScroll(repOpen && !!repDetailData && !repLoading);
+  const b24Scroll = useHorizontalKeyboardScroll(b24Open && !!b24Data && !b24Loading);
 
   // تعيين/تعديل فنى الإغلاق يدوياً (سوبر أدمن فقط) — نفس آلية إحصائيات التكرار
   const canEditTech = user?.role === ROLES.SUPER_ADMIN;
@@ -687,7 +684,7 @@ export function TechPerformanceReport() {
                <Printer className="w-4 h-4" /> PDF
              </Button>
           </div>
-          <div ref={repScrollRef} tabIndex={0} className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+          <div ref={repScroll.ref} tabIndex={0} onKeyDown={repScroll.onKeyDown} aria-label="جدول الأرقام المكررة — استخدم السهمين يمين ويسار للتحرك أفقياً" className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {repLoading ? (
               <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
             ) : !repFiltered.length ? (
@@ -791,7 +788,7 @@ export function TechPerformanceReport() {
               <FileSpreadsheet className="w-4 h-4" /> Excel
             </Button>
           </div>
-          <div ref={b24ScrollRef} tabIndex={0} className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-orange-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+          <div ref={b24Scroll.ref} tabIndex={0} onKeyDown={b24Scroll.onKeyDown} aria-label="جدول الأعطال التي تجاوزت 24 ساعة — استخدم السهمين يمين ويسار للتحرك أفقياً" className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-orange-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
             {b24Loading ? (
               <div className="py-14 text-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin inline ml-2" />جارٍ التحميل…</div>
             ) : !b24Filtered.length ? (

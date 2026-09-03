@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
@@ -18,6 +18,7 @@ import { Loader2, FileSpreadsheet, Printer, Repeat2, Pencil, Save, X } from "luc
 import { format } from "date-fns";
 import { printTablePDF } from "@/lib/print-pdf";
 import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 
 interface RepRow {
   centralName: string | null;
@@ -80,26 +81,7 @@ export function RepetitionStatsReport() {
   const [repDetailOpen, setRepDetailOpen]     = useState(false);
   const [repDetailData, setRepDetailData]     = useState<RepDetailRow[] | null>(null);
   const [repDetailLoading, setRepDetailLoading] = useState(false);
-  // جدول التفاصيل مفيهوش tabindex افتراضياً فمفاتيح الأسهم ما كانتش بتحرّك
-  // السكرول جواه إلا لو المستخدم يلمس شريط السكرول بالماوس الأول. بنعمل focus
-  // بعد اكتمال تحميل البيانات، وليس عند فتح الحوار فقط، لأن الجدول لا يكون موجوداً وقتها.
-  const repDetailScrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (repDetailOpen && repDetailData) {
-      requestAnimationFrame(() => repDetailScrollRef.current?.focus({ preventScroll: true }));
-    }
-  }, [repDetailOpen, repDetailData]);
-  const handleRepDetailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    event.preventDefault();
-    const step = Math.max(220, Math.floor(event.currentTarget.clientWidth * 0.65));
-    // اتجاه الحركة فيزيائي ومقصود: السهم الأيسر يعرض أعمدة أبعد إلى اليسار والعكس.
-    event.currentTarget.scrollBy({
-      left: event.key === "ArrowLeft" ? -step : step,
-      behavior: "smooth",
-    });
-  };
+  const repDetailScroll = useHorizontalKeyboardScroll(repDetailOpen && !!repDetailData);
   const [repDetailTech, setRepDetailTech]     = useState(""); // فلتر باسم الفنى
   const [editingTech, setEditingTech]         = useState<string | null>(null); // complainNo
   const [editTechDraft, setEditTechDraft]     = useState("");
@@ -639,9 +621,9 @@ export function RepetitionStatsReport() {
           )}
           {!repDetailLoading && repDetailData && (
             <div
-              ref={repDetailScrollRef}
+              ref={repDetailScroll.ref}
               tabIndex={0}
-              onKeyDown={handleRepDetailKeyDown}
+              onKeyDown={repDetailScroll.onKeyDown}
               aria-label="جدول تفاصيل الخطوط المكررة — استخدم السهمين يمين ويسار للتحرك أفقياً"
               className="flex-1 min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap"
             >

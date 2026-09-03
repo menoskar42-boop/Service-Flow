@@ -24,6 +24,7 @@ import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { arNorm, arIncludes } from "@shared/ar-norm";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 
 interface BoxRejectionReportProps {
   orders: Order[];
@@ -33,6 +34,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogKey, setDialogKey] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const detailScroll = useHorizontalKeyboardScroll(dialogOpen && !!dialogKey);
 
   const rejectedOrders = orders.filter(
     (o) =>
@@ -213,7 +215,7 @@ export function BoxRejectionReport({ orders }: BoxRejectionReportProps) {
               <Input placeholder="بحث..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pr-10 text-right text-sm" dir="rtl" />
             </div>
           </div>
-          <div className="overflow-x-auto max-h-[60vh] overflow-y-auto">
+          <div ref={detailScroll.ref} tabIndex={0} onKeyDown={detailScroll.onKeyDown} aria-label="جدول تفاصيل المتعذرات — استخدم السهمين يمين ويسار للتحرك أفقياً" className="overflow-x-auto max-h-[60vh] overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
             <Table className="text-right text-sm" dir="rtl">
               <TableHeader className="bg-muted/50 sticky top-0">
                 <TableRow>

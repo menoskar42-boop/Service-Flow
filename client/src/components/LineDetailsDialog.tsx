@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { closeReason } from "@/lib/close-codes";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 
 // نافذة «تفاصيل الخط» المشتركة — بتتفتح من أى تقرير فيه رقم تليفون.
 // مصدر البيانات هو نفس مصادر «بحث برقم التليفون» بالظبط عشان مايبقاش فيه مصدرين
@@ -48,6 +49,7 @@ export function LineDetailsDialog({
 
   const l = data?.found ? data.line : null;
   const closes = hist?.history ?? [];
+  const historyScroll = useHorizontalKeyboardScroll(!!closes.length && !histLoading);
 
   const handleClose = (e?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     e?.preventDefault?.();
@@ -116,7 +118,7 @@ export function LineDetailsDialog({
             ) : !closes.length ? (
               <p className="text-xs text-muted-foreground py-2">مفيش أعطال مسجّلة</p>
             ) : (
-              <div className="overflow-auto max-h-64 border rounded">
+               <div ref={historyScroll.ref} tabIndex={0} onKeyDown={historyScroll.onKeyDown} aria-label="جدول تاريخ أعطال الخط — استخدم السهمين يمين ويسار للتحرك أفقياً" className="overflow-auto max-h-64 border rounded outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
                 <table className="w-full text-xs text-right">
                   <thead className="bg-muted/60">
                     <tr>

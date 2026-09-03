@@ -17,6 +17,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { ROLES } from "@shared/schema";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 
 interface StatRow {
   centralName: string | null;
@@ -104,6 +105,7 @@ export function RemovalStatsReport() {
     return beyond24Data.filter((r) => r.closeByName === beyond24Tech || r.areaTechName === beyond24Tech);
   }, [beyond24Data, beyond24Tech]);
   const [assigningNo, setAssigningNo]       = useState<string | null>(null);
+  const beyond24Scroll = useHorizontalKeyboardScroll(beyond24Open && !!beyond24Data && !beyond24Loading);
 
   const { user } = useAuth();
   const { toast } = useToast();
@@ -634,7 +636,7 @@ export function RemovalStatsReport() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-blue-600" /></div>
           )}
           {!beyond24Loading && beyond24Data && (
-            <div className="flex-1 min-h-0 overflow-auto [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+            <div ref={beyond24Scroll.ref} tabIndex={0} onKeyDown={beyond24Scroll.onKeyDown} aria-label="جدول الأعطال التي تجاوزت 24 ساعة — استخدم السهمين يمين ويسار للتحرك أفقياً" className="flex-1 min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-amber-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader className="bg-amber-900 sticky top-0">
                   <TableRow>

@@ -19,6 +19,7 @@ import { LastUpdatedBadge } from "@/components/LastUpdatedBadge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
+import { useHorizontalKeyboardScroll } from "@/hooks/use-horizontal-keyboard-scroll";
 
 interface CurrentFault extends Measurement138 {
   ticketId: string | null;
@@ -151,6 +152,7 @@ export function CurrentFaultsReport() {
   // حوار تفاصيل التكرار (الشكاوى المغلقة السابقة فى نفس الشهر لنفس الرقم)
   const [repeatFor, setRepeatFor] = useState<CurrentFault | null>(null);
   const [repeatData, setRepeatData] = useState<any[] | null>(null);
+  const repeatScroll = useHorizontalKeyboardScroll(!!repeatFor && !!repeatData && repeatData.length > 0);
   const [repeatLoading, setRepeatLoading] = useState(false);
   const openRepeat = async (f: CurrentFault) => {
     setRepeatFor(f); setRepeatData(null); setRepeatLoading(true);
@@ -629,7 +631,7 @@ export function CurrentFaultsReport() {
                 ) : !repeatData || !repeatData.length ? (
                   <div className="py-6 text-center text-muted-foreground">لا توجد شكاوى مغلقة سابقة فى نفس الشهر</div>
                 ) : (
-                  <div className="overflow-auto">
+                   <div ref={repeatScroll.ref} tabIndex={0} onKeyDown={repeatScroll.onKeyDown} aria-label="جدول الأعطال المغلقة السابقة — استخدم السهمين يمين ويسار للتحرك أفقياً" className="overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-green-400">
                     <table className="w-full text-xs border-collapse">
                       <thead>
                         <tr className="bg-green-700 text-white">
