@@ -16,8 +16,11 @@ test("repetition details focus after loading and move horizontally with keyboard
   assert.match(report, /ref=\{repDetailScroll\.ref\}/);
   assert.match(report, /onKeyDown=\{repDetailScroll\.onKeyDown\}/);
   assert.match(hook, /event\.key !== "ArrowLeft" && event\.key !== "ArrowRight"/);
-  assert.match(hook, /event\.currentTarget\.scrollBy\(/);
+  assert.match(hook, /event\.currentTarget\.scrollTo\(/);
   assert.match(hook, /behavior: "smooth"/);
   assert.match(hook, /focus\(\{ preventScroll: true \}\)/);
   assert.match(hook, /input, textarea, select, button, a/);
+  assert.match(hook, /window\.addEventListener\("keydown", scrollTable, true\)/);
+  assert.match(hook, /element\.scrollTo\(\{ left: element\.scrollLeft \+ delta/);
+  assert.match(hook, /event\.stopPropagation\(\)/);
 });
