@@ -84,8 +84,10 @@ export function ExecutorButton() {
   const [clearing, setClearing] = useState(false);
   // تاب القياس الأخير — نقفله أول ما نفتح قياس جديد (يفضل تاب واحد بس مفتوح: الأخير)
   const lastMeasureWin = useRef<Window | null>(null);
-  // يمنع إرسال أكثر من طلب إعادة تشغيل لنفس مهمة القياس أثناء انتظار الريفريش.
-  const measureRefreshBusy = useRef(false);
+  // يمنع إرسال أكثر من طلب إعادة تشغيل لنفس مهمة القياس، حتى لو دخل مسار
+  // انتهاء المهلة ومسار الإكمال معاً قبل أن ينفّذ المتصفح reload.
+  const measureRefreshBusy = useRef(new Set<number>());
+  const measureRefreshCompleted = useRef(new Set<number>());
   // يمنع إعادة تشغيل نفس الباتش أكثر من مرة أثناء انتقال صفحة جهاز التنفيذ.
   const batchRefreshBusy = useRef(false);
   const batchRefreshTriggered = useRef(false);
@@ -366,24 +368,28 @@ export function ExecutorButton() {
     // نعيد تشغيل جهاز التنفيذ بدل ما نترك المهمة معلّقة.
     const STALL_MS = 3 * 60 * 1000;
 
-    const refreshAfterMeasureTimeout = async (jobId: number, batchId?: string | null): Promise<boolean> => {
-      if (measureRefreshBusy.current) return false;
-      measureRefreshBusy.current = true;
+    const refreshAfterMeasureTimeout = async (jobId: number, batchId?: string | null): Promise<"handled" | "failed"> => {
+      if (measureRefreshCompleted.current.has(jobId) || measureRefreshBusy.current.has(jobId)) {
+        return "handled";
+      }
+      measureRefreshBusy.current.add(jobId);
       try {
         // preempt يعيد الأرقام غير المقاسة إلى pending قبل مغادرة الصفحة، فلا تضيع المهمة.
         const r = await fetch(`/api/exec-queue/${jobId}/preempt`, {
           method: "POST",
           credentials: "include",
         });
-        if (!r.ok) return false;
+        if (!r.ok) return "failed";
+        measureRefreshCompleted.current.add(jobId);
         // الموعد = بعد دقيقة من نجاح إنقاذ جهاز التنفيذ، أى عند الدقيقة الرابعة
         // من نفس التسلسل. يظل محفوظاً بعد ريفرش الصفحة.
         scheduleBatchRefresh(batchId);
         try { window.location.reload(); } catch {}
-        return true;
+        return "handled";
       } catch {
-        measureRefreshBusy.current = false;
-        return false;
+        return "failed";
+      } finally {
+        measureRefreshBusy.current.delete(jobId);
       }
     };
 
@@ -458,7 +464,11 @@ export function ExecutorButton() {
           if (canPreempt && chk.preempt) { closeWin(); return "preempted"; } // طلب عاجل يقطع
           if (Date.now() - measureStartedAt >= STALL_MS) {
             closeWin();
-            return (await refreshAfterMeasureTimeout(jobId, batchId)) ? "preempted" : "timeout";
+            // هذه الدالة أرسلت preempt بالفعل؛ لا نعيد إرساله في مسار الإكمال
+            // أسفل الحلقة، لأن ذلك كان يسبب طلبين متتاليين لنفس المهمة.
+            return (await refreshAfterMeasureTimeout(jobId, batchId)) === "handled"
+              ? "preempted_by_timeout"
+              : "timeout";
           }
         }
         closeWin();
@@ -564,6 +574,8 @@ export function ExecutorButton() {
               if (result === "preempted") {
                 // اتقطع لصالح طلب عاجل → السيرفر يعلّمها done ويرجّع الباقى كمهمة تكملة أولويتها 0
                 await fetch(`/api/exec-queue/${job.id}/preempt`, { method: "POST", credentials: "include" }).catch(() => {});
+              } else if (result === "preempted_by_timeout") {
+                // preempt اتبعت ونجحت داخل refreshAfterMeasureTimeout؛ لا ترسل طلباً ثانياً.
               } else if (result === "canceled") {
                 // اتمسحت من الطابور يدوياً (بقت stale أصلاً) → مانعملش حاجة
               } else {
