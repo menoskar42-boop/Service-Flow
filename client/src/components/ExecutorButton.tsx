@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Server, Loader2, Trash2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { execDeviceLabel, executeBatch, latestOpAt, latestPoEventAt, latestSubInfoAt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
+import { execDeviceLabel, executeBatch, EXEC_MEASURE_STALL_MS, latestOpAt, latestPoEventAt, latestSubInfoAt, refreshDueExecBatch, recoverTimedOutMeasure, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
 
 // ── إبقاء تاب جهاز التنفيذ صاحى ─────────────────────────────────────────────
 // المشكلة اللى بتوقف الطابور: Edge/Chrome بيعملوا للتاب اللى فى الخلفية
@@ -296,67 +296,32 @@ export function ExecutorButton() {
       } catch { return { active: true, preempt: false, measured: 0, total: 0 }; }
     };
 
-    // بعد ريفرش جهاز التنفيذ عند الدقيقة الثالثة، نعيد تشغيل الباتش كله عند الدقيقة الرابعة
-    // بنفس منطق زر «إعادة تشغيل» اليدوى فى شاشة الطابور. العلامة بتعيش فى localStorage
-    // عشان تفضل موجودة بعد window.location.reload().
-    const BATCH_REFRESH_KEY = "sf_exec_batch_refresh_deadlines";
-    const BATCH_REFRESH_DELAY_MS = 60 * 1000;
-    const readBatchRefreshDeadlines = (): Record<string, number> => {
-      try {
-        const raw = JSON.parse(localStorage.getItem(BATCH_REFRESH_KEY) || "{}");
-        if (!raw || typeof raw !== "object") return {};
-        const valid: Record<string, number> = {};
-        for (const [key, value] of Object.entries(raw)) {
-          if (typeof value === "number" && Number.isFinite(value)) valid[key] = value;
-        }
-        return valid;
-      } catch { return {}; }
-    };
-    const writeBatchRefreshDeadlines = (deadlines: Record<string, number>) => {
-      try { localStorage.setItem(BATCH_REFRESH_KEY, JSON.stringify(deadlines)); } catch {}
-    };
-    const scheduleBatchRefresh = (batchId?: string | null) => {
-      const id = String(batchId || "").trim();
-      if (!id) return;
-      const deadlines = readBatchRefreshDeadlines();
-      // لا نؤخر الموعد لو كان هناك طلب أقدم لنفس الباتش.
-      deadlines[id] = Math.min(deadlines[id] || Infinity, Date.now() + BATCH_REFRESH_DELAY_MS);
-      writeBatchRefreshDeadlines(deadlines);
-    };
-    const clearBatchRefresh = (batchId: string) => {
-      const deadlines = readBatchRefreshDeadlines();
-      delete deadlines[batchId];
-      writeBatchRefreshDeadlines(deadlines);
-    };
-
     // لو حان موعد ريفرش الباتش، استخدم نفس endpoint زر «إعادة تشغيل» اليدوى.
     // نعيد تحميل الصفحة بعد نجاحه لإغلاق أى حالة/تاب قديم قبل سحب الباتش من جديد.
     const refreshDueBatch = async () => {
       if (batchRefreshBusy.current || batchRefreshTriggered.current || stopped) return;
-      const deadlines = readBatchRefreshDeadlines();
-      const due = Object.entries(deadlines)
-        .filter(([, deadline]) => deadline <= Date.now())
-        .sort((a, b) => a[1] - b[1]);
-      if (!due.length) return;
-      const [batchId] = due[0];
       batchRefreshBusy.current = true;
       try {
-        const r = await fetch("/api/exec-queue/requeue", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchId }),
+        await refreshDueExecBatch({
+          requeue: async (batchId) => {
+            const r = await fetch("/api/exec-queue/requeue", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ batchId }),
+            });
+            if (!r.ok) return { ok: false, requeued: 0 };
+            const d = await r.json().catch(() => ({}));
+            return { ok: true, requeued: Number(d?.requeued || 0) };
+          },
+          beforeReload: () => {
+            batchRefreshTriggered.current = true;
+            try {
+              if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close();
+            } catch {}
+          },
+          reload: () => { try { window.location.reload(); } catch {} },
         });
-        if (!r.ok) return; // نترك العلامة للمحاولة التالية
-        const d = await r.json().catch(() => ({}));
-        clearBatchRefresh(batchId);
-        if (Number(d?.requeued || 0) > 0) {
-          batchRefreshTriggered.current = true;
-          try {
-            if (lastMeasureWin.current && !lastMeasureWin.current.closed) lastMeasureWin.current.close();
-          } catch {}
-          try { window.location.reload(); } catch {}
-        }
       } catch {
         // المحاولة التالية بعد 4 ثوانٍ
       } finally {
@@ -366,31 +331,23 @@ export function ExecutorButton() {
 
     // لو مفيش تقدّم فى القياس لمدة ٣ دقائق (DZS وقف على خط فيه إيرور مثلاً)،
     // نعيد تشغيل جهاز التنفيذ بدل ما نترك المهمة معلّقة.
-    const STALL_MS = 3 * 60 * 1000;
+    const STALL_MS = EXEC_MEASURE_STALL_MS;
 
     const refreshAfterMeasureTimeout = async (jobId: number, batchId?: string | null): Promise<"handled" | "failed"> => {
-      if (measureRefreshCompleted.current.has(jobId) || measureRefreshBusy.current.has(jobId)) {
-        return "handled";
-      }
-      measureRefreshBusy.current.add(jobId);
-      try {
-        // preempt يعيد الأرقام غير المقاسة إلى pending قبل مغادرة الصفحة، فلا تضيع المهمة.
-        const r = await fetch(`/api/exec-queue/${jobId}/preempt`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!r.ok) return "failed";
-        measureRefreshCompleted.current.add(jobId);
-        // الموعد = بعد دقيقة من نجاح إنقاذ جهاز التنفيذ، أى عند الدقيقة الرابعة
-        // من نفس التسلسل. يظل محفوظاً بعد ريفرش الصفحة.
-        scheduleBatchRefresh(batchId);
-        try { window.location.reload(); } catch {}
-        return "handled";
-      } catch {
-        return "failed";
-      } finally {
-        measureRefreshBusy.current.delete(jobId);
-      }
+      return recoverTimedOutMeasure({
+        jobId,
+        batchId,
+        busy: measureRefreshBusy.current,
+        completed: measureRefreshCompleted.current,
+        preempt: async (id) => {
+          const r = await fetch(`/api/exec-queue/${id}/preempt`, {
+            method: "POST",
+            credentials: "include",
+          });
+          return { ok: r.ok };
+        },
+        reload: () => { try { window.location.reload(); } catch {} },
+      });
     };
 
     // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |

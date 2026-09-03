@@ -107,6 +107,139 @@ export function openSubInfo(phone: string): Window | null {
 
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+// ثوابت إنقاذ باتش القياس — مُصدّرة عشان اختبار التسلسل يقدر يحاكي الوقت
+// من غير ما ينتظر أربع دقائق فعلية.
+export const EXEC_MEASURE_STALL_MS = 3 * 60 * 1000;
+export const EXEC_BATCH_REFRESH_DELAY_MS = 60 * 1000;
+export const EXEC_BATCH_REFRESH_KEY = "sf_exec_batch_refresh_deadlines";
+
+export interface ExecQueueStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+const browserExecQueueStorage = (): ExecQueueStorage | null => {
+  try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; }
+};
+
+export function readExecBatchRefreshDeadlines(
+  storage: ExecQueueStorage | null = browserExecQueueStorage(),
+): Record<string, number> {
+  try {
+    const raw = JSON.parse(storage?.getItem(EXEC_BATCH_REFRESH_KEY) || "{}");
+    if (!raw || typeof raw !== "object") return {};
+    const valid: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (typeof value === "number" && Number.isFinite(value)) valid[key] = value;
+    }
+    return valid;
+  } catch { return {}; }
+}
+
+export function scheduleExecBatchRefresh(
+  batchId: string | null | undefined,
+  now = Date.now(),
+  storage: ExecQueueStorage | null = browserExecQueueStorage(),
+): void {
+  const id = String(batchId || "").trim();
+  if (!id || !storage) return;
+  const deadlines = readExecBatchRefreshDeadlines(storage);
+  // لا نؤخر الموعد لو كان هناك طلب أقدم لنفس الباتش.
+  deadlines[id] = Math.min(deadlines[id] || Infinity, now + EXEC_BATCH_REFRESH_DELAY_MS);
+  try { storage.setItem(EXEC_BATCH_REFRESH_KEY, JSON.stringify(deadlines)); } catch {}
+}
+
+export function dueExecBatchRefresh(
+  now = Date.now(),
+  storage: ExecQueueStorage | null = browserExecQueueStorage(),
+): string | null {
+  const due = Object.entries(readExecBatchRefreshDeadlines(storage))
+    .filter(([, deadline]) => deadline <= now)
+    .sort((a, b) => a[1] - b[1]);
+  return due[0]?.[0] || null;
+}
+
+export function clearExecBatchRefresh(
+  batchId: string,
+  storage: ExecQueueStorage | null = browserExecQueueStorage(),
+): void {
+  if (!storage) return;
+  const deadlines = readExecBatchRefreshDeadlines(storage);
+  delete deadlines[batchId];
+  try { storage.setItem(EXEC_BATCH_REFRESH_KEY, JSON.stringify(deadlines)); } catch {}
+}
+
+export interface MeasureTimeoutRecoveryOptions {
+  jobId: number;
+  batchId?: string | null;
+  preempt: (jobId: number) => Promise<{ ok: boolean }>;
+  reload: () => void;
+  busy?: Set<number>;
+  completed?: Set<number>;
+  now?: () => number;
+  storage?: ExecQueueStorage | null;
+}
+
+// ينقذ مهمة القياس مرة واحدة: preempt يعيد المتبقى، ثم يحفظ موعد إعادة تشغيل
+// الباتش قبل reload. مجموعتا busy/completed تمنعان طلبين لنفس المهمة أثناء
+// السباق بين مسار المهلة ومسار إكمال المهمة.
+export async function recoverTimedOutMeasure(
+  options: MeasureTimeoutRecoveryOptions,
+): Promise<"handled" | "failed"> {
+  const busy = options.busy || new Set<number>();
+  const completed = options.completed || new Set<number>();
+  if (completed.has(options.jobId) || busy.has(options.jobId)) return "handled";
+  busy.add(options.jobId);
+  try {
+    const response = await options.preempt(options.jobId);
+    if (!response.ok) return "failed";
+    completed.add(options.jobId);
+    scheduleExecBatchRefresh(
+      options.batchId,
+      options.now ? options.now() : Date.now(),
+      options.storage,
+    );
+    try { options.reload(); } catch {}
+    return "handled";
+  } catch {
+    return "failed";
+  } finally {
+    busy.delete(options.jobId);
+  }
+}
+
+export interface DueBatchRefreshOptions {
+  requeue: (batchId: string) => Promise<{ ok: boolean; requeued: number }>;
+  beforeReload?: () => void;
+  reload: () => void;
+  now?: () => number;
+  storage?: ExecQueueStorage | null;
+}
+
+// يعيد باتشاً مستحقاً مرة واحدة. فشل الطلب يترك الموعد محفوظاً للمحاولة
+// التالية، أما النجاح فيمسح العلامة قبل reload حتى لا تتكرر العملية بعد الإقلاع.
+export async function refreshDueExecBatch(
+  options: DueBatchRefreshOptions,
+): Promise<{ status: "not_due" | "failed" | "handled"; batchId?: string; requeued?: number }> {
+  const batchId = dueExecBatchRefresh(
+    options.now ? options.now() : Date.now(),
+    options.storage,
+  );
+  if (!batchId) return { status: "not_due" };
+  try {
+    const result = await options.requeue(batchId);
+    if (!result.ok) return { status: "failed", batchId };
+    clearExecBatchRefresh(batchId, options.storage);
+    if (result.requeued > 0) {
+      try { options.beforeReload?.(); } catch {}
+      try { options.reload(); } catch {}
+    }
+    return { status: "handled", batchId, requeued: result.requeued };
+  } catch {
+    return { status: "failed", batchId };
+  }
+}
+
 // اسم ثابت لنافذة القياس — كل قياس جديد يفتح بنفس الاسم فيتعاد استخدام **نفس** النافذة/التاب
 // (الجديد يحلّ محل القديم بدل ما يتراكموا)، حتى لو close() فشل على النوافذ المنبثقة.
 const DZS_MEASURE_TARGET = "dzs_measure";
