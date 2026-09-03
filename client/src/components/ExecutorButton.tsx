@@ -84,6 +84,8 @@ export function ExecutorButton() {
   const [clearing, setClearing] = useState(false);
   // تاب القياس الأخير — نقفله أول ما نفتح قياس جديد (يفضل تاب واحد بس مفتوح: الأخير)
   const lastMeasureWin = useRef<Window | null>(null);
+  // يمنع إرسال أكثر من طلب إعادة تشغيل لنفس مهمة القياس أثناء انتظار الريفريش.
+  const measureRefreshBusy = useRef(false);
 
   // استطلاع دائم لعدد المهام فى الطابور (للسوبر أدمن) — حتى لو الجهاز مش مفعّل — عشان يظهر زر المسح
   // + حالة جهاز التنفيذ: لو فيه مهام مستنية ومفيش جهاز شغّال، الطابور واقف فعلاً
@@ -256,8 +258,9 @@ export function ExecutorButton() {
     window.addEventListener("online", onWake);
     document.addEventListener("resume", onWake as any);   // Page Lifecycle: التاب فكّ التجميد
 
-    // مهلة كل خط (بالمللى): قياس بحد أقصى ١.٨د، رفع سرعة بحد أقصى ٨د (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث
-    const MEASURE_MAX_MS = 2.5 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
+    // مهلة كل خط (بالمللى): القياس ٣ دقائق قبل إنقاذ جهاز التنفيذ، رفع سرعة بحد أقصى ٨د
+    // (لكن يعدّى أول ما يتأكد)، إيقاف ٣٠ث.
+    const MEASURE_MAX_MS = 3 * 60 * 1000, RAISE_MAX_MS = 8 * 60 * 1000, STOP_MS = 30 * 1000;
     // المراجعة بتحتاج دخول FCC + بحث + قراءة البيانات — 3 دقايق سقف كريم للرقم الواحد
     const SUBINFO_MAX_MS = 3 * 60 * 1000;
 
@@ -288,9 +291,27 @@ export function ExecutorButton() {
       } catch { return { active: true, preempt: false, measured: 0, total: 0 }; }
     };
 
-    // لو مفيش تقدّم فى القياس لمدة STALL_MS (DZS وقف على خط فيه إيرور مثلاً) نوقف بدل ما نعلّق ساعات.
-    // أطول من أقصى وقت لخط واحد (١.٨د) بهامش، فمابنوقفش خط شغّال بطىء بالغلط.
-    const STALL_MS = 2.5 * 60 * 1000;
+    // لو مفيش تقدّم فى القياس لمدة ٣ دقائق (DZS وقف على خط فيه إيرور مثلاً)،
+    // نعيد تشغيل جهاز التنفيذ بدل ما نترك المهمة معلّقة.
+    const STALL_MS = 3 * 60 * 1000;
+
+    const refreshAfterMeasureTimeout = async (jobId: number): Promise<boolean> => {
+      if (measureRefreshBusy.current) return false;
+      measureRefreshBusy.current = true;
+      try {
+        // preempt يعيد الأرقام غير المقاسة إلى pending قبل مغادرة الصفحة، فلا تضيع المهمة.
+        const r = await fetch(`/api/exec-queue/${jobId}/preempt`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!r.ok) return false;
+        try { window.location.reload(); } catch {}
+        return true;
+      } catch {
+        measureRefreshBusy.current = false;
+        return false;
+      }
+    };
 
     // بترجّع نتيجة التنفيذ: "done" خلص فعلاً | "tab_closed" التاب اتقفل قبل ما يخلص |
     // "timeout" علّق/وقف بدون تقدّم | "stopped" جهاز التنفيذ اتقفل | "canceled" اتمسح من الطابور يدوياً |
@@ -353,16 +374,18 @@ export function ExecutorButton() {
         lastMeasureWin.current = win;
         const closeWin = () => { try { if (win && !win.closed) win.close(); } catch {} };
         const deadline = Date.now() + Math.min(accs.length * MEASURE_MAX_MS, MAX_TOTAL_MS);
-        let lastMeasured = 0, lastProgAt = Date.now();
+        const measureStartedAt = Date.now();
         while (!stopped && Date.now() < deadline) {
           await sleep(5 * 1000);
           const chk = await jobCheck(jobId);
           if (!chk.active) { closeWin(); return "canceled"; } // اتمسح من الطابور يدوياً → وقف فوراً
-          if (chk.measured > lastMeasured) { lastMeasured = chk.measured; lastProgAt = Date.now(); }
           if (chk.total > 0 && chk.measured >= chk.total) { closeWin(); return "done"; } // كل الأرقام اتقاست
           if (win && win.closed) return "tab_closed"; // التاب اتقفل قبل ما يخلص
           if (canPreempt && chk.preempt) { closeWin(); return "preempted"; } // طلب عاجل يقطع
-          if (Date.now() - lastProgAt > STALL_MS) { closeWin(); return "timeout"; } // مافيش تقدّم = وقف
+          if (Date.now() - measureStartedAt >= STALL_MS) {
+            closeWin();
+            return (await refreshAfterMeasureTimeout(jobId)) ? "preempted" : "timeout";
+          }
         }
         closeWin();
         return stopped ? "stopped" : "timeout";
@@ -381,7 +404,7 @@ export function ExecutorButton() {
       // ⚠️ كشف التوقّف: من غيره كان الباتش الكبير (261 رقم مثلاً) اللى بيقف فى نصّه
       // يفضل «جارٍ التنفيذ» لحد المهلة الكلية (لحد 4 ساعات) — الشاشة واقفة على
       // «27 من 261» ومحدش يعرف إنها ماتت، والحل الوحيد إعادة تشغيل يدوى.
-      // المهلة هنا **مش** STALL_MS بتاع القياس (2.5 دقيقة): تشغيلة PO للخط الواحد
+      // المهلة هنا **مش** STALL_MS بتاع القياس (3 دقائق): تشغيلة PO للخط الواحد
       // بتاخد دقايق فعلاً (خطوة «First Realtime Data Collection» لوحدها اتقاست
       // 214 ثانية)، فلو قطعناها عند 2.5 دقيقة هنقطع خط لسه شغّال. القاعدة: الخط
       // لازم يخلّص (نجاح أو فشل) قبل ما نعدّيه — فبنستنى مهلة الخط الكاملة
