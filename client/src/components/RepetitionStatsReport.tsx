@@ -363,7 +363,7 @@ export function RepetitionStatsReport() {
       columns: [
         "#", "رقم التليفون", "رقم الموبايل", "اسم العميل", "العنوان", "السنترال",
         "الكابينه", "البكس", "كود MSAN", "عدد المرات", "تاريخ الشكوى",
-        "تاريخ الإغلاق", "فنى الإغلاق", "فنى المنطقة",
+         "تاريخ الإغلاق", "سبب الإغلاق", "فنى الإغلاق", "فنى المنطقة",
       ],
       rows: repDetailFiltered.map((r, i) => [
         i + 1,
@@ -378,6 +378,7 @@ export function RepetitionStatsReport() {
         r.appearances,
         r.complainTime ? new Date(r.complainTime).toLocaleString("ar-EG") : "—",
         r.closeTime ? new Date(r.closeTime).toLocaleString("ar-EG") : "—",
+         closeReason(r.closeCode) || (r.closeCode ? `كود ${r.closeCode}` : "—"),
         r.closeByName || "غير معروف",
         r.areaTechName || "غير معروف",
       ]),
