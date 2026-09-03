@@ -37,6 +37,60 @@ type FakeJob = {
   result?: string;
 };
 
+type LaneJob = FakeJob & {
+  site: string;
+  priority: number;
+  queueOrder: number;
+  createdAt: number;
+};
+
+// محاكاة صغيرة لقفل claim فى قاعدة البيانات: كل transaction تنتظر القفل
+// قبل أن تفحص المواقع المشغولة، لذلك لا يمكن لطلبين متزامنين أن يريا نفس
+// الموقع فارغاً. القفل لا يمنع المواقع المختلفة من المطالبة بالتتابع السريع
+// ثم التشغيل معاً بعد انتهاء transaction.
+class SiteClaimQueue {
+  private claimTail = Promise.resolve();
+
+  constructor(private readonly jobs: LaneJob[]) {}
+
+  claim(): Promise<LaneJob | null> {
+    const claim = this.claimTail.then(() => {
+      const candidate = [...this.jobs]
+        .filter((job) => {
+          if (job.status !== "pending") return false;
+          return !this.jobs.some(
+            (running) =>
+              running.status === "claimed" && running.site === job.site,
+          );
+        })
+        .sort(
+          (a, b) =>
+            b.priority - a.priority ||
+            (a.queueOrder || Number.MAX_SAFE_INTEGER) -
+              (b.queueOrder || Number.MAX_SAFE_INTEGER) ||
+            a.createdAt - b.createdAt ||
+            a.id - b.id,
+        )[0];
+
+      if (!candidate) return null;
+      candidate.status = "claimed";
+      return candidate;
+    });
+    this.claimTail = claim.then(
+      () => undefined,
+      () => undefined,
+    );
+    return claim;
+  }
+
+  complete(id: number): void {
+    const job = this.jobs.find((candidate) => candidate.id === id);
+    assert.ok(job);
+    assert.equal(job.status, "claimed");
+    job.status = "done";
+  }
+}
+
 test("measurement timeout survives reload and resumes only unfinished work", async () => {
   assert.equal(EXEC_MEASURE_STALL_MS, 3 * 60 * 1000);
   assert.equal(EXEC_BATCH_REFRESH_DELAY_MS, 60 * 1000);
@@ -165,6 +219,83 @@ test("measurement timeout survives reload and resumes only unfinished work", asy
   );
 });
 
+test("claims run different sites together, serialize one site, and preserve order", async () => {
+  const jobs: LaneJob[] = [
+    {
+      id: 101,
+      batchId: "batch-fcc",
+      accounts: ["fcc-1"],
+      status: "pending",
+      site: "fcc.te.eg",
+      priority: 0,
+      queueOrder: 0,
+      createdAt: 1,
+    },
+    {
+      id: 102,
+      batchId: "batch-fcc",
+      accounts: ["fcc-2"],
+      status: "pending",
+      site: "fcc.te.eg",
+      priority: 0,
+      queueOrder: 0,
+      createdAt: 2,
+    },
+    {
+      id: 103,
+      batchId: "batch-c360",
+      accounts: ["c360-1"],
+      status: "pending",
+      site: "customer360.te.eg",
+      priority: 0,
+      queueOrder: 0,
+      createdAt: 3,
+    },
+    {
+      id: 104,
+      batchId: "batch-fcc",
+      accounts: ["fcc-3"],
+      status: "pending",
+      site: "fcc.te.eg",
+      priority: 0,
+      queueOrder: 0,
+      createdAt: 4,
+    },
+  ];
+  const queue = new SiteClaimQueue(jobs);
+
+  // طلبا claim متزامنان: الأول يأخذ FCC، والثاني يستطيع أخذ C360
+  // بدلاً من المهمة الثانية على FCC.
+  const [fccFirst, c360First] = await Promise.all([queue.claim(), queue.claim()]);
+  assert.equal(fccFirst?.id, 101);
+  assert.equal(c360First?.id, 103);
+  assert.deepEqual(
+    new Set([fccFirst?.site, c360First?.site]),
+    new Set(["fcc.te.eg", "customer360.te.eg"]),
+  );
+  assert.deepEqual(
+    jobs.filter((job) => job.status === "claimed").map((job) => job.site),
+    ["fcc.te.eg", "customer360.te.eg"],
+  );
+  assert.equal(
+    jobs.filter((job) => job.status === "claimed" && job.site === "fcc.te.eg").length,
+    1,
+  );
+  assert.equal(await queue.claim(), null);
+
+  // لا تُسحب مهمة FCC الثانية قبل انتهاء الأولى، وبعد انتهائها تظل أقدم
+  // مهمة مؤهلة هى التى تُطالب بها العملية التالية.
+  queue.complete(101);
+  const fccSecond = await queue.claim();
+  assert.equal(fccSecond?.id, 102);
+  assert.equal(fccSecond?.site, "fcc.te.eg");
+
+  queue.complete(103);
+  queue.complete(102);
+  const fccThird = await queue.claim();
+  assert.equal(fccThird?.id, 104);
+});
+
 test("batch restart endpoints preserve the preempt, requeue, claim contract", () => {
   const preemptStart = routes.indexOf('app.post("/api/exec-queue/:id/preempt"');
   const requeueStart = routes.indexOf('app.post("/api/exec-queue/requeue"');
@@ -186,4 +317,22 @@ test("batch restart endpoints preserve the preempt, requeue, claim contract", ()
   );
   assert.match(preemptRoute, /WHERE id = \$1 AND status = 'claimed'/);
   assert.match(preemptRoute, /if \(remaining\.length\)/);
+});
+
+test("claim endpoint serializes the site check without changing queue ordering", () => {
+  const claimStart = routes.indexOf('app.post("/api/exec-queue/claim"');
+  const doneStart = routes.indexOf('app.post("/api/exec-queue/:id/done"', claimStart);
+  assert.ok(claimStart >= 0 && doneStart > claimStart);
+  const claimRoute = routes.slice(claimStart, doneStart);
+
+  assert.match(claimRoute, /withTx\(async \(tx\) =>/);
+  assert.match(claimRoute, /SELECT pg_advisory_xact_lock\(872634501\)/);
+  assert.match(
+    claimRoute,
+    /b\.status = 'claimed'[\s\S]*?COALESCE\(b\.site, '10\.42\.187\.101'\) = COALESCE\(e\.site, '10\.42\.187\.101'\)/,
+  );
+  assert.match(
+    claimRoute,
+    /ORDER BY e\.priority DESC,[\s\S]*?e\.queue_order[\s\S]*?e\.created_at, e\.id/,
+  );
 });
