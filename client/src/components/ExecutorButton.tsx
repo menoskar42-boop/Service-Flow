@@ -213,6 +213,11 @@ export function ExecutorButton() {
   useEffect(() => {
     if (!active) return;
     let stopped = false;
+    // إبقاء التاب نشطاً فعلياً بعد ضغطة التفعيل/أول تفاعل بعد الريفريش.
+    // كان هذان الحارسان معرفين لكن غير مستخدمين، فكان المتصفح قد يخنق
+    // مؤقتات جهاز التنفيذ عندما ينتقل التاب للخلفية.
+    const stopSilentKeepAlive = startSilentKeepAlive();
+    const stopWakeLock = startWakeLock();
 
     // عند تفعيل جهاز التنفيذ: أى مهمة «claimed» من جلسة سابقة اتقفل عليها الجهاز = يتيمة → علّمها stale
     // عشان متفضلش عالقة فى الطابور وتضخّم ترتيب المستخدمين. (بنعملها مرة عند بدء التفعيل قبل السحب.)
@@ -304,15 +309,26 @@ export function ExecutorButton() {
       try {
         await refreshDueExecBatch({
           requeue: async (batchId) => {
-            const r = await fetch("/api/exec-queue/requeue", {
-              method: "POST",
-              credentials: "include",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ batchId }),
-            });
-            if (!r.ok) return { ok: false, requeued: 0 };
-            const d = await r.json().catch(() => ({}));
-            return { ok: true, requeued: Number(d?.requeued || 0) };
+            // لا تسمح لطلب إعادة التشغيل أن يعلّق مسار جهاز التنفيذ
+            // ويمنع أول claim إلى ما لا نهاية إذا علّق البروكسي أو الشبكة.
+            const ctrl = new AbortController();
+            const timeout = setTimeout(() => ctrl.abort(), 15 * 1000);
+            try {
+              const r = await fetch("/api/exec-queue/requeue", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ batchId }),
+                signal: ctrl.signal,
+              });
+              if (!r.ok) return { ok: false, requeued: 0 };
+              const d = await r.json().catch(() => ({}));
+              return { ok: true, requeued: Number(d?.requeued || 0) };
+            } catch {
+              return { ok: false, requeued: 0 };
+            } finally {
+              clearTimeout(timeout);
+            }
           },
           beforeReload: () => {
             batchRefreshTriggered.current = true;
@@ -558,7 +574,12 @@ export function ExecutorButton() {
           })();
         }
         }
-      } catch {} finally { busy.current = false; }
+      } catch (e: any) {
+        if (!stopped) {
+          console.error("[exec] تعذر تشغيل دورة سحب المهام:", e);
+          setClaimError("تعذّر تشغيل سحب المهام من الطابور — راجع وحدة التحكم");
+        }
+      } finally { busy.current = false; }
     };
 
     const refreshPending = () => {
@@ -566,9 +587,16 @@ export function ExecutorButton() {
         .then((r) => r.json()).then((d) => setPending(d?.pending ?? 0)).catch(() => {});
     };
 
-    heartbeat(); refreshPending(); void refreshDueBatch();
+    // افحص إنقاذ الباتش أولاً، ثم ابدأ السحب فوراً. لا ننتظر دورة الـ4 ثواني
+    // الأولى حتى لا يظهر الجهاز مفعّلاً بينما كل المهام متوقفة.
+    const pump = () => {
+      void refreshDueBatch().then(() => {
+        if (!stopped && !batchRefreshTriggered.current) void claimAndRun();
+      });
+    };
+    heartbeat(); refreshPending(); pump();
     const hb = setInterval(heartbeat, 20 * 1000);
-    const poll = setInterval(() => { void refreshDueBatch(); claimAndRun(); refreshPending(); }, 4 * 1000);
+    const poll = setInterval(() => { pump(); refreshPending(); }, 4 * 1000);
     const wd = setInterval(watchdog, 30 * 1000);
     return () => {
       stopped = true; clearInterval(hb); clearInterval(poll); clearInterval(wd);
@@ -576,6 +604,8 @@ export function ExecutorButton() {
       window.removeEventListener("focus", onWake);
       window.removeEventListener("online", onWake);
       document.removeEventListener("resume", onWake as any);
+      stopSilentKeepAlive();
+      stopWakeLock();
       // امسح النبضة عند إيقاف التفعيل/مغادرة الصفحة عشان مايفضلش «مفعّل» بالغلط
       fetch("/api/exec-queue/offline", { method: "POST", credentials: "include" }).catch(() => {});
     };
