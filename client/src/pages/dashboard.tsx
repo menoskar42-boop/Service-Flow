@@ -30,6 +30,7 @@ import { BoxScoreReport } from "@/components/BoxScoreReport";
 import { AccountEditsReport } from "@/components/AccountEditsReport";
 import { DuplicateAccountsReport } from "@/components/DuplicateAccountsReport";
 import { LinesWithoutPortReport } from "@/components/LinesWithoutPortReport";
+import { PortsMissingLineDataReport } from "@/components/PortsMissingLineDataReport";
 import { LinesNoMobileReport } from "@/components/LinesNoMobileReport";
 import { RegularizedFaultsReport } from "@/components/RegularizedFaultsReport";
 import { RegularizedFaultsRangeReport } from "@/components/RegularizedFaultsRangeReport";
@@ -80,7 +81,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports" | "box-tickets-backfill" | "box-tickets-repaired" | "slot-cards" | "cabinet-port-free" | "account-never-measured" | "box-score-avg" | "lines-no-mobile" | "needs-speed-lowscore" | "lines-mobile-checked" | "om-order-match";
+type ReportTab = "box-rejections" | "phone-lines" | "ports-missing-line-data" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports" | "box-tickets-backfill" | "box-tickets-repaired" | "slot-cards" | "cabinet-port-free" | "account-never-measured" | "box-score-avg" | "lines-no-mobile" | "needs-speed-lowscore" | "lines-mobile-checked" | "om-order-match";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -188,6 +189,7 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
     icon: Phone,
     items: [
       { id: "phone-lines",  label: "بيان التليفونات" },
+      { id: "ports-missing-line-data", label: "بورتات بلا بيان فني أو اسم/عنوان" },
       { id: "lines-without-port", label: "بيان فنى بدون بورت" },
       { id: "lines-no-mobile", label: "أرقام بدون رقم موبايل تحت الفحص" },
       { id: "lines-mobile-checked", label: "أرقام تم الفحص وتحتاج أرقام محمول" },
@@ -623,6 +625,7 @@ export default function Dashboard() {
             <div className="flex-1 min-w-0">
               {reportTab === "box-rejections"    && <BoxRejectionReport orders={orders || []} />}
               {reportTab === "phone-lines"       && <PhoneLinesReport />}
+              {reportTab === "ports-missing-line-data" && <PortsMissingLineDataReport />}
               {reportTab === "box-summary"       && <BoxLinesSummaryReport />}
               {reportTab === "subscriber-info"   && <SubscriberInfoReport />}
               {reportTab === "slot-cards"          && <SlotCardsReport />}

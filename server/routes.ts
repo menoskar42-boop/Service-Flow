@@ -5030,6 +5030,103 @@ export async function registerRoutes(
     res.json({ ok: true, restored: (un.rowCount ?? 0) > 0 });
   });
 
+  // GET /api/reports/ports-missing-line-data — أرقام موجودة فى آخر جدول منافذ MSAN
+  // لكن ناقصها بيان فنى (كابينة/بكس) أو اسم/عنوان العميل.
+  // phone_ports هو جدول الحالة الحالية؛ الرفع يؤرشف أى رقم اختفى من الملف الكامل،
+  // لذلك الصف الموجود هنا هو بورت موجود فى آخر حالة معروفة للمنافذ.
+  app.get("/api/reports/ports-missing-line-data", requireAuth, async (req, res) => {
+    const { search = "", page = "1", limit = "50" } = req.query as Record<string, string>;
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
+    const params: any[] = [];
+
+    // نعتبر البيان ناقصاً لو لم يوجد صف 131 أو كان أحد الحقلين الأساسيين فارغاً.
+    // ونعتبر بيانات العميل ناقصة لو لم يوجد الاسم أو العنوان (حتى لو وُجد الآخر).
+    const missingTechnical = `(
+      pl.full_phone IS NULL
+      OR NULLIF(btrim(pl.cabin_number::text), '') IS NULL
+      OR NULLIF(btrim(pl.box_number::text), '') IS NULL
+    )`;
+    const missingSubscriber = `(
+      si.phone_number IS NULL
+      OR NULLIF(btrim(si.sub_name::text), '') IS NULL
+      OR NULLIF(btrim(si.sub_add::text), '') IS NULL
+    )`;
+    const conds: string[] = [
+      // نعرض أرقام التليفونات المحلية فقط، لا صفوف الخدمات أو القيم غير الرقمية.
+      `regexp_replace(pp.phone_number, '[^0-9]', '', 'g') ~ '^0*88[0-9]{7}$'`,
+      `(${missingTechnical} OR ${missingSubscriber})`,
+    ];
+
+    if (search.trim()) {
+      params.push(arQ(search));
+      const p = `$${params.length}`;
+      conds.push(`(
+        ${n("pp.phone_number")} LIKE ${p}
+        OR ${n("pp.msan_code")} LIKE ${p}
+        OR ${n("pp.frame")} LIKE ${p}
+        OR ${n("pp.shelf")} LIKE ${p}
+        OR ${n("pp.slot")} LIKE ${p}
+        OR ${n("pp.port_number")} LIKE ${p}
+        OR ${n("COALESCE(si.central, pl.central)")} LIKE ${p}
+        OR ${n("pl.cabin_number")} LIKE ${p}
+        OR ${n("pl.box_number")} LIKE ${p}
+        OR ${n("si.sub_name")} LIKE ${p}
+        OR ${n("si.sub_add")} LIKE ${p}
+      )`);
+    }
+
+    const where = `WHERE ${conds.join(" AND ")}`;
+    const joinClause = `
+      FROM phone_ports pp
+      LEFT JOIN phone_lines pl ON pl.full_phone = pp.phone_number
+      LEFT JOIN line_subscriber_info si ON si.phone_number = pp.phone_number
+    `;
+    const totalRes = await pool.query(
+      `SELECT COUNT(*)::int AS c ${joinClause} ${where}`,
+      params,
+    );
+    const total = totalRes.rows[0].c as number;
+    const latestRes = await pool.query(
+      `SELECT MAX(uploaded_at) AS t FROM phone_ports`,
+    );
+    const latest = latestRes.rows[0]?.t;
+    const lastPortUpdateAt = latest
+      ? (latest instanceof Date ? latest.toISOString() : String(latest))
+      : null;
+
+    const offset = (pageNum - 1) * pageSize;
+    const dataParams = [...params, pageSize, offset];
+    const dataRes = await pool.query(
+      `SELECT pp.phone_number AS "phoneNumber",
+              COALESCE(pl.tel_no, regexp_replace(pp.phone_number, '^88', '')) AS "telNo",
+              COALESCE(si.central, pl.central) AS "central",
+              pl.cabin_number AS "cabinNumber",
+              pl.box_number AS "boxNumber",
+              pl.dp_terminal AS "dpTerminal",
+              si.sub_name AS "subName",
+              si.sub_add AS "subAdd",
+              pp.msan_code AS "msanCode",
+              pp.frame,
+              pp.shelf,
+              pp.slot,
+              pp.port_number AS "portNumber",
+              pp.port_type AS "portType",
+              pp.voice_status AS "voiceStatus",
+              pp.data_status AS "dataStatus",
+              pp.operator,
+              (pp.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "portUploadedAt",
+              ${missingTechnical} AS "missingTechnical",
+              ${missingSubscriber} AS "missingSubscriber"
+       ${joinClause} ${where}
+       ORDER BY COALESCE(si.central, pl.central) NULLS LAST,
+                pp.msan_code NULLS LAST, pp.phone_number
+       LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+      dataParams,
+    );
+    res.json({ data: dataRes.rows, total, page: pageNum, pageSize, lastPortUpdateAt });
+  });
+
   // GET /api/reports/lines-without-port — أرقام لها بيان فنى (131) لكن مالهاش بورت/فريم
   // على المسان. دى الأرقام اللى بتتستبعد من كل تقارير القياسات وبيان التليفونات، فمحتاجة
   // متابعة: يا إما تتركّب على المسان يا إما بيانها الفنى قديم ومحتاج تنظيف.
