@@ -517,12 +517,82 @@ test("PostgreSQL claims serialize one site and preserve the real queue order", a
       await postJson(`/api/exec-queue/${ids.get(key)}/done`, cookie, { result: "done" });
     }
 
+    // Hold site A from a separate PostgreSQL connection. A claim for the
+    // different site must still get through before this transaction ends,
+    // while a claimant for A keeps waiting and gets the higher-priority job
+    // after the lock is released.
+    await insertJob({ key: "held-a", site: siteA, priority: 3, queueOrder: 0, createdAt: "2020-01-01T00:00:10Z" });
+    await insertJob({ key: "unblocked-b", site: siteB, priority: 1, queueOrder: 0, createdAt: "2020-01-01T00:00:11Z" });
+    const heldSiteClient = await pool.connect();
+    let heldSiteClientOpen = true;
+    let keepClaimingHeldSite = true;
+    let heldSiteClaim: Promise<Record<string, any> | null> | undefined;
+    try {
+      await heldSiteClient.query("BEGIN");
+      await heldSiteClient.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+        [`exec-queue-site:${siteA}`],
+      );
+
+      const otherSiteClaim = await claim();
+      assert.equal(
+        otherSiteClaim?.id,
+        ids.get("unblocked-b"),
+        "a different site must claim before the held site's lock is released",
+      );
+
+      let heldSiteClaimSettled = false;
+      heldSiteClaim = (async () => {
+        while (keepClaimingHeldSite) {
+          const row = await claim();
+          if (row) return row;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return null;
+      })().then((row) => {
+        heldSiteClaimSettled = true;
+        return row;
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(
+        heldSiteClaimSettled,
+        false,
+        "the held site's claim must remain pending until its lock is released",
+      );
+
+      await heldSiteClient.query("ROLLBACK");
+      heldSiteClient.release();
+      heldSiteClientOpen = false;
+      const heldSiteResult = await heldSiteClaim;
+      assert.equal(
+        heldSiteResult?.id,
+        ids.get("held-a"),
+        "the held site's higher-priority job should claim after release",
+      );
+
+      await Promise.all([
+        postJson(`/api/exec-queue/${ids.get("held-a")}/done`, cookie, { result: "done" }),
+        postJson(`/api/exec-queue/${ids.get("unblocked-b")}/done`, cookie, { result: "done" }),
+      ]);
+      keepClaimingHeldSite = false;
+    } finally {
+      keepClaimingHeldSite = false;
+      if (heldSiteClientOpen) {
+        try { await heldSiteClient.query("ROLLBACK"); } catch {}
+        heldSiteClient.release();
+      }
+      if (heldSiteClaim) {
+        try { await heldSiteClaim; } catch {}
+      }
+    }
+
     const finalRows = await pool.query(
       `SELECT status, COUNT(*)::int AS count
          FROM exec_jobs WHERE batch_id = $1 GROUP BY status ORDER BY status`,
       [batchId],
     );
-    assert.deepEqual(finalRows.rows, [{ status: "done", count: 7 }]);
+    assert.deepEqual(finalRows.rows, [{ status: "done", count: 9 }]);
   } finally {
     await new Promise<void>((resolve) => {
       if (!httpServer.listening) return resolve();
