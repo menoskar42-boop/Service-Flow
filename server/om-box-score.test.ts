@@ -34,9 +34,10 @@ test("box average combines measured lines from multiple boxes", () => {
   });
 });
 
-test("box score filter keeps only broken boxes below the requested score", () => {
+test("box score filter keeps broken boxes at or below the requested score", () => {
   assert.equal(matchesBoxScoreFilter(true, 12.5, true, "20"), true);
-  assert.equal(matchesBoxScoreFilter(true, 20, true, "20"), false);
+  assert.equal(matchesBoxScoreFilter(true, 20, true, "20"), true);
+  assert.equal(matchesBoxScoreFilter(true, 20.1, true, "20"), false);
   assert.equal(matchesBoxScoreFilter(false, 12.5, true, "20"), false);
   assert.equal(matchesBoxScoreFilter(true, null, true, "20"), false);
 });

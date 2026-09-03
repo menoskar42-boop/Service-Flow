@@ -98,6 +98,7 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
   // أقل من العدد ده من الخطوط الشغّالة (الشغّال = الخط اللى ليه بورت).
   const [workingLt, setWorkingLt] = useState("");
   const [boxBrokenOnly, setBoxBrokenOnly] = useState(false);
+  // فلتر متوسط الاسكور: أقل من أو يساوي القيمة المدخلة.
   const [boxScoreLt, setBoxScoreLt] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -586,12 +587,12 @@ export function OmRejectionsReport({ bucket, title }: { bucket: "current" | "soy
             <Input
               type="number"
               min={0}
-              placeholder="متوسط Score أقل من..."
+              placeholder="متوسط Score أقل من أو يساوي..."
               value={boxScoreLt}
               onChange={(e) => setBoxScoreLt(e.target.value)}
               className="w-full sm:w-44 text-sm"
               dir="rtl"
-              title="يعرض حالات البوكس المعطل التي متوسط Score لها أقل من القيمة"
+              title="يعرض حالات البوكس المعطل التي متوسط Score لها أقل من أو يساوي القيمة"
             />
           )}
           {bucket === "current" && (

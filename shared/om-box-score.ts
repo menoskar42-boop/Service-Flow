@@ -46,5 +46,5 @@ export function matchesBoxScoreFilter(
   if (!hasLimit) return true;
 
   const maxScore = Number(maxScoreText);
-  return Number.isFinite(maxScore) && avgScore != null && avgScore < maxScore;
+  return Number.isFinite(maxScore) && avgScore != null && avgScore <= maxScore;
 }
