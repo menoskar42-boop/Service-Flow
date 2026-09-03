@@ -80,13 +80,26 @@ export function RepetitionStatsReport() {
   const [repDetailOpen, setRepDetailOpen]     = useState(false);
   const [repDetailData, setRepDetailData]     = useState<RepDetailRow[] | null>(null);
   const [repDetailLoading, setRepDetailLoading] = useState(false);
-  // جدول التفاصيل مفيهوش tabindex افتراضياً فمفاتيح الأسهم (فوق/تحت/يمين/شمال) ما كانتش بتحرّك
-  // السكرول جواه إلا لو المستخدم يلمس شريط السكرول بالماوس الأول (عشان يبقى هو صاحب الـ focus).
-  // بنعمل focus عليه برمجياً لحظة فتح الحوار عشان الأسهم تشتغل فوراً.
+  // جدول التفاصيل مفيهوش tabindex افتراضياً فمفاتيح الأسهم ما كانتش بتحرّك
+  // السكرول جواه إلا لو المستخدم يلمس شريط السكرول بالماوس الأول. بنعمل focus
+  // بعد اكتمال تحميل البيانات، وليس عند فتح الحوار فقط، لأن الجدول لا يكون موجوداً وقتها.
   const repDetailScrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (repDetailOpen) requestAnimationFrame(() => repDetailScrollRef.current?.focus());
-  }, [repDetailOpen]);
+    if (repDetailOpen && repDetailData) {
+      requestAnimationFrame(() => repDetailScrollRef.current?.focus({ preventScroll: true }));
+    }
+  }, [repDetailOpen, repDetailData]);
+  const handleRepDetailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    const step = Math.max(220, Math.floor(event.currentTarget.clientWidth * 0.65));
+    // اتجاه الحركة فيزيائي ومقصود: السهم الأيسر يعرض أعمدة أبعد إلى اليسار والعكس.
+    event.currentTarget.scrollBy({
+      left: event.key === "ArrowLeft" ? -step : step,
+      behavior: "smooth",
+    });
+  };
   const [repDetailTech, setRepDetailTech]     = useState(""); // فلتر باسم الفنى
   const [editingTech, setEditingTech]         = useState<string | null>(null); // complainNo
   const [editTechDraft, setEditTechDraft]     = useState("");
@@ -597,7 +610,7 @@ export function RepetitionStatsReport() {
               {repDetailLoading
                 ? "جارى التحميل..."
                 : repDetailData
-                  ? `${new Set(repDetailFiltered.map(r => r.phoneNumber)).size} خط مكرر — ${repDetailFiltered.length} شكوى`
+                  ? `${new Set(repDetailFiltered.map(r => r.phoneNumber)).size} خط مكرر — ${repDetailFiltered.length} شكوى — استخدم ← → للتحرك أفقياً`
                   : ""}
             </span>
             <div className="flex items-center gap-2">
@@ -625,7 +638,13 @@ export function RepetitionStatsReport() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-600" /></div>
           )}
           {!repDetailLoading && repDetailData && (
-            <div ref={repDetailScrollRef} tabIndex={0} className="flex-1 min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+            <div
+              ref={repDetailScrollRef}
+              tabIndex={0}
+              onKeyDown={handleRepDetailKeyDown}
+              aria-label="جدول تفاصيل الخطوط المكررة — استخدم السهمين يمين ويسار للتحرك أفقياً"
+              className="flex-1 min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-purple-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap"
+            >
               <Table className="text-right text-xs min-w-max" dir="rtl">
                 <TableHeader className="bg-purple-900 sticky top-0">
                   <TableRow>
