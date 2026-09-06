@@ -5350,8 +5350,23 @@ export async function registerRoutes(
   //   الاسكور < 16  و  السرعة الحالية >= 10000  و  النسبة < 60%.
   // القيود التلاتة مع بعض بتضمن إن الخط **مستحيل** يكون فى تقرير «محتاجة رفع سرعة»
   // (شرط (أ) بيقع على الاسكور، وشرط (ب) بيقع على السرعة) — فمافيش تكرار بين التقريرين.
-  app.get(["/api/phone-lines/needs-speed", "/api/phone-lines/needs-speed-lowscore"], requireAuth, async (req, res) => {
+  //
+  // GET /api/phone-lines/left-speed-highscore — «خرجت بعد القياس: اسكور أعلى من 100»
+  // GET /api/phone-lines/left-speed-raised    — «خرجت بعد القياس: اترفعت سرعتها»
+  // التقريرين دول هما «بابا الخروج» من تقرير محتاجة رفع سرعة: الخط اللى كان مؤهّل
+  // ووقعت عليه قياس جديد فطلع من التقرير — بيروح فين ولية. الفرز من **تاريخ القياسات
+  // نفسه** (case_138 بيحتفظ بصف لكل قياس من أداة DZS): بنقارن آخر قياس بالقياس اللى
+  // قبله مباشرةً:
+  //   • القياس السابق كان **مؤهّل** لرفع السرعة، و
+  //   • آخر قياس اسكوره > 100                        → تقرير «اسكور أعلى من 100»
+  //   • آخر قياس اسكوره ≤ 100 والخط لسه متزامن وماعادش مؤهّل → تقرير «اترفعت سرعتها»
+  // كده مافيش جدول جديد ولا اعتماد على طابور التنفيذ (القياس المحلى بيتسجّل برضه).
+  app.get(["/api/phone-lines/needs-speed", "/api/phone-lines/needs-speed-lowscore",
+           "/api/phone-lines/left-speed-highscore", "/api/phone-lines/left-speed-raised"], requireAuth, async (req, res) => {
     const lowScoreMode = req.path.endsWith("/needs-speed-lowscore");
+    const leftHighScore = req.path.endsWith("/left-speed-highscore");
+    const leftRaised = req.path.endsWith("/left-speed-raised");
+    const leftMode = leftHighScore || leftRaised;
     const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", hasComplaint = "", poStoppedBefore = "", measuredBefore = "", search = "", includeExcluded = "", excludeZeroScore = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
@@ -5373,16 +5388,46 @@ export async function registerRoutes(
     // السنترال/الكابينة بتيجى من phone_lines، ولو الرقم مش موجود فيها بتيجى من سجل الشكوى.
     // ⚡ الأداء: نفلتر معيار رفع السرعة جوّه الـ subquery (m) قبل أى join/lateral — فالـ join
     // مع الشكاوى بيتعمل فقط للأرقام المؤهّلة (قليلة) بدل كل الأرقام المتقاسة (آلاف).
+    // توحيد وحدة السرعة إلى Kbps: القيم اللى فيها كسر عشري (زى 0.5 / 2.5) مخزّنة بالميجابت → × 1024.
+    // بدون ده كان الشرط (< 200) بيعتبر خط VDSL بالميجابت (0.5/2.5) خطاً ميتاً ويستبعده بالغلط.
+    const speedN = (col: string) =>
+      `CASE WHEN c.${col} LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.${col},''),'[^0-9.]','','g'),'')::numeric * 1024
+            ELSE NULLIF(regexp_replace(COALESCE(c.${col},''),'[^0-9]','','g'),'')::numeric END`;
+    const measCols = `c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+                 ${speedN("current_speed")} AS cur_n,
+                 ${speedN("max_speed")} AS mx_n`;
+    // معيار «محتاج رفع سرعة» مطبَّق على أى قراءة (آخر قياس أو اللى قبله) — مصدر واحد
+    // للمعيار عشان تقارير الخروج تفضل متطابقة مع التقرير الأصلى لو المعيار اتغيّر.
+    const qualifies = (a: string) => `(
+      ${a}.score IS NOT NULL
+      AND NOT (COALESCE(${a}.cur_n, 0) < 200 AND COALESCE(${a}.mx_n, 0) < 200)
+      AND ((${a}.mx_n > 0 AND ${a}.cur_n / ${a}.mx_n < 0.6 AND ${a}.score > 15 AND ${a}.score < 101)
+           OR (${a}.score < 16 AND ${a}.cur_n < 10000)))`;
+
     const joinClause = `FROM (
+        ${leftMode ? `
+        WITH ranked AS (
+          SELECT ${measCols},
+                 ROW_NUMBER() OVER (PARTITION BY c.full_phone ORDER BY c.id DESC) AS rn
+          FROM case_138 c
+          WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
+        )
+        SELECT l.full_phone, l.current_speed, l.max_speed, l.score, l.complain_no, l.uploaded_at, l.cur_n, l.mx_n
+        FROM ranked l
+        JOIN ranked p ON p.full_phone = l.full_phone AND p.rn = 2
+        WHERE l.rn = 1
+          AND l.score IS NOT NULL
+          -- القياس اللى قبله كان مؤهّل فعلاً (يعنى الخط كان ظاهر فى التقرير)
+          AND ${qualifies("p")}
+          AND ${leftHighScore
+            ? `l.score > 100`
+            // ماعادش مؤهّل، ولسه متزامن (عشان اللى خرج لأنه مات مايتحسبش «اترفعت سرعته»)
+            : `l.score <= 100
+               AND NOT (COALESCE(l.cur_n, 0) < 200 AND COALESCE(l.mx_n, 0) < 200)
+               AND NOT ${qualifies("l")}`}
+        ` : `
         SELECT * FROM (
-          SELECT DISTINCT ON (c.full_phone)
-                 c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
-                 -- توحيد وحدة السرعة إلى Kbps: القيم اللى فيها كسر عشري (زى 0.5 / 2.5) مخزّنة بالميجابت → × 1024.
-                 -- بدون ده كان الشرط (< 200) بيعتبر خط VDSL بالميجابت (0.5/2.5) خطاً ميتاً ويستبعده بالغلط.
-                 CASE WHEN c.current_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
-                      ELSE NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9]','','g'),'')::numeric END AS cur_n,
-                 CASE WHEN c.max_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
-                      ELSE NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9]','','g'),'')::numeric END AS mx_n
+          SELECT DISTINCT ON (c.full_phone) ${measCols}
           FROM case_138 c
           WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
           ORDER BY c.full_phone, c.id DESC
@@ -5397,6 +5442,7 @@ export async function registerRoutes(
             (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
             OR (latest.score < 16 AND latest.cur_n < 10000)
           )`}
+        `}
       ) m
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = m.full_phone

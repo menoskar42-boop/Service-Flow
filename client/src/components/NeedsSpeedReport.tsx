@@ -104,6 +104,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [complaintFilter, setComplaintFilter] = useState<"all" | "has" | "none">("all");
   const sourceName =
     endpoint.includes("needs-po-stop") ? "تحتاج إيقاف PO"
+    : endpoint.includes("left-speed-highscore") ? "خرجت بعد القياس (اسكور > 100)"
+    : endpoint.includes("left-speed-raised") ? "خرجت بعد القياس (اترفعت سرعتها)"
     : endpoint.includes("needs-speed-lowscore") ? "اسكور منخفض وسرعة عالية"
     : complaintFilter === "has" || requireComplaint ? "محتاجة رفع سرعة (لها شكوى)"
     : complaintFilter === "none" ? "محتاجة رفع سرعة (ليس لها شكوى)"

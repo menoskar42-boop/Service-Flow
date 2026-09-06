@@ -81,7 +81,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 
 type AdminTab = "orders" | "reports" | "phone-lookup" | "data-completion" | "file-upload";
-type ReportTab = "box-rejections" | "phone-lines" | "ports-missing-line-data" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports" | "box-tickets-backfill" | "box-tickets-repaired" | "slot-cards" | "cabinet-port-free" | "account-never-measured" | "box-score-avg" | "lines-no-mobile" | "needs-speed-lowscore" | "lines-mobile-checked" | "om-order-match";
+type ReportTab = "box-rejections" | "phone-lines" | "ports-missing-line-data" | "box-summary" | "box-full" | "box-broken" | "work-orders" | "current-faults" | "major-faults" | "regularized-faults" | "regularized-faults-range" | "current-installations" | "regularized-installations" | "regularized-installations-range" | "current-surveys" | "regularized-surveys" | "regularized-surveys-range" | "removal-stats" | "repetition-stats" | "cabinet-adsl-faults" | "tech-performance" | "om-current" | "om-soy" | "om-resolved" | "om-stats" | "om-stats-2026" | "om-stats-prior" | "with-account" | "no-account" | "cabinet-score-avg" | "account-edits" | "needs-speed" | "high-score" | "complaint-no-measure" | "cfm-tickets" | "ground-network" | "maintenance-comprehensive" | "phone-lookup" | "repeated-within-month" | "needs-po-stop" | "subscriber-info" | "box-overlap" | "maintenance-plan-h2" | "ports-suspend-free" | "cabinet-capacity" | "exec-jobs" | "manual-current-faults" | "manual-regularized-range" | "closed-port-cabinets" | "port-change" | "engineering-inspection" | "queue-reorder" | "exec-batches" | "work-orders-over24" | "work-orders-fail" | "installations-by-tech" | "inspection-reports" | "shift-schedule" | "duplicate-accounts" | "lines-without-port" | "work-orders-no-cable" | "removed-ports" | "box-tickets-backfill" | "box-tickets-repaired" | "slot-cards" | "cabinet-port-free" | "account-never-measured" | "box-score-avg" | "lines-no-mobile" | "needs-speed-lowscore" | "lines-mobile-checked" | "om-order-match" | "left-speed-highscore" | "left-speed-raised";
 
 // ── Sidebar navigation definition ──────────────────────────────────────────
 const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: ReportTab; label: string }[] }[] = [
@@ -129,6 +129,8 @@ const REPORT_GROUPS: { label: string; icon: React.ElementType; items: { id: Repo
       { id: "ground-network",      label: "أعطال الشبكة الأرضية" },
       { id: "needs-speed",         label: "محتاجة رفع سرعة" },
       { id: "needs-speed-lowscore", label: "اسكور منخفض وسرعة عالية" },
+      { id: "left-speed-highscore", label: "خرجت بعد القياس: اسكور أعلى من 100" },
+      { id: "left-speed-raised",   label: "خرجت بعد القياس: اترفعت سرعتها" },
       { id: "needs-po-stop",       label: "تحتاج إيقاف PO" },
       { id: "high-score",          label: "خطوط أسكورها أعلى من 100" },
       { id: "complaint-no-measure",   label: "شكوى بدون قياس بعدها" },
@@ -738,6 +740,8 @@ export default function Dashboard() {
               {reportTab === "ground-network" && <GroundNetworkFaultsTab />}
               {reportTab === "needs-speed"            && <NeedsSpeedTab />}
               {reportTab === "needs-speed-lowscore" && <NeedsSpeedReport endpoint="/api/phone-lines/needs-speed-lowscore" title="اسكور منخفض وسرعة عالية — محتاجة رفع سرعة ومش ظاهرة فى التقرير الحالى" />}
+              {reportTab === "left-speed-highscore" && <NeedsSpeedReport endpoint="/api/phone-lines/left-speed-highscore" title="خرجت من «محتاجة رفع سرعة» بعد القياس — الاسكور طلع أعلى من 100" />}
+              {reportTab === "left-speed-raised"    && <NeedsSpeedReport endpoint="/api/phone-lines/left-speed-raised" title="خرجت من «محتاجة رفع سرعة» بعد القياس — اترفعت سرعتها وماعادتش محتاجة" />}
               {reportTab === "needs-po-stop"          && <NeedsSpeedReport endpoint="/api/phone-lines/needs-po-stop" title="أرقام تحتاج إيقاف PO (لا تحتاج رفع سرعة + قِيست خلال 3 أيام)" />}
               {reportTab === "complaint-no-measure"   && <ComplaintNoMeasureReport />}
               {reportTab === "box-score-avg"       && <BoxScoreReport />}
