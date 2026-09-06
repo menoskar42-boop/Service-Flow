@@ -5367,7 +5367,7 @@ export async function registerRoutes(
     const leftHighScore = req.path.endsWith("/left-speed-highscore");
     const leftRaised = req.path.endsWith("/left-speed-raised");
     const leftMode = leftHighScore || leftRaised;
-    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", hasComplaint = "", poStoppedBefore = "", measuredBefore = "", search = "", includeExcluded = "", excludeZeroScore = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", page = "1", limit = "50", requireComplaint = "", requireComplaintAny = "", hasComplaint = "", poStoppedBefore = "", measuredBefore = "", scoreFrom = "", scoreTo = "", search = "", includeExcluded = "", excludeZeroScore = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const needComplaint = requireComplaint === "1" || requireComplaint === "true";
@@ -5514,6 +5514,15 @@ export async function registerRoutes(
     // فلتر مطابق لفلتر إيقاف PO: يستبعد القياسات الأحدث من التاريخ/الوقت المحدد
     // (بتوقيت القاهرة)، ويُبقى الخطوط التى لم تُقَس أو قِيسَت قبله.
     if (measuredBefore) { params.push(measuredBefore); conds.push(`(m.uploaded_at IS NULL OR (m.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    // فلتر نطاق الاسكور — شامل للحدين، ويُطبّق قبل العدد والصفحات والتصدير.
+    if (scoreFrom.trim() !== "" && !isNaN(parseFloat(scoreFrom))) {
+      params.push(parseFloat(scoreFrom));
+      conds.push(`m.score >= $${params.length}`);
+    }
+    if (scoreTo.trim() !== "" && !isNaN(parseFloat(scoreTo))) {
+      params.push(parseFloat(scoreTo));
+      conds.push(`m.score <= $${params.length}`);
+    }
     // فلتر اختيارى من التقرير: استبعاد الخطوط التى اسكور آخر قياس لها يساوى صفر.
     if (excludeZeroScore === "1" || excludeZeroScore === "true") conds.push(`m.score <> 0`);
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";

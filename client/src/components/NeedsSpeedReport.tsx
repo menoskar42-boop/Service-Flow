@@ -116,6 +116,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [box, setBox] = useState("");
   const [poStoppedBefore, setPoStoppedBefore] = useState(""); // فلتر: يستبعد اللى تم إيقاف الـ PO بتاعها بعد التاريخ
   const [measuredBefore, setMeasuredBefore] = useState(""); // فلتر: يستبعد اللى تم قياسها بعد التاريخ
+  const [scoreFrom, setScoreFrom] = useState("");
+  const [scoreTo, setScoreTo] = useState("");
   // بحث برقم التليفون / الأكونت / الشكوى — بيتنفّذ على السيرفر (كل السجلات، مش الصفحة الحالية بس).
   // debounce نصف ثانية علشان مانبعتش request مع كل حرف.
   const [searchInput, setSearchInput] = useState("");
@@ -164,6 +166,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (excludeQueued) params.set("excludeQueued", "1");
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (showMeasuredFilter && measuredBefore) params.set("measuredBefore", measuredBefore);
+    if (scoreFrom.trim()) params.set("scoreFrom", scoreFrom.trim());
+    if (scoreTo.trim()) params.set("scoreTo", scoreTo.trim());
     if (excludeZeroScore && isNeedsSpeed) params.set("excludeZeroScore", "1");
     if (requireComplaint) params.set("requireComplaint", "1");
     if (!requireComplaint && complaintFilter !== "all") {
@@ -173,7 +177,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, search, page, requireComplaint, complaintFilter, showExcludedCabins, excludeQueued, excludeZeroScore],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, scoreFrom, scoreTo, search, page, requireComplaint, complaintFilter, showExcludedCabins, excludeQueued, excludeZeroScore],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -374,6 +378,39 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 )}
               </div>
             )}
+            <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
+              <span className="whitespace-nowrap">الاسكور:</span>
+              <Input
+                type="number"
+                value={scoreFrom}
+                onChange={(e) => { setScoreFrom(e.target.value); setPage(1); }}
+                placeholder="من"
+                className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+                title="أقل اسكور مسموح به"
+              />
+              <span>—</span>
+              <Input
+                type="number"
+                value={scoreTo}
+                onChange={(e) => { setScoreTo(e.target.value); setPage(1); }}
+                placeholder="إلى"
+                className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+                dir="ltr"
+                title="أعلى اسكور مسموح به"
+              />
+              {(scoreFrom || scoreTo) && (
+                <button
+                  type="button"
+                  onClick={() => { setScoreFrom(""); setScoreTo(""); setPage(1); }}
+                  className="text-muted-foreground hover:text-foreground"
+                  title="مسح فلتر الاسكور"
+                  aria-label="مسح فلتر الاسكور"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
             {showSpeedTools && (<>
             <Button variant="outline" size="sm" onClick={handleMeasureDZS} className="text-blue-700 border-blue-200 gap-1">
               <Radar className="w-4 h-4" /> قياس DZS
