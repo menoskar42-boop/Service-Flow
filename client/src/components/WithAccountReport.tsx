@@ -26,6 +26,7 @@ import { Measurement138Button, type Measurement138 } from "@/components/Measurem
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { RefreshButton } from "@/components/RefreshButton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
 
@@ -140,6 +141,14 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
   const [saveState, setSaveState] = useState<Record<string, "saving" | "saved" | "error">>({});
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
+  // ⚠️ التأكيد **جوّه الصفحة** مش بـ window.confirm: المتصفح بيقدر يوقف نوافذ
+  // confirm/alert بتاعة الصفحة (Chrome بيعرض «امنع هذه الصفحة من إنشاء مربعات حوار
+  // إضافية» بعد كذا نافذة، والموقع ده بيفتح نوافذ كتير). وقتها confirm بترجع false
+  // **من غير ما تظهر حاجة** — فالقياس كان بيقف فى صمت تام: أقل من 500 رقم يشتغل
+  // (مافيش تأكيد أصلاً) وأكتر من 500 مايتضافش ولا رسالة تظهر.
+  const [confirmAsk, setConfirmAsk] = useState<{ text: string; resolve: (ok: boolean) => void } | null>(null);
+  // كل نتيجة بتظهر فى الصفحة كمان (مش بس alert) لنفس السبب.
+  const [notice, setNotice] = useState<string | null>(null);
   const qc = useQueryClient();
   const { user } = useAuth();
   // المبيعات ممنوعة دايماً؛ و«editorsOnly» بيمنع الفنى وأدمن المبيعات كمان
@@ -272,18 +281,20 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
   // اللى فى طابور التنفيذ، والطابور بيفضى باستمرار — فكل باتش بيخلص بيرجّع أرقامه
   // للتقرير. النتيجة: الشاشة تقول «١ سجل» وزر القياس يلاقى ٤٢٩ رقم مؤهّل فعلاً.
   // فبنسأل المستخدم بالعدد **الحقيقى** قبل ما نبعت، ونوضّح سبب الفرق.
-  const confirmRealCount = (real: number, shown: number, what: string): boolean => {
-    if (real === 0) return false;
+  const ask = (text: string) => new Promise<boolean>((resolve) => setConfirmAsk({ text, resolve }));
+
+  const confirmRealCount = async (real: number, shown: number, what: string): Promise<boolean> => {
+    if (real === 0) { setNotice(`مفيش أرقام مؤهّلة لـ${what} فى النطاق المحدد.`); return false; }
     if (real !== shown) {
-      return window.confirm(
+      return ask(
         `الشاشة بتعرض ${shown.toLocaleString("ar-EG")} رقم، لكن المؤهّل لـ${what} دلوقتى ` +
         `${real.toLocaleString("ar-EG")} رقم.\n\nالفرق سببه أرقام خرجت من طابور التنفيذ بعد ما ` +
         `التقرير اتحمّل (الباتشات اللى خلصت بترجّع أرقامها للتقرير).\n\n` +
-        `تحب تكمّل وتبعت ${real.toLocaleString("ar-EG")} رقم؟\n(لو عايز تشوفهم الأول: إلغاء ثم «تحديث»)`,
+        `تحب تكمّل وتبعت ${real.toLocaleString("ar-EG")} رقم؟ (لو عايز تشوفهم الأول: إلغاء ثم «تحديث»)`,
       );
     }
     if (real > 500) {
-      return window.confirm(
+      return ask(
         `عدد الخطوط ${real.toLocaleString("ar-EG")} (أكثر من 500) — ${what} على دفعات هياخد وقت طويل. هل تريد الاستمرار؟`,
       );
     }
@@ -313,10 +324,10 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
       const items = all
         .map(toItem)
         .filter((it) => it.account && !seen.has(it.account) && seen.add(it.account));
-      if (items.length === 0) { try { w?.close(); } catch {} alert("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
+      if (items.length === 0) { try { w?.close(); } catch {} setNotice("لا توجد أرقام أكونت فى النطاق المحدد"); return; }
       // التأكيد بالعدد الحقيقى اللى هيتبعت — مش بالعدد المعروض على الشاشة
-      if (!confirmRealCount(items.length, data?.total ?? 0, "القياس")) { try { w?.close(); } catch {} return; }
-      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper)) {
+      if (!(await confirmRealCount(items.length, data?.total ?? 0, "القياس"))) { try { w?.close(); } catch {} return; }
+      if (await dispatchSpeedTool("measure", items.map((i) => i.account), isSuper, { notify: setNotice })) {
         try { w?.close(); } catch {}
         qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });  // الجدول يطابق الواقع
         return;
@@ -326,7 +337,7 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
     } catch {
       try { w?.close(); } catch {}
-      alert("تعذّر تحميل بيانات النطاق للقياس");
+      setNotice("تعذّر تحميل بيانات النطاق للقياس");
     } finally {
       setDzsLoading(false);
     }
@@ -340,7 +351,9 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
   // رفع السرعة (Profile Optimization) لأرقام النطاق المحدد. kind: "raise" = رفع سرعة | "stop" = إيقاف Nightly فقط.
   const handleRaiseSpeed = async (kind: "raise" | "stop") => {
     const afterStop = kind === "raise"
-      ? window.confirm("رفع السرعة والإيقاف؟\n\nموافق = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
+      // نفس السبب: لو المتصفح موقّف نوافذ الصفحة كانت بترجع false فى صمت والمستخدم
+      // ياخد «رفع سرعة بس» وهو فاكر إنه طلب الاتنين.
+      ? await ask("رفع السرعة والإيقاف؟\n\nكمّل = رفع السرعة لكل الأرقام ثم إيقاف الـ Nightly الناتج لكلهم\nإلغاء = رفع السرعة فقط")
       : false;
     setDzsLoading(true);
     try {
@@ -350,15 +363,15 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
       const accounts = (json.data as PhoneLine[])
         .map((r) => (r.accountNo ?? "").toString().trim()).filter(Boolean);
       // نفس حماية القياس — رفع السرعة على أرقام مش ظاهرة على الشاشة أخطر
-      if (!confirmRealCount(accounts.length, data?.total ?? 0, kind === "stop" ? "الإيقاف" : "رفع السرعة")) return;
-      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper)) {
+      if (!(await confirmRealCount(accounts.length, data?.total ?? 0, kind === "stop" ? "الإيقاف" : "رفع السرعة"))) return;
+      if (await dispatchSpeedTool(kind === "stop" ? "stop" : "raise", accounts, isSuper, { notify: setNotice })) {
         qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
         return;
       }
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
     } catch {
-      alert("تعذّر تحميل بيانات النطاق");
+      setNotice("تعذّر تحميل بيانات النطاق");
     } finally {
       setDzsLoading(false);
     }
@@ -376,11 +389,11 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
       const json = await res.json();
       const phones = [...new Set(((json.data as PhoneLine[]) ?? [])
         .map((r) => (r.fullPhone ?? "").toString().trim()).filter(Boolean))];
-      if (!confirmRealCount(phones.length, data?.total ?? 0, "جلب 360")) return;
+      if (!(await confirmRealCount(phones.length, data?.total ?? 0, "جلب 360"))) return;
       await openCustomer360(phones);
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
     } catch {
-      alert("تعذّر تحميل بيانات النطاق لجلب 360");
+      setNotice("تعذّر تحميل بيانات النطاق لجلب 360");
     } finally {
       setDzsLoading(false);
     }
@@ -648,6 +661,31 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
           </div>
         </div>
 
+        {notice && (
+          <div className="mx-4 mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-start gap-2">
+            <span className="flex-1 whitespace-pre-line">{notice}</span>
+            <button type="button" onClick={() => setNotice(null)}
+              className="text-amber-700 hover:text-amber-900" aria-label="إغلاق الرسالة">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        <Dialog open={!!confirmAsk} onOpenChange={(o) => { if (!o) { confirmAsk?.resolve(false); setConfirmAsk(null); } }}>
+          <DialogContent dir="rtl" className="max-w-md">
+            <DialogHeader><DialogTitle>تأكيد</DialogTitle></DialogHeader>
+            <p className="text-sm whitespace-pre-line leading-6">{confirmAsk?.text}</p>
+            <DialogFooter className="gap-2 sm:justify-start">
+              <Button size="sm"
+                onClick={() => { confirmAsk?.resolve(true); setConfirmAsk(null); }}>
+                كمّل
+              </Button>
+              <Button size="sm" variant="outline"
+                onClick={() => { confirmAsk?.resolve(false); setConfirmAsk(null); setNotice("اتلغى الطلب — مافيش حاجة اتبعتت للطابور."); }}>
+                إلغاء
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {dzsCount != null && (
           <div className="px-4 py-2 border-b bg-blue-50 flex flex-wrap items-center gap-2 text-sm">
             <span className="text-blue-700 font-semibold">

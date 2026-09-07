@@ -563,10 +563,12 @@ export async function dispatchSpeedTool(
   type: ExecJobType,
   accounts: (string | number)[],
   isSuper: boolean,
-  opts?: { params?: ExecJobParams | null; silent?: boolean },
+  opts?: { params?: ExecJobParams | null; silent?: boolean; notify?: (m: string) => void },
 ): Promise<boolean> {
   const accs = accounts.map((a) => String(a ?? "").trim()).filter(Boolean);
-  const say = (m: string) => { if (!opts?.silent) alert(m); };
+  // notify = اعرض الرسالة جوّه الصفحة بدل alert. مهم لأن المتصفح بيقدر يوقف نوافذ
+  // alert/confirm بتاعة الصفحة، فالرسالة تختفى والمستخدم يفتكر إن مفيش حاجة حصلت.
+  const say = (m: string) => { if (opts?.notify) { opts.notify(m); return; } if (!opts?.silent) alert(m); };
   if (!accs.length) { say(type === "measure" || type === "raise" || type === "stop" ? "لا توجد أرقام أكونت" : "لا يوجد رقم"); return true; }
   // «مين عمل إيه»: بنسجّل نيّة العملية قبل التنفيذ، والنتيجة اللى بتوصل من السكربت بتُختم بيها
   // (measured_by / last_raise_by / requested_by …). العمليات على مستوى الموقع كله مالهاش رقم.
