@@ -5496,19 +5496,31 @@ export async function registerRoutes(
 
     const joinClause = `FROM (
         ${leftMode ? `
-        WITH ranked AS (
-          SELECT ${measCols},
-                 ROW_NUMBER() OVER (PARTITION BY c.full_phone ORDER BY c.id DESC) AS rn
+        WITH base AS (
+          SELECT ${measCols}, c.id
           FROM case_138 c
           WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
+        ), ranked AS (
+          SELECT b.*,
+                 ROW_NUMBER() OVER (PARTITION BY b.full_phone ORDER BY b.id DESC) AS rn,
+                 -- ⚠️ «كان مؤهّل قبل كده» = أى قياس **أقدم** كان مؤهّل، مش القياس
+                 -- اللى قبله مباشرةً بس. القاعدة القديمة (rn=2) كانت بتقارن آخر
+                 -- قياس باللى قبله فقط، فأول ما المستخدم يعيد قياس الخط بيبقى
+                 -- القياس السابق هو نفسه النتيجة الجديدة (اسكور > 100 مثلاً) —
+                 -- «مش مؤهّل» — فالخط يقع من التقرير رغم إنه لسه خارج من
+                 -- «محتاجة رفع سرعة» فعلاً. بنبص على كل القياسات الأقدم.
+                 -- (ORDER BY id DESC فالصفوف الـ FOLLOWING هى الأقدم.)
+                 BOOL_OR(${qualifies("b")}) OVER (
+                   PARTITION BY b.full_phone ORDER BY b.id DESC
+                   ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING) AS older_qualified
+          FROM base b
         )
         SELECT l.full_phone, l.current_speed, l.max_speed, l.score, l.complain_no, l.uploaded_at, l.cur_n, l.mx_n
         FROM ranked l
-        JOIN ranked p ON p.full_phone = l.full_phone AND p.rn = 2
         WHERE l.rn = 1
           AND l.score IS NOT NULL
-          -- القياس اللى قبله كان مؤهّل فعلاً (يعنى الخط كان ظاهر فى التقرير)
-          AND ${qualifies("p")}
+          -- الخط كان ظاهر فى «محتاجة رفع سرعة» فى أى وقت قبل كده
+          AND l.older_qualified
           AND ${leftHighScore
             ? `l.score > 100`
             // ماعادش مؤهّل، ولسه متزامن (عشان اللى خرج لأنه مات مايتحسبش «اترفعت سرعته»)
