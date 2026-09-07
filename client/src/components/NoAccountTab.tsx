@@ -47,6 +47,7 @@ export function NoAccountTab() {
         <WithAccountReport
           scoreEq={103}
           editorsOnly
+          showC360
           title="خطوط اسكورها 103 — راجع رقم الأكونت (عدّله أو امسحه)"
         />
       )}

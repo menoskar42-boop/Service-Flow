@@ -15,7 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, Pencil, Save, X, Ban, Gauge } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, Pencil, Save, X, Ban, Gauge, IdCard } from "lucide-react";
+import { openCustomer360 } from "@/lib/customer360";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
@@ -91,6 +92,8 @@ interface WithAccountReportProps {
   scoreEq?: number;
   /** يمنع تعديل/حذف رقم الأكونت على الفنى وأدمن المبيعات كمان (المبيعات ممنوعة دايماً) */
   editorsOnly?: boolean;
+  /** يعرض زر «جلب 360»: يعيد فحص أرقام الأكونت للخطوط دى على Customer360 */
+  showC360?: boolean;
   /** فلتر اختيارى: عرض فقط الخطوط التى لم يتم قياسها من قبل (لا يوجد لها سجل فى شيت 138) */
   neverMeasured?: boolean;
   /** القيمة الافتراضية لعدد أيام فلتر «أقدم من N يوم» (الفلتر نفسه يظل مطفياً حتى تفعيله) */
@@ -102,7 +105,7 @@ interface WithAccountReportProps {
   initialBox?: string;
 }
 
-export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, neverMeasured, defaultStaleDays = "10", title, initialCentral = "", initialCabin = "", initialBox = "" }: WithAccountReportProps = {}) {
+export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, neverMeasured, defaultStaleDays = "10", title, initialCentral = "", initialCabin = "", initialBox = "" }: WithAccountReportProps = {}) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
   // المصدر يعكس التقرير الفعلى (خطوط لها أكونت / ولم تُقس / أسكور>100) عشان يظهر صح فى معاملات التنفيذ
@@ -361,6 +364,28 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, neverMeasured
     }
   };
 
+  // «جلب 360»: يعيد فحص أرقام الأكونت لكل خطوط النطاق المفلتر على Customer360 —
+  // السكربت بيجيب رقم الأكونت الحالى لكل رقم ويصحّحه لو اتغيّر، ولو الرقم مش موجود
+  // بيتعلّم «بدون أكونت». بناخد كل النطاق (limit 20000) مش الصفحة المعروضة بس، زى
+  // القياس ورفع السرعة بالظبط، وبنفس تأكيد العدد الحقيقى.
+  const handleFetchC360 = async () => {
+    setDzsLoading(true);
+    try {
+      const res = await fetch(`/api/phone-lines/with-account?${filterParams({ page: "1", limit: "20000" })}`,
+        { credentials: "include" });
+      const json = await res.json();
+      const phones = [...new Set(((json.data as PhoneLine[]) ?? [])
+        .map((r) => (r.fullPhone ?? "").toString().trim()).filter(Boolean))];
+      if (!confirmRealCount(phones.length, data?.total ?? 0, "جلب 360")) return;
+      await openCustomer360(phones);
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines/with-account"] });
+    } catch {
+      alert("تعذّر تحميل بيانات النطاق لجلب 360");
+    } finally {
+      setDzsLoading(false);
+    }
+  };
+
   const handleExport = async () => {
     const params = filterParams({ page: "1", limit: "20000" });
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
@@ -602,6 +627,17 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, neverMeasured
               <Gauge className="w-4 h-4" /> إيقاف PO
             </Button>
             </>)}
+            {showC360 && isSuper && (
+              <Button
+                variant="outline" size="sm"
+                onClick={handleFetchC360}
+                disabled={dzsLoading || !data?.total}
+                className="text-purple-700 border-purple-200 gap-1 disabled:opacity-40"
+                title="إعادة فحص أرقام الأكونت لكل خطوط النطاق على Customer360 — يصحّح الرقم لو اتغيّر ويعلّم الخط «بدون أكونت» لو مش موجود"
+              >
+                {dzsLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <IdCard className="w-4 h-4" />} جلب 360
+              </Button>
+            )}
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel
