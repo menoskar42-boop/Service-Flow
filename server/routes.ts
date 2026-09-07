@@ -5477,8 +5477,9 @@ export async function registerRoutes(
          AND ${GHANAIM_CENTRALS})`;
     // المنتظمة اليوم: مصدرين زى التقرير — مقفولة النهاردة، أو اختفت من الملف الحالى
     // (والحالات الوسيطة 135/138 مابتتحسبش «منتظم» أبداً).
-    const inRegularizedTodaySql = `EXISTS (
-      SELECT 1 FROM (
+    // مصدر «المنتظمة اليوم» — تعريف واحد بيستخدمه عمود «فى الأعطال» **و** مصادر
+    // رقم الشكوى، عشان الاتنين مايختلفوش أبداً.
+    const REGULARIZED_TODAY_SRC = `(
         SELECT * FROM ticket_dsl_current
          WHERE close_date IS NOT NULL
            AND (close_date AT TIME ZONE 'Africa/Cairo')::date = (now() AT TIME ZONE 'Africa/Cairo')::date
@@ -5486,7 +5487,9 @@ export async function registerRoutes(
         SELECT * FROM ticket_dsl_sod s
          WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)
            AND NOT (s.status_code ~ '^(135|138)')
-      ) t
+      )`;
+    const inRegularizedTodaySql = `EXISTS (
+      SELECT 1 FROM ${REGULARIZED_TODAY_SRC} t
       WHERE ${sp("t.phone_number")} = ${sp("m.full_phone")}
         AND (t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')
         AND ${GHANAIM_CENTRALS})`;
@@ -5554,6 +5557,13 @@ export async function registerRoutes(
           SELECT ticket_id AS complain_no, complaint_time AS complain_time, central_name, cabinet_no
             FROM ticket_dsl_current
             WHERE close_date IS NULL AND ${sp("phone_number")} = ${sp("m.full_phone")}
+          -- و«المنتظمة اليوم» كمان: العطل اللى اتقفل النهاردة (أو اختفى من الملف
+          -- الحالى) ممكن يكون **أحدث** من آخر شكوى فى شيت 430D، والمفروض يظهر هو.
+          -- الاختيار بين كل المصادر بيتم بـ ORDER BY complain_time DESC تحت.
+          UNION ALL
+          SELECT t.ticket_id AS complain_no, t.complaint_time AS complain_time, t.central_name, t.cabinet_no
+            FROM ${REGULARIZED_TODAY_SRC} t
+            WHERE ${sp("t.phone_number")} = ${sp("m.full_phone")}
           UNION ALL
           SELECT ('يدوى-' || mf.id) AS complain_no, mf.flagged_at AS complain_time, mf.central AS central_name, mf.cabin_number AS cabinet_no
             FROM manual_faults mf
