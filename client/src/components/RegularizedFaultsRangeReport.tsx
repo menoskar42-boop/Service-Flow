@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff, X } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -121,6 +121,12 @@ export function RegularizedFaultsRangeReport() {
   const [closeReasonF, setCloseReasonF] = useState(""); // فلتر سبب الإغلاق (مثال: عطل يخص راوتر العميل)
   // استبعاد أرقام الأكونت الموجودة فى أى باتش قياس/رفع سرعة/إيقاف ما زال فى الطابور
   const [excludeQueued, setExcludeQueued] = useState(false);
+  // فلترى نطاق (على المعروض زى «المكرر فقط» و«سبب الإغلاق») — بيسرو تلقائياً على
+  // العدّاد وتصدير Excel/PDF وأزرار القياس/رفع السرعة/الإيقاف لأنهم كلهم على displayed.
+  const [speedFrom, setSpeedFrom] = useState("");
+  const [speedTo, setSpeedTo] = useState("");
+  const [scoreFrom, setScoreFrom] = useState("");
+  const [scoreTo, setScoreTo] = useState("");
 
   // المصدر: complaint_details (شيت التفاصيل من ملف 430D) مفلتراً بـ close_time.
   const { data: faults = [], isFetching } = useQuery<RegularizedFault[]>({
@@ -147,8 +153,34 @@ export function RegularizedFaultsRangeReport() {
     .sort((a, b) => a.localeCompare(b, "ar"));
 
   // عند تفعيل زر "المكرر فقط" نعرض/نصدّر الأعطال المكررة فقط + فلتر سبب الإغلاق لو متحدّد.
+  // السرعة مخزّنة نص: الأرقام الصحيحة Kbps، والقيم العشرية ميجابت (× 1024) — نفس
+  // التطبيع المستخدم على السيرفر، فالنطاق اللى بتكتبه دايماً بالـ Kbps.
+  const speedNum = (v: string | null | undefined): number | null => {
+    const t = String(v ?? "").trim();
+    if (!t) return null;
+    const n = parseFloat(t.replace(/[^0-9.]/g, ""));
+    if (!isFinite(n)) return null;
+    return t.includes(".") ? n * 1024 : n;
+  };
+  const bound = (v: string): number | null => {
+    const n = parseFloat(v.trim());
+    return isFinite(n) ? n : null;
+  };
+  // خط قيمته غير معروفة (مافيش قياس) بيخرج من النتيجة أول ما تحطّ حد للنطاق —
+  // عشان النطاق يبقى معناه «الخطوط اللى قيمتها جوّه النطاق» مش «ودول كمان».
+  const inRange = (v: number | null, from: string, to: string): boolean => {
+    const lo = bound(from), hi = bound(to);
+    if (lo == null && hi == null) return true;
+    if (v == null) return false;
+    return (lo == null || v >= lo) && (hi == null || v <= hi);
+  };
+
   const displayed = (repeatedOnly ? faults.filter((f) => f.repeatStatus === "مكرر") : faults)
-    .filter((f) => !closeReasonF || closeReason(f.closeCode) === closeReasonF);
+    .filter((f) => !closeReasonF || closeReason(f.closeCode) === closeReasonF)
+    .filter((f) => inRange(speedNum(f.lineCurrentSpeed), speedFrom, speedTo))
+    .filter((f) => inRange(
+      f.lastMeasScore == null || f.lastMeasScore === "" ? null : Number(f.lastMeasScore),
+      scoreFrom, scoreTo));
   const mobileLookup = useMobileLookup(displayed.map((f) => f.phoneShort));
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
@@ -414,6 +446,40 @@ export function RegularizedFaultsRangeReport() {
         />
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+        <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
+          <span className="whitespace-nowrap">السرعة الحالية:</span>
+          <Input type="number" value={speedFrom} onChange={(e) => setSpeedFrom(e.target.value)}
+            placeholder="من" className="h-6 w-16 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+            dir="ltr" title="أقل سرعة حالية" />
+          <span>—</span>
+          <Input type="number" value={speedTo} onChange={(e) => setSpeedTo(e.target.value)}
+            placeholder="إلى" className="h-6 w-16 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+            dir="ltr" title="أعلى سرعة حالية" />
+          {(speedFrom || speedTo) && (
+            <button type="button" onClick={() => { setSpeedFrom(""); setSpeedTo(""); }}
+              className="text-muted-foreground hover:text-foreground"
+              title="مسح فلتر السرعة" aria-label="مسح فلتر السرعة">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-gray-500 bg-gray-50">
+          <span className="whitespace-nowrap">الاسكور:</span>
+          <Input type="number" value={scoreFrom} onChange={(e) => setScoreFrom(e.target.value)}
+            placeholder="من" className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+            dir="ltr" title="أقل اسكور" />
+          <span>—</span>
+          <Input type="number" value={scoreTo} onChange={(e) => setScoreTo(e.target.value)}
+            placeholder="إلى" className="h-6 w-14 text-xs px-1 border-0 bg-transparent focus-visible:ring-0"
+            dir="ltr" title="أعلى اسكور" />
+          {(scoreFrom || scoreTo) && (
+            <button type="button" onClick={() => { setScoreFrom(""); setScoreTo(""); }}
+              className="text-muted-foreground hover:text-foreground"
+              title="مسح فلتر الاسكور" aria-label="مسح فلتر الاسكور">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
         <Button
           variant={repeatedOnly ? "default" : "outline"}
           size="sm"
