@@ -5816,7 +5816,16 @@ export async function registerRoutes(
               COALESCE(pl.cabin_number, cpl.cabinet_no, si.cabin_number,
                        NULLIF(btrim(wfmo.exch_cabinet), '')) AS "cabinNumber",
               COALESCE(pl.box_number, si.box_number) AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
-              ctc.cabin_code AS "msanCode",
+              -- كود الكابينة (MSAN): الأولوية لجدول المنافذ (phone_ports) لأنه بيتحدّث فعلياً
+              -- من «تحديث البورت» (port-change/ingest) ومن تحديث ملف البورتات كل نص ساعة.
+              -- كان بياخده من cabinet_technicians (المشتق من سنترال/كابينة الخط النحاسية) —
+              -- وده مابيتغيّرش أبداً بعد تغيير البورت، فالبورت كان بيتحدّث فى قاعدة البيانات
+              -- والشاشة تفضل عارضة الكود القديم للأبد. باقى تقارير الموقع بتعرضه من
+              -- phone_ports أصلاً، فده بيوحّدهم كمان. cabinet_technicians تفضل fallback
+              -- للخطوط اللى مالهاش صف منافذ.
+              -- ⚠️ ctc.cabin_code لسه هو المستخدم فى تحديد الفنى والتغطية (ownedByMe) —
+              -- فنى المنطقة بيتحدد من كابينة الخط مش من الأمسان (قاعدة متفق عليها).
+              COALESCE(NULLIF(btrim(pp.msan_code), ''), ctc.cabin_code) AS "msanCode",
               COALESCE(mto.tech_name, ctc.ct_tech, '') AS "techName",
               COALESCE(pl.idu_no, si.idu_no) AS "iduNo", COALESCE(pl.odu_no, si.odu_no) AS "oduNo",
               COALESCE(pl.primary_block_no, si.primary_block) AS "primaryBlockNo", COALESCE(pl.cabinet_in, si.cabinet_in) AS "cabinetIn",
