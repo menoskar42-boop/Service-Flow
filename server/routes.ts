@@ -777,6 +777,29 @@ const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
        AND COALESCE(btrim(pf.frame::text), '') <> ''
   )`;
 
+// ── معيار «محتاجة رفع سرعة» — تعريف واحد لكل التقارير ────────────────────────
+// بيستخدمه: تقرير «محتاجة رفع سرعة»، وتقريرَى «خرجت بعد القياس» (عن طريق qualifies)،
+// وتقرير «تحتاج إيقاف PO» (بالعكس تماماً — اللى مش محتاج رفع سرعة). كان مكتوب بالنص
+// ٣ مرات، فأى تعديل كان لازم يتعمل ٣ مرات وإلا التقارير تتناقض مع بعضها.
+//
+// السرعات مخزّنة بالـ Kbps (القيم العشرية بتتضرب × 1024 وقت القراءة)، فحدود الميجابت
+// هنا بنفس الاصطلاح: 20 ميجا = 20480 و 30 ميجا = 30720.
+const SPEED_20M = 20 * 1024;   // 20480 Kbps
+const SPEED_30M = 30 * 1024;   // 30720 Kbps
+const needsSpeedSql = (a: string) => `(
+    ${a}.score IS NOT NULL
+    -- خط ميت (الحالية والقصوى الاتنين تحت 200) مش موضوع رفع سرعة أصلاً
+    AND NOT (COALESCE(${a}.cur_n, 0) < 200 AND COALESCE(${a}.mx_n, 0) < 200)
+    -- سقف مطلق: السرعة الحالية أعلى من 30 ميجا → مانطلبش رفع سرعة مهما كانت
+    -- النسبة أو الاسكور. (COALESCE عشان السرعة غير المقروءة تفضل NULL-safe.)
+    AND NOT (COALESCE(${a}.cur_n, 0) > ${SPEED_30M})
+    AND ((${a}.mx_n > 0
+          -- النسبة المطلوبة بتشدّ لما الخط يكون واخد سرعة كويسة أصلاً: أعلى من
+          -- 20 ميجا لازم يكون تحت 31% من أقصى سرعة، وغير كده تحت 60%.
+          AND ${a}.cur_n / ${a}.mx_n < (CASE WHEN COALESCE(${a}.cur_n, 0) > ${SPEED_20M} THEN 0.31 ELSE 0.6 END)
+          AND ${a}.score > 15 AND ${a}.score < 101)
+         OR (${a}.score < 16 AND ${a}.cur_n < 10000)))`;
+
 // ── تبعية الخط لفنى (تُستخدم فى نسبة الإزالة ونسبة التكرار وتقارير التفاصيل) ──
 // فنى المنطقة = صاحب الكابينة (cabinet_technicians)، لكن لو كان فى «راحه/إجازة» يوم
 // الشكوى فالمسؤول فعلياً هو فنى الوردية القائم بالعمل مكانه (shift_schedules.covers).
@@ -5457,11 +5480,7 @@ export async function registerRoutes(
                  ${speedN("max_speed")} AS mx_n`;
     // معيار «محتاج رفع سرعة» مطبَّق على أى قراءة (آخر قياس أو اللى قبله) — مصدر واحد
     // للمعيار عشان تقارير الخروج تفضل متطابقة مع التقرير الأصلى لو المعيار اتغيّر.
-    const qualifies = (a: string) => `(
-      ${a}.score IS NOT NULL
-      AND NOT (COALESCE(${a}.cur_n, 0) < 200 AND COALESCE(${a}.mx_n, 0) < 200)
-      AND ((${a}.mx_n > 0 AND ${a}.cur_n / ${a}.mx_n < 0.6 AND ${a}.score > 15 AND ${a}.score < 101)
-           OR (${a}.score < 16 AND ${a}.cur_n < 10000)))`;
+    const qualifies = needsSpeedSql;
 
     // ── «الرقم ظاهر فى الأعطال؟» — منقول بالحرف من تعريف التقريرين ──────────
     // بيتحسب لكل تقارير الـ handler (محتاجة رفع سرعة واسكور منخفض وتقريرى الخروج).
@@ -5534,16 +5553,15 @@ export async function registerRoutes(
           WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
           ORDER BY c.full_phone, c.id DESC
         ) latest
-        WHERE latest.score IS NOT NULL
+        WHERE ${lowScoreMode ? `latest.score IS NOT NULL
           AND NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
-          AND ${lowScoreMode ? `(
+          -- «اسكور منخفض وسرعة عالية» تقرير تشخيصى مستقل — مش طلب رفع سرعة —
+          -- فحدود الـ 20/30 ميجا مابتنطبقش عليه (هو أصلاً بيدوّر على السرعات العالية).
+          AND (
             latest.score < 16
             AND latest.cur_n >= 10000
             AND latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6
-          )` : `(
-            (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
-            OR (latest.score < 16 AND latest.cur_n < 10000)
-          )`}
+          )` : needsSpeedSql("latest")}
         `}
       ) m
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
@@ -5725,13 +5743,9 @@ export async function registerRoutes(
           -- COALESCE(…, false): لو السرعة القصوى غير قابلة للقراءة (N/A) التعبير
           -- الداخلى بيطلع NULL وNOT NULL = NULL فالخط كان بيختفى من التقريرين
           -- الاتنين (مش محتاج رفع فى الأول، ومش ظاهر هنا) — بقى بيظهر هنا.
-          AND NOT COALESCE((                                     -- لا تحتاج رفع سرعة (عكس معيار needs-speed)
-            NOT (COALESCE(latest.cur_n, 0) < 200 AND COALESCE(latest.mx_n, 0) < 200)
-            AND (
-              (latest.mx_n > 0 AND latest.cur_n / latest.mx_n < 0.6 AND latest.score > 15 AND latest.score < 101)
-              OR (latest.score < 16 AND latest.cur_n < 10000)
-            )
-          ), false)
+          -- لا تحتاج رفع سرعة = عكس معيار needs-speed بالظبط (نفس الدالة المشتركة،
+          -- فالتقريرين مايتناقضوش أبداً: اللى بيخرج من هنا بيدخل هناك والعكس).
+          AND NOT COALESCE(${needsSpeedSql("latest")}, false)
       ) m
       JOIN line_accounts la ON la.full_phone = m.full_phone AND la.account_no IS NOT NULL AND la.account_no <> ''
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
