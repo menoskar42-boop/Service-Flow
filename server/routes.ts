@@ -5577,7 +5577,11 @@ export async function registerRoutes(
             FROM ${REGULARIZED_TODAY_SRC} t
             WHERE ${sp("t.phone_number")} = ${sp("m.full_phone")}
           UNION ALL
-          SELECT ('يدوى-' || mf.id) AS complain_no, mf.flagged_at AS complain_time, mf.central AS central_name, mf.cabin_number AS cabinet_no
+          -- flagged_at بيتسجّل بـ now() (UTC حقيقى)، وأوقات الشيت متخزّنة كوقت
+          -- حائط القاهرة — بنوحّدهم هنا عشان العرض واختيار «الأحدث» يبقوا سليمين.
+          SELECT ('يدوى-' || mf.id) AS complain_no,
+                 (mf.flagged_at AT TIME ZONE 'Africa/Cairo') AS complain_time,
+                 mf.central AS central_name, mf.cabin_number AS cabinet_no
             FROM manual_faults mf
             WHERE ${sp("mf.phone_short")} = ${sp("m.full_phone")} OR ${sp("mf.full_phone")} = ${sp("m.full_phone")}
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
@@ -5665,7 +5669,12 @@ export async function registerRoutes(
               m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
               (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               cpl.complain_no AS "complaintNo",
-              (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
+              -- ⚠️ خام من غير AT TIME ZONE: أوقات الشيت (430D/التذاكر) متخزّنة أصلاً
+              -- كوقت حائط القاهرة (toDate بيبنى Date محلّى والسيرفر TZ=UTC)، فتحويلها
+              -- كان بيزوّد 3 ساعات — كان مستخفى وإحنا بنعرض التاريخ بس، وبان أول ما
+              -- عرضنا الوقت (وكمان كان بيغيّر اليوم للشكاوى بعد 9 مساءً).
+              -- نفس اتفاقية تقرير «الأعطال الحالية»: خام + الواجهة بتعرض بـ getUTC.
+              cpl.complain_time AS "complaintTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
               -- هل الرقم ظاهر دلوقتى فى «الأعطال الحالية» أو «الأعطال المنتظمة اليوم»؟
