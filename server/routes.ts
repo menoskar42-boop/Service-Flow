@@ -5640,6 +5640,10 @@ export async function registerRoutes(
     }
     // فلتر اختيارى من التقرير: استبعاد الخطوط التى اسكور آخر قياس لها يساوى صفر.
     if (excludeZeroScore === "1" || excludeZeroScore === "true") conds.push(`m.score <> 0`);
+    // زر «عليها عطل»: الخطوط اللى ظاهرة دلوقتى فى «الأعطال الحالية» أو «المنتظمة
+    // اليوم» — نفس تعريف عمود «فى الأعطال» بالظبط، فالزر والعمود مايختلفوش.
+    const faultOnly = req.query.hasFault === "1" || req.query.hasFault === "true";
+    if (faultOnly) conds.push(`(${inCurrentFaultsSql} OR ${inRegularizedTodaySql})`);
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
     if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));

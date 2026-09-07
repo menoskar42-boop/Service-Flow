@@ -148,6 +148,10 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // فلتر اختيارى لاستبعاد الخطوط التى أحدث قياس لها اسكور 0.
   // الفلترة على السيرفر لتسرى على الجدول والعداد والتصدير وأدوات التنفيذ.
   const [excludeZeroScore, setExcludeZeroScore] = useState(false);
+  // زر «عليها عطل»: يقتصر التقرير على الخطوط الظاهرة دلوقتى فى «الأعطال الحالية»
+  // أو «الأعطال المنتظمة اليوم» — الفلترة على السيرفر فبتسرى على الجدول والعدّاد
+  // والتصدير وأدوات التنفيذ مع بعض.
+  const [faultOnly, setFaultOnly] = useState(false);
   const isNeedsSpeed = endpoint.includes("needs-speed");
   // عمود «فى الأعطال» بيظهر فى كل تقارير المكوّن ما عدا «تحتاج إيقاف PO»
   // (مسار مختلف مالوش الأعمدة دى فى السيرفر).
@@ -182,6 +186,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (scoreFrom.trim()) params.set("scoreFrom", scoreFrom.trim());
     if (scoreTo.trim()) params.set("scoreTo", scoreTo.trim());
     if (excludeZeroScore && isNeedsSpeed) params.set("excludeZeroScore", "1");
+    if (faultOnly && showFaultCol) params.set("hasFault", "1");
     if (requireComplaint) params.set("requireComplaint", "1");
     if (!requireComplaint && complaintFilter !== "all") {
       params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
@@ -190,7 +195,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, scoreFrom, scoreTo, search, page, requireComplaint, complaintFilter, showExcludedCabins, excludeQueued, excludeZeroScore],
+    queryKey: [endpoint, central, cabin, box, poStoppedBefore, measuredBefore, scoreFrom, scoreTo, search, page, requireComplaint, complaintFilter, showExcludedCabins, excludeQueued, excludeZeroScore, faultOnly],
     queryFn: async () => {
       const res = await fetch(`${endpoint}?${buildParams()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
@@ -270,7 +275,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
       "تاريخ آخر قياس": fmtDateTime(r.lastMeasTime),
       ...(showFaultCol ? { "فى الأعطال": faultLabel(r) } : {}),
       "رقم الشكوى": r.complaintNo ?? "",
-      "تاريخ الشكوى": fmtDate(r.complaintTime),
+      "تاريخ الشكوى": fmtDateTime(r.complaintTime),
       "السنترال": r.central,
       "رقم الكابينه": r.cabinNumber,
       "رقم البكس": r.boxNumber,
@@ -475,6 +480,18 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                 {excludeZeroScore ? "استبعاد اسكور 0 ✓" : "استبعاد اسكور 0"}
               </Button>
             )}
+            {showFaultCol && (
+              <Button
+                variant={faultOnly ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setFaultOnly((v) => !v); setPage(1); }}
+                className={`gap-1 ${faultOnly ? "bg-rose-600 hover:bg-rose-700 text-white" : "text-rose-700 border-rose-300"}`}
+                title="عرض الخطوط اللى عليها عطل حالى أو اتنظّم النهاردة فقط"
+              >
+                <Filter className="w-4 h-4" />
+                {faultOnly ? "عليها عطل ✓" : "عليها عطل"}
+              </Button>
+            )}
             {!requireComplaint && isNeedsSpeed && (
               <select
                 value={complaintFilter}
@@ -581,7 +598,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                         </TableCell>
                       )}
                       <TableCell className="font-mono">{r.complaintNo ?? "-"}</TableCell>
-                      <TableCell className="whitespace-nowrap">{fmtDate(r.complaintTime)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{fmtDateTime(r.complaintTime)}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>
