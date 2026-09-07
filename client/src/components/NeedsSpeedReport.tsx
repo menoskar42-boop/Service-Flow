@@ -49,7 +49,17 @@ interface SpeedLine {
   complaintTime: string | null;
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
+  /** بيرجعوا فى تقارير «خرجت بعد القياس» بس — هل الرقم ظاهر دلوقتى فى الأعطال */
+  inCurrentFault?: boolean;
+  inRegularizedToday?: boolean;
 }
+
+// «فى الأعطال؟» — نص مختصر للعمود والتصدير
+const faultLabel = (r: { inCurrentFault?: boolean; inRegularizedToday?: boolean }) =>
+  r.inCurrentFault && r.inRegularizedToday ? "حالى + منتظم اليوم"
+  : r.inCurrentFault ? "عطل حالى"
+  : r.inRegularizedToday ? "منتظم اليوم"
+  : "";
 
 interface FilterOptions {
   centrals: string[];
@@ -139,6 +149,8 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   // الفلترة على السيرفر لتسرى على الجدول والعداد والتصدير وأدوات التنفيذ.
   const [excludeZeroScore, setExcludeZeroScore] = useState(false);
   const isNeedsSpeed = endpoint.includes("needs-speed");
+  // تقارير «خرجت بعد القياس» — بس دى اللى السيرفر بيرجّع فيها حالة الأعطال
+  const isLeftReport = endpoint.includes("left-speed-");
 
   useEffect(() => {
     const t = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 400);
@@ -255,6 +267,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
       "السرعة الحالية": r.lineCurrentSpeed ?? "",
       "أقصى سرعة": r.lineMaxSpeed ?? "",
       "تاريخ آخر قياس": fmtDateTime(r.lastMeasTime),
+      ...(isLeftReport ? { "فى الأعطال": faultLabel(r) } : {}),
       "رقم الشكوى": r.complaintNo ?? "",
       "تاريخ الشكوى": fmtDate(r.complaintTime),
       "السنترال": r.central,
@@ -278,9 +291,12 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     const all = json.data as SpeedLine[];
     printTablePDF({
       title: title ?? "أرقام محتاجة رفع سرعة",
-      columns: ["#", "التليفون الكامل", "الأكونت", "الاسكور", "سرعة حالية", "أقصى سرعة", "رقم الشكوى", "السنترال", "الكابينه", "البكس"],
+      columns: ["#", "التليفون الكامل", "الأكونت", "الاسكور", "سرعة حالية", "أقصى سرعة",
+        ...(isLeftReport ? ["فى الأعطال"] : []), "رقم الشكوى", "السنترال", "الكابينه", "البكس"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", r.lastMeasScore ?? "",
-        r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "", r.complaintNo ?? "", r.central, r.cabinNumber, r.boxNumber]),
+        r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
+        ...(isLeftReport ? [faultLabel(r)] : []),
+        r.complaintNo ?? "", r.central, r.cabinNumber, r.boxNumber]),
     });
   };
 
@@ -515,6 +531,9 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                     <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">تاريخ آخر قياس</TableHead>
+                    {isLeftReport && (
+                      <TableHead className="text-right font-bold whitespace-nowrap">فى الأعطال</TableHead>
+                    )}
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الشكوى</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الشكوى</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
@@ -551,6 +570,15 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                       <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>
                       <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-muted-foreground">{fmtDateTime(r.lastMeasTime)}</TableCell>
+                      {isLeftReport && (
+                        <TableCell className="whitespace-nowrap">
+                          {faultLabel(r) ? (
+                            <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                              r.inCurrentFault ? "bg-red-100 text-red-800" : "bg-emerald-100 text-emerald-800"
+                            }`}>{faultLabel(r)}</span>
+                          ) : <span className="text-gray-400">-</span>}
+                        </TableCell>
+                      )}
                       <TableCell className="font-mono">{r.complaintNo ?? "-"}</TableCell>
                       <TableCell className="whitespace-nowrap">{fmtDate(r.complaintTime)}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>

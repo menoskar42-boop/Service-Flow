@@ -5404,6 +5404,34 @@ export async function registerRoutes(
       AND ((${a}.mx_n > 0 AND ${a}.cur_n / ${a}.mx_n < 0.6 AND ${a}.score > 15 AND ${a}.score < 101)
            OR (${a}.score < 16 AND ${a}.cur_n < 10000)))`;
 
+    // ── «الرقم ظاهر فى الأعطال؟» — منقول بالحرف من تعريف التقريرين ──────────
+    // بيتحسب لتقارير الخروج بس (leftMode) عشان مايبطّأش تقرير «محتاجة رفع سرعة» الكبير.
+    // المطابقة بالرقم المطبَّع sp(): جداول التذاكر بتخزّن الرقم قصير و case_138 بتخزّنه
+    // كامل (88+) — المقارنة المباشرة مابتطابقش ولا صف (وفيه فهرس على نفس التعبير).
+    const GHANAIM_CENTRALS = `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`;
+    // الأعطال الحالية: مفتوحة (close_date IS NULL) بأكواد 160/173/122/81 و 73/72/60
+    const inCurrentFaultsSql = `EXISTS (
+      SELECT 1 FROM ticket_dsl_current t
+       WHERE ${sp("t.phone_number")} = ${sp("m.full_phone")}
+         AND t.close_date IS NULL
+         AND (t.status_code ~ '^(160|173|122|73|72|60|81)' OR t.complain_type_name ~ '^(160|173|122|73|72|60|81)')
+         AND ${GHANAIM_CENTRALS})`;
+    // المنتظمة اليوم: مصدرين زى التقرير — مقفولة النهاردة، أو اختفت من الملف الحالى
+    // (والحالات الوسيطة 135/138 مابتتحسبش «منتظم» أبداً).
+    const inRegularizedTodaySql = `EXISTS (
+      SELECT 1 FROM (
+        SELECT * FROM ticket_dsl_current
+         WHERE close_date IS NOT NULL
+           AND (close_date AT TIME ZONE 'Africa/Cairo')::date = (now() AT TIME ZONE 'Africa/Cairo')::date
+        UNION ALL
+        SELECT * FROM ticket_dsl_sod s
+         WHERE NOT EXISTS (SELECT 1 FROM ticket_dsl_current c WHERE c.ticket_id = s.ticket_id)
+           AND NOT (s.status_code ~ '^(135|138)')
+      ) t
+      WHERE ${sp("t.phone_number")} = ${sp("m.full_phone")}
+        AND (t.status_code ~ '^(160|173|122|73|72|60)' OR t.complain_type_name ~ '^(160|173|122|73|72|60)')
+        AND ${GHANAIM_CENTRALS})`;
+
     const joinClause = `FROM (
         ${leftMode ? `
         WITH ranked AS (
@@ -5548,7 +5576,10 @@ export async function registerRoutes(
               cpl.complain_no AS "complaintNo",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
-              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"${leftMode ? `,
+              -- هل الرقم ظاهر دلوقتى فى «الأعطال الحالية» أو «الأعطال المنتظمة اليوم»؟
+              ${inCurrentFaultsSql} AS "inCurrentFault",
+              ${inRegularizedTodaySql} AS "inRegularizedToday"` : ""}
        ${joinClause} ${where}
        ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
                 LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.score DESC NULLS LAST, m.full_phone
