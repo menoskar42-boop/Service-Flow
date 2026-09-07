@@ -5464,7 +5464,7 @@ export async function registerRoutes(
            OR (${a}.score < 16 AND ${a}.cur_n < 10000)))`;
 
     // ── «الرقم ظاهر فى الأعطال؟» — منقول بالحرف من تعريف التقريرين ──────────
-    // بيتحسب لتقارير الخروج بس (leftMode) عشان مايبطّأش تقرير «محتاجة رفع سرعة» الكبير.
+    // بيتحسب لكل تقارير الـ handler (محتاجة رفع سرعة واسكور منخفض وتقريرى الخروج).
     // المطابقة بالرقم المطبَّع sp(): جداول التذاكر بتخزّن الرقم قصير و case_138 بتخزّنه
     // كامل (88+) — المقارنة المباشرة مابتطابقش ولا صف (وفيه فهرس على نفس التعبير).
     const GHANAIM_CENTRALS = `(t.central_name = 'الغنايم' OR t.central_name = 'الغنايم-العزايزة' OR t.central_name = 'الغنايم-دير الجنادله' OR t.central_name = 'الغنايم-نجع العمدة')`;
@@ -5543,7 +5543,13 @@ export async function registerRoutes(
           UNION ALL
           SELECT complain_no, complain_time, exchange_name AS central_name, cabinet_no
             FROM remaining_complaints
-            WHERE ${sp("phone_number")} = ${sp("m.full_phone")}${needComplaintAny ? `
+            WHERE ${sp("phone_number")} = ${sp("m.full_phone")}
+          -- ⚠️ العطل المفتوح على الشاشة (ticket_dsl_current) والعطل اليدوى «خارج
+          -- الشاشة» كانوا بيتضافوا **بس** لما المستخدم يفعّل فلتر «لها/ليس لها
+          -- شكوى». النتيجة: الخط اللى شكواه الوحيدة عطل مفتوح كان بيظهر «عطل
+          -- حالى» فى عمود الأعطال وخانتى «رقم الشكوى» و«تاريخ الشكوى» فاضيين —
+          -- لأن العمودين دول مكانوش بيبصوا على جدول التذاكر أصلاً. بقوا دايماً
+          -- ضمن المصادر فالخانتين بيتملوا برقم التذكرة ووقتها.
           UNION ALL
           SELECT ticket_id AS complain_no, complaint_time AS complain_time, central_name, cabinet_no
             FROM ticket_dsl_current
@@ -5551,7 +5557,7 @@ export async function registerRoutes(
           UNION ALL
           SELECT ('يدوى-' || mf.id) AS complain_no, mf.flagged_at AS complain_time, mf.central AS central_name, mf.cabin_number AS cabinet_no
             FROM manual_faults mf
-            WHERE ${sp("mf.phone_short")} = ${sp("m.full_phone")} OR ${sp("mf.full_phone")} = ${sp("m.full_phone")}` : ""}
+            WHERE ${sp("mf.phone_short")} = ${sp("m.full_phone")} OR ${sp("mf.full_phone")} = ${sp("m.full_phone")}
         ) u ORDER BY u.complain_time DESC NULLS LAST LIMIT 1
       ) cpl ON true`;
 
@@ -5635,10 +5641,10 @@ export async function registerRoutes(
               cpl.complain_no AS "complaintNo",
               (cpl.complain_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
-              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"${leftMode ? `,
+              (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt",
               -- هل الرقم ظاهر دلوقتى فى «الأعطال الحالية» أو «الأعطال المنتظمة اليوم»؟
               ${inCurrentFaultsSql} AS "inCurrentFault",
-              ${inRegularizedTodaySql} AS "inRegularizedToday"` : ""}
+              ${inRegularizedTodaySql} AS "inRegularizedToday"
        ${joinClause} ${where}
        ${leftMode
          // تقارير «خرجت بعد القياس»: الأحدث قياساً الأول — دى تقارير متابعة لنتيجة
