@@ -220,3 +220,30 @@ test("the needs-speed endpoint applies inclusive score bounds to real rows, coun
     await pool.end();
   }
 });
+// تقرير «تحتاج إيقاف PO» بيستخدم نفس مكوّن الواجهة، فبيبعت scoreFrom/scoreTo برضه —
+// لكن الـ handler بتاعه كان **مابيقراهمش** أصلاً، فالفلتر كان مرسوم على الشاشة
+// ومابيعملش أى حاجة (تحط 101—105 ويفضل يعرض اسكور 0 و33).
+const poStopStart = routes.indexOf('app.get("/api/phone-lines/needs-po-stop"');
+const poStopEnd = routes.indexOf('app.get("/api/phone-lines/lookup"', poStopStart);
+assert.ok(poStopStart >= 0, "the needs-po-stop report endpoint must exist");
+assert.ok(poStopEnd > poStopStart, "the needs-po-stop report endpoint must be bounded");
+const poStopRoute = routes.slice(poStopStart, poStopEnd);
+
+test("the needs-po-stop report applies the same score range filter", () => {
+  assert.match(
+    poStopRoute,
+    /const \{[^}]*scoreFrom = "", scoreTo = ""[^}]*\} = req\.query/,
+    "the handler must read the score bounds the shared client always sends",
+  );
+  assert.match(poStopRoute, /conds\.push\(`m\.score >= \$\$\{params\.length\}`\)/);
+  assert.match(poStopRoute, /conds\.push\(`m\.score <= \$\$\{params\.length\}`\)/);
+});
+
+test("the needs-po-stop score filter also narrows the count and the export", () => {
+  // الشرطين لازم يتحطوا قبل ما whereNoQ يتبنى — whereNoQ هو اللى بيتحسب بيه
+  // العدّاد الكلى قبل استبعاد الطابور، والـ where بيتبنى بعده للصفحات والتصدير.
+  const scoreAt = poStopRoute.indexOf("conds.push(`m.score >= ");
+  const whereNoQAt = poStopRoute.indexOf("const whereNoQ =");
+  assert.ok(scoreAt >= 0 && whereNoQAt > scoreAt,
+    "the score bounds must be pushed before whereNoQ so the total, the pages and the export agree");
+});

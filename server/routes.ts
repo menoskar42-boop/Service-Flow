@@ -5698,7 +5698,7 @@ export async function registerRoutes(
   // المعيار: لها رقم أكونت + آخر قياس مرّ عليه أقل من 3 أيام + لا تحتاج رفع سرعة (عكس معيار
   //   محتاجة رفع سرعة). دى غالباً خطوط اتعملها Profile Optimization ومحتاجة إيقاف الـ nightly PO.
   app.get("/api/phone-lines/needs-po-stop", requireAuth, async (req, res) => {
-    const { central = "", cabin = "", box = "", poStoppedBefore = "", measuredBefore = "", page = "1", limit = "50", search = "" } = req.query as Record<string, string>;
+    const { central = "", cabin = "", box = "", poStoppedBefore = "", measuredBefore = "", page = "1", limit = "50", search = "", scoreFrom = "", scoreTo = "" } = req.query as Record<string, string>;
     const pageNum = Math.max(1, parseInt(page) || 1);
     const pageSize = Math.min(20000, Math.max(1, parseInt(limit) || 50));
     const params: any[] = [];
@@ -5765,6 +5765,18 @@ export async function registerRoutes(
     if (poStoppedBefore) { params.push(poStoppedBefore); conds.push(`(pe.last_stop_at IS NULL OR (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
     // نفس فلتر القياس الموجود فى تقرير محتاجة رفع سرعة.
     if (measuredBefore) { params.push(measuredBefore); conds.push(`(m.uploaded_at IS NULL OR (m.uploaded_at AT TIME ZONE 'Africa/Cairo') <= $${params.length}::timestamp)`); }
+    // فلتر نطاق الاسكور — شامل للحدين، بنفس تعريف تقرير «محتاجة رفع سرعة» بالظبط.
+    // الواجهة (NeedsSpeedReport) بتبعت scoreFrom/scoreTo لكل تقاريرها، والـ handler ده
+    // كان بيتجاهلهم بالسكوت — فالفلتر كان مرسوم على الشاشة ومابيعملش أى حاجة.
+    // بيتحطّ قبل whereNoQ عشان يسرى على العدّاد والصفحات والتصدير مع بعض.
+    if (scoreFrom.trim() !== "" && !isNaN(parseFloat(scoreFrom))) {
+      params.push(parseFloat(scoreFrom));
+      conds.push(`m.score >= $${params.length}`);
+    }
+    if (scoreTo.trim() !== "" && !isNaN(parseFloat(scoreTo))) {
+      params.push(parseFloat(scoreTo));
+      conds.push(`m.score <= $${params.length}`);
+    }
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
     if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
