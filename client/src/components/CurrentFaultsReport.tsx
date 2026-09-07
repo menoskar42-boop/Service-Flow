@@ -63,6 +63,16 @@ const dialMobile = (raw: string | null): string => {
   return mobile.startsWith("0") ? mobile : `0${mobile}`;
 };
 
+// تصنيف العطل صوت/داتا: داتا لو نوع الشكوى أو الـ Status Code فيه إشارة بيانات
+// (بيانات/DSL/ADSL/data) أو خط فايبر (FO)، وغيرها = صوت. (voice + data = الإجمالى دائماً)
+// نفس المنطق المستخدم فى تقرير الأعطال المنتظمة عشان الأرقام تتطابق بين التقريرين.
+const isDataFault = (f: { complainTypeName: string | null; statusCode: string | null }) => {
+  const t = (f.complainTypeName || "").toLowerCase();
+  const s = (f.statusCode || "").toLowerCase();
+  const dataRe = /بيانات|dsl|adsl|data|فايبر|fiber|_fo|fo_|-fo|\bfo\b/;
+  return dataRe.test(t) || dataRe.test(s);
+};
+
 // مدة بالساعات → "Xي Yس" (أيام/ساعات) لعرض مختصر.
 const fmtDur = (h: number | null | undefined) => {
   if (h == null) return "-";
@@ -182,6 +192,10 @@ export function CurrentFaultsReport() {
     .filter((f) => (monthRepeatOnly ? f.monthRepeat === true : true))
     .filter((f) => (returnedOnly ? dispStatus(f.statusCode) === "DSL-173" : true));
   const mobileLookup = useMobileLookup(displayed.map((f) => f.phoneShort));
+
+  // تقسيم الإجمالى: عدد أعطال الداتا وعدد أعطال الصوت (من displayed بعد الفلاتر)
+  const dataCount  = displayed.filter(isDataFault).length;
+  const voiceCount = displayed.length - dataCount;
 
   // يجمع أرقام الأكونت من الأعطال المعروضة (يحذف المكرر ويتجاهل اللى مالهاش
   // أكونت) ويفتح تاب DZS واحد يمرّر الأرقام فى الـ hash ليقيسها الـ Tampermonkey.
@@ -307,7 +321,7 @@ export function CurrentFaultsReport() {
       pages += `
         <section class="page">
           <h2>${esc(title)}</h2>
-          <div class="pageno">صفحة ${p + 1} من ${totalPages} — إجمالي: ${displayed.length} عطل</div>
+          <div class="pageno">صفحة ${p + 1} من ${totalPages} — إجمالي: ${displayed.length} عطل (صوت: ${voiceCount} — داتا: ${dataCount})</div>
           <table><thead>${headRow}</thead><tbody>${body}</tbody></table>
         </section>`;
     }
@@ -398,7 +412,11 @@ export function CurrentFaultsReport() {
         >
           <Undo2 className="w-4 h-4" /> {returnedOnly ? "عرض الكل" : "الخطوط الراجعة"}
         </Button>
-        <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
+        <span className="text-sm text-muted-foreground">
+          إجمالي: <strong>{displayed.length}</strong> عطل
+          <span className="mx-1 text-blue-700">(صوت: <strong>{voiceCount}</strong></span>
+          <span className="text-emerald-700"> — داتا: <strong>{dataCount}</strong>)</span>
+        </span>
         <LastUpdatedBadge endpoint="/api/ticket-queue/import" label="آخر تحديث FCC" />
         <span className="text-xs px-2 py-0.5 rounded font-medium bg-yellow-100 text-yellow-800">
           48 ساعة: <strong>{displayed.filter((f) => f.faultClass === "اعطال 48 ساعه").length}</strong>
