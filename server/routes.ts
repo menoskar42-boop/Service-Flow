@@ -5640,8 +5640,12 @@ export async function registerRoutes(
               ${inCurrentFaultsSql} AS "inCurrentFault",
               ${inRegularizedTodaySql} AS "inRegularizedToday"` : ""}
        ${joinClause} ${where}
-       ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
-                LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.score DESC NULLS LAST, m.full_phone
+       ${leftMode
+         // تقارير «خرجت بعد القياس»: الأحدث قياساً الأول — دى تقارير متابعة لنتيجة
+         // القياس اللى لسه اتعمل، فالترتيب الجغرافى (سنترال/كابينة/بكس) مالوش لازمة هنا.
+         ? `ORDER BY m.uploaded_at DESC NULLS LAST, m.full_phone`
+         : `ORDER BY COALESCE(pl.central, cpl.central_name), LPAD(COALESCE(pl.cabin_number, cpl.cabinet_no, ''), 8, '0'),
+                LPAD(COALESCE(pl.box_number, ''), 8, '0'), m.score DESC NULLS LAST, m.full_phone`}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
