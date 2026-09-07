@@ -249,8 +249,8 @@ export function RegularizedFaultsRangeReport() {
        <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>رقم الموبايل</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
-      <th>السرعة الحالية</th><th>أقصى سرعة</th><th>الاسكور</th><th>تاريخ آخر قياس</th>
-      <th>حالة الانتظام</th><th>أول إغلاق</th><th>آخر إغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th>
+      <th>تاريخ آخر قياس</th>
+      <th>حالة الانتظام</th><th>أول إغلاق</th><th>آخر إغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th><th>السرعة الحالية</th><th>أقصى سرعة</th><th>الاسكور</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -275,9 +275,6 @@ export function RegularizedFaultsRangeReport() {
           <td>${esc(f.dpTerminal)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.complainTime))}</td>
           <td style="font-size:9px">${esc(f.complainTypeName)}</td>
-           <td>${esc(f.lineCurrentSpeed)}</td>
-           <td>${esc(f.lineMaxSpeed)}</td>
-           <td>${esc(f.lastMeasScore)}</td>
            <td style="font-size:9px">${esc(fmtDt(f.lastMeasTime ?? null))}</td>
           <td>${esc(f.regStatus)}</td>
           <td style="font-size:9px">${esc(fmtDt(f.firstCloseDate))}</td>
@@ -286,6 +283,9 @@ export function RegularizedFaultsRangeReport() {
           <td>${esc(f.techName)}</td>
           <td>${esc(f.voiceStatus)}</td>
           <td>${esc(f.dataStatus)}</td>
+          <td>${esc(f.lineCurrentSpeed)}</td>
+          <td>${esc(f.lineMaxSpeed)}</td>
+          <td>${esc(f.lastMeasScore)}</td>
         </tr>`).join("");
       pages += `
         <section class="page">
@@ -489,9 +489,6 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">ترمنال</TableHead>
                 <TableHead className="text-right font-bold text-white">وقت الشكوى</TableHead>
                 <TableHead className="text-right font-bold text-white">نوع الشكوى</TableHead>
-                 <TableHead className="text-right font-bold text-white">السرعة الحالية</TableHead>
-                 <TableHead className="text-right font-bold text-white">أقصى سرعة</TableHead>
-                 <TableHead className="text-right font-bold text-white">الاسكور</TableHead>
                  <TableHead className="text-right font-bold text-white whitespace-nowrap">تاريخ آخر قياس</TableHead>
                 <TableHead className="text-right font-bold text-white">حالة الانتظام</TableHead>
                 <TableHead className="text-right font-bold text-white">أول إغلاق</TableHead>
@@ -510,6 +507,10 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">كود السنترال</TableHead>
                 <TableHead className="text-right font-bold text-white whitespace-nowrap">آخر رفع سرعة</TableHead>
                 <TableHead className="text-right font-bold text-white whitespace-nowrap">آخر إيقاف PO</TableHead>
+                {/* آخر ٣ خانات فى الجدول: نتيجة آخر قياس للخط (اتنقلت من نص الجدول لآخره) */}
+                <TableHead className="text-right font-bold text-white">السرعة الحالية</TableHead>
+                <TableHead className="text-right font-bold text-white">أقصى سرعة</TableHead>
+                <TableHead className="text-right font-bold text-white">الاسكور</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -556,9 +557,6 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell>{f.dpTerminal || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.complainTime)}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{f.complainTypeName || "-"}</TableCell>
-                   <TableCell className="font-mono">{f.lineCurrentSpeed || "-"}</TableCell>
-                   <TableCell className="font-mono">{f.lineMaxSpeed || "-"}</TableCell>
-                   <TableCell>{f.lastMeasScore ?? "-"}</TableCell>
                    <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(f.lastMeasTime ?? null)}</TableCell>
                   <TableCell>
                     <span className="text-xs px-2 py-0.5 rounded font-medium bg-green-100 text-green-800">
@@ -595,6 +593,9 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell>{f.centralCode || "-"}</TableCell>
                   <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-emerald-700">{fmtDt(f.lastPoRaiseAt)}</TableCell>
                   <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-orange-700">{fmtDt(f.lastPoStopAt)}</TableCell>
+                  <TableCell className="font-mono">{f.lineCurrentSpeed || "-"}</TableCell>
+                  <TableCell className="font-mono">{f.lineMaxSpeed || "-"}</TableCell>
+                  <TableCell>{f.lastMeasScore ?? "-"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
