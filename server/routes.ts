@@ -1724,6 +1724,15 @@ export async function registerRoutes(
   // الخنق من غير ما تخفى جهاز واقف فعلاً (وإيقاف التفعيل بيمسح النبضة فوراً برضه).
   const EXEC_ACTIVE_WINDOW = "interval '150 seconds'";
 
+  // تصنيف الباتش بأولوية **واحدة** = أعلى أولوية بين مهامه النشطة.
+  // ⚠️ لازم يكون التصنيف بالباتش مش بالصف: الباتش الواحد ممكن يبقى فيه صفوف
+  // بأولويتين مختلفتين (تكملة بعد مقاطعة مثلاً)، والتصنيف بالصف كان بيخلّيه يظهر
+  // فى «الأولوية العليا» وفى «المؤجّلة» مع بعض. القايمتين دلوقتى حصريتين.
+  const BATCHES_BY_ACTIVE_PRIORITY = `
+    SELECT batch_id FROM exec_jobs
+     WHERE status IN ('pending','claimed') AND batch_id IS NOT NULL
+     GROUP BY batch_id`;
+
   // نبضة جهاز التنفيذ (كل ~20ث) — تُخزَّن فى app_state
   app.post("/api/exec-queue/heartbeat", requireAuth, requireSuperAdmin, async (req: any, res) => {
     try {
@@ -2061,7 +2070,7 @@ export async function registerRoutes(
                 ROUND(EXTRACT(EPOCH FROM (now() - MIN(claimed_at) FILTER (WHERE status='claimed'))) / 60.0)::int AS "claimedMins",
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt"
          FROM exec_jobs
-         WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority IN (1, 2) AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
+         WHERE batch_id IN (${BATCHES_BY_ACTIVE_PRIORITY} HAVING MAX(priority) IN (1, 2))
          GROUP BY batch_id
          ORDER BY MIN(priority) DESC, MIN(created_at) ASC, batch_id`);
       res.json({ data: rows });
@@ -2081,7 +2090,7 @@ export async function registerRoutes(
                 ROUND(EXTRACT(EPOCH FROM (now() - MIN(claimed_at) FILTER (WHERE status='claimed'))) / 60.0)::int AS "claimedMins",
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt", MAX(queue_order) AS "queueOrder"
          FROM exec_jobs
-         WHERE batch_id IN (SELECT DISTINCT batch_id FROM exec_jobs WHERE priority = 0 AND status IN ('pending','claimed') AND batch_id IS NOT NULL)
+         WHERE batch_id IN (${BATCHES_BY_ACTIVE_PRIORITY} HAVING MAX(priority) = 0)
          GROUP BY batch_id
          ORDER BY CASE WHEN MAX(queue_order) > 0 THEN MAX(queue_order) ELSE 9223372036854775807 END ASC, MIN(created_at) ASC, batch_id`);
       res.json({ data: rows });
@@ -2764,10 +2773,15 @@ export async function registerRoutes(
       let newId: number | null = null;
       if (remaining.length) {
         const note = (job.note ? job.note + " " : "") + "(تكملة)";
-        // الطلب الصغير/العاجل (أولوية ≥2) بيرجع بنفس أولويته فيكمّل فوراً بعد اللى قاطعه
-        // (مثلاً مراجعة اتقطعت لتحديث ملفات FCC → بتكمّل أول ما التحديث يخلص).
-        // الباتش الكبير بينزل لـ 0 زى ما هو عشان مايزاحمش الطلبات العاجلة.
-        const newPriority = (job.priority ?? 0) >= 2 ? job.priority : 0;
+        // التكملة بترجع **بنفس أولوية المهمة الأصلية** — المقاطعة مش سبب لتخفيض
+        // الأولوية، هى بس بتخلّى التحديث الدورى يعدّى الأول.
+        // ⚠️ قبل كده كانت أى أولوية < 2 بتنزل لـ 0، فباتش «محتاجة رفع سرعة»
+        // (أولوية 1) كان بيتخفّض لـ 0 أول ما يتقاطع — والتحديث الدورى بيقاطع كل
+        // نص ساعة. النتيجة اتنين: (١) الباتش بيقع ورا الباتشات الكبيرة التانية
+        // رغم إن قاعدته إنه أعلى منها، (٢) الباتش يبقى فيه صفوف بأولويتين
+        // مختلفتين بنفس batch_id فيظهر فى قايمة «الأولوية العليا» **و** فى قايمة
+        // «المؤجّلة» مع بعض. (اتأكد بالتجربة.)
+        const newPriority = job.priority ?? 0;
         const { rows: ins } = await pool.query(
           `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, site, batch_id, params, requested_from)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
