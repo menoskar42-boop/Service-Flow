@@ -87,6 +87,10 @@ const scoreBadge = (v: string | number | null | undefined) => {
 interface WithAccountReportProps {
   /** فلتر اختيارى: عرض فقط الخطوط التى أسكورها أعلى من هذه القيمة (تقرير الأسكور > 100) */
   scoreGt?: number;
+  /** فلتر اختيارى: اسكور مساوٍ لقيمة محددة بالظبط (تقرير «اسكور 103») */
+  scoreEq?: number;
+  /** يمنع تعديل/حذف رقم الأكونت على الفنى وأدمن المبيعات كمان (المبيعات ممنوعة دايماً) */
+  editorsOnly?: boolean;
   /** فلتر اختيارى: عرض فقط الخطوط التى لم يتم قياسها من قبل (لا يوجد لها سجل فى شيت 138) */
   neverMeasured?: boolean;
   /** القيمة الافتراضية لعدد أيام فلتر «أقدم من N يوم» (الفلتر نفسه يظل مطفياً حتى تفعيله) */
@@ -98,11 +102,15 @@ interface WithAccountReportProps {
   initialBox?: string;
 }
 
-export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "10", title, initialCentral = "", initialCabin = "", initialBox = "" }: WithAccountReportProps = {}) {
+export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, neverMeasured, defaultStaleDays = "10", title, initialCentral = "", initialCabin = "", initialBox = "" }: WithAccountReportProps = {}) {
   const showSpeedTools = useSpeedToolsVisible();
   const isSuper = useIsSuperAdmin();
   // المصدر يعكس التقرير الفعلى (خطوط لها أكونت / ولم تُقس / أسكور>100) عشان يظهر صح فى معاملات التنفيذ
-  useSpeedToolSource(neverMeasured ? "خطوط لها أكونت ولم تُقس" : scoreGt != null ? "خطوط أسكورها أعلى من 100" : "خطوط لها أكونت");
+  useSpeedToolSource(
+    scoreEq != null ? `خطوط اسكورها ${scoreEq}`
+    : neverMeasured ? "خطوط لها أكونت ولم تُقس"
+    : scoreGt != null ? "خطوط أسكورها أعلى من 100"
+    : "خطوط لها أكونت");
   const [central, setCentral] = useState(initialCentral);
   const [cabin, setCabin] = useState(initialCabin);
   const [box, setBox] = useState(initialBox);
@@ -131,7 +139,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   const [dzsCount, setDzsCount] = useState<number | null>(null);
   const qc = useQueryClient();
   const { user } = useAuth();
-  const canEdit = user?.role !== ROLES.SALES;
+  // المبيعات ممنوعة دايماً؛ و«editorsOnly» بيمنع الفنى وأدمن المبيعات كمان
+  // (تقرير اسكور 103: التعديل لباقى المستخدمين بس).
+  const canEdit = user?.role !== ROLES.SALES
+    && !(editorsOnly && (user?.role === ROLES.TECH || user?.role === ROLES.SALES_ADMIN));
   // تنسيق تاريخ آخر قياس للخط (من شيت 138)
   const fmtMeasDate = (d: string | null | undefined) => {
     if (!d) return "-";
@@ -151,24 +162,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, complaintFilter, excludeQueued],
+    queryKey: ["/api/phone-lines/with-account", central, cabin, box, boxFrom, boxTo, page, scoreGt ?? "", scoreEq ?? "", neverMeasured ?? false, scoreMin, scoreMax, speedMin, speedMax, accountQ, staleOn, staleDays, complaintFilter, excludeQueued],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      if (central) params.set("central", central);
-      if (cabin) params.set("cabin", cabin);
-      if (box) params.set("box", box);
-      if (!box && boxFrom) params.set("boxFrom", boxFrom);
-      if (!box && boxTo)   params.set("boxTo",   boxTo);
-      if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
-      if (excludeQueued) params.set("excludeQueued", "1");
-      if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
-      if (scoreGt != null) params.set("scoreGt", String(scoreGt));
-      if (neverMeasured) params.set("neverMeasured", "1");
-      if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
-      if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
-      if (speedMin.trim()) params.set("speedGt", speedMin.trim());
-      if (speedMax.trim()) params.set("speedLt", speedMax.trim());
-      if (accountQ.trim()) params.set("accountQ", accountQ.trim());
+      // نفس باني البارامترات بتاع القياس/التصدير — مصدر واحد فمفيش فلتر يتنسى
+      const params = filterParams({ page: String(page), limit: String(PAGE_SIZE) });
       const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json() as Promise<{ data: PhoneLine[]; total: number; grandTotal?: number; queuedExcluded?: number; page: number; pageSize: number }>;
@@ -214,7 +211,10 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
 
   // تحويل خط من "لها أكونت" إلى "ليس له أكونت": حذف الأكونت + إخفاء من التقريرين
   const handleMarkNoAccount = async (fullPhone: string) => {
-    if (!confirm("تأكيد: سيتم حذف رقم الأكونت وإخفاء هذا الخط من التقريرين؟")) return;
+    if (!confirm(
+      "حذف رقم الأكونت؟\n\nالخط هيتعلّم «بدون أكونت» — يعنى صوت بس مش داتا — " +
+      "ويظهر فى تقرير «معلَّمة بدون أكونت (محذوفة / غير موجودة)»."
+    )) return;
     setSaveState((s) => ({ ...s, [fullPhone]: "saving" }));
     try {
       // fetch مابيرميش استثناء على 403/500 — لازم نفحص res.ok بنفسنا
@@ -253,6 +253,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
     if (excludeQueued) params.set("excludeQueued", "1");
     if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
+    // اسكور مساوٍ بالظبط: السيرفر بيقارن بـ > و < بس، والاسكور عدد صحيح
+    if (scoreEq != null) { params.set("scoreGt", String(scoreEq - 1)); params.set("scoreLt", String(scoreEq + 1)); }
     if (neverMeasured) params.set("neverMeasured", "1");
     if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
     if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
@@ -392,20 +394,8 @@ export function WithAccountReport({ scoreGt, neverMeasured, defaultStaleDays = "
   };
 
   const handleExportPDF = async () => {
-    const params = new URLSearchParams({ page: "1", limit: "20000" });
-    if (central) params.set("central", central);
-    if (cabin) params.set("cabin", cabin);
-    if (box) params.set("box", box);
-    if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
-      if (excludeQueued) params.set("excludeQueued", "1");
-    if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
-    if (scoreGt != null) params.set("scoreGt", String(scoreGt));
-    if (neverMeasured) params.set("neverMeasured", "1");
-    if (scoreMin.trim()) params.set("scoreGt", scoreMin.trim());
-    if (scoreMax.trim()) params.set("scoreLt", scoreMax.trim());
-    if (speedMin.trim()) params.set("speedGt", speedMin.trim());
-    if (speedMax.trim()) params.set("speedLt", speedMax.trim());
-    if (accountQ.trim()) params.set("accountQ", accountQ.trim());
+    // كانت نسخة منفصلة **ناقصة فلتر مدى البكس** فالـ PDF كان بيطلع أوسع من الجدول
+    const params = filterParams({ page: "1", limit: "20000" });
     const res = await fetch(`/api/phone-lines/with-account?${params}`, { credentials: "include" });
     const json = await res.json();
     const all = json.data as PhoneLine[];

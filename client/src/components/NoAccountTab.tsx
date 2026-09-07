@@ -3,14 +3,16 @@ import { WithoutAccountReport } from "@/components/WithoutAccountReport";
 import { RegularizedNoAccountReport } from "@/components/RegularizedNoAccountReport";
 import { GroundFaultsNoAccountReport } from "@/components/GroundFaultsNoAccountReport";
 import { MarkedNoAccountReport } from "@/components/MarkedNoAccountReport";
+import { WithAccountReport } from "@/components/WithAccountReport";
 
-type SubTab = "lines" | "regularized" | "ground" | "marked";
+type SubTab = "lines" | "regularized" | "ground" | "marked" | "score103";
 
 const TABS: { id: SubTab; label: string }[] = [
   { id: "lines",       label: "الخطوط بدون رقم أكونت" },
   { id: "regularized", label: "أعطال منتظمة بدون أكونت" },
   { id: "ground",      label: "أعطال أرضية بدون رقم أكونت" },
   { id: "marked",      label: "معلَّمة بدون أكونت (محذوفة / غير موجودة)" },
+  { id: "score103",    label: "اسكور 103 (مراجعة رقم الأكونت)" },
 ];
 
 export function NoAccountTab() {
@@ -38,6 +40,16 @@ export function NoAccountTab() {
       {tab === "regularized" && <RegularizedNoAccountReport />}
       {tab === "ground"      && <GroundFaultsNoAccountReport />}
       {tab === "marked"      && <MarkedNoAccountReport />}
+      {/* اسكور 103: خطوط ليها أكونت بس القياس راجع بحالة خاصة — المراجعة بتعدّل رقم
+          الأكونت أو تمسحه. المسح بيعلّم الخط «بدون أكونت» (صوت مش داتا) فيظهر فى
+          تاب «معلَّمة بدون أكونت». التعديل ممنوع على الفنى والمبيعات وأدمن المبيعات. */}
+      {tab === "score103"    && (
+        <WithAccountReport
+          scoreEq={103}
+          editorsOnly
+          title="خطوط اسكورها 103 — راجع رقم الأكونت (عدّله أو امسحه)"
+        />
+      )}
     </div>
   );
 }
