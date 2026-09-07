@@ -575,6 +575,10 @@ export const case138 = pgTable("case_138", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
   measuredBy: text("measured_by"), // مين طلب آخر قياس لهذا الرقم (من op_intents)
+  // مصدر الصف: 'dzs' = قياس اتعمل من أداة القياس (تاريخ لازم يتحفظ)، فاضى = صف
+  // جاى من رفع شيت 138. رفعة الشيت بتستبدل صفوف الشيت القديمة بس ومابتلمسش
+  // قياسات dzs — التقارير بتعتمد على تاريخ القياسات ده.
+  source: text("source"),
 });
 
 export type Case138 = typeof case138.$inferSelect;

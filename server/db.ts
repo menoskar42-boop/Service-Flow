@@ -1308,6 +1308,11 @@ export async function ensureSchema() {
   // مين عمل آخر قياس/رفع سرعة/إيقاف: نسجّل «نيّة» المستخدم وقت الضغط (op_intents)، ولما النتيجة
   // ترجع (القياس على case_138، والأحداث على line_po_events) نختم اسم صاحب الطلب فى الأعمدة دى.
   await pool.query(`ALTER TABLE case_138 ADD COLUMN IF NOT EXISTS measured_by text`);
+  // مصدر الصف: 'dzs' = قياس من أداة القياس. رفعة شيت 138 بتستبدل صفوف الشيت
+  // القديمة بس ومابتلمسش قياسات dzs — تقارير «خرجت بعد القياس» بتعتمد على تاريخ
+  // القياسات، وكانت الرفعة بتمسحه فالخط يختفى من التقرير رغم إن اسكوره ماتغيّرش.
+  await pool.query(`ALTER TABLE case_138 ADD COLUMN IF NOT EXISTS source text`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS case_138_source_idx ON case_138 (source)`);
   await pool.query(`ALTER TABLE line_po_events ADD COLUMN IF NOT EXISTS last_raise_by text`);
   await pool.query(`ALTER TABLE line_po_events ADD COLUMN IF NOT EXISTS last_stop_by text`);
   await pool.query(`

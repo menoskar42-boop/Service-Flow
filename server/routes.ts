@@ -7690,6 +7690,10 @@ export async function registerRoutes(
       }
       // (2) للصفوف بدون رقم شكوى: امسح صفوف نفس التليفون الكامل التى لا شكوى لها فقط
       //     (حتى لا نمس صفوف الشكاوى لنفس الرقم) — وندخّل القراية الجديدة بدلها.
+      //     ⚠️ ماعدا قياسات أداة القياس (source='dzs'): دى **تاريخ** والتقارير
+      //     بتعتمد عليه («خرجت بعد القياس» بتعرف إن الخط كان محتاج رفع سرعة من
+      //     قياس أقدم). مسحها كان بيخلّى الخط يختفى من التقرير بعد رفعة الشيت
+      //     رغم إن اسكوره ماتغيّرش.
       const noComplainPhones = Array.from(
         new Set(inserts.filter((r) => !r[2]).map((r) => r[6]).filter((p) => p != null && String(p).trim() !== "")),
       );
@@ -7697,7 +7701,8 @@ export async function registerRoutes(
         const chunk = noComplainPhones.slice(s, s + DEL_BATCH);
         const ph = chunk.map((_, i) => `$${i + 1}`).join(",");
         await tx.query(
-          `DELETE FROM case_138 WHERE full_phone IN (${ph}) AND (complain_no IS NULL OR complain_no = '')`,
+          `DELETE FROM case_138 WHERE full_phone IN (${ph}) AND (complain_no IS NULL OR complain_no = '')
+             AND COALESCE(source, '') <> 'dzs'`,
           chunk,
         );
       }
@@ -7813,8 +7818,8 @@ export async function registerRoutes(
       }
       await pool.query(
         `INSERT INTO case_138
-           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, measured_by, complain_time)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())`,
+           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, measured_by, complain_time, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now(), 'dzs')`,
         [phoneShort, complainNo, toInt(it.score), (it.currentSpeed ?? "").toString().trim() || null,
          (it.maxSpeed ?? "").toString().trim() || null, fullPhone, accountNo, measuredBy],
       );
