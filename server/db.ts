@@ -1132,6 +1132,9 @@ export async function ensureSchema() {
     -- retried_at = ختم إن المهمة دى اتعمِلها إعادة خلاص (يمنع التكرار كل دورة سحب).
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retry_round integer NOT NULL DEFAULT 0;
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS retried_at timestamptz;
+    -- عدد مرات «إعادة التشغيل التلقائى» للباتش العالق (نفس منطق الزر اليدوى) —
+    -- بسقف عشان الباتش المكسور مايفضلش يعيد نفسه للأبد.
+    ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS auto_restarts integer NOT NULL DEFAULT 0;
     -- الجهاز/المتصفح اللى نفّذ المهمة (اسم المستخدم · المتصفح/النظام · معرّف الجهاز)
     ALTER TABLE exec_jobs ADD COLUMN IF NOT EXISTS executed_by text;
     -- الجهاز/المتصفح اللى اتبعت منه الطلب (وقت الإضافة للطابور)

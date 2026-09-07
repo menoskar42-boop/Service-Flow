@@ -642,6 +642,9 @@ export const execJobs = pgTable("exec_jobs", {
   retryRound: integer("retry_round").notNull().default(0),
   // ختم إن المهمة دى اتعمِلها إعادة تنفيذ خلاص — يمنع تكرار الإضافة كل دورة سحب
   retriedAt: timestamp("retried_at"),
+  // كام مرة الباتش اتعملّه «إعادة تشغيل تلقائى» بعد ما علق (بسقف) — عشان الباتش
+  // المكسور مايفضلش يعيد نفسه للأبد، وبعد السقف يستنى الزر اليدوى
+  autoRestarts: integer("auto_restarts").notNull().default(0),
   // الجهاز/المتصفح اللى سحب المهمة ونفّذها — «اسم المستخدم · المتصفح/النظام · معرّف
   // الجهاز». بيتسجّل وقت السحب عشان الرقابة تعرف الطلب اتنفّذ من فين بالظبط.
   executedBy: text("executed_by"),

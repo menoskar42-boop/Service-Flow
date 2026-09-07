@@ -2508,6 +2508,11 @@ export async function registerRoutes(
   // المهام فيخنق قاعدة البيانات وتعلّق باقى الصفحات.
   let lastRequeueAt = 0;
   const REQUEUE_EVERY_MS = 60 * 1000;
+  // إعادة التشغيل التلقائى للباتش العالق — فحص كل دقيقة، وبحد أقصى مرتين لكل باتش
+  // (بعدها الباتش يستنى زر «إعادة التشغيل» اليدوى عشان مايلفّش للأبد).
+  let lastAutoRestartAt = 0;
+  const AUTO_RESTART_EVERY_MS = 60 * 1000;
+  const AUTO_RESTART_MAX = 2;
   const requeueErroredJobs = async () => {
     if (Date.now() - lastRequeueAt < REQUEUE_EVERY_MS) return;
     lastRequeueAt = Date.now();
@@ -2633,6 +2638,46 @@ export async function registerRoutes(
         `UPDATE exec_jobs SET status = 'stale', done_at = now(), result = COALESCE(result, 'stuck_expired')
          WHERE status = 'claimed' AND claimed_at < now() - interval '6 hours'`,
       );
+
+      // (5) إعادة تشغيل **تلقائية** للباتش اللى وقف — نفس منطق زر «إعادة التشغيل»
+      //     اليدوى بالظبط (رجّع مهامه العالقة/الملغاة للطابور وصفّر المحاولات).
+      //     الباتش «واقف» = مفيش فيه ولا مهمة نشطة، وفيه مهام اتعلّمت stale بسبب
+      //     التعليق (stuck_max_attempts / stuck_expired).
+      //     ⚠️ الباتش اللى **المستخدم** لغاه (مسح الطابور / إلغاء) بيتعلّم stale
+      //     كمان لكن **من غير result** — فبنستثنيه صراحةً، وإلا كان الإلغاء
+      //     هيرجع يشتغل لوحده تانى.
+      //     السقف (AUTO_RESTART_MAX) بيمنع الباتش المكسور من إعادة نفسه للأبد؛
+      //     بعده بيستنى الزر اليدوى زى ما هو.
+      if (Date.now() - lastAutoRestartAt >= AUTO_RESTART_EVERY_MS) {
+        lastAutoRestartAt = Date.now();
+        const { rows: restarted } = await pool.query(
+          `WITH stuck AS (
+             SELECT batch_id FROM exec_jobs
+              WHERE batch_id IS NOT NULL
+              GROUP BY batch_id
+             HAVING COUNT(*) FILTER (WHERE status IN ('pending','claimed')) = 0
+                AND COUNT(*) FILTER (WHERE status = 'stale' AND result IN ('stuck_max_attempts','stuck_expired')) > 0
+                AND COUNT(*) FILTER (WHERE status = 'stale' AND result IS NULL) = 0
+                AND COUNT(*) FILTER (WHERE paused_at IS NOT NULL) = 0
+                AND MAX(auto_restarts) < $1
+                -- تهدئة: مانرجّعش الباتش فى نفس اللحظة اللى وقف فيها
+                AND MAX(done_at) < now() - interval '2 minutes'
+                -- الباتشات القديمة خالص مش بنحييها
+                AND MAX(done_at) > now() - interval '6 hours'
+           )
+           UPDATE exec_jobs e
+              SET status = 'pending', claimed_at = NULL, done_at = NULL, result = NULL,
+                  paused_at = NULL, attempts = 0, auto_restarts = e.auto_restarts + 1
+            WHERE e.batch_id IN (SELECT batch_id FROM stuck)
+              AND e.status IN ('stale', 'claimed', 'pending')
+            RETURNING e.batch_id`,
+          [AUTO_RESTART_MAX],
+        );
+        if (restarted.length) {
+          const batches = Array.from(new Set(restarted.map((r: any) => r.batch_id)));
+          console.log(`[exec-queue] إعادة تشغيل تلقائى لـ ${batches.length} باتش عالق (${restarted.length} مهمة)`);
+        }
+      }
     } catch { /* تنظيف إضافى — لو فشل نكمّل عادى */ }
     return requeued;
   };
