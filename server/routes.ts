@@ -20,6 +20,7 @@ import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
 import { rescueIntervalSql, EXEC_RESCUE_MINUTES } from "@shared/exec-timeouts";
+import { canonicalTechSql, TECHNICIAN_NAMES, matchTechnician } from "@shared/technicians";
 import { phoneNormSql } from "./phone-norm";
 import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH_THRESHOLD } from "@shared/name-match";
 import { registerCfmRoutes } from "./cfm/routes";
@@ -1225,7 +1226,7 @@ async function checkAndSnapshot() {
 // له طلب «مراجعة بيان فنى» (subinfo) فى الطابور — **مرة كل 4 ساعات بالكتير** لحد
 // ما بياناته تتحدّث، وبعدها بيخرج من القائمة لوحده.
 const SUBINFO_EVERY = "interval '4 hours'";
-async function queueMissingLineDataSubinfo() {
+async function queueMissingLineDataSubinfo(opts?: { force?: boolean }) {
   try {
     const { rows } = await pool.query(
       `SELECT DISTINCT w.phone_number AS phone
@@ -1240,11 +1241,17 @@ async function queueMissingLineDataSubinfo() {
           AND COALESCE(NULLIF(w.cable_quantity, ''), ce.cable_quantity) IS NULL
           -- مافيش بيان فنى: لا سنترال/كابينة من ملف الخطوط ولا من مراجعة سابقة
           AND COALESCE(NULLIF(btrim(pl.central), ''), NULLIF(btrim(si.central), '')) IS NULL
-          -- ومامتطلبش خلال آخر 4 ساعات (أى مهمة subinfo فيها الرقم ده)
+          -- ⚠️ البيان الفنى بيتراجع **بس** لما اسم الفنى مش واحد من الخمسة: هو المصدر
+          -- الوحيد اللى بنعرف منه فنى المنطقة ساعتها. الأوامر اللى عليها فنى معروف
+          -- مالهاش لازمة وماينفعش نشغّل الطابور عليها من غير داعى.
+          AND ${canonicalTechSql("(SELECT tn.tech_name FROM technician_names tn WHERE btrim(tn.worker_code) = btrim(COALESCE(w.worker_code,'')) AND btrim(COALESCE(w.worker_code,'')) <> '' LIMIT 1)")} IS NULL
+          AND ${canonicalTechSql("w.tech_name")} IS NULL
+          -- ومامتطلبش خلال آخر 4 ساعات (أى مهمة subinfo فيها الرقم ده).
+          -- الزر اليدوى (force) بيتخطّى المهلة، لكن لسه مابيكرّرش مهمة **لسه فى الطابور**.
           AND NOT EXISTS (
             SELECT 1 FROM exec_jobs e
              WHERE e.type = 'subinfo'
-               AND e.created_at > now() - ${SUBINFO_EVERY}
+               AND (${opts?.force ? "e.status IN ('pending','claimed')" : `e.created_at > now() - ${SUBINFO_EVERY}`})
                AND jsonb_exists(e.accounts, w.phone_number))
         LIMIT 200`);
     if (!rows.length) return 0;
@@ -6487,6 +6494,9 @@ export async function registerRoutes(
       const iCable     = findCol("consumed cables", "كميه السلك", "كمية السلك", "السلك", "cable");
       const iCloseReason = findCol("close reason", "سبب الاغلاق", "سبب الإغلاق");
       const iTech      = findCol("tech name", "اسم الفنى", "اسم الفني", "الفنى");
+      // كود العامل: المطابقة بيه أدق بكتير من مطابقة الاسم (الاسم بيتكتب بصيغ مختلفة
+      // وممكن يبقى لقب — «سامى» اسمه فى الملفات «محمد عبدالعزيز طه احمد»).
+      const iWorker    = findCol("worker code", "كود العامل", "كود الفنى", "كود الفني", "workercode", "emp code", "الرقم الوظيفى");
       const iMsan      = findCol("msan code", "msan", "الكابينة", "الكابينه");
       // العناوين الأصلية (بدون تصغير) لحفظ raw_data بكل خانات الشيت — القاعدة #10
       const origHeader = rows[hdrIdx].map((h: any) => String(h ?? "").trim());
@@ -6519,7 +6529,7 @@ export async function registerRoutes(
       // الملّى ثانية)، فالرفع كان بياخد عشرات الثوانى وبيقرّب من حد المهلة —
       // ودى كانت أشهر سبب لرسالة «Failed to fetch» عند الرفع.
       // دلوقتى كل 500 صف فى بيان واحد → الملف كله بيبقى 3-4 رحلات.
-      const WO_COLS = 14;
+      const WO_COLS = 15;   // +1 = worker_code
       const BATCH = 500;
       const pending: any[][] = [];
       let pendingTotal = 0;
@@ -6531,7 +6541,7 @@ export async function registerRoutes(
         // الصف الأول بأنواع صريحة: Postgres مابيقدرش يستنتج نوع البارامتر جوّه
         // VALUES، فمن غير الكاست بيعتبرهم كلهم نص ويرفض (bigint/timestamptz/jsonb).
         const CAST = ["text", "bigint", "text", "text", "timestamptz", "text", "text",
-                      "text", "text", "timestamptz", "text", "text", "jsonb", "int"];
+                      "text", "text", "timestamptz", "text", "text", "jsonb", "int", "text"];
         const values = rows.map((r, i) => {
           params.push(...r);
           const base = i * WO_COLS;
@@ -6541,15 +6551,16 @@ export async function registerRoutes(
         // ⚠️ لازم نستبعد التكرار **جوّه نفس الدفعة**: Postgres بيرفض
         // «ON CONFLICT DO UPDATE» لو نفس المفتاح اتكرّر مرتين فى نفس البيان.
         const res = await pool.query(
-          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id)
+          `INSERT INTO work_orders (central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id, worker_code)
            SELECT DISTINCT ON (central_name, work_order_id) *
-             FROM (VALUES ${values}) AS v(central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id)
+             FROM (VALUES ${values}) AS v(central_name, work_order_id, phone_number, service_type, close_date, item_name, cable_quantity, tech_name, close_category, creation_date, msan_code, work_order_type_raw, raw_data, uploaded_by_id, worker_code)
            ON CONFLICT (central_name, work_order_id) DO UPDATE SET
              close_category = EXCLUDED.close_category,
              creation_date = COALESCE(EXCLUDED.creation_date, work_orders.creation_date),
              msan_code = COALESCE(EXCLUDED.msan_code, work_orders.msan_code),
              work_order_type_raw = COALESCE(EXCLUDED.work_order_type_raw, work_orders.work_order_type_raw),
              raw_data = COALESCE(EXCLUDED.raw_data, work_orders.raw_data),
+             worker_code = COALESCE(NULLIF(EXCLUDED.worker_code, ''), work_orders.worker_code),
              -- نجدّد وقت الرفع حتى لو الصف موجود بالفعل، عشان MAX(uploaded_at) اللى بيغذّى
              -- «آخر تحديث» يفضل صحيح لو الملف الجديد كل صفوفه موجودة أصلاً.
              uploaded_at = now()`,
@@ -6611,6 +6622,7 @@ export async function registerRoutes(
         const itemName     = "سلك واحد جوز"; // اسم الصنف ثابت دائماً
         const cableQuantity = ""; // كميه السلك تُترك فارغة عمداً (لا تؤخذ من الملف)
         const techName     = String(g(r, iTech, 15)).trim();
+        const workerCode   = iWorker >= 0 ? String(r[iWorker] ?? "").trim() : "";
 
         if (!workOrderId || isNaN(workOrderId)) { skipped++; continue; }
 
@@ -6630,7 +6642,7 @@ export async function registerRoutes(
         pending.push([centralName, workOrderId, phoneNumber, serviceType, closeDate,
                       itemName || null, cableQuantity || null, techName, closeCategory,
                       creationDate, msanCode, rawServiceType || null, JSON.stringify(rawObj),
-                      (req.user as any)?.id ?? null]);
+                      (req.user as any)?.id ?? null, workerCode || null]);
         if (pending.length >= BATCH) inserted += await flushWorkOrders();
       }
       inserted += await flushWorkOrders();
@@ -6753,8 +6765,17 @@ export async function registerRoutes(
 
       // اسم الفنى الفعلى: التعديل اليدوى أولاً (لو اتعمل)، وإلا الاسم الجاى من الشيت.
       const effName = `COALESCE(NULLIF(btrim(ovr.tech_name), ''), btrim(w.tech_name))`;
-      // هل الاسم ده واحد من الفنيين المسجّلين عندنا؟ (المقارنة بالتطبيع العربى)
-      const isKnown = `EXISTS (SELECT 1 FROM technician_names tn WHERE ${n("tn.tech_name")} = ${n(effName)})`;
+      // الفنى المسئول عن أمر الشغل — بترتيب الثقة:
+      //   (1) **كود العامل** من الشيت: مطابقة تامة مع technician_names — مافيش تخمين.
+      //   (2) اسم الفنى: مطابقة مع قائمة الفنيين الخمسة وكل صيغ أسمائهم
+      //       (shared/technicians.ts) — «حسن عبدالفتاح حموده» = حسن،
+      //       و«محمد عبدالعزيز طه احمد» = سامى (لقب مالوش أى تشابه نصى).
+      const byWorkerCode = `(SELECT tn.tech_name FROM technician_names tn
+                              WHERE btrim(tn.worker_code) = btrim(COALESCE(w.worker_code, ''))
+                                AND btrim(COALESCE(w.worker_code, '')) <> '' LIMIT 1)`;
+      // الاسم المعتمد للفنى (أو NULL لو مش واحد من الخمسة) — ده تعريف «معروف».
+      const knownName = `COALESCE(${canonicalTechSql(byWorkerCode)}, ${canonicalTechSql(effName)})`;
+      const isKnown = `(${knownName} IS NOT NULL)`;
       // فنى المنطقة من **البيانات الفنية للرقم** — نفس منطق «بحث برقم التليفون»
       // (بيان الخط ← كابينة ← فنى الكابينة، مع تغطية الوردية).
       const areaTech = areaTechSql("lm.central", "lm.cabin", "w.close_date", "lm.short");
@@ -6777,9 +6798,11 @@ export async function registerRoutes(
         techName = (await coverageCodes(req.user)).techName;
         params.push(techName || "");
         const me = `$${params.length}`;
+        // المقارنة بالاسم المعتمد الطرفين — فالفنى «حسن» بيشوف أوامره المكتوب فيها
+        // «حسن عبدالفتاح حموده» عادى.
         conds.push(`(
-          (${isKnown} AND ${n(effName)} = ${n(me)})
-          OR (NOT ${isKnown} AND ${n(`COALESCE(${areaTech}, '')`)} = ${n(me)})
+          (${isKnown} AND ${knownName} = ${canonicalTechSql(me)})
+          OR (NOT ${isKnown} AND ${canonicalTechSql(areaTech)} = ${canonicalTechSql(me)})
         )`);
       }
 
@@ -6787,13 +6810,17 @@ export async function registerRoutes(
         `SELECT w.id, w.central_name AS "centralName", w.work_order_id AS "workOrderId",
                 w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
                 w.close_date AS "closeDate", w.item_name AS "itemName",
-                ${effName} AS "techName",
+                COALESCE(${knownName}, ${effName}) AS "techName",
+                w.worker_code AS "workerCode",
                 btrim(w.tech_name) AS "sheetTechName",
                 (ovr.tech_name IS NOT NULL) AS "techEdited",
                 ovr.updated_by_name AS "techEditedBy",
                 ${isKnown} AS "techKnown",
                 ${areaTech} AS "areaTechName",
-                (lm.central IS NOT NULL AND lm.cabin IS NOT NULL) AS "hasLineData"
+                (lm.central IS NOT NULL AND lm.cabin IS NOT NULL) AS "hasLineData",
+                -- البيان الفنى بيتراجع **بس** لما اسم الفنى مش واحد من الخمسة — لأنه
+                -- ساعتها بس بنحتاج نعرف فنى المنطقة من بيان الخط.
+                (NOT ${isKnown} AND NOT (lm.central IS NOT NULL AND lm.cabin IS NOT NULL)) AS "needsLineData"
            FROM work_orders w
            LEFT JOIN cable_entries ce
              ON ${sp("ce.phone_local")} = ${sp("w.phone_number")}
@@ -6814,6 +6841,17 @@ export async function registerRoutes(
   // متاح لكل مستخدمى التقرير **ما عدا الفنيين** (والمبيعات أصلاً ممنوعة من التقرير).
   // الشرط: الاسم الحالى مش مطابق لأى فنى مسجّل — الأسماء المعروفة مابتتغيّرش من هنا.
   // والاسم الجديد لازم يكون واحد من الفنيين المسجّلين، فمفيش أسماء حرة بتتخلق.
+  // POST /api/reports/work-orders-no-cable/request-line-data — زر «مراجعة بيانات فنية».
+  // بيحطّ طلب مراجعة بيان فنى (subinfo) فى الطابور للأرقام اللى مالهاش بيان فنى **و**
+  // اسم الفنى فيها مش واحد من الخمسة. نفس الاختيار بتاع الجدولة التلقائية بالظبط،
+  // بس الزر بيتخطّى مهلة الـ 4 ساعات (لكن مابيكرّرش مهمة لسه فى الطابور).
+  app.post("/api/reports/work-orders-no-cable/request-line-data", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (role === ROLES.SALES || role === ROLES.SALES_ADMIN) return res.status(403).json({ message: "غير مسموح" });
+    const queued = await queueMissingLineDataSubinfo({ force: true });
+    res.json({ ok: true, queued });
+  });
+
   app.put("/api/work-order-tech", requireAuth, async (req: any, res) => {
     const role = req.user?.role;
     if (role === ROLES.SALES || role === ROLES.SALES_ADMIN || role === ROLES.TECH) {
@@ -6825,8 +6863,12 @@ export async function registerRoutes(
     if (!centralName || !workOrderId || isNaN(workOrderId)) return res.status(400).json({ message: "أمر شغل غير صالح" });
     if (!techName) return res.status(400).json({ message: "اختر اسم الفنى" });
 
+    // الفنى الحالى: كود العامل الأول (مطابقة تامة)، وبعده الاسم بقائمة الخمسة.
     const { rows: wo } = await pool.query(
-      `SELECT w.tech_name, ovr.tech_name AS override
+      `SELECT w.tech_name, w.worker_code, ovr.tech_name AS override,
+              (SELECT tn.tech_name FROM technician_names tn
+                WHERE btrim(tn.worker_code) = btrim(COALESCE(w.worker_code, ''))
+                  AND btrim(COALESCE(w.worker_code, '')) <> '' LIMIT 1) AS by_code
          FROM work_orders w
          LEFT JOIN work_order_tech_overrides ovr
            ON ovr.central_name = w.central_name AND ovr.work_order_id = w.work_order_id
@@ -6834,17 +6876,15 @@ export async function registerRoutes(
       [centralName, workOrderId]);
     if (!wo.length) return res.status(404).json({ message: "أمر الشغل غير موجود" });
 
-    // الاسم الجديد لازم يكون فنى مسجّل
-    const { rows: valid } = await pool.query(
-      `SELECT tech_name FROM technician_names WHERE ${n("tech_name")} = ${n("$1")} LIMIT 1`, [techName]);
-    if (!valid.length) return res.status(400).json({ message: "الاسم ده مش من الفنيين المسجّلين" });
+    // الاسم الجديد لازم يكون واحد من الفنيين الخمسة
+    const canonicalNew = matchTechnician(techName);
+    if (!canonicalNew) return res.status(400).json({ message: "الاسم ده مش من الفنيين المسجّلين" });
 
-    // الاسم الحالى (بعد أى تعديل سابق) لو مطابق لفنى مسجّل → مايتغيّرش من هنا
+    // الاسم الحالى لو بيرجع لأى فنى من الخمسة (بالكود أو بالاسم) → مايتغيّرش أبداً
     const current = String(wo[0].override ?? wo[0].tech_name ?? "").trim();
-    const { rows: known } = await pool.query(
-      `SELECT 1 FROM technician_names WHERE ${n("tech_name")} = ${n("$1")} LIMIT 1`, [current]);
-    if (known.length) {
-      return res.status(409).json({ message: `اسم الفنى الحالى «${current}» مسجّل عندنا — التعديل متاح بس للأسماء غير المعروفة.` });
+    const currentKnown = matchTechnician(wo[0].by_code) ?? matchTechnician(current);
+    if (currentKnown) {
+      return res.status(409).json({ message: `أمر الشغل ده على الفنى «${currentKnown}» — أسماء الفنيين الخمسة مش قابلة للتغيير.` });
     }
 
     await pool.query(
@@ -6853,8 +6893,8 @@ export async function registerRoutes(
        ON CONFLICT ON CONSTRAINT work_order_tech_overrides_uniq DO UPDATE SET
          tech_name = EXCLUDED.tech_name, updated_by_id = EXCLUDED.updated_by_id,
          updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
-      [centralName, workOrderId, valid[0].tech_name, req.user.id, req.user.username]);
-    res.json({ ok: true, techName: valid[0].tech_name });
+      [centralName, workOrderId, canonicalNew, req.user.id, req.user.username]);
+    res.json({ ok: true, techName: canonicalNew });
   });
 
   // GET /api/reports/installations-by-tech — نسبة إنجاز التركيبات خلال 24 ساعة لكل فنى (Success فقط).
@@ -7045,9 +7085,9 @@ export async function registerRoutes(
                 WHERE ${sp("w.phone_number")} = ${sp("$4")}
                   AND (CASE WHEN trim(w.service_type) = 'نقل' THEN 'نقل' ELSE 'تركيب' END) = $5
                   AND (w.close_category IS NULL OR w.close_category = 'Success')
-                  AND NOT EXISTS (
-                    SELECT 1 FROM technician_names tn
-                     WHERE ${n("tn.tech_name")} = ${n("COALESCE(NULLIF(btrim(o.tech_name),''), btrim(w.tech_name))")})
+                  -- أمر الشغل اللى بيرجع لفنى من الخمسة (بكود العامل أو بالاسم) مايتلمسش
+                  AND ${canonicalTechSql("(SELECT tn.tech_name FROM technician_names tn WHERE btrim(tn.worker_code) = btrim(COALESCE(w.worker_code,'')) AND btrim(COALESCE(w.worker_code,'')) <> '' LIMIT 1)")} IS NULL
+                  AND ${canonicalTechSql("COALESCE(NULLIF(btrim(o.tech_name),''), btrim(w.tech_name))")} IS NULL
                ON CONFLICT ON CONSTRAINT work_order_tech_overrides_uniq DO UPDATE SET
                  tech_name = EXCLUDED.tech_name, updated_by_id = EXCLUDED.updated_by_id,
                  updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,

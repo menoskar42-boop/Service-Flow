@@ -196,6 +196,7 @@ export const workOrders = pgTable("work_orders", {
   creationDate: timestamp("creation_date", { withTimezone: true }), // لحساب زمن الإغلاق (>24 ساعة)
   msanCode: text("msan_code"),                         // كود الكابينة (MSAN Code) من الشيت مباشرةً
   workOrderType: text("work_order_type_raw"),          // نوع الأمر الخام (Manual Survey / Installation MSAN / …)
+  workerCode: text("worker_code"),                     // كود العامل من الشيت — المطابقة بيه أدق من الاسم
   rawData: jsonb("raw_data"),                          // صف الشيت كامل بكل خاناته (القاعدة #10)
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),

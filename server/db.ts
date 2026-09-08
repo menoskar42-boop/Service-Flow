@@ -521,6 +521,10 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE cable_entries ADD COLUMN IF NOT EXISTS printed_at timestamptz`);
   await pool.query(`ALTER TABLE cable_entries ADD COLUMN IF NOT EXISTS edit_unlocked_at timestamptz`);
 
+  // كود العامل على أمر الشغل — المطابقة بيه أدق من مطابقة الاسم (الاسم بيتكتب بصيغ
+  // مختلفة وممكن يبقى لقب: «سامى» اسمه فى الملفات «محمد عبدالعزيز طه احمد»).
+  await pool.query(`ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS worker_code text`);
+
   // work_order_tech_overrides — تعديل اسم الفنى على أمر شغل لما الاسم الجاى من الشيت
   // مش مطابق لأى فنى مسجّل فى technician_names. المفتاح = نفس المفتاح الطبيعى لأمر
   // الشغل (السنترال + رقمه) فيفضل صامد لو الملف اترفع تانى.

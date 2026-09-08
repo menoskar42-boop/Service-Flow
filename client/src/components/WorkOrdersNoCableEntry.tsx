@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, Cable, Search, Save, FileSpreadsheet, Printer, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
+import { TECHNICIAN_NAMES } from "@shared/technicians";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
@@ -32,6 +33,8 @@ interface Row {
   techKnown: boolean;               // الاسم ده واحد من الفنيين المسجّلين؟
   areaTechName: string | null;      // فنى المنطقة من البيانات الفنية للرقم
   hasLineData: boolean;             // الرقم له بيانات فنية؟
+  needsLineData: boolean;           // محتاج مراجعة بيان فنى (اسم غير معروف + مافيش بيان)
+  workerCode: string | null;        // كود العامل من الشيت (المطابقة بيه أدق)
 }
 
 // أول يوم فى الشهر الحالى → النهاردة (بتوقيت القاهرة)، بصيغة yyyy-MM-dd
@@ -69,16 +72,10 @@ export function WorkOrdersNoCableEntry() {
   const canEditTech = user?.role !== ROLES.TECH && user?.role !== ROLES.SALES && user?.role !== ROLES.SALES_ADMIN;
   const [savingTech, setSavingTech] = useState<number | null>(null);
 
-  const { data: techNames = [] } = useQuery<{ techName: string }[]>({
-    queryKey: ["/api/technician-names"],
-    enabled: canEditTech,
-    queryFn: async () => {
-      const res = await fetch("/api/technician-names", { credentials: "include" });
-      if (!res.ok) throw new Error("فشل تحميل أسماء الفنيين");
-      const j = await res.json();
-      return Array.isArray(j) ? j : (j?.data ?? []);
-    },
-  });
+  // الاختيارات = الفنيين الخمسة بأسمائهم المعتمدة (shared/technicians.ts) — نفس
+  // القائمة اللى السيرفر بيتحقّق بيها، فمفيش اسم غريب ينفع يتحفظ.
+  const techNames = TECHNICIAN_NAMES;
+  const [reqLineData, setReqLineData] = useState(false);
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
     queryKey: ["/api/reports/work-orders-no-cable", dateFrom, dateTo],
@@ -112,6 +109,33 @@ export function WorkOrdersNoCableEntry() {
     if (v === "" || /^\d*\.?\d*$/.test(v)) setQty((q) => ({ ...q, [id]: v }));
   };
   const validQty = (v: string) => /^\d+(\.\d+)?$/.test(String(v ?? "").trim());
+
+  // الخطوط اللى محتاجة بيان فنى فعلاً: مافيش بيان **و** اسم الفنى مش واحد من الخمسة.
+  const needCount = shown.filter((r) => r.needsLineData).length;
+
+  const requestLineData = async () => {
+    setReqLineData(true);
+    try {
+      const res = await apiRequest("POST", "/api/reports/work-orders-no-cable/request-line-data", {});
+      const j = await res.json();
+      toast({
+        title: j?.queued ? `اتحطّ ${j.queued} رقم فى الطابور` : "مافيش أرقام جديدة تتطلب",
+        description: j?.queued
+          ? "جهاز التنفيذ هيجيب بياناتهم الفنية، وبعدها فنى المنطقة هيظهر لوحده."
+          : "الأرقام المحتاجة مراجعة كلها موجودة فى الطابور بالفعل.",
+        duration: 5000,
+      });
+      qc.invalidateQueries({ queryKey: ["/api/reports/work-orders-no-cable"] });
+    } catch (e: any) {
+      let msg = e?.message || "حدث خطأ";
+      const m = String(msg).match(/^\d+:\s*(.*)$/s);
+      if (m) msg = m[1];
+      try { const j = JSON.parse(msg); if (j?.message) msg = j.message; } catch { /* نص عادى */ }
+      toast({ title: "تعذّر طلب المراجعة", description: msg, variant: "destructive", duration: 6000 });
+    } finally {
+      setReqLineData(false);
+    }
+  };
 
   const saveTech = async (r: Row, techName: string) => {
     if (!techName) return;
@@ -223,6 +247,18 @@ export function WorkOrdersNoCableEntry() {
         <span className="text-sm text-muted-foreground mb-2">
           إجمالي: <strong>{shown.length}</strong> أمر شغل
         </span>
+        {needCount > 0 && (
+          <Button
+            variant="outline" size="sm"
+            onClick={requestLineData}
+            disabled={reqLineData}
+            className="text-orange-700 border-orange-300 gap-1 mb-1"
+            title="يحطّ طلب «مراجعة بيان فنى» فى الطابور للخطوط اللى مالهاش بيان فنى — بيتعمل بس للأوامر اللى اسم الفنى فيها مش واحد من الخمسة"
+          >
+            {reqLineData ? <Loader2 className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+            مراجعة بيانات فنية ({needCount})
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleExportExcel}
           disabled={shown.length === 0} className="text-green-700 border-green-200 gap-1 mb-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
@@ -289,7 +325,7 @@ export function WorkOrdersNoCableEntry() {
                         >
                           <option value="">{r.techName || "بدون اسم"} — اختر الفنى</option>
                           {techNames.map((t) => (
-                            <option key={t.techName} value={t.techName}>{t.techName}</option>
+                            <option key={t} value={t}>{t}</option>
                           ))}
                         </select>
                         {savingTech === r.id && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
@@ -305,7 +341,7 @@ export function WorkOrdersNoCableEntry() {
                         فنى المنطقة: {r.areaTechName}
                       </div>
                     )}
-                    {!r.hasLineData && (
+                    {r.needsLineData && (
                       <div className="text-[11px] text-orange-700 flex items-center gap-1 whitespace-nowrap"
                         title="الرقم مالوش بيانات فنية — اتطلبت مراجعة بيان فنى تلقائياً">
                         <AlertTriangle className="w-3 h-3" /> مافيش بيانات فنية

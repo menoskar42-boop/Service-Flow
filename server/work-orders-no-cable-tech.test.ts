@@ -37,7 +37,9 @@ test("the data-completion section opens on the work-orders tab", () => {
 // اسم الفنى الفعلى = التعديل اليدوى وإلا اسم الشيت، و«معروف» = مطابق لفنى مسجّل.
 test("the report exposes the effective name, whether it is known, and the area technician", () => {
   assert.match(report, /COALESCE\(NULLIF\(btrim\(ovr\.tech_name\), ''\), btrim\(w\.tech_name\)\)/);
-  assert.match(report, /EXISTS \(SELECT 1 FROM technician_names tn/);
+  // «معروف» بقى: كود العامل (مطابقة تامة) وإلا الاسم بقائمة الفنيين الخمسة.
+  assert.match(report, /const byWorkerCode = `\(SELECT tn\.tech_name FROM technician_names tn/);
+  assert.match(report, /const knownName = `COALESCE\(\$\{canonicalTechSql\(byWorkerCode\)\}, \$\{canonicalTechSql\(effName\)\}\)`/);
   assert.match(report, /areaTechSql\("lm\.central", "lm\.cabin", "w\.close_date", "lm\.short"\)/);
   assert.match(report, /AS "hasLineData"/);
 });
@@ -57,7 +59,9 @@ test("the override endpoint keeps its three guards", () => {
   const ep = routes.slice(oStart, oEnd);
   assert.match(ep, /role === ROLES\.SALES \|\| role === ROLES\.SALES_ADMIN \|\| role === ROLES\.TECH/);
   assert.match(ep, /مش من الفنيين المسجّلين/);
-  assert.match(ep, /التعديل متاح بس للأسماء غير المعروفة/);
+  assert.match(ep, /أسماء الفنيين الخمسة مش قابلة للتغيير/);
+  assert.match(ep, /const currentKnown = matchTechnician\(wo\[0\]\.by_code\) \?\? matchTechnician\(current\)/,
+    "كود العامل بيتجرّب قبل الاسم");
 });
 
 // القاعدة #6: فنى يحفظ كمية على اسم غير معروف → اسمه هو اللى يتسجّل، والمعروف مايتغيّرش.
@@ -68,8 +72,8 @@ test("saving a quantity as a technician stamps their name only on unknown names"
   const ep = routes.slice(cStart, cEnd);
   assert.match(ep, /req\.user\?\.role === ROLES\.TECH/);
   assert.match(ep, /INSERT INTO work_order_tech_overrides/);
-  assert.match(ep, /AND NOT EXISTS \(\s*\n\s*SELECT 1 FROM technician_names tn/,
-    "a work order whose name is already a registered technician must be left alone");
+  assert.match(ep, /canonicalTechSql\("COALESCE\(NULLIF\(btrim\(o\.tech_name\),''\), btrim\(w\.tech_name\)\)"\)\} IS NULL/,
+    "أمر شغل على فنى من الخمسة مايتلمسش");
   // اسم المُدخِل بيتسجّل دايماً مع الكمية
   assert.match(ep, /created_by_id, created_by_name/);
 });
@@ -77,8 +81,10 @@ test("saving a quantity as a technician stamps their name only on unknown names"
 // الأرقام بدون بيان فنى: طلب مراجعة تلقائى مرة كل 4 ساعات بالكتير.
 test("lines with no technical data get an automatic subinfo request every four hours", () => {
   assert.match(routes, /const SUBINFO_EVERY = "interval '4 hours'";/);
-  assert.match(routes, /async function queueMissingLineDataSubinfo\(\)/);
-  assert.match(routes, /e\.type = 'subinfo'\s*\n\s*AND e\.created_at > now\(\) - \$\{SUBINFO_EVERY\}/);
+  assert.match(routes, /async function queueMissingLineDataSubinfo\(opts\?: \{ force\?: boolean \}\)/);
+  // المهلة اتنقلت جوّه شرط واحد بيفرّق بين الجدولة التلقائية والزر اليدوى
+  assert.match(routes, /e\.created_at > now\(\) - \$\{SUBINFO_EVERY\}/);
+  assert.match(routes, /e\.status IN \('pending','claimed'\)/, "الزر اليدوى مابيكرّرش مهمة لسه فى الطابور");
   assert.match(routes, /jsonb_exists\(e\.accounts, w\.phone_number\)/);
   assert.match(routes, /startMissingLineDataScheduler\(\);/);
 });
