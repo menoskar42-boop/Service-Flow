@@ -9,22 +9,27 @@
 // تلقائياً لما فنى يسجّل كمية السلك فيتسجّل اسمه هو.
 
 export interface Technician {
-  /** الاسم المعتمد اللى بيتخزّن ويتعرض. */
+  /** المفتاح المختصر — للمقارنة والفلترة جوّه النظام بس، مش للعرض. */
   name: string;
-  /** باقى الصيغ اللى الاسم بييجى بيها فى الملفات (الاسم الرباعى، لقب…). */
+  /** الاسم الكامل — ده اللى **بيتعرض ويتخزّن** دايماً. */
+  fullName: string;
+  /** أى صيغ تانية بيتكتب بيها الاسم فى الملفات. */
   aliases: string[];
 }
 
+// ⚠️ اسم حسن بيتكتب بصيغتين مختلفتين فى بياناتنا: «حسن عبد الفتاح **حموده**» فى ملف
+// أوامر الشغل، و«حسن عبد الفتاح **يعقوب**» فى ملف أسماء الفنيين. الاتنين مسجّلين هنا
+// كصيغ لنفس الشخص عشان المطابقة تشتغل مهما كان مصدر الاسم.
 export const TECHNICIANS: Technician[] = [
-  { name: "حسن",         aliases: ["حسن عبد الفتاح حموده"] },
-  { name: "محمد",        aliases: ["محمد عبدالمجيد محمد رشدى"] },
-  { name: "سامى",        aliases: ["محمد عبدالعزيز طه احمد"] },
-  { name: "اسلام",       aliases: ["اسلام عبدالعال هريدى حسن"] },
-  { name: "محمود يعقوب", aliases: ["محمود احمد يعقوب"] },
+  { name: "حسن",         fullName: "حسن عبد الفتاح حموده",     aliases: ["حسن عبد الفتاح يعقوب"] },
+  { name: "محمد",        fullName: "محمد عبدالمجيد محمد رشدى", aliases: [] },
+  { name: "سامى",        fullName: "محمد عبدالعزيز طه احمد",   aliases: ["سامي"] },
+  { name: "اسلام",       fullName: "اسلام عبدالعال هريدى حسن", aliases: ["اسلام عبد العال هريدى"] },
+  { name: "محمود يعقوب", fullName: "محمود احمد يعقوب",         aliases: [] },
 ];
 
-/** كل صيغ الاسم للفنى الواحد (المعتمد + الألقاب). */
-export const variantsOf = (t: Technician): string[] => [t.name, ...t.aliases];
+/** كل صيغ الاسم للفنى الواحد (المختصر + الكامل + الباقى). */
+export const variantsOf = (t: Technician): string[] => [t.name, t.fullName, ...t.aliases];
 
 /**
  * تطبيع للمقارنة: تطبيع عربى (أ/ا، ة/ه، ى/ي، حروف صغيرة) + **شيل كل المسافات**.
@@ -73,8 +78,32 @@ export const matchTechnician = (raw: unknown): string | null => {
 
 export const isKnownTechnician = (raw: unknown): boolean => matchTechnician(raw) !== null;
 
-/** أسماء الاختيار فى الدروب ليست (الأسماء المعتمدة بس). */
-export const TECHNICIAN_NAMES: string[] = TECHNICIANS.map((t) => t.name);
+/** أسماء الاختيار فى الدروب ليست — **الأسماء الكاملة**، لأن ده اللى بيتخزّن ويتعرض. */
+export const TECHNICIAN_NAMES: string[] = TECHNICIANS.map((t) => t.fullName);
+
+/**
+ * الاسم الكامل للفنى من أى صيغة من صيغ اسمه.
+ * أى اسم مش لأى فنى من الخمسة بيرجع زى ما هو — فالأسماء الغريبة مابتتغيّرش.
+ */
+export const fullNameOf = (raw: unknown): string => {
+  const key = matchTechnician(raw);
+  const t = key ? TECHNICIANS.find((x) => x.name === key) : undefined;
+  return t ? t.fullName : String(raw ?? "").trim();
+};
+
+/**
+ * اسم العرض للفنى: **بنفضّل الاسم الكامل دايماً**.
+ * لو جدول أسماء الفنيين (اللى الأدمن بيرفعه) عنده الاسم الكامل بنسيبه زى ما هو —
+ * هو المرجع. ولو عنده المختصر بس («سامى»، «محمود يعقوب») بنكمّله من القائمة هنا.
+ * كده مابنستبدلش أى اسم مسجّل عند المستخدم، بس مابنعرضش اسم ناقص.
+ */
+export const preferFullName = (registryName: unknown): string => {
+  const raw = String(registryName ?? "").trim();
+  const key = matchTechnician(raw);
+  const t = key ? TECHNICIANS.find((x) => x.name === key) : undefined;
+  if (!t) return raw;
+  return techNorm(raw).length >= techNorm(t.fullName).length ? raw : t.fullName;
+};
 
 // ── مولّدات SQL ──────────────────────────────────────────────────────────────
 // نفس التطبيع بالظبط جوّه الداتابيز: sf_ar_norm بتعمل التطبيع العربى، وبنشيل

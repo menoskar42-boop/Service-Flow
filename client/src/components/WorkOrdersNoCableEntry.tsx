@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Loader2, Cable, Search, Save, FileSpreadsheet, Printer, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
-import { TECHNICIAN_NAMES } from "@shared/technicians";
+import { preferFullName } from "@shared/technicians";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
@@ -35,6 +35,7 @@ interface Row {
   hasLineData: boolean;             // الرقم له بيانات فنية؟
   needsLineData: boolean;           // محتاج مراجعة بيان فنى (اسم غير معروف + مافيش بيان)
   workerCode: string | null;        // كود العامل من الشيت (المطابقة بيه أدق)
+  techKey: string | null;           // الفنى المعتمد (للمنطق) — العرض بيفضل بالاسم الكامل
 }
 
 // أول يوم فى الشهر الحالى → النهاردة (بتوقيت القاهرة)، بصيغة yyyy-MM-dd
@@ -72,9 +73,22 @@ export function WorkOrdersNoCableEntry() {
   const canEditTech = user?.role !== ROLES.TECH && user?.role !== ROLES.SALES && user?.role !== ROLES.SALES_ADMIN;
   const [savingTech, setSavingTech] = useState<number | null>(null);
 
-  // الاختيارات = الفنيين الخمسة بأسمائهم المعتمدة (shared/technicians.ts) — نفس
-  // القائمة اللى السيرفر بيتحقّق بيها، فمفيش اسم غريب ينفع يتحفظ.
-  const techNames = TECHNICIAN_NAMES;
+  // الاختيارات من جدول أسماء الفنيين (اللى الأدمن بيرفعه) — وبتتعرض **بالاسم الكامل**:
+  // لو الجدول عنده الاسم الكامل بيفضل زى ما هو، ولو عنده المختصر بس («سامى»،
+  // «محمود يعقوب») بيتكمّل من قائمة الفنيين. مابنستبدلش أى اسم مسجّل عندهم.
+  const { data: registry = [] } = useQuery<{ techName: string }[]>({
+    queryKey: ["/api/technician-names"],
+    enabled: canEditTech,
+    queryFn: async () => {
+      const res = await fetch("/api/technician-names", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل تحميل أسماء الفنيين");
+      const j = await res.json();
+      return Array.isArray(j) ? j : (j?.data ?? []);
+    },
+  });
+  const techNames = useMemo(
+    () => Array.from(new Set(registry.map((t) => preferFullName(t.techName)).filter(Boolean))),
+    [registry]);
   const [reqLineData, setReqLineData] = useState(false);
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
@@ -338,7 +352,7 @@ export function WorkOrdersNoCableEntry() {
                     {/* فنى المنطقة من البيانات الفنية — بيوضّح المسئول لما الاسم مش معروف */}
                     {!r.techKnown && r.areaTechName && (
                       <div className="text-[11px] text-muted-foreground whitespace-nowrap">
-                        فنى المنطقة: {r.areaTechName}
+                        فنى المنطقة: {preferFullName(r.areaTechName)}
                       </div>
                     )}
                     {r.needsLineData && (

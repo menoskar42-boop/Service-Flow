@@ -20,7 +20,7 @@ import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
 import { rescueIntervalSql, EXEC_RESCUE_MINUTES } from "@shared/exec-timeouts";
-import { canonicalTechSql, TECHNICIAN_NAMES, matchTechnician } from "@shared/technicians";
+import { canonicalTechSql, matchTechnician, preferFullName, fullNameOf } from "@shared/technicians";
 import { phoneNormSql } from "./phone-norm";
 import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH_THRESHOLD } from "@shared/name-match";
 import { registerCfmRoutes } from "./cfm/routes";
@@ -6810,13 +6810,16 @@ export async function registerRoutes(
         `SELECT w.id, w.central_name AS "centralName", w.work_order_id AS "workOrderId",
                 w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
                 w.close_date AS "closeDate", w.item_name AS "itemName",
-                COALESCE(${knownName}, ${effName}) AS "techName",
+                -- الاسم بيتعرض **زى ما هو** (الكامل من الشيت، أو التعديل لو اتعمل).
+                -- الاسم المعتمد المختصر بيتستخدم فى المنطق بس (معروف؟ فنى مين؟) مش فى العرض.
+                ${effName} AS "techName",
+                ${knownName} AS "techKey",
                 w.worker_code AS "workerCode",
                 btrim(w.tech_name) AS "sheetTechName",
                 (ovr.tech_name IS NOT NULL) AS "techEdited",
                 ovr.updated_by_name AS "techEditedBy",
                 ${isKnown} AS "techKnown",
-                ${areaTech} AS "areaTechName",
+                ${areaTech} AS "areaTechName",   -- بيتعرض بالاسم الكامل من الواجهة
                 (lm.central IS NOT NULL AND lm.cabin IS NOT NULL) AS "hasLineData",
                 -- البيان الفنى بيتراجع **بس** لما اسم الفنى مش واحد من الخمسة — لأنه
                 -- ساعتها بس بنحتاج نعرف فنى المنطقة من بيان الخط.
@@ -6876,9 +6879,10 @@ export async function registerRoutes(
       [centralName, workOrderId]);
     if (!wo.length) return res.status(404).json({ message: "أمر الشغل غير موجود" });
 
-    // الاسم الجديد لازم يكون واحد من الفنيين الخمسة
+    // الاسم الجديد لازم يكون واحد من الفنيين الخمسة — وبيتخزّن **بالاسم الكامل**.
     const canonicalNew = matchTechnician(techName);
     if (!canonicalNew) return res.status(400).json({ message: "الاسم ده مش من الفنيين المسجّلين" });
+    const storedName = preferFullName(techName);
 
     // الاسم الحالى لو بيرجع لأى فنى من الخمسة (بالكود أو بالاسم) → مايتغيّرش أبداً
     const current = String(wo[0].override ?? wo[0].tech_name ?? "").trim();
@@ -6893,8 +6897,8 @@ export async function registerRoutes(
        ON CONFLICT ON CONSTRAINT work_order_tech_overrides_uniq DO UPDATE SET
          tech_name = EXCLUDED.tech_name, updated_by_id = EXCLUDED.updated_by_id,
          updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
-      [centralName, workOrderId, canonicalNew, req.user.id, req.user.username]);
-    res.json({ ok: true, techName: canonicalNew });
+      [centralName, workOrderId, storedName, req.user.id, req.user.username]);
+    res.json({ ok: true, techName: storedName });
   });
 
   // GET /api/reports/installations-by-tech — نسبة إنجاز التركيبات خلال 24 ساعة لكل فنى (Success فقط).
@@ -7074,7 +7078,8 @@ export async function registerRoutes(
       // بنعمله للأوامر الناجحة اللى بنفس الرقم والنوع، ومابنلمسش أمر اسمه معروف أصلاً.
       if (req.user?.role === ROLES.TECH) {
         try {
-          const myName = (await coverageCodes(req.user)).techName;
+          // بالاسم الكامل — نفس صيغة باقى الأسماء فى العمود
+          const myName = fullNameOf((await coverageCodes(req.user)).techName);
           if (myName) {
             await pool.query(
               `INSERT INTO work_order_tech_overrides (central_name, work_order_id, tech_name, updated_by_id, updated_by_name, updated_at)

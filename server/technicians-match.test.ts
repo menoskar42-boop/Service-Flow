@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { matchTechnician, TECHNICIAN_NAMES, canonicalTechSql, techNorm } from "../shared/technicians";
+import { matchTechnician, preferFullName, canonicalTechSql, techNorm } from "../shared/technicians";
 
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
 const tab = readFileSync(
@@ -37,10 +37,35 @@ test("anything else stays unknown, so only those rows are editable", () => {
   }
 });
 
-test("the dropdown offers exactly the five canonical names", () => {
-  assert.deepEqual(TECHNICIAN_NAMES, ["حسن", "محمد", "سامى", "اسلام", "محمود يعقوب"]);
-  assert.match(tab, /import \{ TECHNICIAN_NAMES \} from "@shared\/technicians"/);
-  assert.match(tab, /const techNames = TECHNICIAN_NAMES;/);
+// الأسماء بتفضل **كاملة** فى العمود وفى الدروب ليست. جدول أسماء الفنيين بتاعهم هو
+// المرجع؛ إحنا بس بنكمّل الاسم لو الجدول عنده المختصر («سامى» ← «محمد عبدالعزيز طه احمد»).
+test("names stay full — the registry wins, we only complete a short one", () => {
+  assert.equal(preferFullName("حسن عبد الفتاح يعقوب"), "حسن عبد الفتاح يعقوب");
+  assert.equal(preferFullName("محمد عبد المجيد محمد رشدى"), "محمد عبد المجيد محمد رشدى");
+  assert.equal(preferFullName("سامى"), "محمد عبدالعزيز طه احمد");
+  assert.equal(preferFullName("محمود يعقوب"), "محمود احمد يعقوب");
+  assert.equal(preferFullName("اسلام عبد العال هريدى"), "اسلام عبدالعال هريدى حسن");
+  // اسم برّه الخمسة بيرجع زى ما هو
+  assert.equal(preferFullName("عبد الرحمن أحمد سلمان محمد"), "عبد الرحمن أحمد سلمان محمد");
+});
+
+test("the column shows the sheet name as-is, never the short key", () => {
+  const start = routes.indexOf('app.get("/api/reports/work-orders-no-cable"');
+  const report = routes.slice(start, routes.indexOf('app.post("/api/reports/work-orders-no-cable/request-line-data"', start));
+  assert.match(report, /\$\{effName\} AS "techName"/, "الاسم بيتعرض زى ما هو");
+  assert.doesNotMatch(report, /COALESCE\(\$\{knownName\}, \$\{effName\}\) AS "techName"/,
+    "مايتستبدلش بالاسم المختصر");
+});
+
+test("the dropdown is built from the registry and shown in full", () => {
+  assert.match(tab, /import \{ preferFullName \} from "@shared\/technicians"/);
+  assert.match(tab, /registry\.map\(\(t\) => preferFullName\(t\.techName\)\)/);
+});
+
+// حسن اسمه بصيغتين مختلفتين فى بياناتهم — الاتنين لازم يتعرفوا.
+test("both recorded forms of حسن resolve to the same technician", () => {
+  assert.equal(matchTechnician("حسن عبدالفتاح حموده"), "حسن");
+  assert.equal(matchTechnician("حسن عبد الفتاح يعقوب"), "حسن");
 });
 
 // القاعدة #8: العمود الجديد لازم يبقى فى schema.ts و ensureSchema فى نفس الكوميت.
