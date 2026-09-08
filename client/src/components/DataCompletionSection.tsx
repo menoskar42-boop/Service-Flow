@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { Loader2, Plus, Trash2, Cable, Search, Lock, KeyRound, FileSpreadsheet, Printer } from "lucide-react";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { WorkOrdersNoCableEntry } from "@/components/WorkOrdersNoCableEntry";
 
 interface CableEntry {
   id: number;
@@ -44,6 +45,9 @@ export function DataCompletionSection() {
   const [cableQuantity, setCableQuantity] = useState("");
   const [mobile, setMobile] = useState(""); // رقم المحمول — يظهر عند اختيار «صيانة» فقط
   const [search, setSearch] = useState("");
+  // تابين: الإدخال اليدوى (رقم برقم)، وقائمة أوامر الشغل اللى لسه مالهاش كمية سلك
+  // (نفس مصدر تقرير أوامر الشغل) وقدّام كل صف خانة إدخال.
+  const [tab, setTab] = useState<"manual" | "orders">("manual");
 
   const { data: entries = [], isFetching } = useQuery<CableEntry[]>({
     queryKey: ["/api/cable-entries", search],
@@ -162,8 +166,31 @@ export function DataCompletionSection() {
     });
   };
 
+  const TABS: { id: "manual" | "orders"; label: string }[] = [
+    { id: "manual", label: "إدخال كمية السلك" },
+    { id: "orders", label: "أوامر شغل بدون كمية سلك" },
+  ];
+
   return (
     <div className="space-y-5" dir="rtl">
+      <div className="flex flex-wrap gap-1 border-b">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "orders" ? <WorkOrdersNoCableEntry /> : (<>
       {/* نموذج الإدخال */}
       <Card className="p-4 sm:p-5 bg-white border-0 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
@@ -351,6 +378,7 @@ export function DataCompletionSection() {
           </Table>
         </div>
       </Card>
+      </>)}
     </div>
   );
 }
