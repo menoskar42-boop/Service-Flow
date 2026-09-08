@@ -31,7 +31,8 @@ test("the report is closed to sales and sales-admin", () => {
 });
 
 test("the data-completion section opens on the work-orders tab", () => {
-  assert.match(section, /useState<"manual" \| "orders">\("orders"\)/);
+  // اتضافت تابات تانية بعد كده (تصحيح بيانات / متابعة التصحيحات) — المهم إن الافتراضية «orders»
+  assert.match(section, /useState<"manual" \| "orders"[^>]*>\("orders"\)/);
 });
 
 // اسم الفنى الفعلى = التعديل اليدوى وإلا اسم الشيت، و«معروف» = مطابق لفنى مسجّل.

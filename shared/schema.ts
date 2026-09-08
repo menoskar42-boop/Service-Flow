@@ -224,6 +224,29 @@ export const workOrderTechOverrides = pgTable("work_order_tech_overrides", {
 
 export type WorkOrderTechOverride = typeof workOrderTechOverrides.$inferSelect;
 
+// تصحيح بيانات خط — الفنى بيبعت رقم التليفون (إلزامى) ومعاه السنترال/الكابينة/البكس
+// الصح (اختيارى). الإرسال بيحطّ كمان طلب «مراجعة الاسم والعنوان» (subinfo) فى الطابور.
+export const lineDataCorrections = pgTable("line_data_corrections", {
+  id: serial("id").primaryKey(),
+  phoneLocal: text("phone_local").notNull(),
+  phoneFull: text("phone_full").notNull(),
+  central: text("central"),
+  cabinNumber: text("cabin_number"),
+  boxNumber: text("box_number"),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedByName: text("submitted_by_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  // وقت آخر طلب مراجعة بيان فنى للرقم ده — المقارنة مابتتحسبش غير لما نتيجة
+  // المراجعة (line_subscriber_info.fetched_at) تبقى **أحدث** منه.
+  requestedAt: timestamp("requested_at", { withTimezone: true }).defaultNow().notNull(),
+  // مسئول البيانات ضغط «تم التصحيح» — بيتسجّل مين وإمتى، وبتتبعت مراجعة تانية.
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedById: integer("resolved_by_id").references(() => users.id),
+  resolvedByName: text("resolved_by_name"),
+});
+
+export type LineDataCorrection = typeof lineDataCorrections.$inferSelect;
+
 // Cable Entries Table — استكمال بيانات: كمية السلك التى يضيفها الفنى يدوياً
 // لكل (رقم تليفون محلى + نوع امر الشغل). رقم امر الشغل فى تقرير التركيبات يكون مثل
 // 88-2657290 لكن الفنى يُدخل 2657290 فقط — نخزّن المحلى (أرقام فقط) ونعيد بناء 88-.

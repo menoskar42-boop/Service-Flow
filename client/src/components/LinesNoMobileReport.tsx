@@ -47,7 +47,8 @@ interface Props {
 export function LinesNoMobileReport({ checked = false }: Props) {
   const endpoint = checked ? "/api/phone-lines/mobile-checked" : "/api/phone-lines/no-mobile";
   const heading = checked ? "أرقام تم الفحص وتحتاج أرقام محمول" : "أرقام بدون رقم موبايل تحت الفحص";
-  const [reportMode, setReportMode] = useState<"no-mobile" | "complaints">("no-mobile");
+  // الافتراضى: «أرقام لها شكاوى بدون رقم موبايل» — دى اللى بتتفتح أول ما التقرير يفتح
+  const [reportMode, setReportMode] = useState<"no-mobile" | "complaints">("complaints");
   const isComplaintsReport = !checked && reportMode === "complaints";
   // فلتر (فى تقرير «تم الفحص» بس): الأرقام اللى ليها شكوى مفتوحة فى الأعطال الحالية
   const [onlyCurrentFault, setOnlyCurrentFault] = useState(false);
@@ -200,19 +201,20 @@ export function LinesNoMobileReport({ checked = false }: Props) {
     <div className="space-y-4" dir="rtl">
       {!checked && (
         <div className="flex flex-wrap gap-2 border-b pb-2">
-          <Button
-            variant={reportMode === "no-mobile" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setReportMode("no-mobile")}
-          >
-            أرقام تحت الفحص
-          </Button>
+          {/* الافتراضية الأول */}
           <Button
             variant={reportMode === "complaints" ? "default" : "outline"}
             size="sm"
             onClick={() => setReportMode("complaints")}
           >
             أرقام لها شكاوى بدون رقم موبايل
+          </Button>
+          <Button
+            variant={reportMode === "no-mobile" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setReportMode("no-mobile")}
+          >
+            أرقام تحت الفحص
           </Button>
         </div>
       )}

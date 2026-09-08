@@ -6855,6 +6855,161 @@ export async function registerRoutes(
     res.json({ ok: true, queued });
   });
 
+  // POST /api/line-data-corrections — «تصحيح بيانات».
+  // رقم التليفون إلزامى، والسنترال/الكابينة/البكس اختيارية. الإرسال:
+  //   (1) بيسجّل التصحيح (سجل دائم بمين بعته وإمتى)،
+  //   (2) بيطبّق البيانات المكتوبة على البيان الفنى للخط فوراً (الفنى بيصحّح، فكلامه يغلب)،
+  //   (3) بيحطّ طلب «مراجعة الاسم والعنوان» (subinfo) فى **الطابور** مباشرةً.
+  // الطابور نفسه هو التخزين: المهمة بتفضل pending لحد ما جهاز تنفيذ يسحبها — فلو مفيش
+  // جهاز مفعّل دلوقتى الطلب محفوظ وبيتنفّذ أول ما جهاز يرجع، من غير أى خطوة زيادة.
+  app.post("/api/line-data-corrections", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (role === ROLES.SALES || role === ROLES.SALES_ADMIN) return res.status(403).json({ message: "غير مسموح" });
+    const { local, full } = normalizePhone(String(req.body?.phone ?? ""));
+    if (!local || local.length < 5) return res.status(400).json({ message: "رقم تليفون غير صالح" });
+    const central = String(req.body?.central ?? "").trim();
+    const cabin   = String(req.body?.cabinNumber ?? "").trim();
+    const box     = String(req.body?.boxNumber ?? "").trim();
+    const fullNoDash = "88" + local;     // صيغة التخزين فى جداول الخطوط (بدون شرطة)
+    const byName = String(req.user?.fullName || req.user?.username || "").trim();
+
+    const { rows: ins } = await pool.query(
+      `INSERT INTO line_data_corrections
+         (phone_local, phone_full, central, cabin_number, box_number, submitted_by_id, submitted_by_name)
+       VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),$6,$7) RETURNING id`,
+      [local, fullNoDash, central, cabin, box, req.user.id, byName]);
+
+    // ⚠️ مابنكتبش اللى الفنى دخّله فى البيان الفنى — لازم يفضل زى ما هو عشان نقدر
+    // نقارنه بنتيجة المراجعة اللى جاية. المقارنة بتحصل لما نتيجة المراجعة تبقى أحدث
+    // من requested_at، وأى اختلاف بيظهر لمسئول البيانات فى تقرير «عدم التطابق».
+
+    // مراجعة الاسم والعنوان — مهمة واحدة للرقم، بأولوية الطلب الصغير (2) زى أى طلب
+    // من المستخدم. لو الرقم لسه فى الطابور مانكرّرش.
+    const { rows: dup } = await pool.query(
+      `SELECT 1 FROM exec_jobs WHERE type = 'subinfo' AND status IN ('pending','claimed')
+        AND jsonb_exists(accounts, $1) LIMIT 1`, [fullNoDash]);
+    let queued = false;
+    if (!dup.length) {
+      await pool.query(
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, requested_from)
+         VALUES ('subinfo', $1::jsonb, $2, 'تصحيح بيانات — مراجعة اسم وعنوان', 2, $3, 'fcc.te.eg', $4)`,
+        [JSON.stringify([fullNoDash]), req.user.username, "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), execIdentity(req)]);
+      queued = true;
+    }
+    res.json({ ok: true, id: ins[0]?.id, phone: full, queued });
+  });
+
+  // مقارنة اللى الفنى دخّله بنتيجة مراجعة البيان الفنى.
+  // المقارنة صالحة **بس** لما تكون نتيجة المراجعة أحدث من آخر طلب (requested_at) —
+  // قبل كده الطلب لسه فى الطابور ومافيش حاجة نقارن بيها.
+  const CORR_READY = `(si.fetched_at IS NOT NULL AND si.fetched_at > c.requested_at)`;
+  const corrDiff = (field: string, col: string) =>
+    `(NULLIF(btrim(c.${field}), '') IS NOT NULL
+      AND ${n(`COALESCE(si.${col}, '')`)} <> ${n(`c.${field}`)})`;
+  const CORR_MISMATCH = `(${CORR_READY} AND (${corrDiff("central", "central")}
+      OR ${corrDiff("cabin_number", "cabin_number")} OR ${corrDiff("box_number", "box_number")}))`;
+  // الفنى بعت الرقم بس من غير سنترال/كابينة/بكس → **مافيش مقارنة**، مراجعة وخلاص.
+  // (corrDiff أصلاً بيتجاهل الخانة الفاضية، والعلم ده عشان الحالة تتعرض صح.)
+  const CORR_HAS_TYPED = `(COALESCE(NULLIF(btrim(c.central), ''), NULLIF(btrim(c.cabin_number), ''),
+      NULLIF(btrim(c.box_number), '')) IS NOT NULL)`;
+
+  // GET /api/line-data-corrections — تقرير التصحيحات.
+  // مسئول البيانات والأدمن والسوبر أدمن بيشوفوا الكل؛ أى مستخدم تانى بيشوف اللى بعته هو.
+  app.get("/api/line-data-corrections", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (role === ROLES.SALES || role === ROLES.SALES_ADMIN) return res.status(403).json({ message: "غير مسموح" });
+    const seeAll = role === ROLES.DATA_MANAGER || hasAdminAccess(role);
+    const params: any[] = [];
+    const conds: string[] = [];
+    if (!seeAll) { params.push(req.user.id); conds.push(`c.submitted_by_id = $${params.length}`); }
+    // فلتر تاريخ الإدخال (بتوقيت القاهرة) — السوبر أدمن بيشوف كل اللى الفنيين بعتوه
+    const { dateFrom = "", dateTo = "" } = req.query as Record<string, string>;
+    if (dateFrom) { params.push(dateFrom); conds.push(`(c.created_at AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`); }
+    if (dateTo)   { params.push(dateTo);   conds.push(`(c.created_at AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`); }
+    const mine = conds.length ? `AND ${conds.join(" AND ")}` : "";
+    const { rows } = await pool.query(
+      `SELECT c.id, c.phone_local AS "phoneLocal", c.phone_full AS "phoneFull",
+              c.central, c.cabin_number AS "cabinNumber", c.box_number AS "boxNumber",
+              c.submitted_by_name AS "submittedBy",
+              (c.created_at AT TIME ZONE 'Africa/Cairo') AS "createdAt",
+              (c.requested_at AT TIME ZONE 'Africa/Cairo') AS "requestedAt",
+              (c.resolved_at AT TIME ZONE 'Africa/Cairo') AS "resolvedAt",
+              c.resolved_by_name AS "resolvedBy",
+              si.central AS "fetchedCentral", si.cabin_number AS "fetchedCabin",
+              si.box_number AS "fetchedBox", si.sub_name AS "subName", si.sub_add AS "subAdd",
+              (si.fetched_at AT TIME ZONE 'Africa/Cairo') AS "fetchedAt",
+              ${CORR_READY} AS "reviewed",
+              ${CORR_MISMATCH} AS "mismatch",
+              ${CORR_HAS_TYPED} AS "hasTyped"
+         FROM line_data_corrections c
+         LEFT JOIN line_subscriber_info si ON si.phone_number = c.phone_full
+        WHERE true ${mine}
+        ORDER BY ${CORR_MISMATCH} DESC, c.requested_at DESC
+        LIMIT 5000`, params);
+    res.json(rows);
+  });
+
+  // POST /api/line-data-corrections/:id/review — زر «مراجعة الاسم والعنوان».
+  // بيعيد طلب المراجعة للرقم ويصفّر وقت الطلب، فالمقارنة تتحسب من النتيجة الجديدة.
+  // مالوش علاقة بـ«تم التصحيح» — ده مجرد إعادة طلب.
+  app.post("/api/line-data-corrections/:id/review", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (!(role === ROLES.DATA_MANAGER || hasAdminAccess(role))) {
+      return res.status(403).json({ message: "مسئول البيانات أو الأدمن فقط" });
+    }
+    const id = parseInt(String(req.params.id), 10);
+    if (!id || isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
+    const { rows } = await pool.query(
+      `UPDATE line_data_corrections SET requested_at = now() WHERE id = $1 RETURNING phone_full`, [id]);
+    if (!rows.length) return res.status(404).json({ message: "السجل غير موجود" });
+    const phone = rows[0].phone_full as string;
+    const { rows: dup } = await pool.query(
+      `SELECT 1 FROM exec_jobs WHERE type = 'subinfo' AND status IN ('pending','claimed')
+        AND jsonb_exists(accounts, $1) LIMIT 1`, [phone]);
+    let queued = false;
+    if (!dup.length) {
+      await pool.query(
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, requested_from)
+         VALUES ('subinfo', $1::jsonb, $2, 'تصحيح بيانات — مراجعة اسم وعنوان', 2, $3, 'fcc.te.eg', $4)`,
+        [JSON.stringify([phone]), req.user.username, "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), execIdentity(req)]);
+      queued = true;
+    }
+    res.json({ ok: true, queued });
+  });
+
+  // POST /api/line-data-corrections/:id/resolve — «تم التصحيح».
+  // مسئول البيانات (أو أدمن) بيضغطه بعد ما يصحّح البيان، فبتتبعت مراجعة بيان فنى تانية
+  // ويرجع الصف «فى انتظار المراجعة» لحد ما النتيجة الجديدة توصل ونقارن من أول وجديد.
+  app.post("/api/line-data-corrections/:id/resolve", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (!(role === ROLES.DATA_MANAGER || hasAdminAccess(role))) {
+      return res.status(403).json({ message: "مسئول البيانات أو الأدمن فقط" });
+    }
+    const id = parseInt(String(req.params.id), 10);
+    if (!id || isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
+    const byName = String(req.user?.fullName || req.user?.username || "").trim();
+    const { rows } = await pool.query(
+      `UPDATE line_data_corrections
+          SET resolved_at = now(), resolved_by_id = $2, resolved_by_name = $3, requested_at = now()
+        WHERE id = $1 RETURNING phone_full`,
+      [id, req.user.id, byName]);
+    if (!rows.length) return res.status(404).json({ message: "السجل غير موجود" });
+    const phone = rows[0].phone_full as string;
+    // مراجعة تانية — نفس منطق الإرسال: مانكرّرش لو الرقم لسه فى الطابور.
+    const { rows: dup } = await pool.query(
+      `SELECT 1 FROM exec_jobs WHERE type = 'subinfo' AND status IN ('pending','claimed')
+        AND jsonb_exists(accounts, $1) LIMIT 1`, [phone]);
+    let queued = false;
+    if (!dup.length) {
+      await pool.query(
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, requested_from)
+         VALUES ('subinfo', $1::jsonb, $2, 'تصحيح بيانات — إعادة مراجعة بعد التصحيح', 2, $3, 'fcc.te.eg', $4)`,
+        [JSON.stringify([phone]), req.user.username, "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8), execIdentity(req)]);
+      queued = true;
+    }
+    res.json({ ok: true, queued });
+  });
+
   app.put("/api/work-order-tech", requireAuth, async (req: any, res) => {
     const role = req.user?.role;
     if (role === ROLES.SALES || role === ROLES.SALES_ADMIN || role === ROLES.TECH) {

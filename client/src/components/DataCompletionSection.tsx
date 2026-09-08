@@ -17,6 +17,8 @@ import { Loader2, Plus, Trash2, Cable, Search, Lock, KeyRound, FileSpreadsheet, 
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { WorkOrdersNoCableEntry } from "@/components/WorkOrdersNoCableEntry";
+import { LineDataCorrection } from "@/components/LineDataCorrection";
+import { LineDataCorrectionsReport } from "@/components/LineDataCorrectionsReport";
 
 interface CableEntry {
   id: number;
@@ -41,13 +43,13 @@ export function DataCompletionSection() {
   const isAdmin = user?.role === ROLES.ADMIN || user?.role === ROLES.SUPER_ADMIN;
 
   const [phone, setPhone] = useState("");
-  const [workOrderType, setWorkOrderType] = useState("تركيب");
+  const [workOrderType, setWorkOrderType] = useState("صيانة");   // الافتراضى
   const [cableQuantity, setCableQuantity] = useState("");
   const [mobile, setMobile] = useState(""); // رقم المحمول — يظهر عند اختيار «صيانة» فقط
   const [search, setSearch] = useState("");
   // تابين: الإدخال اليدوى (رقم برقم)، وقائمة أوامر الشغل اللى لسه مالهاش كمية سلك
   // (نفس مصدر تقرير أوامر الشغل) وقدّام كل صف خانة إدخال.
-  const [tab, setTab] = useState<"manual" | "orders">("orders");   // الافتراضى: أوامر الشغل الناقصة
+  const [tab, setTab] = useState<"manual" | "orders" | "fix" | "fixlist">("orders");   // الافتراضى: أوامر الشغل الناقصة
 
   const { data: entries = [], isFetching } = useQuery<CableEntry[]>({
     queryKey: ["/api/cable-entries", search],
@@ -73,7 +75,7 @@ export function DataCompletionSection() {
       setPhone("");
       setCableQuantity("");
       setMobile("");
-      setWorkOrderType("تركيب");
+      setWorkOrderType("صيانة");
       qc.invalidateQueries({ queryKey: ["/api/cable-entries"] });
       qc.invalidateQueries({ queryKey: ["/api/work-orders"] });
     },
@@ -166,9 +168,11 @@ export function DataCompletionSection() {
     });
   };
 
-  const TABS: { id: "manual" | "orders"; label: string }[] = [
-    { id: "orders", label: "أوامر شغل بدون كمية سلك" },
-    { id: "manual", label: "إدخال كمية السلك" },
+  const TABS: { id: "manual" | "orders" | "fix" | "fixlist"; label: string }[] = [
+    { id: "orders",  label: "أوامر شغل بدون كمية سلك" },
+    { id: "manual",  label: "إدخال كمية السلك" },
+    { id: "fix",     label: "تصحيح بيانات" },
+    { id: "fixlist", label: "متابعة التصحيحات" },
   ];
 
   return (
@@ -190,7 +194,9 @@ export function DataCompletionSection() {
         ))}
       </div>
 
-      {tab === "orders" ? <WorkOrdersNoCableEntry /> : (<>
+      {tab === "orders" ? <WorkOrdersNoCableEntry />
+       : tab === "fix" ? <LineDataCorrection />
+       : tab === "fixlist" ? <LineDataCorrectionsReport /> : (<>
       {/* نموذج الإدخال */}
       <Card className="p-4 sm:p-5 bg-white border-0 shadow-sm">
         <div className="flex items-center gap-2 mb-4">

@@ -525,6 +525,31 @@ export async function ensureSchema() {
   // مختلفة وممكن يبقى لقب: «سامى» اسمه فى الملفات «محمد عبدالعزيز طه احمد»).
   await pool.query(`ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS worker_code text`);
 
+  // line_data_corrections — «تصحيح بيانات»: الفنى بيبعت رقم الخط ومعاه السنترال
+  // والكابينة والبكس الصح (اختيارية)، والإرسال بيحطّ طلب مراجعة اسم/عنوان فى الطابور.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS line_data_corrections (
+      id serial PRIMARY KEY,
+      phone_local text NOT NULL,
+      phone_full text NOT NULL,
+      central text,
+      cabin_number text,
+      box_number text,
+      submitted_by_id integer REFERENCES users(id),
+      submitted_by_name text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS line_data_corrections_phone_idx ON line_data_corrections (phone_full)`);
+  for (const [col, typ] of [
+    ["requested_at", "timestamptz NOT NULL DEFAULT now()"],
+    ["resolved_at", "timestamptz"],
+    ["resolved_by_id", "integer REFERENCES users(id)"],
+    ["resolved_by_name", "text"],
+  ] as const) {
+    await pool.query(`ALTER TABLE line_data_corrections ADD COLUMN IF NOT EXISTS ${col} ${typ}`);
+  }
+
   // work_order_tech_overrides — تعديل اسم الفنى على أمر شغل لما الاسم الجاى من الشيت
   // مش مطابق لأى فنى مسجّل فى technician_names. المفتاح = نفس المفتاح الطبيعى لأمر
   // الشغل (السنترال + رقمه) فيفضل صامد لو الملف اترفع تانى.
