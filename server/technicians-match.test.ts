@@ -37,16 +37,20 @@ test("anything else stays unknown, so only those rows are editable", () => {
   }
 });
 
-// الأسماء بتفضل **كاملة** فى العمود وفى الدروب ليست. جدول أسماء الفنيين بتاعهم هو
-// المرجع؛ إحنا بس بنكمّل الاسم لو الجدول عنده المختصر («سامى» ← «محمد عبدالعزيز طه احمد»).
-test("names stay full — the registry wins, we only complete a short one", () => {
-  assert.equal(preferFullName("حسن عبد الفتاح يعقوب"), "حسن عبد الفتاح يعقوب");
-  assert.equal(preferFullName("محمد عبد المجيد محمد رشدى"), "محمد عبد المجيد محمد رشدى");
+// الأسماء بتفضل **كاملة**، والمرجع هو **ملف أوامر الشغل** — فأى صيغة تانية للاسم
+// بتترجم للاسم المعتمد، والشخص الواحد بيتعرض بنفس الاسم فى كل مكان.
+test("every form of a technician displays as the one approved full name", () => {
+  // جدول أسماء الفنيين مكتوب فيه «يعقوب»، وملف أوامر الشغل «حموده» — التانى هو الصح
+  assert.equal(preferFullName("حسن عبد الفتاح يعقوب"), "حسن عبد الفتاح حموده");
+  assert.equal(preferFullName("حسن عبدالفتاح حموده"), "حسن عبد الفتاح حموده");
+  assert.equal(preferFullName("حسن"), "حسن عبد الفتاح حموده");
   assert.equal(preferFullName("سامى"), "محمد عبدالعزيز طه احمد");
   assert.equal(preferFullName("محمود يعقوب"), "محمود احمد يعقوب");
   assert.equal(preferFullName("اسلام عبد العال هريدى"), "اسلام عبدالعال هريدى حسن");
-  // اسم برّه الخمسة بيرجع زى ما هو
+  assert.equal(preferFullName("محمد عبد المجيد محمد رشدى"), "محمد عبدالمجيد محمد رشدى");
+  // اسم برّه الخمسة بيرجع زى ما هو — الأسماء الغريبة مابتتلمسش
   assert.equal(preferFullName("عبد الرحمن أحمد سلمان محمد"), "عبد الرحمن أحمد سلمان محمد");
+  assert.equal(preferFullName("عامل مقاول"), "عامل مقاول");
 });
 
 test("the column shows the sheet name as-is, never the short key", () => {
@@ -106,4 +110,34 @@ test("the generated SQL keeps the same precedence as the JS matcher", () => {
   // الأطول لازم يظهر قبل الأقصر فى فروع التطابق التام
   assert.ok(sql.indexOf(samy) < sql.indexOf(`= '${mohamed}'`),
     "الاسم الأطول (سامى) لازم يتجرّب قبل «محمد»");
+});
+
+// ── الاسم المختصر ولا الكامل؟ كل واحد فى مكانه ────────────────────────────────
+// الأعطال والمتعذرات بتعرض «سامى»، وأوامر الشغل واستكمال البيانات بتعرض
+// «محمد عبدالعزيز طه احمد». نفس الشخص، سياقين مختلفين.
+test("short name for faults, full name for work orders", async () => {
+  const { shortNameOf, preferFullName } = await import("../shared/technicians");
+  assert.equal(shortNameOf("محمد عبدالعزيز طه احمد"), "سامى");
+  assert.equal(preferFullName("سامى"), "محمد عبدالعزيز طه احمد");
+  assert.equal(shortNameOf("حسن عبدالفتاح حموده"), "حسن");
+  assert.equal(preferFullName("حسن"), "حسن عبد الفتاح حموده");
+  // اسم برّه الخمسة بيعدّى زى ما هو فى الاتجاهين
+  assert.equal(shortNameOf("عامل مقاول"), "عامل مقاول");
+  assert.equal(preferFullName("عامل مقاول"), "عامل مقاول");
+});
+
+// تقارير الأعطال والمتعذرات **مامتلمستش** — لا بتستورد ولا بتستخدم تحويل الأسماء.
+test("the faults and متعذرات reports are untouched by the full-name mapping", () => {
+  const fullNameUses = [...routes.matchAll(/preferFullName\(|fullNameOf\(/g)].length;
+  assert.ok(fullNameUses > 0, "التحويل مستخدم فعلاً فى سياق أوامر الشغل");
+  // كل استخدام لازم يكون جوّه endpoint أوامر الشغل أو حفظ كمية السلك — مش فى تقارير الأعطال
+  const woStart = routes.indexOf('app.put("/api/work-order-tech"');
+  const cableStart = routes.indexOf('app.post("/api/cable-entries"');
+  for (const m of routes.matchAll(/preferFullName\(|fullNameOf\(/g)) {
+    const i = m.index ?? 0;
+    const inWorkOrder = i > woStart && i < woStart + 4000;
+    const inCable = i > cableStart && i < cableStart + 4000;
+    assert.ok(inWorkOrder || inCable,
+      `تحويل الاسم الكامل اتستخدم برّه سياق أوامر الشغل/كمية السلك (موضع ${i})`);
+  }
 });
