@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { rescueMinutes } from "@shared/exec-timeouts";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw, ChevronUp, ChevronDown, Save, ListOrdered, Ban, Pause, Play, RotateCcw, AlertTriangle } from "lucide-react";
@@ -19,18 +20,11 @@ interface Batch {
   queueOrder: number;
 }
 
-// الباتش يعتبر «عالق» لو فيه مهمة تحت التنفيذ عدّت مهلتها:
-//   • القياس 4 دقايق — الإنقاذ العادى يبدأ بعد 3 دقايق، واللى بيعدّى 4 واقف.
-//   • أى عملية تانية 20 دقيقة.
-//   • استثناءات مهلتها الفعلية أطول من 20: تحديث الملفات 60، وc360/wfmreport 45.
-// ⚠️ لازم تفضل مطابقة لـ maxRunSql فى expireOrphanedExecJobs (server/routes.ts)
-// — السيرفر بيرجّع المهمة للطابور تلقائياً بنفس المهل دى، فلو اختلفوا الشارة
-// هتقول «عالق» على حاجة لسه شغّالة أو العكس.
-const DAILY_TYPES = new Set(["ports", "fccdaily", "wfmdaily", "ossdaily", "weoas"]);
-const stuckMinsFor = (type: string) =>
-  DAILY_TYPES.has(type) ? 60
-  : type === "c360" || type === "wfmreport" ? 45
-  : type === "measure" ? 4 : 20;
+// الباتش يعتبر «عالق» لو فيه مهمة تحت التنفيذ عدّت مهلة نوعها.
+// شارة «عالق»: نفس مهلة الإنقاذ اللى السيرفر بيرجّع بيها المهمة للطابور —
+// المصدر واحد (shared/exec-timeouts.ts) فمستحيل الشارة تقول «عالق» على حاجة لسه
+// شغّالة أو العكس. كانت مكتوبة بالنص هنا وفى السيرفر، واتفرّقوا فعلاً.
+const stuckMinsFor = rescueMinutes;
 const isStuck = (b: Batch) => b.claimed > 0 && (b.claimedMins ?? 0) >= stuckMinsFor(b.type);
 interface PriorityBatch extends Batch {
   priority: number;

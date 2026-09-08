@@ -19,6 +19,7 @@ import connectPgSimple from "connect-pg-simple";
 import bcryptjs from "bcryptjs";
 import { sfRoleOf, cfmRoleOf, sitesForRole, UNIFIED_ROLE_ACCESS } from "@shared/roles-access";
 import { arNorm } from "@shared/ar-norm";
+import { rescueIntervalSql, EXEC_RESCUE_MINUTES } from "@shared/exec-timeouts";
 import { phoneNormSql } from "./phone-norm";
 import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH_THRESHOLD } from "@shared/name-match";
 import { registerCfmRoutes } from "./cfm/routes";
@@ -2673,11 +2674,11 @@ export async function registerRoutes(
       //     بالظبط اللى كان بيخنق المتصفح ويوقّف القياسات):
       //       - تحديث الملفات (DAILY_TYPES): 30 دقيقة فعلية → 60.
       //       - c360 وwfmreport: 20 دقيقة لكل رقم جوّه نفس التاب → 45.
-      const maxRunSql = `(CASE
-        WHEN e.type = ANY($2::text[])          THEN interval '60 minutes'
-        WHEN e.type IN ('c360','wfmreport')    THEN interval '45 minutes'
-        WHEN e.type = 'measure'                THEN interval '4 minutes'
-        ELSE interval '20 minutes' END)`;
+      // ⚠️ المهل جاية من shared/exec-timeouts.ts — نفس الملف اللى بيحدّد مهلة كل نوع
+      // على جهاز التنفيذ وشارة «عالق» فى شاشة الطابور، فمستحيل يتفرّقوا تانى.
+      // (قبل كده كان جدول مكتوب بالنص هنا: «إيقاف PO» مهلته الفعلية ٣٠ ثانية وكان
+      //  بياخد الافتراضى ٢٠ دقيقة — فالباتش يقف ١٣ دقيقة من غير أى إنقاذ.)
+      const maxRunSql = rescueIntervalSql("e.type");
       const requeuedRes = await pool.query(
         `UPDATE exec_jobs e
             SET status = 'pending', claimed_at = NULL, attempts = e.attempts + 1

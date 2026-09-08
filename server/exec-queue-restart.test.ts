@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import express from "express";
 import { createServer } from "node:http";
 import test from "node:test";
+import { rescueMinutes } from "../shared/exec-timeouts";
 import {
   EXEC_BATCH_REFRESH_DELAY_MS,
   EXEC_BATCH_REFRESH_KEY,
@@ -100,7 +101,10 @@ class SiteClaimQueue {
 test("measurement timeout survives reload and resumes only unfinished work", async () => {
   assert.equal(EXEC_MEASURE_STALL_MS, 3 * 60 * 1000);
   assert.equal(EXEC_BATCH_REFRESH_DELAY_MS, 60 * 1000);
-  assert.match(routes, /WHEN e\.type = 'measure'\s+THEN interval '4 minutes'/);
+  // المهلة اتنقلت من نص مكتوب فى الاستعلام لملف واحد مشترك (shared/exec-timeouts.ts)
+  // بيقرا منه السيرفر وجهاز التنفيذ وشارة «عالق» — القيمة نفسها ما اتغيرتش.
+  assert.equal(rescueMinutes("measure"), 4);
+  assert.match(routes, /const maxRunSql = rescueIntervalSql\("e\.type"\);/);
   assert.match(client, /const STALL_MS = EXEC_MEASURE_STALL_MS/);
   assert.match(client, /requestExecPreempt\(id\)/);
   assert.match(client, /fetch\("\/api\/exec-queue\/requeue"/);

@@ -4,6 +4,7 @@ import { Server, Loader2, Trash2, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { execDeviceLabel, executeBatch, EXEC_MEASURE_STALL_MS, latestOpAt, latestPoEventAt, latestSubInfoAt, refreshDueExecBatch, recoverTimedOutMeasure, requestExecPreempt, sleep, PHONE_LOOKUP_SOURCE, QUEUE_LABEL, type ExecJob, type ExecJobType } from "@/lib/exec-queue";
+import { rescueMinutes } from "@shared/exec-timeouts";
 
 // ── إبقاء تاب جهاز التنفيذ صاحى ─────────────────────────────────────────────
 // المشكلة اللى بتوقف الطابور: Edge/Chrome بيعملوا للتاب اللى فى الخلفية
@@ -253,7 +254,23 @@ export function ExecutorButton() {
     //   • فجوة > ١٠ دقايق → ريفريش تلقائى للصفحة (بداية نظيفة زى الريفريش اليدوى
     //     اللى المستخدم بيعمله بإيده) — من غيره التاب بيفوق بحالة داخلية بايظة.
     const WAKE_MS = 2 * 60 * 1000, HARD_RELOAD_MS = 10 * 60 * 1000;
+    // مسار وقف فى نُصّه: عدّى **مهلة الإنقاذ** بتاعة نوعه (نفس المهلة اللى السيرفر
+    // بيرجّع بيها المهمة للطابور) وهو لسه ماخلصش. معناها التاب اتجمّد جوّه المهمة —
+    // النبضة ماشية عادى فالحارس القديم مكانش بيلاحظ حاجة. الريفريش بيرجّع التاب
+    // لبداية نظيفة، والسيرفر بيرجّع المهمة للطابور فتتسحب تانى.
+    const stalledLane = (): string | null => {
+      for (const [site, r] of runningSince) {
+        if (Date.now() - r.at > rescueMinutes(r.type) * 60 * 1000) return site;
+      }
+      return null;
+    };
     const watchdog = () => {
+      const lane = stalledLane();
+      if (lane) {
+        console.warn(`[exec] المسار ${lane} عدّى مهلته وهو شغّال — ريفريش تلقائى`);
+        try { window.location.reload(); } catch {}
+        return;
+      }
       const gap = Date.now() - lastBeatOk;
       if (gap < WAKE_MS) return;
       setStale(true);
@@ -492,6 +509,10 @@ export function ExecutorButton() {
     // (السيرفر هو اللى بيضمن ده فى claim). هنا بنمنع بس إن أكتر من طلب claim يتبعت مع بعض،
     // وبعدها بنشغّل المهمة **من غير انتظار** عشان مسار تانى يقدر يبدأ.
     const running = new Map<string, string>();   // site → وصف المهمة الجارية
+    // site → { بدأ إمتى، نوع المهمة } — الحارس بيقيس بيها إن المسار وقف فى نُصّه.
+    // من غيرها كان الحارس بيقيس النبضة بس: التاب حى والنبضة ماشية، والمهمة متعلّقة
+    // من ١٣ دقيقة ومحدش بيعمل ريفريش (ده بالظبط اللى حصل).
+    const runningSince = new Map<string, { at: number; type: string }>();
     const showRunning = () => setCurrent(Array.from(running.values()).join(" • "));
 
     // عدد المواقع المختلفة — سقف عدد المهام اللى ممكن تشتغل مع بعض (مسار لكل موقع).
@@ -531,6 +552,7 @@ export function ExecutorButton() {
           const site = String((job as any).site || "10.42.187.101");
           const label = QUEUE_LABEL[job.type] || job.type;
           running.set(site, `${label} (${accs.length} رقم)`);
+          runningSince.set(site, { at: Date.now(), type: job.type });
           showRunning();
           // بدون await — مسار الموقع ده بيشتغل لوحده، وحلقة السحب تقدر تجيب مهمة لموقع تانى
           void (async () => {
@@ -569,6 +591,7 @@ export function ExecutorButton() {
               }
             } catch {} finally {
               running.delete(site);
+              runningSince.delete(site);
               showRunning();
             }
           })();
