@@ -206,6 +206,23 @@ export const workOrders = pgTable("work_orders", {
 
 export type WorkOrder = typeof workOrders.$inferSelect;
 
+// تعديل اسم الفنى على أمر شغل — لما الاسم الجاى من الشيت مش مطابق لأى فنى مسجّل
+// فى technician_names. المفتاح هو نفس المفتاح الطبيعى لأمر الشغل (السنترال + رقمه)
+// عشان يفضل صامد لو الملف اترفع تانى.
+export const workOrderTechOverrides = pgTable("work_order_tech_overrides", {
+  id: serial("id").primaryKey(),
+  centralName: text("central_name").notNull(),
+  workOrderId: bigint("work_order_id", { mode: "number" }).notNull(),
+  techName: text("tech_name").notNull(),
+  updatedById: integer("updated_by_id").references(() => users.id),
+  updatedByName: text("updated_by_name"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  woUniq: unique("work_order_tech_overrides_uniq").on(table.centralName, table.workOrderId),
+}));
+
+export type WorkOrderTechOverride = typeof workOrderTechOverrides.$inferSelect;
+
 // Cable Entries Table — استكمال بيانات: كمية السلك التى يضيفها الفنى يدوياً
 // لكل (رقم تليفون محلى + نوع امر الشغل). رقم امر الشغل فى تقرير التركيبات يكون مثل
 // 88-2657290 لكن الفنى يُدخل 2657290 فقط — نخزّن المحلى (أرقام فقط) ونعيد بناء 88-.

@@ -521,6 +521,22 @@ export async function ensureSchema() {
   await pool.query(`ALTER TABLE cable_entries ADD COLUMN IF NOT EXISTS printed_at timestamptz`);
   await pool.query(`ALTER TABLE cable_entries ADD COLUMN IF NOT EXISTS edit_unlocked_at timestamptz`);
 
+  // work_order_tech_overrides — تعديل اسم الفنى على أمر شغل لما الاسم الجاى من الشيت
+  // مش مطابق لأى فنى مسجّل فى technician_names. المفتاح = نفس المفتاح الطبيعى لأمر
+  // الشغل (السنترال + رقمه) فيفضل صامد لو الملف اترفع تانى.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS work_order_tech_overrides (
+      id serial PRIMARY KEY,
+      central_name text NOT NULL,
+      work_order_id bigint NOT NULL,
+      tech_name text NOT NULL,
+      updated_by_id integer REFERENCES users(id),
+      updated_by_name text,
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT work_order_tech_overrides_uniq UNIQUE (central_name, work_order_id)
+    )
+  `);
+
   // manual_close_by — فنى الإغلاق المُضاف يدوياً (مرجعية أولى لشكوى فنى إغلاقها غير معروف)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS manual_close_by (

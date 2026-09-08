@@ -47,7 +47,7 @@ export function DataCompletionSection() {
   const [search, setSearch] = useState("");
   // تابين: الإدخال اليدوى (رقم برقم)، وقائمة أوامر الشغل اللى لسه مالهاش كمية سلك
   // (نفس مصدر تقرير أوامر الشغل) وقدّام كل صف خانة إدخال.
-  const [tab, setTab] = useState<"manual" | "orders">("manual");
+  const [tab, setTab] = useState<"manual" | "orders">("orders");   // الافتراضى: أوامر الشغل الناقصة
 
   const { data: entries = [], isFetching } = useQuery<CableEntry[]>({
     queryKey: ["/api/cable-entries", search],
@@ -167,8 +167,8 @@ export function DataCompletionSection() {
   };
 
   const TABS: { id: "manual" | "orders"; label: string }[] = [
-    { id: "manual", label: "إدخال كمية السلك" },
     { id: "orders", label: "أوامر شغل بدون كمية سلك" },
+    { id: "manual", label: "إدخال كمية السلك" },
   ];
 
   return (

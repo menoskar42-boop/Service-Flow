@@ -539,7 +539,8 @@ export default function Dashboard() {
                     بحث برقم التليفون
                   </button>
                 )}
-                {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && (
+                {/* كل الأدوار ما عدا المبيعات وأدمن المبيعات (المبيعات مستبعدة أصلاً فى الفرع ده) */}
+                {user.role !== ROLES.SALES_ADMIN && (
                   <button
                     onClick={() => setAdminTab("data-completion")}
                     data-testid="tab-admin-data-completion"
@@ -769,8 +770,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── DATA COMPLETION TAB (Admin, Tech & External) ── */}
-        {(user.role === ROLES.ADMIN || user.role === ROLES.TECH || user.role === ROLES.EXTERNAL) && adminTab === "data-completion" && (
+        {/* ── DATA COMPLETION TAB — كل الأدوار ما عدا المبيعات وأدمن المبيعات ── */}
+        {user.role !== ROLES.SALES_ADMIN && adminTab === "data-completion" && (
           <div className="space-y-6">
             <DataCompletionSection />
           </div>

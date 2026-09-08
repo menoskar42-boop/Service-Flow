@@ -1218,6 +1218,60 @@ async function checkAndSnapshot() {
   }
 }
 
+// ── مراجعة البيان الفنى تلقائياً للأرقام اللى مالهاش بيانات فنية ────────────
+// أوامر الشغل اللى لسه مالهاش كمية سلك بنحتاج نعرف فنى منطقتها من بيان الخط.
+// الرقم اللى مالوش بيان فنى (لا فى phone_lines ولا فى line_subscriber_info) بيتحطّ
+// له طلب «مراجعة بيان فنى» (subinfo) فى الطابور — **مرة كل 4 ساعات بالكتير** لحد
+// ما بياناته تتحدّث، وبعدها بيخرج من القائمة لوحده.
+const SUBINFO_EVERY = "interval '4 hours'";
+async function queueMissingLineDataSubinfo() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT w.phone_number AS phone
+         FROM work_orders w
+         LEFT JOIN cable_entries ce
+           ON ${sp("ce.phone_local")} = ${sp("w.phone_number")}
+          AND ce.work_order_type = CASE WHEN trim(w.service_type) = 'نقل' THEN 'نقل' ELSE 'تركيب' END
+         LEFT JOIN phone_lines pl ON pl.full_phone = w.phone_number
+         LEFT JOIN line_subscriber_info si ON si.phone_number = w.phone_number
+        WHERE regexp_replace(coalesce(w.phone_number,''), '\\D', '', 'g') ~ '^88[0-9]{7}$'
+          AND (w.close_category IS NULL OR w.close_category = 'Success')
+          AND COALESCE(NULLIF(w.cable_quantity, ''), ce.cable_quantity) IS NULL
+          -- مافيش بيان فنى: لا سنترال/كابينة من ملف الخطوط ولا من مراجعة سابقة
+          AND COALESCE(NULLIF(btrim(pl.central), ''), NULLIF(btrim(si.central), '')) IS NULL
+          -- ومامتطلبش خلال آخر 4 ساعات (أى مهمة subinfo فيها الرقم ده)
+          AND NOT EXISTS (
+            SELECT 1 FROM exec_jobs e
+             WHERE e.type = 'subinfo'
+               AND e.created_at > now() - ${SUBINFO_EVERY}
+               AND jsonb_exists(e.accounts, w.phone_number))
+        LIMIT 200`);
+    if (!rows.length) return 0;
+    // مهمة لكل رقم (زى باقى الطابور) بأولوية الباتش العادى، ونوتة توضّح المصدر.
+    const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const values: any[] = ["subinfo", "auto", "مراجعة بيان فنى تلقائية — أوامر شغل بدون كمية سلك", 0, batchId,
+      "fcc.te.eg"];   // نفس موقع subinfo فى SITE_OF_TYPE — الطابور بينفّذ مهمة واحدة لكل موقع
+    const ph = rows.map((r: any) => { values.push(JSON.stringify([r.phone])); return `($1, $${values.length}::jsonb, $2, $3, $4, $5, $6)`; }).join(",");
+    await pool.query(
+      `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site) VALUES ${ph}`,
+      values);
+    console.log(`[subinfo-auto] queued ${rows.length} line(s) missing technical data`);
+    return rows.length;
+  } catch (e: any) {
+    console.error("[subinfo-auto] failed:", e.message);
+    return 0;
+  }
+}
+
+// كل ساعة بنشوف مين فاضل من غير بيان فنى — والشرط جوّه الاستعلام بيضمن إن الرقم
+// الواحد مايتطلبش أكتر من مرة كل 4 ساعات مهما اتنادت الدالة.
+function startMissingLineDataScheduler() {
+  const wakeup = setTimeout(queueMissingLineDataSubinfo, 60_000);
+  const interval = setInterval(queueMissingLineDataSubinfo, 60 * 60 * 1000);
+  wakeup.unref();
+  interval.unref();
+}
+
 // يبدأ جدولة الحفظ اليومى: تعويض فورى عند الإقلاع + فحص كل 15 دقيقة.
 // (cron داخلى — عند صحيان السيرفر يلتقط لقطة الساعة 11 خلال 15 دقيقة كحد أقصى،
 //  ولو كان نائماً يُعوّض بمجرد وصول أى طلب يوقظه.)
@@ -6670,8 +6724,13 @@ export async function registerRoutes(
   // كمية السلك مابتيجيش من ملف أوامر الشغل خالص — الفنى بيدخّلها من «استكمال بيانات»
   // فتتخزّن فى cable_entries. فالتقرير ده = أوامر الشغل اللى مالهاش صف مقابل هناك.
   // المطابقة بنفس منطق تقرير أوامر الشغل بالظبط: رقم محلى (بدون 88) + نوع الأمر (نقل/تركيب).
-  app.get("/api/reports/work-orders-no-cable", requireAuth, async (req, res) => {
+  // أوامر شغل بدون كمية سلك — التقرير + تاب «استكمال بيانات».
+  // متاح لكل الأدوار ما عدا المبيعات وأدمن المبيعات. الفنى بيشوف تركيباته هو بس.
+  app.get("/api/reports/work-orders-no-cable", requireAuth, async (req: any, res) => {
     try {
+      if (req.user?.role === ROLES.SALES || req.user?.role === ROLES.SALES_ADMIN) {
+        return res.status(403).json({ message: "غير مسموح" });
+      }
       const { dateFrom = "", dateTo = "", q = "" } = req.query as Record<string, string>;
       const params: any[] = [];
       const conds: string[] = [
@@ -6690,14 +6749,57 @@ export async function registerRoutes(
         conds.push(`(${n("w.phone_number")} LIKE ${p} OR ${n("w.work_order_id")} LIKE ${p}
                   OR ${n("w.tech_name")} LIKE ${p} OR ${n("w.central_name")} LIKE ${p})`);
       }
+
+      // اسم الفنى الفعلى: التعديل اليدوى أولاً (لو اتعمل)، وإلا الاسم الجاى من الشيت.
+      const effName = `COALESCE(NULLIF(btrim(ovr.tech_name), ''), btrim(w.tech_name))`;
+      // هل الاسم ده واحد من الفنيين المسجّلين عندنا؟ (المقارنة بالتطبيع العربى)
+      const isKnown = `EXISTS (SELECT 1 FROM technician_names tn WHERE ${n("tn.tech_name")} = ${n(effName)})`;
+      // فنى المنطقة من **البيانات الفنية للرقم** — نفس منطق «بحث برقم التليفون»
+      // (بيان الخط ← كابينة ← فنى الكابينة، مع تغطية الوردية).
+      const areaTech = areaTechSql("lm.central", "lm.cabin", "w.close_date", "lm.short");
+      // بيانات الخط الفنية: من ملف الخطوط (phone_lines) وإلا من مراجعة البيان الفنى
+      // (line_subscriber_info) اللى بيملاها سكربت subinfo.
+      const lineMetaJoin = `
+        LEFT JOIN LATERAL (
+          SELECT regexp_replace(w.phone_number, '^88', '') AS short,
+                 COALESCE(NULLIF(btrim(pl.central), ''), NULLIF(btrim(si.central), '')) AS central,
+                 COALESCE(NULLIF(btrim(pl.cabin_number), ''), NULLIF(btrim(si.cabin_number), '')) AS cabin
+            FROM (VALUES (1)) AS one(x)
+            LEFT JOIN phone_lines pl ON pl.full_phone = w.phone_number
+            LEFT JOIN line_subscriber_info si ON si.phone_number = w.phone_number
+        ) lm ON true`;
+
+      // الفنى يشوف تركيباته هو بس: اللى اسمه عليها، أو (لو الاسم مش معروف) اللى هو
+      // فنى منطقتها حسب البيانات الفنية للرقم.
+      let techName: string | null = null;
+      if (req.user?.role === ROLES.TECH) {
+        techName = (await coverageCodes(req.user)).techName;
+        params.push(techName || "");
+        const me = `$${params.length}`;
+        conds.push(`(
+          (${isKnown} AND ${n(effName)} = ${n(me)})
+          OR (NOT ${isKnown} AND ${n(`COALESCE(${areaTech}, '')`)} = ${n(me)})
+        )`);
+      }
+
       const { rows } = await pool.query(
         `SELECT w.id, w.central_name AS "centralName", w.work_order_id AS "workOrderId",
                 w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
-                w.close_date AS "closeDate", w.item_name AS "itemName", w.tech_name AS "techName"
+                w.close_date AS "closeDate", w.item_name AS "itemName",
+                ${effName} AS "techName",
+                btrim(w.tech_name) AS "sheetTechName",
+                (ovr.tech_name IS NOT NULL) AS "techEdited",
+                ovr.updated_by_name AS "techEditedBy",
+                ${isKnown} AS "techKnown",
+                ${areaTech} AS "areaTechName",
+                (lm.central IS NOT NULL AND lm.cabin IS NOT NULL) AS "hasLineData"
            FROM work_orders w
            LEFT JOIN cable_entries ce
              ON ${sp("ce.phone_local")} = ${sp("w.phone_number")}
             AND ce.work_order_type = CASE WHEN trim(w.service_type) = 'نقل' THEN 'نقل' ELSE 'تركيب' END
+           LEFT JOIN work_order_tech_overrides ovr
+             ON ovr.central_name = w.central_name AND ovr.work_order_id = w.work_order_id
+           ${lineMetaJoin}
           WHERE ${conds.join(" AND ")}
           ORDER BY w.close_date DESC
           LIMIT 20000`,
@@ -6705,6 +6807,53 @@ export async function registerRoutes(
       );
       res.json(rows);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // PUT /api/work-order-tech — تعديل اسم الفنى على أمر شغل.
+  // متاح لكل مستخدمى التقرير **ما عدا الفنيين** (والمبيعات أصلاً ممنوعة من التقرير).
+  // الشرط: الاسم الحالى مش مطابق لأى فنى مسجّل — الأسماء المعروفة مابتتغيّرش من هنا.
+  // والاسم الجديد لازم يكون واحد من الفنيين المسجّلين، فمفيش أسماء حرة بتتخلق.
+  app.put("/api/work-order-tech", requireAuth, async (req: any, res) => {
+    const role = req.user?.role;
+    if (role === ROLES.SALES || role === ROLES.SALES_ADMIN || role === ROLES.TECH) {
+      return res.status(403).json({ message: "غير مسموح" });
+    }
+    const centralName = String(req.body?.centralName ?? "").trim();
+    const workOrderId = parseInt(String(req.body?.workOrderId ?? ""), 10);
+    const techName = String(req.body?.techName ?? "").trim();
+    if (!centralName || !workOrderId || isNaN(workOrderId)) return res.status(400).json({ message: "أمر شغل غير صالح" });
+    if (!techName) return res.status(400).json({ message: "اختر اسم الفنى" });
+
+    const { rows: wo } = await pool.query(
+      `SELECT w.tech_name, ovr.tech_name AS override
+         FROM work_orders w
+         LEFT JOIN work_order_tech_overrides ovr
+           ON ovr.central_name = w.central_name AND ovr.work_order_id = w.work_order_id
+        WHERE w.central_name = $1 AND w.work_order_id = $2 LIMIT 1`,
+      [centralName, workOrderId]);
+    if (!wo.length) return res.status(404).json({ message: "أمر الشغل غير موجود" });
+
+    // الاسم الجديد لازم يكون فنى مسجّل
+    const { rows: valid } = await pool.query(
+      `SELECT tech_name FROM technician_names WHERE ${n("tech_name")} = ${n("$1")} LIMIT 1`, [techName]);
+    if (!valid.length) return res.status(400).json({ message: "الاسم ده مش من الفنيين المسجّلين" });
+
+    // الاسم الحالى (بعد أى تعديل سابق) لو مطابق لفنى مسجّل → مايتغيّرش من هنا
+    const current = String(wo[0].override ?? wo[0].tech_name ?? "").trim();
+    const { rows: known } = await pool.query(
+      `SELECT 1 FROM technician_names WHERE ${n("tech_name")} = ${n("$1")} LIMIT 1`, [current]);
+    if (known.length) {
+      return res.status(409).json({ message: `اسم الفنى الحالى «${current}» مسجّل عندنا — التعديل متاح بس للأسماء غير المعروفة.` });
+    }
+
+    await pool.query(
+      `INSERT INTO work_order_tech_overrides (central_name, work_order_id, tech_name, updated_by_id, updated_by_name, updated_at)
+       VALUES ($1,$2,$3,$4,$5, now())
+       ON CONFLICT ON CONSTRAINT work_order_tech_overrides_uniq DO UPDATE SET
+         tech_name = EXCLUDED.tech_name, updated_by_id = EXCLUDED.updated_by_id,
+         updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+      [centralName, workOrderId, valid[0].tech_name, req.user.id, req.user.username]);
+    res.json({ ok: true, techName: valid[0].tech_name });
   });
 
   // GET /api/reports/installations-by-tech — نسبة إنجاز التركيبات خلال 24 ساعة لكل فنى (Success فقط).
@@ -6879,6 +7028,32 @@ export async function registerRoutes(
          VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
         [local, full, type, qty, userId, userName],
       );
+      // القاعدة: لو **فنى** سجّل كمية سلك لأمر شغل اسم الفنى فيه مش مطابق لأى فنى
+      // مسجّل عندنا → اسمه هو اللى يتسجّل فى خانة اسم الفنى (نفس آلية التعديل اليدوى).
+      // بنعمله للأوامر الناجحة اللى بنفس الرقم والنوع، ومابنلمسش أمر اسمه معروف أصلاً.
+      if (req.user?.role === ROLES.TECH) {
+        try {
+          const myName = (await coverageCodes(req.user)).techName;
+          if (myName) {
+            await pool.query(
+              `INSERT INTO work_order_tech_overrides (central_name, work_order_id, tech_name, updated_by_id, updated_by_name, updated_at)
+               SELECT w.central_name, w.work_order_id, $1, $2, $3, now()
+                 FROM work_orders w
+                 LEFT JOIN work_order_tech_overrides o
+                   ON o.central_name = w.central_name AND o.work_order_id = w.work_order_id
+                WHERE ${sp("w.phone_number")} = ${sp("$4")}
+                  AND (CASE WHEN trim(w.service_type) = 'نقل' THEN 'نقل' ELSE 'تركيب' END) = $5
+                  AND (w.close_category IS NULL OR w.close_category = 'Success')
+                  AND NOT EXISTS (
+                    SELECT 1 FROM technician_names tn
+                     WHERE ${n("tn.tech_name")} = ${n("COALESCE(NULLIF(btrim(o.tech_name),''), btrim(w.tech_name))")})
+               ON CONFLICT ON CONSTRAINT work_order_tech_overrides_uniq DO UPDATE SET
+                 tech_name = EXCLUDED.tech_name, updated_by_id = EXCLUDED.updated_by_id,
+                 updated_by_name = EXCLUDED.updated_by_name, updated_at = now()`,
+              [myName, userId, userName, local, type]);
+          }
+        } catch (e) { /* تسجيل الاسم إضافى — مايوقّفش حفظ الكمية */ }
+      }
       // لو الفنى اختار «صيانة» وكتب رقم محمول → سجّله/حدّثه فى line_mobiles (نفس صيغة full_phone
       // المستخدمة فى البحث برقم التليفون = 88 + الأرقام بدون شرطة). الأولوية له فى الـ lookup فيظهر
       // كأحدث رقم مسجّل. لو الخط له رقم قديم يتحدّث (ON CONFLICT).
@@ -13146,6 +13321,7 @@ export async function registerRoutes(
 
   // بدء جدولة الحفظ اليومى (cron داخلى + تعويض عند الصحيان)
   startDailySnapshotScheduler();
+  startMissingLineDataScheduler();
 
   return httpServer;
 }
