@@ -16,13 +16,13 @@ const view = readFileSync(
 
 // «بوكس مليان» لازم يشتغل من **الجهتين** — نفس اصطلاح تكت «بوكس معطل».
 test("both box-full sources fire the maintenance data-review request", () => {
-  assert.match(routes, /import \{ requestBoxDataReview \} from "\.\/box-full-inspection"/);
+  assert.match(routes, /import \{ requestBoxDataReview, boxPhones \} from "\.\/box-full-inspection"/);
   // قسم الطلبات
   assert.match(routes, /rejectionReason === REJECTION_REASONS\.BOX_FULL/);
-  assert.match(routes, /source: "طلبات",\s*\n\s*refKey: `طلب #\$\{id\}`/);
+  assert.match(routes, /techName: user\.username, source: "طلبات",\s*\n\s*refKey: `طلب #\$\{id\}`/);
   // متعذرات OM
   assert.match(routes, /r0\.rejection_reason === REJECTION_REASONS\.BOX_FULL/);
-  assert.match(routes, /source: "OM",\s*\n\s*refKey: `متعذر \$\{serialNumber\}`/);
+  assert.match(routes, /source: "OM",\s*\n\s*refKey: `متعذر \$\{serialNumber\}`,\s*\n\s*\}\)\.then/);
   // الفشل مايمنعش تسجيل الرد (void + catch فى الـ then)
   assert.match(trigger, /return \{ ok: false, reason:/);
 });
@@ -70,4 +70,32 @@ test("the reviewed report reads the maintenance schema directly", () => {
   assert.match(routes, /app\.get\("\/api\/reports\/box-full-reviewed\/:id\/phones"/);
   // ولو موقع الصيانة مش مركّب، التقرير بيرجّع فاضى مش خطأ
   assert.match(routes, /schema "maintenance" does not exist/);
+});
+
+// ⚠️ الفحوصات المتفتحة تلقائياً **مايظهروش فى قسم التقارير** (ارتفاع بكس سىء،
+// يحتاج راس بكس…) — ولا يحجبوا آخر فحص حقيقى للبكس، وده كان أخطر أثر.
+test("auto-created inspections stay out of the maintenance reports", () => {
+  const reports = readFileSync(
+    new URL("./maintenance/app/routes/reports.js", import.meta.url), "utf8");
+  // (1) «آخر فحص للبكس» لازم يتجاهل الفحص التلقائى — وإلا بيحجب فحص حقيقى فيه مشاكل
+  assert.match(reports, /SELECT MAX\(id\) FROM inspections WHERE box_id = b\.id AND COALESCE\(auto_created, 0\) = 0/);
+  assert.match(reports, /SELECT id FROM inspections WHERE box_id = b\.id AND COALESCE\(auto_created, 0\) = 0 ORDER BY id DESC/);
+  assert.match(reports, /EXISTS \(SELECT 1 FROM inspections WHERE box_id = b\.id AND COALESCE\(auto_created, 0\) = 0\)/);
+  // (2) قوائم وتقارير الفحوصات بتستبعده
+  assert.ok([...reports.matchAll(/COALESCE\(i\.auto_created, 0\) = 0/g)].length >= 8,
+    "شرط الاستبعاد لازم يكون على تقارير الفحوصات كلها");
+  // (3) بند مراجعة البيانات مش عيب فى البكس — مايتحسبش فى تقارير الأعطال
+  assert.ok([...reports.matchAll(/ii\.item_key <> 'data_review'/g)].length >= 3);
+});
+
+// الفحص اللى عمله فاحص حقيقى **مايتعلّمش** تلقائى لما نضيف عليه البند —
+// وإلا كان هيتشال من التقارير بالغلط.
+test("adding the item to a real inspection never marks it auto-created", () => {
+  assert.match(integration, /VALUES \(\?, \?, \?, \?, \?, \?, 1\) RETURNING id/,
+    "auto_created = 1 بيتحطّ وقت الإنشاء بس");
+  const addBranch = integration.slice(integration.indexOf("} else {"), integration.indexOf("// (3) الأرقام"));
+  assert.doesNotMatch(addBranch, /auto_created\s*=|auto_created\)/,
+    "فرع الفحص الموجود مايكتبش auto_created");
+  assert.doesNotMatch(addBranch, /UPDATE inspections SET opened_by_name/,
+    "ومايغيّرش origin للفحص الحقيقى");
 });

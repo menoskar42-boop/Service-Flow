@@ -26,6 +26,7 @@ router.get('/', staffOnly, async (req, res) => {
       e.name as exchange_name, u.full_name as inspector_name
       FROM inspections i JOIN boxes b ON b.id = i.box_id JOIN cabinets c ON c.id = b.cabinet_id
       JOIN exchanges e ON e.id = c.exchange_id JOIN users u ON u.id = i.inspector_id
+      WHERE COALESCE(i.auto_created, 0) = 0
       ORDER BY i.id DESC LIMIT 5`);
 
     res.render('reports/dashboard', { title: 'لوحة التقارير', totalBoxes, counts, recentInspections });
@@ -40,7 +41,8 @@ router.get('/inspected', staffOnly, async (req, res) => {
     let sql = `SELECT i.*, b.number as box_number, b.status as box_status,
       c.number as cabinet_number, e.name as exchange_name, u.full_name as inspector_name
       FROM inspections i JOIN boxes b ON b.id = i.box_id JOIN cabinets c ON c.id = b.cabinet_id
-      JOIN exchanges e ON e.id = c.exchange_id JOIN users u ON u.id = i.inspector_id WHERE 1=1`;
+      JOIN exchanges e ON e.id = c.exchange_id JOIN users u ON u.id = i.inspector_id
+      WHERE 1=1 AND COALESCE(i.auto_created, 0) = 0`;
     const params = [];
     if (exchange_id) { sql += ' AND e.id = ?'; params.push(exchange_id); }
     if (cabinet_id)  { sql += ' AND b.cabinet_id = ?'; params.push(cabinet_id); }
@@ -194,7 +196,7 @@ async function needsItemRows(itemKey, filters = {}) {
     JOIN exchanges e ON e.id = c.exchange_id
     JOIN users u ON u.id = i.inspector_id
     WHERE ii.item_key = ? AND ii.value IN ('bad','yes')
-      AND i.id = (SELECT MAX(id) FROM inspections WHERE box_id = b.id)
+      AND i.id = (SELECT MAX(id) FROM inspections WHERE box_id = b.id AND COALESCE(auto_created, 0) = 0)
       AND NOT EXISTS (
         SELECT 1 FROM maintenance_item_status mis
         JOIN maintenance_tasks mt ON mt.id = mis.task_id
@@ -276,7 +278,8 @@ router.get('/inspected/export', staffOnly, async (req, res) => {
     let sql = `SELECT i.*, b.number as box_number, b.status as box_status,
       c.number as cabinet_number, e.name as exchange_name, u.full_name as inspector_name
       FROM inspections i JOIN boxes b ON b.id = i.box_id JOIN cabinets c ON c.id = b.cabinet_id
-      JOIN exchanges e ON e.id = c.exchange_id JOIN users u ON u.id = i.inspector_id WHERE 1=1`;
+      JOIN exchanges e ON e.id = c.exchange_id JOIN users u ON u.id = i.inspector_id
+      WHERE 1=1 AND COALESCE(i.auto_created, 0) = 0`;
     const params = [];
     if (exchange_id) { sql += ' AND e.id = ?'; params.push(exchange_id); }
     if (cabinet_id)  { sql += ' AND b.cabinet_id = ?'; params.push(cabinet_id); }
@@ -486,10 +489,10 @@ router.get('/cabinet/:cabId', staffOnly, async (req, res) => {
 
   const boxes = await db.all(`
     SELECT b.*,
-      (SELECT id FROM inspections WHERE box_id = b.id ORDER BY id DESC LIMIT 1) as insp_id
+      (SELECT id FROM inspections WHERE box_id = b.id AND COALESCE(auto_created, 0) = 0 ORDER BY id DESC LIMIT 1) as insp_id
     FROM boxes b
     WHERE b.cabinet_id = ?
-      AND EXISTS (SELECT 1 FROM inspections WHERE box_id = b.id)
+      AND EXISTS (SELECT 1 FROM inspections WHERE box_id = b.id AND COALESCE(auto_created, 0) = 0)
     ORDER BY CASE WHEN b.number ~ '^[0-9]+$' THEN b.number::INTEGER ELSE 0 END, b.number
   `, [req.params.cabId]);
 
@@ -589,7 +592,7 @@ router.get('/comprehensive', staffOnly, async (req, res) => {
       JOIN users u ON u.id = i.inspector_id
       LEFT JOIN maintenance_tasks mt ON mt.inspection_id = i.id
       LEFT JOIN users ut ON ut.id = mt.technician_id
-      WHERE COALESCE(i.is_archived, 0) = 0
+      WHERE COALESCE(i.is_archived, 0) = 0 AND COALESCE(i.auto_created, 0) = 0
     `;
     const params = [];
     if (exchange_id) { sql += ' AND e.id = ?'; params.push(exchange_id); }
@@ -653,7 +656,7 @@ router.get('/completed-work', staffOnly, async (req, res) => {
       INNER JOIN maintenance_tasks mt ON mt.inspection_id = i.id
         AND mt.status IN ('completed', 'pending_approval')
       LEFT JOIN users ut ON ut.id = mt.technician_id
-      WHERE COALESCE(i.is_archived, 0) = 0
+      WHERE COALESCE(i.is_archived, 0) = 0 AND COALESCE(i.auto_created, 0) = 0
     `;
     const params = [];
     if (exchange_id) { sql += ' AND e.id = ?'; params.push(exchange_id); }
@@ -711,7 +714,7 @@ router.get('/completed-work/export', staffOnly, async (req, res) => {
       INNER JOIN maintenance_tasks mt ON mt.inspection_id = i.id
         AND mt.status IN ('completed', 'pending_approval')
       LEFT JOIN users ut ON ut.id = mt.technician_id
-      WHERE COALESCE(i.is_archived, 0) = 0
+      WHERE COALESCE(i.is_archived, 0) = 0 AND COALESCE(i.auto_created, 0) = 0
     `;
     const params = [];
     if (exchange_id) { sql += ' AND e.id = ?'; params.push(exchange_id); }
@@ -811,6 +814,8 @@ function buildTotalNeedingWorkSql(query) {
     JOIN cabinets c ON c.id = b.cabinet_id
     JOIN exchanges e ON e.id = c.exchange_id
     WHERE (ii.value = 'bad' OR ii.value = 'yes') AND COALESCE(i.is_archived, 0) = 0
+      AND COALESCE(i.auto_created, 0) = 0
+      AND ii.item_key <> 'data_review'
   `;
   const params = [];
   if (query.exchange_id) { sql += ' AND e.id = ?'; params.push(query.exchange_id); }
@@ -913,7 +918,7 @@ router.get('/comprehensive/export', staffOnly, async (req, res) => {
       JOIN users u ON u.id = i.inspector_id
       LEFT JOIN maintenance_tasks mt ON mt.inspection_id = i.id
       LEFT JOIN users ut ON ut.id = mt.technician_id
-      WHERE COALESCE(i.is_archived, 0) = 0
+      WHERE COALESCE(i.is_archived, 0) = 0 AND COALESCE(i.auto_created, 0) = 0
     `;
     const params = [];
     if (exchange_id) { sql += ' AND e.id = ?'; params.push(exchange_id); }
@@ -1053,7 +1058,8 @@ async function overlapDistanceRows(completed, filters) {
     JOIN exchanges e     ON e.id  = c.exchange_id
     JOIN users u         ON u.id  = i.inspector_id
     LEFT JOIN maintenance_tasks mt ON mt.inspection_id = i.id
-    WHERE ${cond.join(' AND ')}
+    WHERE COALESCE(i.auto_created, 0) = 0 AND ii.item_key <> 'data_review'
+      AND ${cond.join(' AND ')}
     ORDER BY i.date DESC, e.name, c.number,
              CASE WHEN b.number ~ '^[0-9]+$' THEN b.number::INTEGER ELSE 0 END, b.number
   `, params);
@@ -1318,7 +1324,7 @@ router.get('/cabinet/:cabId/photos/download', staffOnly, async (req, res) => {
 
     const boxes = await db.all(`
       SELECT b.number FROM boxes b
-      WHERE b.cabinet_id = ? AND EXISTS (SELECT 1 FROM inspections WHERE box_id = b.id)
+      WHERE b.cabinet_id = ? AND EXISTS (SELECT 1 FROM inspections WHERE box_id = b.id AND COALESCE(auto_created, 0) = 0)
       ORDER BY CASE WHEN b.number ~ '^[0-9]+$' THEN b.number::INTEGER ELSE 0 END, b.number
     `, [req.params.cabId]);
 
@@ -1575,9 +1581,11 @@ async function noIssuesReportRows(filters) {
     JOIN cabinets c ON c.id = b.cabinet_id
     JOIN exchanges e ON e.id = c.exchange_id
     LEFT JOIN cabinet_codes cc ON cc.exchange_name = e.name AND cc.cabinet_number = c.number
-    WHERE NOT EXISTS (
+    WHERE COALESCE(i.auto_created, 0) = 0
+      AND NOT EXISTS (
       SELECT 1 FROM inspection_items ii
       WHERE ii.inspection_id = i.id AND ii.value IN ('bad','yes')
+        AND ii.item_key <> 'data_review'
     )
     ${extra}
     ORDER BY i.date DESC,

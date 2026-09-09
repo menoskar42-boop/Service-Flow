@@ -4,7 +4,12 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PackageCheck, Search, FileSpreadsheet, Printer, Phone } from "lucide-react";
+import { Loader2, PackageCheck, Search, FileSpreadsheet, Printer, Phone, PlayCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { ROLES } from "@shared/schema";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { format } from "date-fns";
@@ -43,6 +48,14 @@ const COLS = ["#", "السنترال", "الكابينة", "البكس", "اتف
   "عدد الأرقام", "راجعها", "تاريخ المراجعة"];
 
 export function BoxFullReviewedReport() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const isSuper = user?.role === ROLES.SUPER_ADMIN;
+  // «تشغيل على الموجود» — بيمشى على البكسيات المليانة اللى **مسجّلة بالفعل** فى
+  // متعذرات OM الحالية وفى الطلبات (الهوك التلقائى بيشتغل على الردود الجديدة بس).
+  const [running, setRunning] = useState(false);
+  const [preview, setPreview] = useState<any | null>(null);
   const [dateFrom, setDateFrom] = useState(cairoMonthStart);
   const [dateTo, setDateTo] = useState(cairoToday);
   const [search, setSearch] = useState("");
@@ -82,6 +95,40 @@ export function BoxFullReviewedReport() {
         .some((v) => String(v ?? "").toLowerCase().includes(low));
     });
   }, [rows, search]);
+
+  const loadPreview = async () => {
+    setRunning(true);
+    try {
+      const res = await fetch("/api/box-full/backfill-preview", { credentials: "include" });
+      if (!res.ok) throw new Error("فشل التحميل");
+      setPreview(await res.json());
+    } catch (e: any) {
+      toast({ title: "تعذّر تحميل المعاينة", description: e?.message || "", variant: "destructive", duration: 6000 });
+    } finally { setRunning(false); }
+  };
+
+  const runBackfill = async () => {
+    setRunning(true);
+    try {
+      const res = await apiRequest("POST", "/api/box-full/backfill-run", {});
+      const j = await res.json();
+      toast({
+        title: "اتنفّذ على البكسيات الموجودة",
+        description: `${j?.counts?.done ?? 0} بكس اتبعت لموقع الصيانة `
+          + `(${j?.counts?.created ?? 0} فحص جديد · ${j?.counts?.phones ?? 0} رقم)`
+          + (j?.counts?.failed ? ` — ${j.counts.failed} فشلوا` : ""),
+        duration: 8000,
+      });
+      setPreview(null);
+      qc.invalidateQueries({ queryKey: ["/api/reports/box-full-reviewed"] });
+    } catch (e: any) {
+      let msg = e?.message || "حدث خطأ";
+      const m = String(msg).match(/^\d+:\s*(.*)$/s);
+      if (m) msg = m[1];
+      try { const j = JSON.parse(msg); if (j?.message) msg = j.message; } catch { /* نص عادى */ }
+      toast({ title: "تعذّر التنفيذ", description: msg, variant: "destructive", duration: 8000 });
+    } finally { setRunning(false); }
+  };
 
   const exportRows = () => shown.map((r, i) => [
     i + 1, r.central ?? "", r.cabinet ?? "", r.box ?? "", r.openedBy ?? "", r.origin ?? "",
@@ -131,6 +178,14 @@ export function BoxFullReviewedReport() {
         <span className="text-sm text-muted-foreground mb-2">
           إجمالي: <strong>{shown.length}</strong> بكس
         </span>
+        {isSuper && (
+          <Button variant="outline" size="sm" onClick={loadPreview} disabled={running}
+            className="text-amber-700 border-amber-300 gap-1 mb-1"
+            title="تشغيل على البكسيات المليانة الموجودة دلوقتى فى متعذرات OM الحالية وفى الطلبات">
+            {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+            تشغيل على الموجود
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={shown.length === 0}
           className="text-green-700 border-green-200 gap-1 mb-1">
           <FileSpreadsheet className="w-4 h-4" /> Excel
@@ -192,6 +247,79 @@ export function BoxFullReviewedReport() {
           </TableBody>
         </Table>
       </div>
+
+      {preview && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4"
+          onClick={() => setPreview(null)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-4 max-h-[85vh] overflow-auto"
+            dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold mb-1">تشغيل على البكسيات المليانة الموجودة</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              دى البكسيات المسجّلة «بوكس مليان» دلوقتى فى متعذرات OM الحالية وفى الطلبات.
+              البكس الواحد بيتحسب مرة واحدة حتى لو عليه أكتر من متعذر/طلب. المعاينة دى
+              <strong> مابتفتحش حاجة</strong> — التنفيذ بالزرار تحت.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-3 text-sm">
+              <span className="px-2 py-1 rounded bg-muted">الإجمالى: <strong>{preview.counts.total}</strong></span>
+              <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-800">فحص جديد: <strong>{preview.counts.newInspection}</strong></span>
+              <span className="px-2 py-1 rounded bg-blue-100 text-blue-800">بند على فحص شغّال: <strong>{preview.counts.addItem}</strong></span>
+              <span className="px-2 py-1 rounded bg-slate-100 text-slate-700">اتعمل قبل كده: <strong>{preview.counts.already}</strong></span>
+              <span className="px-2 py-1 rounded bg-amber-100 text-amber-800">أرقام هتتبعت: <strong>{preview.counts.phones}</strong></span>
+            </div>
+            <div className="overflow-x-auto">
+              <Table className="text-right text-sm" dir="rtl">
+                <TableHeader className="bg-muted/50">
+                  <TableRow>
+                    <TableHead className="text-right font-bold">#</TableHead>
+                    <TableHead className="text-right font-bold">السنترال</TableHead>
+                    <TableHead className="text-right font-bold">الكابينة</TableHead>
+                    <TableHead className="text-right font-bold">البكس</TableHead>
+                    <TableHead className="text-right font-bold">الفنى</TableHead>
+                    <TableHead className="text-right font-bold">المصدر</TableHead>
+                    <TableHead className="text-right font-bold">الأرقام</TableHead>
+                    <TableHead className="text-right font-bold">هيحصل إيه</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {preview.data.length === 0 ? (
+                    <TableRow><TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                      مافيش بكسيات مليانة مسجّلة دلوقتى
+                    </TableCell></TableRow>
+                  ) : preview.data.map((d: any, i: number) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                      <TableCell className="whitespace-nowrap">{d.central}</TableCell>
+                      <TableCell>{d.cabinet}</TableCell>
+                      <TableCell className="font-medium text-blue-700">{d.box}</TableCell>
+                      <TableCell className="whitespace-nowrap">{d.techName || "-"}</TableCell>
+                      <TableCell>{d.source}</TableCell>
+                      <TableCell>{d.phones}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+                          d.action === "new_inspection" ? "bg-emerald-100 text-emerald-800"
+                          : d.action === "add_item" ? "bg-blue-100 text-blue-800"
+                          : "bg-slate-100 text-slate-700"
+                        }`}>
+                          {d.action === "new_inspection" ? "فحص جديد"
+                            : d.action === "add_item" ? "بند على فحص شغّال" : "اتعمل قبل كده"}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" onClick={runBackfill} disabled={running || preview.data.length === 0}
+                className="gap-1">
+                {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
+                نفّذ ({preview.counts.total})
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setPreview(null)}>إلغاء</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {openPhones && (
         <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4"

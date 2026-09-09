@@ -234,6 +234,9 @@ async function migrate() {
     ['opened_by_name', 'TEXT'],
     ['origin', 'TEXT'],
     ['origin_ref', 'TEXT'],
+    // الفحص اتفتح تلقائياً من Service-Flow؟ التقارير بتستبعده عشان مايلوّثش
+    // إحصائيات الفحص الحقيقى (وأهم من كده: مايحجبش آخر فحص حقيقى للبكس).
+    ['auto_created', 'INTEGER DEFAULT 0'],
   ]) {
     try { await sp(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS ${col} ${typ}`); } catch {}
   }

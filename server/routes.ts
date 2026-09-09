@@ -26,8 +26,8 @@ import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
-import { requestBoxDataReview } from "./box-full-inspection";
-import { normCab, expandBoxes, boxKey } from "@shared/cab-norm";
+import { requestBoxDataReview, boxPhones } from "./box-full-inspection";
+import { normCab, normBox, expandBoxes, boxKey } from "@shared/cab-norm";
 import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
 import { boxAverageFromAggregate, boxAverageFromAggregates, isBoxBrokenReason } from "@shared/om-box-score";
 
@@ -9722,6 +9722,118 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(500).json({ message: e.message || "خطأ في الاستيراد" });
     }
+  });
+
+  // ── «بوكس مليان»: التشغيل بأثر رجعى على البكسيات الموجودة دلوقتى ─────────────
+  // الهوك بيشتغل على الردود الجديدة بس، فده بيغطّى اللى مسجّل بالفعل فى متعذرات OM
+  // الحالية وفى الطلبات. بنجمّع **البكسيات المميّزة** (البكس الواحد مرة واحدة حتى لو
+  // عليه أكتر من متعذر/طلب) — أول مرجع بالتاريخ هو اللى بيتسجّل.
+  const collectBoxFullCandidates = async () => {
+    const seen = new Map<string, any>();
+    const add = (r: any, source: "OM" | "طلبات", refKey: string) => {
+      const central = String(r.central || "").trim();
+      const cabinet = String(r.cabinet || "").trim();
+      const box = String(r.box || "").trim();
+      if (!central || !cabinet || !box) return;
+      const key = `${normCentral(central)}|${normCab(cabinet)}|${normBox(box)}`;
+      if (seen.has(key)) { seen.get(key).refs.push(refKey); return; }
+      seen.set(key, {
+        central, cabinet, box, techName: String(r.techName || "").trim(),
+        source, refKey, respondedAt: r.respondedAt, refs: [refKey],
+      });
+    };
+    // متعذرات OM — الحالية بس: المتعذر اللى لسه ظاهر فى الملف الحالى (ftth_orders)
+    const { rows: om } = await pool.query(
+      `SELECT r.serial_number AS ref, r.central_name AS central, r.cabin_number AS cabinet,
+              r.box_number AS box, r.tech_name AS "techName",
+              (r.responded_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt"
+         FROM om_responses r
+        WHERE r.rejection_reason = $1 AND COALESCE(btrim(r.box_number), '') <> ''
+          AND EXISTS (SELECT 1 FROM ftth_orders f WHERE f.serial_number = r.serial_number)
+        ORDER BY r.responded_at DESC NULLS LAST`, [REJECTION_REASONS.BOX_FULL]);
+    for (const r of om) add(r, "OM", `متعذر ${r.ref}`);
+    // الطلبات
+    const { rows: ord } = await pool.query(
+      `SELECT id::text AS ref, central_name AS central, cabin_number AS cabinet,
+              box_number AS box, tech_name AS "techName",
+              (tech_response_at AT TIME ZONE 'Africa/Cairo') AS "respondedAt"
+         FROM orders
+        WHERE rejection_reason = $1 AND COALESCE(btrim(box_number), '') <> ''
+        ORDER BY tech_response_at DESC NULLS LAST`, [REJECTION_REASONS.BOX_FULL]);
+    for (const r of ord) add(r, "طلبات", `طلب #${r.ref}`);
+    return Array.from(seen.values());
+  };
+
+  // معاينة — **مابتفتحش حاجة**. بتقول لكل بكس: هيتفتحله فحص؟ ولا فيه فحص شغّال
+  // هيتضاف عليه البند؟ وكام رقم هيتبعت معاه.
+  app.get("/api/box-full/backfill-preview", requireAuth, requireAdmin, async (_req, res) => {
+    try {
+      const cands = await collectBoxFullCandidates();
+      const data: any[] = [];
+      for (const c of cands) {
+        let phones = 0;
+        try { phones = (await boxPhones(c.central, c.cabinet, c.box)).length; } catch { /* إضافى */ }
+        // فيه فحص غير مكتمل للبكس ده على موقع الصيانة؟
+        let existing: any = null;
+        try {
+          const { rows } = await pool.query(
+            `SELECT i.id,
+                    EXISTS (SELECT 1 FROM maintenance.inspection_items ii
+                             WHERE ii.inspection_id = i.id AND ii.item_key = 'data_review') AS has_item
+               FROM maintenance.inspections i
+               JOIN maintenance.boxes b ON b.id = i.box_id
+               JOIN maintenance.cabinets cb ON cb.id = b.cabinet_id
+               JOIN maintenance.exchanges e ON e.id = cb.exchange_id
+              WHERE btrim(e.name) = btrim($1) AND btrim(cb.number) = btrim($2)
+                AND btrim(b.number) = btrim($3) AND COALESCE(i.is_archived, 0) = 0
+                AND NOT EXISTS (SELECT 1 FROM maintenance.maintenance_tasks t
+                                 WHERE t.inspection_id = i.id AND t.status = 'completed')
+              ORDER BY i.id DESC LIMIT 1`, [c.central, c.cabinet, c.box]);
+          existing = rows[0] || null;
+        } catch { /* موقع الصيانة مش مركّب */ }
+        data.push({
+          ...c, phones,
+          action: existing ? (existing.has_item ? "already" : "add_item") : "new_inspection",
+          inspectionId: existing?.id ?? null,
+        });
+      }
+      res.json({
+        data,
+        counts: {
+          total: data.length,
+          newInspection: data.filter((d) => d.action === "new_inspection").length,
+          addItem: data.filter((d) => d.action === "add_item").length,
+          already: data.filter((d) => d.action === "already").length,
+          phones: data.reduce((a, d) => a + d.phones, 0),
+        },
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // التنفيذ الفعلى — سوبر أدمن بس. الـ endpoint بتاع موقع الصيانة idempotent،
+  // فإعادة التشغيل مابتكرّرش فحص ولا أرقام.
+  app.post("/api/box-full/backfill-run", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const cands = await collectBoxFullCandidates();
+      const done: any[] = [], failed: any[] = [];
+      for (const c of cands) {
+        const r = await requestBoxDataReview({
+          central: c.central, cabinet: c.cabinet, box: c.box,
+          techName: c.techName || "غير معروف", source: c.source, refKey: c.refKey,
+        });
+        if (r.ok) done.push({ ...c, inspectionId: r.inspectionId, created: r.created, phones: r.phonesSent });
+        else failed.push({ ...c, why: r.reason });
+      }
+      res.json({
+        ok: true,
+        counts: {
+          total: cands.length, done: done.length, failed: failed.length,
+          created: done.filter((d) => d.created).length,
+          phones: done.reduce((a, d) => a + (d.phones || 0), 0),
+        },
+        done, failed,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── تكتات «بوكس معطل»: التشغيل بأثر رجعى على القديم ──────────────────────────

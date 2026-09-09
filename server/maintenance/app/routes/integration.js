@@ -141,8 +141,8 @@ router.post('/box-data-review', express.json({ limit: '1mb' }), async (req, res)
         "SELECT id FROM users WHERE role IN ('admin','inspector') AND COALESCE(is_active,1) = 1 ORDER BY id LIMIT 1");
       if (!sys) return res.status(500).json({ error: 'مافيش مستخدم فاحص/أدمن نربط بيه الفحص' });
       insp = await db.get(
-        `INSERT INTO inspections (box_id, inspector_id, general_notes, opened_by_name, origin, origin_ref)
-         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
+        `INSERT INTO inspections (box_id, inspector_id, general_notes, opened_by_name, origin, origin_ref, auto_created)
+         VALUES (?, ?, ?, ?, ?, ?, 1) RETURNING id`,
         [bx.id, sys.id, noteTxt, openedBy || null, origin || null, originRef || null]);
       for (const [key, type] of CHECKLIST_KEYS) {
         // البند المطلوب = «yes» (فيه شغل)، والباقى بيتفتح بقيمة سليمة **ومعاه ملاحظة**
@@ -166,11 +166,9 @@ router.post('/box-data-review', express.json({ limit: '1mb' }), async (req, res)
          ON CONFLICT (inspection_id, item_key)
          DO UPDATE SET value = 'yes', notes = EXCLUDED.notes`,
         [insp.id, noteTxt]);
-      // ولو الفحص مالوش «فاتح» مسجّل (فحص قديم) نسجّله دلوقتى
-      await db.run(
-        `UPDATE inspections SET opened_by_name = COALESCE(opened_by_name, ?),
-                origin = COALESCE(origin, ?), origin_ref = COALESCE(origin_ref, ?)
-          WHERE id = ?`, [openedBy || null, origin || null, originRef || null, insp.id]);
+      // ⚠️ الفحص ده عمله فاحص حقيقى — مابنحطّش عليه علامة auto_created ولا بنغيّر
+      // origin، وإلا كان هيتشال من تقارير الصيانة بالغلط. مين طلب المراجعة مسجّل
+      // فى ملاحظات البند نفسه.
     }
 
     // بند «مراجعة بيانات البكس» = شغل مطلوب → لازم يبقى فيه **مهمة صيانة** عشان
