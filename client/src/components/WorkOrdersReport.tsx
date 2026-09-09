@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { Upload, FileDown, FileText, Loader2, BarChart3, Search, X } from "lucide-react";
 import { RefreshButton } from "@/components/RefreshButton";
 import { ROLES } from "@shared/schema";
+import { TECHNICIAN_NAMES } from "@shared/technicians";
 import { useAuth } from "@/hooks/use-auth";
 import { dispatchSpeedTool, openOpSite, SITE_WIDE_KEY } from "@/lib/exec-queue";
 import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
@@ -26,7 +27,16 @@ interface WorkOrder {
   closeDate: string;
   itemName: string | null;
   cableQuantity: string | null;
+  /** اسم الفنى **بعد** التعديل (لو فيه تعديل مسجّل) — ده اللى بيتعرض ويتصدّر. */
   techName: string;
+  /** الاسم زى ما هو فى ملف أوامر الشغل — بيتعرض كمرجع تحت الاسم المعدَّل. */
+  sheetTechName?: string | null;
+  /** فيه تعديل مسجّل على الاسم؟ */
+  techEdited?: boolean;
+  /** مين عدّله (اسم المستخدم). */
+  techEditedBy?: string | null;
+  /** الاسم بيرجع لواحد من الفنيين الخمسة؟ لو أيوه **مايتعدّلش** أبداً. */
+  techKnown?: boolean;
 }
 
 interface WorkOrdersReportProps {
@@ -94,6 +104,36 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
       return phone.includes(q) || wo.includes(q);
     });
   }, [allOrders, search]);
+
+  // ── تعديل اسم الفنى (سوبر أدمن بس) ────────────────────────────────────────
+  // اسم من الفنيين الخمسة **مايتعدّلش** — السيرفر بيرفضه كمان (409)، والدروب ليست
+  // مابتظهرش أصلاً. الأسماء الغريبة (عامل مقاول، اسم مكتوب غلط، فاضى) هى اللى بتتعدّل.
+  // نفس الـ endpoint المستخدَم فى «أوامر شغل بدون كمية سلك»، فالتعديل بيظهر فى الاتنين.
+  const canEditTech = user?.role === ROLES.SUPER_ADMIN;
+  const [savingTech, setSavingTech] = useState<number | null>(null);
+
+  const saveTech = async (o: WorkOrder, techName: string) => {
+    if (!techName) return;
+    setSavingTech(o.id);
+    try {
+      const res = await fetch("/api/work-order-tech", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ centralName: o.centralName, workOrderId: o.workOrderId, techName }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.message || "تعذّر تسجيل اسم الفنى");
+      toast({ title: "اتسجّل اسم الفنى", description: `${techName} — أمر شغل ${o.workOrderId}`, duration: 3000 });
+      qc.invalidateQueries({ queryKey: ["/api/work-orders"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/work-orders-no-cable"] });
+    } catch (e: any) {
+      toast({ title: "تعذّر تسجيل اسم الفنى", description: e?.message || "حدث خطأ",
+        variant: "destructive", duration: 6000 });
+    } finally {
+      setSavingTech(null);
+    }
+  };
 
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -385,7 +425,39 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
                     </TableCell>
                     <TableCell className="text-muted-foreground">{o.itemName || "-"}</TableCell>
                     <TableCell className="text-center">{o.cableQuantity || "-"}</TableCell>
-                    <TableCell className="whitespace-nowrap">{o.techName}</TableCell>
+                    <TableCell>
+                      {o.techKnown || !canEditTech ? (
+                        <span className={`whitespace-nowrap ${o.techKnown ? "" : "text-amber-700"}`}
+                          title={o.techKnown ? "" : "مش مطابق لأى فنى مسجّل"}>
+                          {o.techName || "-"}
+                        </span>
+                      ) : (
+                        // الاسم مش مطابق لأى فنى من الخمسة → سوبر أدمن يقدر يصحّحه
+                        <div className="flex items-center gap-1">
+                          <select
+                            value=""
+                            disabled={savingTech === o.id}
+                            onChange={(e) => { if (e.target.value) void saveTech(o, e.target.value); }}
+                            className="border rounded-md px-2 py-1 text-xs max-w-[170px]"
+                            dir="rtl"
+                            title={`الاسم الحالى: ${o.techName || "—"} — مش مطابق لأى فنى مسجّل. اختر الفنى الصحيح.`}
+                          >
+                            <option value="">{o.techName || "بدون اسم"} — اختر الفنى</option>
+                            {TECHNICIAN_NAMES.map((t) => (
+                              <option key={t} value={t}>{t}</option>
+                            ))}
+                          </select>
+                          {savingTech === o.id && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                        </div>
+                      )}
+                      {/* اتعدّل؟ نوضّح الاسم الأصلى فى الملف ومين عدّله */}
+                      {o.techEdited && o.sheetTechName && o.sheetTechName !== o.techName && (
+                        <div className="text-[11px] text-muted-foreground whitespace-nowrap"
+                          title={o.techEditedBy ? `عدّله: ${o.techEditedBy}` : ""}>
+                          فى الملف: {o.sheetTechName}
+                        </div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

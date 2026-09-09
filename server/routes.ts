@@ -6783,8 +6783,22 @@ export async function registerRoutes(
               w.phone_number AS "phoneNumber", w.service_type AS "serviceType",
               w.close_date AS "closeDate", w.item_name AS "itemName",
               COALESCE(NULLIF(w.cable_quantity, ''), ce.cable_quantity) AS "cableQuantity",
-              w.tech_name AS "techName"
+              -- ⚠️ اسم الفنى لازم ياخد التعديل فى الاعتبار: لما فنى يسجّل كمية سلك
+              -- على أمر شغل اسمه مش من الخمسة، اسمه هو اللى بيتسجّل. من غير الـ JOIN
+              -- ده التعديل كان بيتخزّن والتقرير يفضل عارض الاسم القديم.
+              COALESCE(NULLIF(btrim(ovr.tech_name), ''), w.tech_name) AS "techName",
+              btrim(w.tech_name) AS "sheetTechName",
+              (ovr.tech_name IS NOT NULL) AS "techEdited",
+              ovr.updated_by_name AS "techEditedBy",
+              w.worker_code AS "workerCode",
+              ${canonicalTechSql(`COALESCE(
+                 (SELECT tn.tech_name FROM technician_names tn
+                   WHERE btrim(tn.worker_code) = btrim(COALESCE(w.worker_code, ''))
+                     AND btrim(COALESCE(w.worker_code, '')) <> '' LIMIT 1),
+                 NULLIF(btrim(ovr.tech_name), ''), w.tech_name)`)} IS NOT NULL AS "techKnown"
        FROM work_orders w
+       LEFT JOIN work_order_tech_overrides ovr
+         ON ovr.central_name = w.central_name AND ovr.work_order_id = w.work_order_id
        LEFT JOIN cable_entries ce
          ON ce.phone_local = CASE
               WHEN regexp_replace(w.phone_number, '\\D', '', 'g') LIKE '88%'
