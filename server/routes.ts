@@ -779,6 +779,49 @@ const hasFrameSql = (fullPhoneExpr: string) => `EXISTS (
        AND COALESCE(btrim(pf.frame::text), '') <> ''
   )`;
 
+// ── تطبيق «تصحيح البيان» على بيان التليفونات (phone_lines) ───────────────────
+// الفكرة: بدل ما نضيف استثناء فى كل تقرير، بنكتب التصحيح فى **مصدر البيانات نفسه**
+// — فأى تقرير بيقرا من phone_lines بيشوف البيانات المصححة تلقائياً (بيان التليفونات،
+// الأعطال، البكسيات، متوسطات الكابينة… كلهم).
+// ⚠️ لازم تتنادى تانى **بعد كل رفع لملف 131**: الرفع بيكتب الكابينة والبكس والترمنال
+// فوق أى قيمة موجودة، فمن غير كده التصحيحات كانت هتتمسح مع أول رفعة.
+//   phones = null → طبّق كل التصحيحات (بعد الرفع)، أو مصفوفة أرقام → رقم بعينه.
+const applyLineCorrections = async (phones: string[] | null = null): Promise<number> => {
+  const scope = phones && phones.length ? phones : null;
+  // أحدث تصحيح لكل رقم هو المعتمد
+  const latest = `
+    SELECT DISTINCT ON (c.phone_full) c.phone_full,
+           NULLIF(btrim(c.central), '')      AS central,
+           NULLIF(btrim(c.cabin_number), '') AS cabin_number,
+           NULLIF(btrim(c.box_number), '')   AS box_number,
+           NULLIF(btrim(c.dp_terminal), '')  AS dp_terminal
+      FROM line_data_corrections c
+     WHERE ($1::text[] IS NULL OR c.phone_full = ANY($1::text[]))
+     ORDER BY c.phone_full, c.created_at DESC, c.id DESC`;
+  // (1) الأرقام اللى ليها بيان: نكتب فوقه القيم المصححة (الفاضى مابيمسحش)
+  const upd = await pool.query(
+    `WITH latest AS (${latest})
+     UPDATE phone_lines pl SET
+       central      = COALESCE(l.central, pl.central),
+       cabin_number = COALESCE(l.cabin_number, pl.cabin_number),
+       box_number   = COALESCE(l.box_number, pl.box_number),
+       dp_terminal  = COALESCE(l.dp_terminal, pl.dp_terminal)
+     FROM latest l
+     WHERE pl.full_phone = l.phone_full`, [scope]);
+  // (2) الأرقام اللى مالهاش بيان أصلاً: نضيفها — بس لو التصحيح فيه سنترال
+  //     (السنترال NOT NULL فى الجدول، ومن غيره مانقدرش نضيف صف).
+  const ins = await pool.query(
+    `WITH latest AS (${latest})
+     INSERT INTO phone_lines (tel_no, full_phone, central, cabin_number, box_number, dp_terminal)
+     SELECT regexp_replace(l.phone_full, '^88', ''), l.phone_full,
+            l.central, l.cabin_number, l.box_number, l.dp_terminal
+       FROM latest l
+      WHERE l.central IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM phone_lines p2 WHERE p2.full_phone = l.phone_full)
+     ON CONFLICT (full_phone) DO NOTHING`, [scope]);
+  return (upd.rowCount ?? 0) + (ins.rowCount ?? 0);
+};
+
 // ── معيار «محتاجة رفع سرعة» — تعريف واحد لكل التقارير ────────────────────────
 // بيستخدمه: تقرير «محتاجة رفع سرعة»، وتقريرَى «خرجت بعد القياس» (عن طريق qualifies)،
 // وتقرير «تحتاج إيقاف PO» (بالعكس تماماً — اللى مش محتاج رفع سرعة). كان مكتوب بالنص
@@ -6894,9 +6937,13 @@ export async function registerRoutes(
        VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,$8) RETURNING id`,
       [local, fullNoDash, central, cabin, box, term, req.user.id, byName]);
 
-    // ⚠️ مابنكتبش اللى الفنى دخّله فى البيان الفنى — لازم يفضل زى ما هو عشان نقدر
-    // نقارنه بنتيجة المراجعة اللى جاية. المقارنة بتحصل لما نتيجة المراجعة تبقى أحدث
-    // من requested_at، وأى اختلاف بيظهر لمسئول البيانات فى تقرير «عدم التطابق».
+    // بيان التليفونات (phone_lines) بيتصحّح **فوراً** — فكل التقارير اللى بتقرا منه
+    // (بيان التليفونات، الأعطال، البكسيات، متوسطات الكابينة…) بتشوف البيانات الصح.
+    await applyLineCorrections([fullNoDash]);
+
+    // ⚠️ لكن **مابنكتبش** فى line_subscriber_info (نتيجة المراجعة) — دى بتمثّل حالة
+    // الموقع الخارجى، ولازم تفضل زى ما هى عشان المقارنة تبان لمسئول البيانات. لو
+    // كتبنا فيها كانت المقارنة هتطابق دايماً وحد مكانش هيعرف إن فيه حاجة محتاجة تصحيح.
 
     // مراجعة الاسم والعنوان — مهمة واحدة للرقم، بأولوية الطلب الصغير (2) زى أى طلب
     // من المستخدم. لو الرقم لسه فى الطابور مانكرّرش.
@@ -8859,6 +8906,11 @@ export async function registerRoutes(
          clean(b.iduNo), clean(b.oduNo), clean(b.primaryBlock), clean(b.cabinetIn), clean(b.secBlock),
          clean(b.cabinetOut), clean(b.fiberBlock), clean(b.fiberOut)],
       );
+      // ⚠️ مراجعة البيان الفنى بترجّع بيانات **الموقع الخارجى** — اللى ممكن يكون لسه
+      // غلط. لو كتبناها فوق التصحيح كنا هنلغيه، فبنرجّع تطبيق التصحيح للرقم بعدها.
+      try { await applyLineCorrections([full]); } catch (e: any) {
+        console.error("[subinfo] فشل إعادة تطبيق التصحيح:", e.message);
+      }
     }
     res.json({ ok: true });
   });
@@ -9141,6 +9193,13 @@ export async function registerRoutes(
         }
         total += dataRows.length;
       }
+      // ⚠️ رفع 131 بيكتب الكابينة والبكس والترمنال فوق أى قيمة موجودة — فلازم نرجّع
+      // تطبيق «تصحيح البيان» بعده، وإلا كل التصحيحات بتتمسح مع أول رفعة.
+      try {
+        const reapplied = await applyLineCorrections();
+        if (reapplied) console.log(`[131] اترجّع تطبيق ${reapplied} تصحيح بيان بعد الرفع`);
+      } catch (e: any) { console.error("[131] فشل إعادة تطبيق التصحيحات:", e.message); }
+
       // نسجّل وقت آخر رفع لـ 131 فى app_state (phone_lines مافيهوش uploaded_at) — للعرض بجانب البطاقة
       try {
         await pool.query(

@@ -203,3 +203,35 @@ test("who corrected and when is always recorded and exposed", () => {
   assert.doesNotMatch(ep, /ON CONFLICT[\s\S]{0,200}line_data_corrections/,
     "مافيش استبدال — كل تصحيح صف جديد بتاريخه وصاحبه");
 });
+
+// التصحيح لازم يوصل **كل** التقارير، مش بحث برقم التليفون بس. الطريقة: بنكتبه فى
+// مصدر البيانات نفسه (phone_lines) — فأى تقرير بيقرا منه بيشوف الصح تلقائياً.
+test("a correction is written into phone_lines so every report sees it", () => {
+  assert.match(routes, /const applyLineCorrections = async \(phones: string\[\] \| null = null\)/);
+  // بيكتب فوق القيم الموجودة (الفاضى مابيمسحش)
+  assert.match(routes, /UPDATE phone_lines pl SET\s*\n\s*central\s*= COALESCE\(l\.central, pl\.central\)/);
+  assert.match(routes, /cabin_number = COALESCE\(l\.cabin_number, pl\.cabin_number\)/);
+  assert.match(routes, /box_number\s*= COALESCE\(l\.box_number, pl\.box_number\)/);
+  assert.match(routes, /dp_terminal\s*= COALESCE\(l\.dp_terminal, pl\.dp_terminal\)/);
+  // وأحدث تصحيح لكل رقم هو المعتمد
+  assert.match(routes, /SELECT DISTINCT ON \(c\.phone_full\) c\.phone_full/);
+  assert.match(routes, /ORDER BY c\.phone_full, c\.created_at DESC, c\.id DESC/);
+  // ورقم مالوش بيان بيتضاف (لو التصحيح فيه سنترال — العمود NOT NULL)
+  assert.match(routes, /INSERT INTO phone_lines \(tel_no, full_phone, central, cabin_number, box_number, dp_terminal\)\s*\n\s*SELECT regexp_replace/);
+  assert.match(routes, /WHERE l\.central IS NOT NULL/);
+});
+
+// ⚠️ رفع 131 بيكتب فوق الكابينة والبكس والترمنال، ومراجعة البيان الفنى بترجّع بيانات
+// الموقع الخارجى — الاتنين كانوا هيمسحوا التصحيح، فلازم يتعاد تطبيقه بعدهم.
+test("corrections survive the 131 upload and the FCC review", () => {
+  // تلات مواضع نداء: الإرسال، وبعد رفع 131، وبعد مراجعة البيان الفنى
+  const calls = [...routes.matchAll(/applyLineCorrections\(/g)].length;
+  assert.ok(calls >= 3, `المفروض 3 مواضع نداء على الأقل (الإرسال + 131 + المراجعة)، لقينا ${calls}`);
+  // بعد رفع 131 — كل التصحيحات
+  assert.match(routes, /const reapplied = await applyLineCorrections\(\);/);
+  assert.match(routes, /اترجّع تطبيق \$\{reapplied\} تصحيح بيان بعد الرفع/);
+  // بعد مراجعة البيان الفنى — الرقم ده بس
+  assert.match(routes, /try \{ await applyLineCorrections\(\[full\]\); \}/);
+  // وعند الإرسال — فوراً
+  assert.match(routes, /await applyLineCorrections\(\[fullNoDash\]\);/);
+});
