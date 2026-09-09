@@ -133,3 +133,39 @@ test("the phone-lookup report opens the same form in a dialog", () => {
   assert.match(formSrc, /readOnly=\{!!initialPhone\}/);
   assert.match(formSrc, /String\(initialPhone \?\? ""\)\.replace\(\/\\D\/g, ""\)\.replace\(\/\^88\/, ""\)/);
 });
+
+// التصحيح بيتطبّق على **موقعنا فوراً**، والموقع الخارجى بيفضل زى ما هو لحد ما مسئول
+// البيانات يصحّحه — عشان كده المقارنة لازم تفضل ضد line_subscriber_info (نتيجة المراجعة)
+// مش ضد اللى بنعرضه. لو التصحيح اتكتب فى line_subscriber_info كانت المقارنة هتطابق دايماً.
+test("a correction overrides what our site shows, without touching the review result", () => {
+  const lookupStart = routes.indexOf('app.get("/api/phone-lines/lookup"');
+  const lookupEnd = routes.indexOf('app.post("/api/line-mobiles"', lookupStart);
+  assert.ok(lookupStart >= 0 && lookupEnd > lookupStart);
+  const lookup = routes.slice(lookupStart, lookupEnd);
+  // التصحيح أول مصدر فى العرض
+  assert.match(lookup, /COALESCE\(corr\.central, pl\.central,/);
+  assert.match(lookup, /COALESCE\(corr\.cabin_number, pl\.cabin_number,/);
+  assert.match(lookup, /COALESCE\(corr\.box_number, pl\.box_number, si\.box_number\)/);
+  assert.match(lookup, /COALESCE\(corr\.dp_terminal, pl\.dp_terminal, si\.dp_terminal\)/);
+  // وأحدث تصحيح هو اللى بيغلب
+  assert.match(lookup, /FROM line_data_corrections c2[\s\S]*ORDER BY c2\.created_at DESC, c2\.id DESC LIMIT 1/);
+  // والمقارنة لسه ضد نتيجة المراجعة
+  assert.match(routes, /const CORR_READY = `\(si\.fetched_at IS NOT NULL AND si\.fetched_at > c\.requested_at\)`/);
+});
+
+// النافذة بتفتح بالقيم الحالية للخط، وكلها قابلة للتعديل.
+test("the dialog opens prefilled with the line's current data", () => {
+  const lookup = readFileSync(
+    new URL("../client/src/components/PhoneLookupReport.tsx", import.meta.url), "utf8");
+  const formSrc = readFileSync(
+    new URL("../client/src/components/LineDataCorrection.tsx", import.meta.url), "utf8");
+  for (const p of ["initialCentral={line?.central}", "initialCabin={line?.cabinNumber}",
+                   "initialBox={line?.boxNumber}", "initialTerminal={line?.dpTerminal}"]) {
+    assert.ok(lookup.includes(p), `النافذة لازم تمرّر ${p}`);
+  }
+  // القيم بتتحطّ كحالة أولية قابلة للتعديل (مش readOnly زى رقم التليفون)
+  assert.match(formSrc, /useState\(\(\) => String\(initialCentral \?\? ""\)\.trim\(\)\)/);
+  assert.match(formSrc, /useState\(\(\) => String\(initialTerminal \?\? ""\)\.trim\(\)\)/);
+  // والقيمة الحالية بتفضل ظاهرة فى القائمة حتى لو مش ضمن خيارات الفلتر
+  assert.match(formSrc, /const withCurrent = \(list: string\[\], current: string\) =>/);
+});

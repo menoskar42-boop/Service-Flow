@@ -5900,10 +5900,14 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `WITH t AS (SELECT $1::text AS raw, $2::text AS short, $3::text AS full)
        SELECT COALESCE(pl.tel_no, t.short) AS "telNo",
-              COALESCE(pl.central, cpl.central_name, si.central, wfmo.central_name) AS central,
-              COALESCE(pl.cabin_number, cpl.cabinet_no, si.cabin_number,
+              -- ⚠️ «تصحيح بيان» بيغلب كل المصادر: الفنى بيصحّح على موقعنا فوراً، ومسئول
+              -- البيانات بيصحّح على الموقع الخارجى بعدين. أحدث تصحيح للرقم هو اللى بيتعرض.
+              COALESCE(corr.central, pl.central, cpl.central_name, si.central, wfmo.central_name) AS central,
+              COALESCE(corr.cabin_number, pl.cabin_number, cpl.cabinet_no, si.cabin_number,
                        NULLIF(btrim(wfmo.exch_cabinet), '')) AS "cabinNumber",
-              COALESCE(pl.box_number, si.box_number) AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
+              COALESCE(corr.box_number, pl.box_number, si.box_number) AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
+              (corr.id IS NOT NULL) AS "dataCorrected",
+              corr.submitted_by_name AS "correctedBy",
               -- كود الكابينة (MSAN): الأولوية لجدول المنافذ (phone_ports) لأنه بيتحدّث فعلياً
               -- من «تحديث البورت» (port-change/ingest) ومن تحديث ملف البورتات كل نص ساعة.
               -- كان بياخده من cabinet_technicians (المشتق من سنترال/كابينة الخط النحاسية) —
@@ -5918,7 +5922,7 @@ export async function registerRoutes(
               COALESCE(pl.idu_no, si.idu_no) AS "iduNo", COALESCE(pl.odu_no, si.odu_no) AS "oduNo",
               COALESCE(pl.primary_block_no, si.primary_block) AS "primaryBlockNo", COALESCE(pl.cabinet_in, si.cabinet_in) AS "cabinetIn",
               COALESCE(pl.sec_block_no, si.sec_block) AS "secBlockNo", COALESCE(pl.cabinet_out, si.cabinet_out) AS "cabinetOut",
-              COALESCE(pl.dp_terminal, si.dp_terminal) AS "dpTerminal", COALESCE(pp.port_number, pl.port, si.port_no) AS "port", pl.len AS "len",
+              COALESCE(corr.dp_terminal, pl.dp_terminal, si.dp_terminal) AS "dpTerminal", COALESCE(pp.port_number, pl.port, si.port_no) AS "port", pl.len AS "len",
               COALESCE(pl.fiber_block, si.fiber_block) AS "fiberBlock", COALESCE(pl.fiber_out, si.fiber_out) AS "fiberOut",
               pp.port_type AS "portType", pp.row_no AS "rowNo", pp.column_no AS "columnNo",
               pp.voice_status AS "voiceStatus", pp.data_status AS "dataStatus",
@@ -6014,6 +6018,13 @@ export async function registerRoutes(
        LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
        LEFT JOIN phone_ports pp ON pp.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
        LEFT JOIN line_subscriber_info si ON si.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
+       -- أحدث «تصحيح بيان» للرقم (لو فيه) — بيغلب باقى المصادر فى العرض
+       LEFT JOIN LATERAL (
+         SELECT c2.id, c2.central, c2.cabin_number, c2.box_number, c2.dp_terminal, c2.submitted_by_name
+           FROM line_data_corrections c2
+          WHERE c2.phone_full = COALESCE(pl.full_phone, t.full)
+          ORDER BY c2.created_at DESC, c2.id DESC LIMIT 1
+       ) corr ON true
        LEFT JOIN LATERAL (
          SELECT ct.cabin_code, tn.tech_name AS ct_tech
          FROM cabinet_technicians ct

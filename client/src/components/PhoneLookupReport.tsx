@@ -1074,6 +1074,10 @@ export function PhoneLookupReport() {
             <LineDataCorrection
               compact
               initialPhone={line?.fullPhone || line?.telNo || phone}
+              initialCentral={line?.central}
+              initialCabin={line?.cabinNumber}
+              initialBox={line?.boxNumber}
+              initialTerminal={line?.dpTerminal}
               onSent={() => setFixOpen(false)}
             />
           </div>

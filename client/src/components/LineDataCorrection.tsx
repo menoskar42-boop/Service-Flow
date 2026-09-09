@@ -24,20 +24,27 @@ interface Props {
   initialPhone?: string;
   /** وضع النافذة المنبثقة: من غير كارت ولا عنوان (النافذة نفسها فيها العنوان). */
   compact?: boolean;
+  /** بيان الخط الحالى — بيتملى كقيم افتراضية عشان الفنى يعدّل عليه بدل ما يكتبه من الأول. */
+  initialCentral?: string | null;
+  initialCabin?: string | null;
+  initialBox?: string | null;
+  initialTerminal?: string | null;
   /** بيتنادى بعد إرسال ناجح — النافذة بتتقفل بيه. */
   onSent?: () => void;
 }
 
-export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}) {
+export function LineDataCorrection({ initialPhone, compact, onSent,
+  initialCentral, initialCabin, initialBox, initialTerminal }: Props = {}) {
   const { toast } = useToast();
   const qc = useQueryClient();
   // الرقم الجاى من بحث برقم التليفون بيتحطّ من غير بادئة 88 (السيرفر بيشيلها برضه)
   const [phone, setPhone] = useState(() =>
     String(initialPhone ?? "").replace(/\D/g, "").replace(/^88/, ""));
-  const [central, setCentral] = useState("");
-  const [cabin, setCabin] = useState("");
-  const [box, setBox] = useState("");
-  const [terminal, setTerminal] = useState("");   // إدخال حر — مش دروب ليست
+  // القيم الافتراضية = بيان الخط الحالى (لو موجود) — الفنى بيعدّل عليه مش بيكتبه من الأول
+  const [central, setCentral] = useState(() => String(initialCentral ?? "").trim());
+  const [cabin, setCabin] = useState(() => String(initialCabin ?? "").trim());
+  const [box, setBox] = useState(() => String(initialBox ?? "").trim());
+  const [terminal, setTerminal] = useState(() => String(initialTerminal ?? "").trim());   // إدخال حر
   const [sending, setSending] = useState(false);
   const [lastSent, setLastSent] = useState<string | null>(null);
 
@@ -51,12 +58,18 @@ export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}
   });
 
   // الكابينة بتتفلتر بالسنترال، والبكس بالسنترال+الكابينة — زى باقى فلاتر الموقع.
+  // القيمة المختارة لازم تفضل موجودة فى القائمة حتى لو مش ضمن خيارات الفلتر
+  // (مثلاً كابينة الخط مش من كباين الفنى) — وإلا القيمة الافتراضية بتختفى.
+  const withCurrent = (list: string[], current: string) =>
+    current && !list.includes(current) ? [current, ...list] : list;
+  const centralOptions = useMemo(
+    () => withCurrent(opts?.centrals ?? [], central), [opts, central]);
   const cabinOptions = useMemo(
-    () => (central && opts?.cabins?.[central]) || [],
-    [opts, central]);
-  const boxOptions = useMemo(
-    () => (central && cabin && opts?.boxes?.[`${central}||${cabin}`]) || [],
+    () => withCurrent((central && opts?.cabins?.[central]) || [], cabin),
     [opts, central, cabin]);
+  const boxOptions = useMemo(
+    () => withCurrent((central && cabin && opts?.boxes?.[`${central}||${cabin}`]) || [], box),
+    [opts, central, cabin, box]);
 
   // رقم التليفون: أرقام فقط (بادئة 88 بتتضاف على السيرفر)
   const onPhone = (v: string) => { if (v === "" || /^\d*$/.test(v)) setPhone(v); };
@@ -81,7 +94,7 @@ export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}
           : "اتسجّل التصحيح، وطلب المراجعة للرقم ده موجود فى الطابور بالفعل.",
         duration: 6000,
       });
-      if (!initialPhone) reset(); else { setCentral(""); setCabin(""); setBox(""); setTerminal(""); }
+      if (!initialPhone) reset();
       onSent?.();
       // البيان الفنى اتغيّر → التقارير اللى بتعتمد عليه تتحدّث
       qc.invalidateQueries({ queryKey: ["/api/reports/work-orders-no-cable"] });
@@ -108,10 +121,11 @@ export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}
         </div>
       )}
       <p className="text-xs text-muted-foreground mb-4">
-        اكتب رقم التليفون (إلزامى) واختار السنترال والكابينة والبكس ورقم الترمنال الصح لو تعرفهم (كلها اختيارية).
+        بيان الخط الحالى متملّى قدامك — عدّل اللى غلط وابعت. رقم التليفون إلزامى والباقى اختيارى.
         رقم الترمنال بيتكتب بإيدك (مش قائمة). الإرسال بيسجّل التصحيح ويطلب
-        <strong>مراجعة الاسم والعنوان</strong> للرقم — ولو جهاز
-        التنفيذ مش مفعّل، الطلب بيفضل محفوظ فى الطابور وبيتنفّذ أول ما الجهاز يرجع.
+        <strong>مراجعة الاسم والعنوان</strong> للرقم. البيان بيتصحّح على موقعنا **فوراً**،
+        وبيروح لمسئول البيانات عشان يصحّحه على الموقع الخارجى ويضغط «تم التصحيح».
+        ولو جهاز التنفيذ مش مفعّل، الطلب بيفضل محفوظ فى الطابور وبيتنفّذ أول ما الجهاز يرجع.
       </p>
 
       <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
@@ -143,7 +157,7 @@ export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}
             dir="rtl"
           >
             <option value="">— اختيارى —</option>
-            {(opts?.centrals ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+            {centralOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
@@ -154,8 +168,8 @@ export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}
             onChange={(e) => { setCabin(e.target.value); setBox(""); }}
             className={selectCls}
             dir="rtl"
-            disabled={!central}
-            title={central ? "" : "اختار السنترال الأول"}
+            disabled={!central && !cabin}
+            title={central || cabin ? "" : "اختار السنترال الأول"}
           >
             <option value="">— اختيارى —</option>
             {cabinOptions.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -169,8 +183,8 @@ export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}
             onChange={(e) => setBox(e.target.value)}
             className={selectCls}
             dir="rtl"
-            disabled={!cabin}
-            title={cabin ? "" : "اختار الكابينة الأول"}
+            disabled={!cabin && !box}
+            title={cabin || box ? "" : "اختار الكابينة الأول"}
           >
             <option value="">— اختيارى —</option>
             {boxOptions.map((b) => <option key={b} value={b}>{b}</option>)}
