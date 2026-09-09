@@ -38,6 +38,10 @@ interface LineData {
   secBlockNo: string | null;
   cabinetOut: string | null;
   dpTerminal: string | null;
+  /** البيان اتصحّح من «تصحيح بيان» — مين وإمتى (بيتسجّل مع كل تصحيح) */
+  dataCorrected?: boolean;
+  correctedBy?: string | null;
+  correctedAt?: string | null;
   port: string | null;
   len: string | null;
   fiberBlock: string | null;
@@ -998,6 +1002,17 @@ export function PhoneLookupReport() {
             <Button variant="outline" size="sm" onClick={openHistory} className="gap-1 mr-auto text-indigo-700 border-indigo-200">
               <History className="w-4 h-4" /> تاريخ الأعطال
             </Button>
+            {line.dataCorrected && (
+              <span
+                className="text-xs px-2 py-1 rounded font-medium bg-amber-100 text-amber-900 flex items-center gap-1"
+                title="البيان المعروض اتصحّح يدوياً من «تصحيح بيان» — ده اللى بيغلب ملف الخطوط والمراجعة"
+              >
+                <Wrench className="w-3.5 h-3.5" />
+                البيان اتصحّح
+                {line.correctedBy ? ` — ${line.correctedBy}` : ""}
+                {line.correctedAt ? ` · ${fmtDate(line.correctedAt)}` : ""}
+              </span>
+            )}
           </div>
           {/* الديسكتوب: عمودين بالترتيب المطابق للإكسيل */}
           <div className="hidden sm:grid grid-cols-2 gap-px bg-gray-100">

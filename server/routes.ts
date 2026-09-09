@@ -5906,8 +5906,10 @@ export async function registerRoutes(
               COALESCE(corr.cabin_number, pl.cabin_number, cpl.cabinet_no, si.cabin_number,
                        NULLIF(btrim(wfmo.exch_cabinet), '')) AS "cabinNumber",
               COALESCE(corr.box_number, pl.box_number, si.box_number) AS "boxNumber", COALESCE(pp.frame, pl.port) AS frame,
+              -- مين صحّح البيان وإمتى — بيتسجّل دايماً مع كل تصحيح
               (corr.id IS NOT NULL) AS "dataCorrected",
               corr.submitted_by_name AS "correctedBy",
+              (corr.created_at AT TIME ZONE 'Africa/Cairo') AS "correctedAt",
               -- كود الكابينة (MSAN): الأولوية لجدول المنافذ (phone_ports) لأنه بيتحدّث فعلياً
               -- من «تحديث البورت» (port-change/ingest) ومن تحديث ملف البورتات كل نص ساعة.
               -- كان بياخده من cabinet_technicians (المشتق من سنترال/كابينة الخط النحاسية) —
@@ -6020,7 +6022,8 @@ export async function registerRoutes(
        LEFT JOIN line_subscriber_info si ON si.phone_number IN (COALESCE(pl.full_phone, t.full), t.short, t.raw)
        -- أحدث «تصحيح بيان» للرقم (لو فيه) — بيغلب باقى المصادر فى العرض
        LEFT JOIN LATERAL (
-         SELECT c2.id, c2.central, c2.cabin_number, c2.box_number, c2.dp_terminal, c2.submitted_by_name
+         SELECT c2.id, c2.central, c2.cabin_number, c2.box_number, c2.dp_terminal,
+                c2.submitted_by_name, c2.created_at
            FROM line_data_corrections c2
           WHERE c2.phone_full = COALESCE(pl.full_phone, t.full)
           ORDER BY c2.created_at DESC, c2.id DESC LIMIT 1

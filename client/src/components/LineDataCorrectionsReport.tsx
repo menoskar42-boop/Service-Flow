@@ -54,7 +54,8 @@ const fmtDt = (d: string | null) => {
 
 const COLS = ["#", "رقم التليفون", "بواسطة", "تاريخ الإدخال", "السنترال (المُدخَل)", "السنترال (المراجعة)",
   "الكابينة (المُدخَل)", "الكابينة (المراجعة)", "البكس (المُدخَل)", "البكس (المراجعة)",
-  "الترمنال (المُدخَل)", "الترمنال (المراجعة)", "اسم العميل", "العنوان", "الحالة"];
+  "الترمنال (المُدخَل)", "الترمنال (المراجعة)", "اسم العميل", "العنوان", "الحالة",
+  "تم التصحيح بواسطة", "تاريخ التصحيح"];
 
 export function LineDataCorrectionsReport() {
   const { toast } = useToast();
@@ -133,6 +134,7 @@ export function LineDataCorrectionsReport() {
     r.central ?? "", r.fetchedCentral ?? "", r.cabinNumber ?? "", r.fetchedCabin ?? "",
     r.boxNumber ?? "", r.fetchedBox ?? "", r.dpTerminal ?? "", r.fetchedTerminal ?? "",
     r.subName ?? "", r.subAdd ?? "", statusText(r),
+    r.resolvedBy ?? "", r.resolvedAt ? fmtDt(r.resolvedAt) : "",
   ]);
 
   const handleExportExcel = () => {
@@ -213,7 +215,7 @@ export function LineDataCorrectionsReport() {
             <TableRow>
               <TableHead className="text-right font-bold">#</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">بواسطة</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">اتبعت بواسطة</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الإدخال</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المُدخَل)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المراجعة)</TableHead>
@@ -260,7 +262,7 @@ export function LineDataCorrectionsReport() {
                   }`}>{statusText(r)}</span>
                   {r.resolvedAt && (
                     <div className="text-[11px] text-muted-foreground whitespace-nowrap">
-                      اتصحّح: {r.resolvedBy || "-"}
+                      اتصحّح: {r.resolvedBy || "-"} · {fmtDt(r.resolvedAt)}
                     </div>
                   )}
                 </TableCell>

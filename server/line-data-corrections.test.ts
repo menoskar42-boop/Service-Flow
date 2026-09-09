@@ -169,3 +169,37 @@ test("the dialog opens prefilled with the line's current data", () => {
   // والقيمة الحالية بتفضل ظاهرة فى القائمة حتى لو مش ضمن خيارات الفلتر
   assert.match(formSrc, /const withCurrent = \(list: string\[\], current: string\) =>/);
 });
+
+// «مين صحّح وإمتى» لازم يتسجّل دايماً — على الإرسال وعلى «تم التصحيح».
+test("who corrected and when is always recorded and exposed", () => {
+  const schemaSrc = readFileSync(new URL("../shared/schema.ts", import.meta.url), "utf8");
+  const lookup = readFileSync(
+    new URL("../client/src/components/PhoneLookupReport.tsx", import.meta.url), "utf8");
+  const rep = readFileSync(
+    new URL("../client/src/components/LineDataCorrectionsReport.tsx", import.meta.url), "utf8");
+
+  // (1) وقت الإرسال: مين بعت + إمتى
+  assert.match(schemaSrc, /submittedById: integer\("submitted_by_id"\)/);
+  assert.match(schemaSrc, /submittedByName: text\("submitted_by_name"\)/);
+  assert.match(schemaSrc, /createdAt: timestamp\("created_at"[\s\S]*?\.notNull\(\)/);
+  assert.match(routes, /VALUES \(\$1,\$2,NULLIF\(\$3,''\),NULLIF\(\$4,''\),NULLIF\(\$5,''\),NULLIF\(\$6,''\),\$7,\$8\)/);
+
+  // (2) وقت «تم التصحيح»: مين صحّح + إمتى
+  assert.match(schemaSrc, /resolvedById: integer\("resolved_by_id"\)/);
+  assert.match(schemaSrc, /resolvedByName: text\("resolved_by_name"\)/);
+  assert.match(routes, /SET resolved_at = now\(\), resolved_by_id = \$2, resolved_by_name = \$3/);
+
+  // (3) وكل ده ظاهر: فى بحث برقم التليفون وفى تقرير المتابعة
+  assert.match(routes, /\(corr\.created_at AT TIME ZONE 'Africa\/Cairo'\) AS "correctedAt"/);
+  assert.match(lookup, /line\.correctedBy \? ` — \$\{line\.correctedBy\}` : ""/);
+  assert.match(lookup, /line\.correctedAt \? ` · \$\{fmtDate\(line\.correctedAt\)\}` : ""/);
+  assert.match(rep, /اتصحّح: \{r\.resolvedBy \|\| "-"\} · \{fmtDt\(r\.resolvedAt\)\}/);
+  assert.match(rep, /"تم التصحيح بواسطة", "تاريخ التصحيح"/);
+
+  // (4) كل إرسال بيتسجّل كصف جديد — التاريخ كله محفوظ، مافيش استبدال
+  const start = routes.indexOf('app.post("/api/line-data-corrections"');
+  const ep = routes.slice(start, start + 3000);
+  assert.match(ep, /INSERT INTO line_data_corrections/);
+  assert.doesNotMatch(ep, /ON CONFLICT[\s\S]{0,200}line_data_corrections/,
+    "مافيش استبدال — كل تصحيح صف جديد بتاريخه وصاحبه");
+});
