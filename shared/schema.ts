@@ -233,6 +233,7 @@ export const lineDataCorrections = pgTable("line_data_corrections", {
   central: text("central"),
   cabinNumber: text("cabin_number"),
   boxNumber: text("box_number"),
+  dpTerminal: text("dp_terminal"),          // رقم الترمنال — إدخال حر (مش دروب ليست)
   submittedById: integer("submitted_by_id").references(() => users.id),
   submittedByName: text("submitted_by_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

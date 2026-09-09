@@ -6870,14 +6870,15 @@ export async function registerRoutes(
     const central = String(req.body?.central ?? "").trim();
     const cabin   = String(req.body?.cabinNumber ?? "").trim();
     const box     = String(req.body?.boxNumber ?? "").trim();
+    const term    = String(req.body?.dpTerminal ?? "").trim();   // إدخال حر — مش دروب ليست
     const fullNoDash = "88" + local;     // صيغة التخزين فى جداول الخطوط (بدون شرطة)
     const byName = String(req.user?.fullName || req.user?.username || "").trim();
 
     const { rows: ins } = await pool.query(
       `INSERT INTO line_data_corrections
-         (phone_local, phone_full, central, cabin_number, box_number, submitted_by_id, submitted_by_name)
-       VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),$6,$7) RETURNING id`,
-      [local, fullNoDash, central, cabin, box, req.user.id, byName]);
+         (phone_local, phone_full, central, cabin_number, box_number, dp_terminal, submitted_by_id, submitted_by_name)
+       VALUES ($1,$2,NULLIF($3,''),NULLIF($4,''),NULLIF($5,''),NULLIF($6,''),$7,$8) RETURNING id`,
+      [local, fullNoDash, central, cabin, box, term, req.user.id, byName]);
 
     // ⚠️ مابنكتبش اللى الفنى دخّله فى البيان الفنى — لازم يفضل زى ما هو عشان نقدر
     // نقارنه بنتيجة المراجعة اللى جاية. المقارنة بتحصل لما نتيجة المراجعة تبقى أحدث
@@ -6907,11 +6908,12 @@ export async function registerRoutes(
     `(NULLIF(btrim(c.${field}), '') IS NOT NULL
       AND ${n(`COALESCE(si.${col}, '')`)} <> ${n(`c.${field}`)})`;
   const CORR_MISMATCH = `(${CORR_READY} AND (${corrDiff("central", "central")}
-      OR ${corrDiff("cabin_number", "cabin_number")} OR ${corrDiff("box_number", "box_number")}))`;
+      OR ${corrDiff("cabin_number", "cabin_number")} OR ${corrDiff("box_number", "box_number")}
+      OR ${corrDiff("dp_terminal", "dp_terminal")}))`;
   // الفنى بعت الرقم بس من غير سنترال/كابينة/بكس → **مافيش مقارنة**، مراجعة وخلاص.
   // (corrDiff أصلاً بيتجاهل الخانة الفاضية، والعلم ده عشان الحالة تتعرض صح.)
   const CORR_HAS_TYPED = `(COALESCE(NULLIF(btrim(c.central), ''), NULLIF(btrim(c.cabin_number), ''),
-      NULLIF(btrim(c.box_number), '')) IS NOT NULL)`;
+      NULLIF(btrim(c.box_number), ''), NULLIF(btrim(c.dp_terminal), '')) IS NOT NULL)`;
 
   // GET /api/line-data-corrections — تقرير التصحيحات.
   // مسئول البيانات والأدمن والسوبر أدمن بيشوفوا الكل؛ أى مستخدم تانى بيشوف اللى بعته هو.
@@ -6930,13 +6932,15 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `SELECT c.id, c.phone_local AS "phoneLocal", c.phone_full AS "phoneFull",
               c.central, c.cabin_number AS "cabinNumber", c.box_number AS "boxNumber",
+              c.dp_terminal AS "dpTerminal",
               c.submitted_by_name AS "submittedBy",
               (c.created_at AT TIME ZONE 'Africa/Cairo') AS "createdAt",
               (c.requested_at AT TIME ZONE 'Africa/Cairo') AS "requestedAt",
               (c.resolved_at AT TIME ZONE 'Africa/Cairo') AS "resolvedAt",
               c.resolved_by_name AS "resolvedBy",
               si.central AS "fetchedCentral", si.cabin_number AS "fetchedCabin",
-              si.box_number AS "fetchedBox", si.sub_name AS "subName", si.sub_add AS "subAdd",
+              si.box_number AS "fetchedBox", si.dp_terminal AS "fetchedTerminal",
+              si.sub_name AS "subName", si.sub_add AS "subAdd",
               (si.fetched_at AT TIME ZONE 'Africa/Cairo') AS "fetchedAt",
               ${CORR_READY} AS "reviewed",
               ${CORR_MISMATCH} AS "mismatch",

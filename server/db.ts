@@ -542,6 +542,7 @@ export async function ensureSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS line_data_corrections_phone_idx ON line_data_corrections (phone_full)`);
   for (const [col, typ] of [
+    ["dp_terminal", "text"],
     ["requested_at", "timestamptz NOT NULL DEFAULT now()"],
     ["resolved_at", "timestamptz"],
     ["resolved_by_id", "integer REFERENCES users(id)"],

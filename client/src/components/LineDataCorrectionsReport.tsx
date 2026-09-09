@@ -23,6 +23,7 @@ interface Row {
   central: string | null;
   cabinNumber: string | null;
   boxNumber: string | null;
+  dpTerminal: string | null;
   submittedBy: string | null;
   createdAt: string | null;
   requestedAt: string | null;
@@ -31,6 +32,7 @@ interface Row {
   fetchedCentral: string | null;
   fetchedCabin: string | null;
   fetchedBox: string | null;
+  fetchedTerminal: string | null;
   subName: string | null;
   subAdd: string | null;
   fetchedAt: string | null;
@@ -52,7 +54,7 @@ const fmtDt = (d: string | null) => {
 
 const COLS = ["#", "رقم التليفون", "بواسطة", "تاريخ الإدخال", "السنترال (المُدخَل)", "السنترال (المراجعة)",
   "الكابينة (المُدخَل)", "الكابينة (المراجعة)", "البكس (المُدخَل)", "البكس (المراجعة)",
-  "اسم العميل", "العنوان", "الحالة"];
+  "الترمنال (المُدخَل)", "الترمنال (المراجعة)", "اسم العميل", "العنوان", "الحالة"];
 
 export function LineDataCorrectionsReport() {
   const { toast } = useToast();
@@ -89,7 +91,7 @@ export function LineDataCorrectionsReport() {
       if (onlyMismatch && !r.mismatch) return false;
       if (!s) return true;
       if (digits && String(r.phoneFull ?? "").replace(/\D/g, "").includes(digits)) return true;
-      return [r.submittedBy, r.central, r.cabinNumber, r.subName, r.subAdd]
+      return [r.submittedBy, r.central, r.cabinNumber, r.dpTerminal, r.subName, r.subAdd]
         .some((v) => String(v ?? "").toLowerCase().includes(low));
     });
   }, [rows, search, onlyMismatch]);
@@ -129,7 +131,8 @@ export function LineDataCorrectionsReport() {
   const exportRows = () => shown.map((r, i) => [
     i + 1, r.phoneFull, r.submittedBy ?? "", fmtDt(r.createdAt),
     r.central ?? "", r.fetchedCentral ?? "", r.cabinNumber ?? "", r.fetchedCabin ?? "",
-    r.boxNumber ?? "", r.fetchedBox ?? "", r.subName ?? "", r.subAdd ?? "", statusText(r),
+    r.boxNumber ?? "", r.fetchedBox ?? "", r.dpTerminal ?? "", r.fetchedTerminal ?? "",
+    r.subName ?? "", r.subAdd ?? "", statusText(r),
   ]);
 
   const handleExportExcel = () => {
@@ -218,6 +221,8 @@ export function LineDataCorrectionsReport() {
               <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (المراجعة)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">البكس (المُدخَل)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">البكس (المراجعة)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (المُدخَل)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (المراجعة)</TableHead>
               <TableHead className="text-right font-bold">اسم العميل</TableHead>
               <TableHead className="text-right font-bold">العنوان</TableHead>
               <TableHead className="text-right font-bold">الحالة</TableHead>
@@ -227,7 +232,7 @@ export function LineDataCorrectionsReport() {
           <TableBody>
             {shown.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={canAct ? 14 : 13} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={canAct ? 16 : 15} className="text-center py-8 text-muted-foreground">
                   {isFetching ? "جارٍ التحميل…" : "مافيش أرقام مُرسَلة فى المدة دى"}
                 </TableCell>
               </TableRow>
@@ -243,6 +248,8 @@ export function LineDataCorrectionsReport() {
                 <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedCabin || "-"}</TableCell>
                 {cmpCell(r.boxNumber, r.fetchedBox, r.reviewed)}
                 <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedBox || "-"}</TableCell>
+                {cmpCell(r.dpTerminal, r.fetchedTerminal, r.reviewed)}
+                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedTerminal || "-"}</TableCell>
                 <TableCell className="max-w-[160px] truncate">{r.subName || "-"}</TableCell>
                 <TableCell className="max-w-[200px] truncate">{r.subAdd || "-"}</TableCell>
                 <TableCell className="whitespace-nowrap">

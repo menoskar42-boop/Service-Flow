@@ -26,6 +26,7 @@ export function LineDataCorrection() {
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
+  const [terminal, setTerminal] = useState("");   // إدخال حر — مش دروب ليست
   const [sending, setSending] = useState(false);
   const [lastSent, setLastSent] = useState<string | null>(null);
 
@@ -50,7 +51,7 @@ export function LineDataCorrection() {
   const onPhone = (v: string) => { if (v === "" || /^\d*$/.test(v)) setPhone(v); };
   const canSend = phone.trim().length >= 5 && !sending;
 
-  const reset = () => { setPhone(""); setCentral(""); setCabin(""); setBox(""); };
+  const reset = () => { setPhone(""); setCentral(""); setCabin(""); setBox(""); setTerminal(""); };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +59,7 @@ export function LineDataCorrection() {
     setSending(true);
     try {
       const res = await apiRequest("POST", "/api/line-data-corrections", {
-        phone: phone.trim(), central, cabinNumber: cabin, boxNumber: box,
+        phone: phone.trim(), central, cabinNumber: cabin, boxNumber: box, dpTerminal: terminal.trim(),
       });
       const j = await res.json();
       setLastSent(j?.phone || `88-${phone.trim()}`);
@@ -93,8 +94,9 @@ export function LineDataCorrection() {
         <h2 className="text-base font-bold">تصحيح بيانات</h2>
       </div>
       <p className="text-xs text-muted-foreground mb-4">
-        اكتب رقم التليفون (إلزامى) واختار السنترال والكابينة والبكس الصح لو تعرفهم (اختيارى).
-        الإرسال بيسجّل التصحيح ويطلب <strong>مراجعة الاسم والعنوان</strong> للرقم — ولو جهاز
+        اكتب رقم التليفون (إلزامى) واختار السنترال والكابينة والبكس ورقم الترمنال الصح لو تعرفهم (كلها اختيارية).
+        رقم الترمنال بيتكتب بإيدك (مش قائمة). الإرسال بيسجّل التصحيح ويطلب
+        <strong>مراجعة الاسم والعنوان</strong> للرقم — ولو جهاز
         التنفيذ مش مفعّل، الطلب بيفضل محفوظ فى الطابور وبيتنفّذ أول ما الجهاز يرجع.
       </p>
 
@@ -157,6 +159,18 @@ export function LineDataCorrection() {
             <option value="">— اختيارى —</option>
             {boxOptions.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
+        </div>
+
+        <div className="w-full sm:w-40">
+          <Label className="text-xs text-muted-foreground block mb-1">رقم الترمنال</Label>
+          <Input
+            value={terminal}
+            onChange={(e) => setTerminal(e.target.value)}
+            placeholder="اختيارى"
+            dir="ltr"
+            className="text-sm text-left"
+            title="رقم الترمنال — بيتكتب بإيدك، مش قائمة اختيار"
+          />
         </div>
 
         <Button type="submit" disabled={!canSend} className="gap-1">

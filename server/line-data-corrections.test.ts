@@ -57,7 +57,7 @@ test("a submission with no typed data is review-only, never a mismatch", () => {
   assert.match(routes, /const CORR_HAS_TYPED = /);
   // COALESCE على التلات خانات → NULL بس لما تكون التلاتة فاضيين
   assert.match(routes, /COALESCE\(NULLIF\(btrim\(c\.central\), ''\), NULLIF\(btrim\(c\.cabin_number\), ''\),/);
-  assert.match(routes, /NULLIF\(btrim\(c\.box_number\), ''\)\) IS NOT NULL\)/);
+  assert.match(routes, /NULLIF\(btrim\(c\.box_number\), ''\), NULLIF\(btrim\(c\.dp_terminal\), ''\)\) IS NOT NULL\)/);
   // وشرط الاختلاف نفسه بيتجاهل الخانة الفاضية
   assert.match(routes, /NULLIF\(btrim\(c\.\$\{field\}\), ''\) IS NOT NULL/);
   assert.match(report, /!r\.hasTyped \? "مراجعة فقط"/);
@@ -91,4 +91,28 @@ test("both tabs are mounted in the data-completion section", () => {
   assert.match(section, /import \{ LineDataCorrectionsReport \}/);
   assert.match(section, /label: "تصحيح بيانات"/);
   assert.match(section, /label: "متابعة التصحيحات"/);
+});
+
+// رقم الترمنال — إدخال حر (مش دروب ليست) واختيارى، وبيدخل المقارنة زى الباقى.
+test("the DP terminal is a free-text optional field that joins the comparison", () => {
+  const form = readFileSync(new URL("../client/src/components/LineDataCorrection.tsx", import.meta.url), "utf8");
+  const rep = readFileSync(new URL("../client/src/components/LineDataCorrectionsReport.tsx", import.meta.url), "utf8");
+  const dbSrc = readFileSync(new URL("./db.ts", import.meta.url), "utf8");
+  const schemaSrc = readFileSync(new URL("../shared/schema.ts", import.meta.url), "utf8");
+  // العمود فى schema.ts و ensureSchema (القاعدة #8)
+  assert.match(schemaSrc, /dpTerminal: text\("dp_terminal"\)/);
+  assert.match(dbSrc, /\["dp_terminal", "text"\]/);
+  // إدخال حر: Input مش select
+  assert.match(form, /<Input\s+value=\{terminal\}/);
+  assert.doesNotMatch(form, /<select[^>]*value=\{terminal\}/);
+  // اختيارى: مش داخل شرط الإرسال
+  assert.match(form, /canSend = phone\.trim\(\)\.length >= 5/);
+  assert.doesNotMatch(form, /terminal[^\n]*canSend/);
+  // بيتخزّن كـ NULL لو فاضى، وبيدخل المقارنة و«فيه بيانات مكتوبة؟»
+  assert.match(routes, /NULLIF\(\$6,''\),\$7,\$8\) RETURNING id/);
+  assert.match(routes, /corrDiff\("dp_terminal", "dp_terminal"\)/);
+  assert.match(routes, /NULLIF\(btrim\(c\.dp_terminal\), ''\)\) IS NOT NULL\)/);
+  // وظاهر فى التقرير: المُدخَل جنب اللى رجع من المراجعة
+  assert.match(rep, /cmpCell\(r\.dpTerminal, r\.fetchedTerminal, r\.reviewed\)/);
+  assert.match(rep, /"الترمنال \(المُدخَل\)", "الترمنال \(المراجعة\)"/);
 });
