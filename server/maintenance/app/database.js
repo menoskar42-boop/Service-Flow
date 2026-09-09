@@ -210,6 +210,34 @@ async function migrate() {
     await sp(`ALTER TABLE maintenance_tasks ADD CONSTRAINT maintenance_tasks_status_check CHECK (status IN ('pending','in_progress','pending_approval','completed'))`);
   } catch {}
 
+  // ── مراجعة بيانات البكس (جاية من «بوكس مليان» فى Service-Flow) ──────────────
+  // أرقام التليفونات اللى على البكس بتتبعت مع طلب المراجعة، وفنى الصيانة بيعدّلها
+  // ويحذف منها ويضيف عليها، وبعد ما يخلّص بيعلّم بند «مراجعة بيانات البكس» إنه اكتمل
+  // (بنفس آلية maintenance_item_status المعتادة).
+  try {
+    await sp(`
+      CREATE TABLE IF NOT EXISTS box_line_numbers (
+        id            SERIAL PRIMARY KEY,
+        inspection_id INTEGER NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+        phone         TEXT NOT NULL,
+        notes         TEXT DEFAULT '',
+        source        TEXT NOT NULL DEFAULT 'service_flow',
+        created_at    TIMESTAMPTZ DEFAULT now(),
+        updated_at    TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await sp(`CREATE INDEX IF NOT EXISTS box_line_numbers_insp_idx ON box_line_numbers (inspection_id)`);
+  } catch {}
+  // مين فتح الفحص فعلياً لما ييجى من Service-Flow: «اسم الفنى-OM» أو «اسم الفنى-طلبات».
+  // (inspector_id بيفضل المستخدم النظامى، ودول للعرض والتتبّع.)
+  for (const [col, typ] of [
+    ['opened_by_name', 'TEXT'],
+    ['origin', 'TEXT'],
+    ['origin_ref', 'TEXT'],
+  ]) {
+    try { await sp(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS ${col} ${typ}`); } catch {}
+  }
+
   // cabinet_codes lookup table (Exchange + Cabinet → cabinet code + technician info)
   try {
     await sp(`

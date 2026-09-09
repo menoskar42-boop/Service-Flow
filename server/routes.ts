@@ -26,6 +26,7 @@ import { nameMatch, nameMatchTokens, nameTokens, buildFirstNameIndex, NAME_MATCH
 import { registerCfmRoutes } from "./cfm/routes";
 import { storage as cfmStorage } from "./cfm/storage";
 import { openBoxFaultTicket, findCoveringOpenTicket, resolveCable, settleBoxTicketIfCleared } from "./box-fault-ticket";
+import { requestBoxDataReview } from "./box-full-inspection";
 import { normCab, expandBoxes, boxKey } from "@shared/cab-norm";
 import { cardCapacityOf, cardFreeOf } from "@shared/card-capacity";
 import { boxAverageFromAggregate, boxAverageFromAggregates, isBoxBrokenReason } from "@shared/om-box-score";
@@ -3645,6 +3646,15 @@ export async function registerRoutes(
           customerName: (order as any).customerName, nationalId: (order as any).nationalId,
         });
       }
+      // «بوكس مليان» → طلب مراجعة بيانات البكس على موقع الصيانة (مع أرقام البكس).
+      // زى تكت «بوكس معطل» بالظبط: الفشل مايمنعش تسجيل الرد.
+      if (order && (order as any).rejectionReason === REJECTION_REASONS.BOX_FULL) {
+        void requestBoxDataReview({
+          central: (order as any).centralName, cabinet: (order as any).cabinNumber,
+          box: (order as any).boxNumber, techName: user.username, source: "طلبات",
+          refKey: `طلب #${id}`,
+        }).then((r) => { if (!r.ok) console.error("[box-full] طلبات:", r.reason); });
+      }
       // لو الطلب مربوط بمتعذر مؤكَّد → الرد ينزل عليه على طول
       await syncMatchedResponse({ orderId: id });
       res.json(boxTicket ? { ...order, boxTicket } : order);
@@ -7121,6 +7131,60 @@ export async function registerRoutes(
     res.json({ ok: true, techName: storedName });
   });
 
+  // GET /api/reports/box-full-reviewed — «متعذرات OM بوكس مليان تمت مراجعتها».
+  // موقع الصيانة مركّب على **نفس القاعدة** بسكيما maintenance، فبنقرا منها مباشرةً
+  // (مافيش HTTP ولا تزامن). البكس بيظهر هنا أول ما فنى الصيانة يعلّم بند
+  // «مراجعة بيانات البكس» إنه اكتمل (maintenance_item_status.is_done = 1).
+  app.get("/api/reports/box-full-reviewed", requireAuth, async (req: any, res) => {
+    if (req.user?.role === ROLES.SALES) return res.status(403).json({ message: "غير مسموح" });
+    try {
+      const { dateFrom = "", dateTo = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const conds: string[] = ["mis.is_done = 1"];
+      if (dateFrom) { params.push(dateFrom); conds.push(`(mis.done_at AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`); }
+      if (dateTo)   { params.push(dateTo);   conds.push(`(mis.done_at AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`); }
+      const { rows } = await pool.query(
+        `SELECT i.id AS "inspectionId",
+                e.name AS "central", c.number AS "cabinet", b.number AS "box",
+                i.opened_by_name AS "openedBy", i.origin, i.origin_ref AS "originRef",
+                (i.date)::text AS "inspectionDate",
+                (mis.done_at AT TIME ZONE 'Africa/Cairo') AS "reviewedAt",
+                du.full_name AS "reviewedByName", du.username AS "reviewedBy",
+                (SELECT count(*) FROM maintenance.box_line_numbers bl WHERE bl.inspection_id = i.id)::int AS "phonesCount",
+                b.status AS "boxStatus"
+           FROM maintenance.maintenance_item_status mis
+           JOIN maintenance.maintenance_tasks t ON t.id = mis.task_id
+           JOIN maintenance.inspections i ON i.id = t.inspection_id
+           JOIN maintenance.boxes b ON b.id = i.box_id
+           JOIN maintenance.cabinets c ON c.id = b.cabinet_id
+           JOIN maintenance.exchanges e ON e.id = c.exchange_id
+           LEFT JOIN maintenance.users du ON du.id = mis.done_by
+          WHERE mis.item_key = 'data_review' AND ${conds.join(" AND ")}
+          ORDER BY mis.done_at DESC NULLS LAST
+          LIMIT 5000`, params);
+      res.json(rows);
+    } catch (e: any) {
+      // موقع الصيانة ممكن يكون مش مركّب (MAINTENANCE_ENABLED مطفى) → سكيما مش موجودة
+      if (/schema "maintenance" does not exist|relation "maintenance\./i.test(e?.message || "")) {
+        return res.json([]);
+      }
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  // GET /api/reports/box-full-reviewed/:id/phones — أرقام البكس اللى راجعها فنى الصيانة
+  app.get("/api/reports/box-full-reviewed/:id/phones", requireAuth, async (req: any, res) => {
+    if (req.user?.role === ROLES.SALES) return res.status(403).json({ message: "غير مسموح" });
+    const id = parseInt(String(req.params.id), 10);
+    if (!id || isNaN(id)) return res.status(400).json({ message: "معرّف غير صالح" });
+    try {
+      const { rows } = await pool.query(
+        `SELECT phone, COALESCE(notes, '') AS notes, source
+           FROM maintenance.box_line_numbers WHERE inspection_id = $1 ORDER BY id`, [id]);
+      res.json(rows);
+    } catch { res.json([]); }
+  });
+
   // GET /api/reports/installations-by-tech — نسبة إنجاز التركيبات خلال 24 ساعة لكل فنى (Success فقط).
   // الرؤية: السوبر أدمن/الأدمن/الشئون الخارجية = كل الفنيين؛ الفنى = أرقامه فقط؛ الباقى ممنوع.
   // lines=1 → يرجّع خطوط التركيبات المتجاوزة 24 ساعة (بنفس فلترة الدور) لزر «تجاوزات 24 ساعة».
@@ -10363,6 +10427,14 @@ export async function registerRoutes(
           respondedAt: r0.responded_at, refKey: `متعذر ${serialNumber}`,
           serialNumber,
         });
+      }
+      // «بوكس مليان» → طلب مراجعة بيانات البكس على موقع الصيانة (مع أرقام البكس)
+      if (r0 && r0.rejection_reason === REJECTION_REASONS.BOX_FULL) {
+        void requestBoxDataReview({
+          central: r0.central_name, cabinet: r0.cabin_number, box: r0.box_number,
+          techName: String(req.user?.username || ""), source: "OM",
+          refKey: `متعذر ${serialNumber}`,
+        }).then((r) => { if (!r.ok) console.error("[box-full] OM:", r.reason); });
       }
       // لو المتعذر مربوط بطلب مؤكَّد → الرد ينزل على الطلب على طول
       await syncMatchedResponse({ serial: serialNumber });

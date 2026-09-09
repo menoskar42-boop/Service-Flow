@@ -18,6 +18,9 @@ const CHECKLIST = [
   { key: 'electricity_conflict',label: 'تعارض كهرباء',       type: 'yes_no'   },
   { key: 'air_conflict',        label: 'تعارض هواء',         type: 'yes_no'   },
   { key: 'overlap',             label: 'تخاطي',              type: 'yes_no'   },
+  // بند بييجى من Service-Flow لما الفنى يرد «بوكس مليان» — فنى الصيانة بيراجع أرقام
+  // البكس (جدول بيتعدّل ويتحذف منه) وبعدين يعلّم البند إنه اكتمل بنفس الطريقة المعتادة.
+  { key: 'data_review',         label: 'مراجعة بيانات البكس', type: 'yes_no'   },
 ];
 
 // Items excluded from the preliminary confirmation (handled separately by the technician)

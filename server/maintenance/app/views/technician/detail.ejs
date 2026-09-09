@@ -11,8 +11,13 @@ const CHECKLIST_LABELS = {
   electricity_conflict: 'تعارض كهرباء',
   air_conflict:         'تعارض هواء',
   overlap:              'تخاطي',
+  data_review:          'مراجعة بيانات البكس',
 };
 const _itemStatusMap = (typeof itemStatusMap !== 'undefined') ? itemStatusMap : {};
+const _boxPhones = (typeof boxPhones !== 'undefined') ? boxPhones : [];
+// بند مراجعة البيانات موجود فى الفحص؟ (جاى من «بوكس مليان» فى Service-Flow)
+const _hasDataReview = (typeof inspItems !== 'undefined' ? inspItems : [])
+  .some(it => it.item_key === 'data_review' && ['yes','bad'].includes(it.value));
 const _beforeVideos = (typeof beforeVideos !== 'undefined') ? beforeVideos : [];
 const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
 %>
@@ -245,6 +250,69 @@ const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
         </table>
       </div>
     </div>
+    <!-- ── أرقام البكس (بند «مراجعة بيانات البكس») ───────────────────────────── -->
+    <% if (_hasDataReview) { %>
+    <div class="card mb-3" id="box-phones">
+      <div class="card-header bg-warning-subtle d-flex align-items-center justify-content-between">
+        <strong><i class="bi bi-telephone"></i> أرقام التليفونات على البكس</strong>
+        <span class="badge bg-secondary"><%= _boxPhones.length %> رقم</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          دى الأرقام اللى على البكس زى ما هى مسجّلة عندنا. راجعها: امسح الغلط، عدّل الناقص،
+          وضيف اللى مش موجود. لما تخلّص، علّم بند <strong>«مراجعة بيانات البكس»</strong> فوق إنه مكتمل.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr><th style="width:40px">#</th><th>رقم التليفون</th><th>ملاحظات</th>
+                  <th style="width:150px">المصدر</th><th style="width:170px">إجراء</th></tr>
+            </thead>
+            <tbody>
+              <% if (!_boxPhones.length) { %>
+              <tr><td colspan="5" class="text-center text-muted py-3">مافيش أرقام مسجّلة — ضيفها من تحت</td></tr>
+              <% } %>
+              <% _boxPhones.forEach(function(ph, idx) { %>
+              <tr>
+                <form method="post" action="/technician/<%= task.id %>/phones/<%= ph.id %>">
+                  <td class="text-muted"><%= idx + 1 %></td>
+                  <td><input name="phone" value="<%= ph.phone %>" class="form-control form-control-sm" dir="ltr" required></td>
+                  <td><input name="notes" value="<%= ph.notes || '' %>" class="form-control form-control-sm" placeholder="ملاحظة (اختيارى)"></td>
+                  <td>
+                    <span class="badge <%= ph.source === 'technician' ? 'bg-info' : 'bg-secondary' %>">
+                      <%= ph.source === 'technician' ? 'إضافة الفنى' : 'من الموقع' %>
+                    </span>
+                  </td>
+                  <td class="d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-save"></i> حفظ</button>
+                </form>
+                    <form method="post" action="/technician/<%= task.id %>/phones/<%= ph.id %>/delete"
+                          onsubmit="return confirm('حذف الرقم <%= ph.phone %> من القائمة؟')" style="margin:0">
+                      <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i> حذف</button>
+                    </form>
+                  </td>
+              </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+        <form method="post" action="/technician/<%= task.id %>/phones" class="row g-2 align-items-end mt-1">
+          <div class="col-sm-4">
+            <label class="form-label small mb-1">إضافة رقم</label>
+            <input name="phone" class="form-control form-control-sm" dir="ltr" placeholder="882657400" required>
+          </div>
+          <div class="col-sm-5">
+            <label class="form-label small mb-1">ملاحظات</label>
+            <input name="notes" class="form-control form-control-sm" placeholder="ترمنال 3 (اختيارى)">
+          </div>
+          <div class="col-sm-3">
+            <button class="btn btn-sm btn-success w-100" type="submit"><i class="bi bi-plus-lg"></i> إضافة</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <% } %>
+
     <% if (task.inspection_notes) { %>
     <div class="alert alert-light border mb-3"><strong>ملاحظات المراقب:</strong> <%= task.inspection_notes %></div>
     <% } %>

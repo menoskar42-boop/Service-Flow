@@ -16,6 +16,7 @@ const CHECKLIST_LABELS = {
   electricity_conflict: 'تعارض كهرباء',
   air_conflict:         'تعارض هواء',
   overlap:              'تخاطي',
+  data_review:          'مراجعة بيانات البكس',
 };
 const techOrAdmin = requireRole('admin', 'technician');
 
@@ -105,11 +106,74 @@ router.get('/:id', techOrAdmin, async (req, res) => {
     const itemStatusMap = {};
     itemStatuses.forEach(s => { itemStatusMap[s.item_key] = s; });
 
-    res.render('technician/detail', { title: `مهمة صيانة #${req.params.id}`, task, inspItems, beforePhotos, afterPhotos, beforeVideos, afterVideos, CHECKLIST_LABELS, itemStatusMap });
+    // أرقام البكس الجاية مع «مراجعة بيانات البكس» — الفنى بيعدّلها ويحذف ويضيف
+    const boxPhones = await db.all(
+      'SELECT * FROM box_line_numbers WHERE inspection_id = ? ORDER BY id', [task.inspection_id]);
+
+    res.render('technician/detail', { title: `مهمة صيانة #${req.params.id}`, task, inspItems, beforePhotos, afterPhotos, beforeVideos, afterVideos, CHECKLIST_LABELS, itemStatusMap, boxPhones });
   } catch (e) {
     console.error('technician detail error:', e.message);
     res.status(500).render('error', { title: 'خطأ', message: 'حدث خطأ أثناء تحميل المهمة. حاول مرة أخرى.' });
   }
+});
+
+// ── أرقام البكس (بند «مراجعة بيانات البكس») — إضافة / تعديل / حذف ────────────
+// فنى الصيانة بيراجع الأرقام اللى جات من Service-Flow: يشيل الغلط، يعدّل، ويضيف
+// اللى ناقص. وبعد ما يخلّص بيعلّم البند إنه اكتمل بنفس الزرار المعتاد.
+async function taskInspection(taskId) {
+  const t = await db.get('SELECT inspection_id FROM maintenance_tasks WHERE id = ?', [taskId]);
+  return t ? t.inspection_id : null;
+}
+
+router.post('/:id/phones', techOrAdmin, async (req, res) => {
+  try {
+    const inspId = await taskInspection(req.params.id);
+    if (!inspId) return res.redirect('/technician');
+    const phone = String(req.body.phone || '').trim();
+    const notes = String(req.body.notes || '').trim();
+    if (phone) {
+      const dup = await db.get('SELECT id FROM box_line_numbers WHERE inspection_id = ? AND phone = ?', [inspId, phone]);
+      if (!dup) {
+        await db.run("INSERT INTO box_line_numbers (inspection_id, phone, notes, source) VALUES (?, ?, ?, 'technician')",
+          [inspId, phone, notes]);
+      } else {
+        req.session.flash = { type: 'warning', msg: 'الرقم ده موجود بالفعل فى القائمة.' };
+      }
+    }
+  } catch (e) {
+    console.error('phones add error:', e.message);
+    req.session.flash = { type: 'danger', msg: 'تعذّر إضافة الرقم.' };
+  }
+  res.redirect(`/technician/${req.params.id}#box-phones`);
+});
+
+router.post('/:id/phones/:phoneId', techOrAdmin, async (req, res) => {
+  try {
+    const inspId = await taskInspection(req.params.id);
+    if (!inspId) return res.redirect('/technician');
+    const phone = String(req.body.phone || '').trim();
+    const notes = String(req.body.notes || '').trim();
+    if (phone) {
+      await db.run('UPDATE box_line_numbers SET phone = ?, notes = ?, updated_at = now() WHERE id = ? AND inspection_id = ?',
+        [phone, notes, req.params.phoneId, inspId]);
+    }
+  } catch (e) {
+    console.error('phones edit error:', e.message);
+    req.session.flash = { type: 'danger', msg: 'تعذّر تعديل الرقم.' };
+  }
+  res.redirect(`/technician/${req.params.id}#box-phones`);
+});
+
+router.post('/:id/phones/:phoneId/delete', techOrAdmin, async (req, res) => {
+  try {
+    const inspId = await taskInspection(req.params.id);
+    if (!inspId) return res.redirect('/technician');
+    await db.run('DELETE FROM box_line_numbers WHERE id = ? AND inspection_id = ?', [req.params.phoneId, inspId]);
+  } catch (e) {
+    console.error('phones delete error:', e.message);
+    req.session.flash = { type: 'danger', msg: 'تعذّر حذف الرقم.' };
+  }
+  res.redirect(`/technician/${req.params.id}#box-phones`);
 });
 
 router.post('/:id/items/:itemKey/toggle', techOrAdmin, async (req, res) => {
