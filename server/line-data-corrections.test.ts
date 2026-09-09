@@ -116,3 +116,20 @@ test("the DP terminal is a free-text optional field that joins the comparison", 
   assert.match(rep, /cmpCell\(r\.dpTerminal, r\.fetchedTerminal, r\.reviewed\)/);
   assert.match(rep, /"الترمنال \(المُدخَل\)", "الترمنال \(المراجعة\)"/);
 });
+
+// زر «تصحيح بيان» فى «بحث برقم التليفون» — نفس الخانات بالظبط، والرقم متملّى من البحث.
+test("the phone-lookup report opens the same form in a dialog", () => {
+  const lookup = readFileSync(
+    new URL("../client/src/components/PhoneLookupReport.tsx", import.meta.url), "utf8");
+  const formSrc = readFileSync(
+    new URL("../client/src/components/LineDataCorrection.tsx", import.meta.url), "utf8");
+  // بيستخدم **نفس المكوّن** مش نسخة تانية — فالخانات مستحيل تختلف
+  assert.match(lookup, /import \{ LineDataCorrection \} from "@\/components\/LineDataCorrection"/);
+  assert.match(lookup, /<LineDataCorrection\s+compact\s+initialPhone=/);
+  assert.match(lookup, /onSent=\{\(\) => setFixOpen\(false\)\}/);
+  // الزر ظاهر لأى مستخدم فاتح التقرير (مافيش شرط دور عليه)
+  assert.match(lookup, /\{line && \(\s*\n\s*<Button\s*\n\s*variant="outline"\s*\n\s*onClick=\{\(\) => setFixOpen\(true\)\}/);
+  // الرقم بيتملى ويتقفل عشان يفضل نفس الرقم المعروض
+  assert.match(formSrc, /readOnly=\{!!initialPhone\}/);
+  assert.match(formSrc, /String\(initialPhone \?\? ""\)\.replace\(\/\\D\/g, ""\)\.replace\(\/\^88\/, ""\)/);
+});

@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
 import { CLOSE_CODE_REASONS, closeReason } from "@/lib/close-codes";
 import { openCustomer360 } from "@/lib/customer360";
+import { LineDataCorrection } from "@/components/LineDataCorrection";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { enqueueIfExecutorActive, latestMeasureAt, latestPoEventAt, sleep, recordOpIntent, canRunLocalExecutor, dispatchSpeedTool, openOpSite, PHONE_LOOKUP_SOURCE } from "@/lib/exec-queue";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
@@ -394,6 +395,8 @@ export function PhoneLookupReport() {
   const canReview = ([ROLES.TECH, ROLES.EXTERNAL, ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.DATA_MANAGER] as string[])
     .includes(user?.role ?? "");
   const [reviewBusy, setReviewBusy] = useState(false);
+  // نافذة «تصحيح بيان» — نفس خانات تاب تصحيح البيانات بالظبط، والرقم متملّى من البحث
+  const [fixOpen, setFixOpen] = useState(false);
   // بيدخل طابور التنفيذ زى القياس/رفع السرعة/الإيقاف — جهاز التنفيذ هو اللى بيفتح FCC ويجيبها،
   // فالمستخدم مايحتاجش يكون على جهاز فيه وصول لـ FCC ولا يستنى التاب مفتوح.
   const reviewSubInfo = async () => {
@@ -800,6 +803,17 @@ export function PhoneLookupReport() {
               مراجعة البيان الفنى
             </Button>
           )}
+          {line && (
+            <Button
+              variant="outline"
+              onClick={() => setFixOpen(true)}
+              className="gap-2 text-amber-700 border-amber-300 hover:bg-amber-50"
+              title="تصحيح بيان الخط: تبعت السنترال والكابينة والبكس والترمنال الصح، وبيتطلب مراجعة الاسم والعنوان للرقم"
+            >
+              <Wrench className="w-4 h-4" />
+              تصحيح بيان
+            </Button>
+          )}
           {line && canFlagFault && (
             <Button
               variant="outline"
@@ -1048,6 +1062,24 @@ export function PhoneLookupReport() {
       )}
 
       {/* نافذة «غيّر البورت» (MSAN Replacement) — سوبر أدمن */}
+      {fixOpen && (
+        <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setFixOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-4 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold flex items-center gap-2">
+                <Wrench className="w-5 h-5 text-amber-700" /> تصحيح بيان — {line?.telNo || phone}
+              </h3>
+              <button onClick={() => setFixOpen(false)} aria-label="إغلاق"><X className="w-5 h-5" /></button>
+            </div>
+            <LineDataCorrection
+              compact
+              initialPhone={line?.fullPhone || line?.telNo || phone}
+              onSent={() => setFixOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
       {msanOpen && (
         <div className="fixed inset-0 z-[9998] bg-black/40 flex items-center justify-center p-4" onClick={() => setMsanOpen(false)}>
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-4 space-y-3" dir="rtl" onClick={(e) => e.stopPropagation()}>

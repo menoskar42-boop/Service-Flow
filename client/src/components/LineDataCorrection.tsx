@@ -19,10 +19,21 @@ interface FilterOptions {
   boxes: Record<string, string[]>;
 }
 
-export function LineDataCorrection() {
+interface Props {
+  /** رقم يتملى تلقائياً (من «بحث برقم التليفون») — بيتقفل عشان يبقى نفس الرقم المعروض. */
+  initialPhone?: string;
+  /** وضع النافذة المنبثقة: من غير كارت ولا عنوان (النافذة نفسها فيها العنوان). */
+  compact?: boolean;
+  /** بيتنادى بعد إرسال ناجح — النافذة بتتقفل بيه. */
+  onSent?: () => void;
+}
+
+export function LineDataCorrection({ initialPhone, compact, onSent }: Props = {}) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [phone, setPhone] = useState("");
+  // الرقم الجاى من بحث برقم التليفون بيتحطّ من غير بادئة 88 (السيرفر بيشيلها برضه)
+  const [phone, setPhone] = useState(() =>
+    String(initialPhone ?? "").replace(/\D/g, "").replace(/^88/, ""));
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");
   const [box, setBox] = useState("");
@@ -70,7 +81,8 @@ export function LineDataCorrection() {
           : "اتسجّل التصحيح، وطلب المراجعة للرقم ده موجود فى الطابور بالفعل.",
         duration: 6000,
       });
-      reset();
+      if (!initialPhone) reset(); else { setCentral(""); setCabin(""); setBox(""); setTerminal(""); }
+      onSent?.();
       // البيان الفنى اتغيّر → التقارير اللى بتعتمد عليه تتحدّث
       qc.invalidateQueries({ queryKey: ["/api/reports/work-orders-no-cable"] });
       qc.invalidateQueries({ queryKey: ["/api/phone-lines/lookup"] });
@@ -87,12 +99,14 @@ export function LineDataCorrection() {
 
   const selectCls = "w-full border rounded-md px-3 py-2 text-sm bg-white disabled:opacity-50";
 
-  return (
-    <Card className="p-4 sm:p-5 bg-white border-0 shadow-sm" dir="rtl">
-      <div className="flex items-center gap-2 mb-1">
-        <Wrench className="w-5 h-5 text-primary" />
-        <h2 className="text-base font-bold">تصحيح بيانات</h2>
-      </div>
+  const body = (
+    <>
+      {!compact && (
+        <div className="flex items-center gap-2 mb-1">
+          <Wrench className="w-5 h-5 text-primary" />
+          <h2 className="text-base font-bold">تصحيح بيانات</h2>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground mb-4">
         اكتب رقم التليفون (إلزامى) واختار السنترال والكابينة والبكس ورقم الترمنال الصح لو تعرفهم (كلها اختيارية).
         رقم الترمنال بيتكتب بإيدك (مش قائمة). الإرسال بيسجّل التصحيح ويطلب
@@ -114,6 +128,8 @@ export function LineDataCorrection() {
               placeholder="2657290"
               dir="ltr"
               className="text-sm text-left"
+              readOnly={!!initialPhone}
+              title={initialPhone ? "الرقم المعروض فى البحث" : ""}
             />
           </div>
         </div>
@@ -185,6 +201,9 @@ export function LineDataCorrection() {
           مراجعة الاسم والعنوان فى الطابور.
         </div>
       )}
-    </Card>
+    </>
   );
+
+  if (compact) return <div dir="rtl">{body}</div>;
+  return <Card className="p-4 sm:p-5 bg-white border-0 shadow-sm" dir="rtl">{body}</Card>;
 }
