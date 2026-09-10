@@ -28,7 +28,36 @@ const stuckMinsFor = rescueMinutes;
 const isStuck = (b: Batch) => b.claimed > 0 && (b.claimedMins ?? 0) >= stuckMinsFor(b.type);
 interface PriorityBatch extends Batch {
   priority: number;
+  site?: string | null;
 }
+
+// «الموقع المشغول»: الطابور بينفّذ مهمة **واحدة لكل موقع** — فأى مهمة شغّالة على
+// provisioningportal بتوقف «غيّر البورت» اللى بعدها مهما كانت أولويته. الشاشة دى
+// اتعملت بعد باج حقيقى: طلب «غيّر البورت» فضل «0 من 1» أكتر من ٨ دقايق ومحدش يعرف
+// ليه، لأن اللى ماسك الموقع كان باتش تحديث ملفات (أولوية 3) **مش ظاهر فى أى قايمة**.
+interface SiteRow {
+  site: string;
+  type: string | null;
+  note: string | null;
+  batchId: string | null;
+  requestedBy: string | null;
+  executedBy: string | null;
+  claimedMins: number | null;
+  running: number;
+  waiting: number;
+}
+
+// أسماء المواقع زى ما المستخدم بيعرفها
+const SITE_LABEL: Record<string, string> = {
+  "10.42.187.101": "DZS (قياس / رفع سرعة / إيقاف PO)",
+  "provisioningportal.te.eg": "بروفيجن (تغيير وتحديث البورت)",
+  "fcc.te.eg": "FCC (مراجعة الاسم والعنوان)",
+  "customer360.te.eg": "Customer360 (رقم الأكونت)",
+  "wfm.te.eg": "WFM (أوامر الشغل / إلغاء الإسناد)",
+  "oss.te.eg": "OSS",
+  "we-oas.te.eg": "WE-OAS",
+};
+const siteLabel = (s: string) => SITE_LABEL[s] || s;
 
 const typeLabel = (t: string) => (t === "measure" ? "قياس" : t === "raise" ? "رفع سرعة" : t === "stop" ? "إيقاف PO" : t);
 const fmt = (d: string | null) => {
@@ -37,13 +66,16 @@ const fmt = (d: string | null) => {
   catch { return "-"; }
 };
 const priorityBadge = (p: number) =>
-  p === 2
+  p === 3
+    ? <span className="text-xs px-2 py-0.5 rounded font-semibold bg-sky-100 text-sky-800">تحديث ملفات (أعلى أولوية)</span>
+    : p === 2
     ? <span className="text-xs px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-800">أولوية عاجلة (≤3 خطوط)</span>
     : <span className="text-xs px-2 py-0.5 rounded font-semibold bg-amber-100 text-amber-800">محتاجة رفع سرعة</span>;
 
 export function QueueReorderPanel() {
   const [rows, setRows] = useState<Batch[]>([]);
   const [priorityRows, setPriorityRows] = useState<PriorityBatch[]>([]);
+  const [siteRows, setSiteRows] = useState<SiteRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -65,19 +97,22 @@ export function QueueReorderPanel() {
     if (!silent) setLoading(true);
     const seqAtStart = reorderSeq.current;
     try {
-      const [r, rp] = await Promise.all([
+      const [r, rp, rs] = await Promise.all([
         fetch("/api/exec-queue/reorderable", { credentials: "include" }),
         fetch("/api/exec-queue/priority-preview", { credentials: "include" }),
+        fetch("/api/exec-queue/sites", { credentials: "include" }),
       ]);
       const d = await r.json();
       const dp = await rp.json();
+      const ds = await rs.json().catch(() => ({ data: [] }));
+      setSiteRows(Array.isArray(ds?.data) ? ds.data : []);
       // الأولوية العليا (للعرض فقط) بتتحدّث دايماً — مفيهاش ترتيب يدوى يضيع.
       setPriorityRows(Array.isArray(dp.data) ? dp.data : []);
       if (reorderSeq.current !== seqAtStart) return;   // المستخدم رتّب أثناء الجلب → مانكتبش فوقه
       setRows(Array.isArray(d.data) ? d.data : []);
       setDirty(false);
       setLastRefresh(new Date());
-    } catch { if (!silent) { setRows([]); setPriorityRows([]); } } finally { if (!silent) setLoading(false); }
+    } catch { if (!silent) { setRows([]); setPriorityRows([]); setSiteRows([]); } } finally { if (!silent) setLoading(false); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -218,6 +253,59 @@ export function QueueReorderPanel() {
         </div>
       </div>
 
+      {/* ⛔ ليه الطلب واقف؟ الطابور مهمة واحدة لكل موقع — الشاشة دى بتقول مين ماسك كل موقع
+          وكام طلب مستنى وراه، ومنها تقدر تفرّغ الموقع لو المهمة علقت. */}
+      <Card className="p-4 space-y-3">
+        <h3 className="font-bold flex items-center gap-2"><ListOrdered className="w-5 h-5 text-sky-700" /> المواقع المشغولة الآن</h3>
+        <p className="text-xs text-muted-foreground">
+          الطابور بينفّذ <strong>مهمة واحدة لكل موقع</strong> والمواقع المختلفة بتشتغل مع بعض.
+          لو طلبك مستنى من غير سبب ظاهر، شوف الموقع بتاعه هنا: طول ما فيه مهمة شغّالة عليه
+          مافيش أى طلب تانى على نفس الموقع هيفتح — حتى لو أولويته أعلى.
+        </p>
+        {siteRows.length === 0 ? (
+          <div className="text-center text-sm text-muted-foreground py-3">مفيش أى موقع مشغول دلوقتى.</div>
+        ) : (
+          <div className="space-y-2">
+            {siteRows.map((s) => {
+              const stuck = s.running > 0 && (s.claimedMins ?? 0) >= stuckMinsFor(s.type || "");
+              return (
+                <div key={s.site} className="flex items-center gap-3 border rounded-md px-3 py-2 bg-white">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm">
+                      <span className="font-semibold">{siteLabel(s.site)}</span>
+                      {s.running > 0 ? (
+                        <span className={`text-xs px-2 py-0.5 rounded font-semibold inline-flex items-center gap-1 ${stuck ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}`}>
+                          {stuck && <AlertTriangle className="w-3 h-3" />}
+                          {stuck ? `عالق — ${typeLabel(s.type || "")} من ${s.claimedMins} دقيقة`
+                                 : `شغّال: ${typeLabel(s.type || "")}${s.claimedMins != null ? ` من ${s.claimedMins} دقيقة` : ""}`}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-0.5 rounded font-semibold bg-emerald-100 text-emerald-800">فاضى</span>
+                      )}
+                      {s.waiting > 0 && (
+                        <span className="text-xs text-muted-foreground">مستنى وراه: <span className="text-foreground font-medium">{s.waiting} مهمة</span></span>
+                      )}
+                      {s.note && <span className="text-xs text-muted-foreground">من تقرير: <span className="text-foreground">{s.note}</span></span>}
+                      {s.batchId && <span className="text-[11px] text-muted-foreground font-mono">باتش: {s.batchId}</span>}
+                    </div>
+                  </div>
+                  {s.running > 0 && s.batchId && (
+                    <button
+                      onClick={() => cancelBatch(s.batchId!, s.running)}
+                      disabled={canceling === s.batchId}
+                      className="shrink-0 text-red-600 hover:text-red-800 disabled:opacity-30"
+                      title="تفريغ الموقع — بيلغى المهمة الماسكة الموقع دلوقتى فيبدأ اللى مستنى وراها"
+                    >
+                      {canceling === s.batchId ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       {/* جزء علوى للعرض فقط: باتشات الأولوية العليا (≤3 خطوط أو محتاجة رفع سرعة) — دايماً بتتنفّذ
           قبل الباتشات المؤجّلة تحت بترتيب created_at، ومش قابلة لإعادة ترتيب. */}
       <Card className="p-4 space-y-3">
@@ -242,6 +330,17 @@ export function QueueReorderPanel() {
                     <span className="text-xs text-muted-foreground">التوقيت: {fmt(b.createdAt)}</span>
                     <span className="text-[11px] text-muted-foreground font-mono">باتش: {b.batchId}</span>
                     {b.paused && <span className="text-xs px-2 py-0.5 rounded font-semibold bg-amber-100 text-amber-800">موقَّف مؤقتاً</span>}
+                    {/* السبب الحقيقى لوقوف الباتش: الموقع بتاعه مشغول بمهمة تانية.
+                        من غير السطر ده كان الباتش يفضل «0 من N» ومحدش يعرف إنه مستنى موقع. */}
+                    {b.claimed === 0 && !b.paused && (() => {
+                      const busy = siteRows.find((s) => s.site === b.site && s.running > 0);
+                      return busy ? (
+                        <span className="text-xs px-2 py-0.5 rounded font-semibold bg-orange-100 text-orange-800"
+                          title={`الطابور بينفّذ مهمة واحدة لكل موقع — ${siteLabel(busy.site)} مشغول دلوقتى`}>
+                          مستنى: {siteLabel(busy.site)} مشغول بـ{typeLabel(busy.type || "")}
+                        </span>
+                      ) : null;
+                    })()}
                     {/* الباتش العالق لازم يبان — قبل كده كان بيفضل «0 من N» من غير أى تفسير */}
                     {b.claimed > 0 && (
                       <span className={`text-xs px-2 py-0.5 rounded font-semibold inline-flex items-center gap-1 ${isStuck(b) ? "bg-red-100 text-red-800" : "bg-blue-100 text-blue-800"}`}>

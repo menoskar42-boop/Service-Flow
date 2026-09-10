@@ -2190,7 +2190,7 @@ export async function registerRoutes(
       await expireOrphanedExecJobs();
       const { rows } = await pool.query(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
-                MIN(priority)::int AS priority,
+                MIN(priority)::int AS priority, MIN(COALESCE(site, '10.42.187.101')) AS site,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
                 bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
                 -- كام مهمة تحت التنفيذ دلوقتى ومن إمتى — عشان الباتش العالق يبان
@@ -2199,9 +2199,39 @@ export async function registerRoutes(
                 ROUND(EXTRACT(EPOCH FROM (now() - MIN(claimed_at) FILTER (WHERE status='claimed'))) / 60.0)::int AS "claimedMins",
                 (MIN(created_at) AT TIME ZONE 'Africa/Cairo') AS "createdAt"
          FROM exec_jobs
-         WHERE batch_id IN (${BATCHES_BY_ACTIVE_PRIORITY} HAVING MAX(priority) IN (1, 2))
+         WHERE batch_id IN (${BATCHES_BY_ACTIVE_PRIORITY} HAVING MAX(priority) IN (1, 2, 3))
          GROUP BY batch_id
          ORDER BY MIN(priority) DESC, MIN(created_at) ASC, batch_id`);
+      res.json({ data: rows });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // GET /api/exec-queue/sites — «المواقع المشغولة الآن»: المهمة الشغّالة على كل موقع
+  // وكام مهمة مستنيّة وراها على نفس الموقع.
+  //
+  // الباج اللى الشاشة دى بتكشفه: الطابور بينفّذ مهمة **واحدة لكل موقع**، فأى مهمة
+  // شغّالة على provisioningportal بتوقف «غيّر البورت» اللى بعدها مهما كانت أولويته —
+  // والمستخدم كان بيشوف الطلب «فى الطابور 0 من 1» من غير أى سبب ظاهر، لأن اللى ماسك
+  // الموقع (تحديث ملف البورتات مثلاً، أولوية 3) مكانش بيظهر فى أى قايمة على الشاشة.
+  app.get("/api/exec-queue/sites", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      await expireOrphanedExecJobs();
+      const { rows } = await pool.query(
+        `SELECT COALESCE(e.site, '10.42.187.101') AS site,
+                MIN(e.type) FILTER (WHERE e.status='claimed') AS type,
+                MIN(e.note) FILTER (WHERE e.status='claimed') AS note,
+                MIN(e.batch_id) FILTER (WHERE e.status='claimed') AS "batchId",
+                MIN(e.requested_by) FILTER (WHERE e.status='claimed') AS "requestedBy",
+                MIN(e.executed_by) FILTER (WHERE e.status='claimed') AS "executedBy",
+                ROUND(EXTRACT(EPOCH FROM (now() - MIN(e.claimed_at) FILTER (WHERE e.status='claimed'))) / 60.0)::int AS "claimedMins",
+                COUNT(*) FILTER (WHERE e.status='claimed')::int AS running,
+                COUNT(*) FILTER (WHERE e.status='pending' AND e.paused_at IS NULL)::int AS waiting
+           FROM exec_jobs e
+          WHERE e.status IN ('pending','claimed')
+          GROUP BY COALESCE(e.site, '10.42.187.101')
+         HAVING COUNT(*) FILTER (WHERE e.status='claimed') > 0
+             OR COUNT(*) FILTER (WHERE e.status='pending' AND e.paused_at IS NULL) > 0
+          ORDER BY COUNT(*) FILTER (WHERE e.status='claimed') DESC, site`);
       res.json({ data: rows });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2213,6 +2243,7 @@ export async function registerRoutes(
       await expireOrphanedExecJobs();
       const { rows } = await pool.query(
         `SELECT batch_id AS "batchId", MIN(type) AS type, MIN(requested_by) AS "requestedBy", MIN(note) AS note,
+                MIN(COALESCE(site, '10.42.187.101')) AS site,
                 COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status='done')::int AS done,
                 bool_or(status IN ('pending','claimed') AND paused_at IS NOT NULL) AS paused,
                 COUNT(*) FILTER (WHERE status='claimed')::int AS claimed,
