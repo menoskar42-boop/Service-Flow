@@ -638,14 +638,17 @@ export function RegularizedFaultsRangeReport() {
                     {f.accountNo ? (
                       <span className="inline-flex items-center gap-1">
                         {f.accountNo}
-                        <button
-                          type="button"
-                          onClick={() => openDZSSingle(f)}
-                          title="فتح DZS وقياس هذا الرقم"
-                          className="text-blue-600 hover:text-blue-800"
-                        >
-                          <Radar className="w-3.5 h-3.5" />
-                        </button>
+                        {/* القياس من التقارير للسوبر أدمن بس — بيبعت لطابور التنفيذ */}
+                        {showSpeedTools && (
+                          <button
+                            type="button"
+                            onClick={() => openDZSSingle(f)}
+                            title="فتح DZS وقياس هذا الرقم"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Radar className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </span>
                     ) : "-"}
                   </TableCell>

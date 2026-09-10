@@ -572,7 +572,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                       <TableCell dir="ltr" className="text-left font-mono">
                         <span className="inline-flex items-center gap-1">
                           {r.accountNo ?? "-"}
-                          {r.accountNo && (
+                          {r.accountNo && showSpeedTools && (
                             <button
                               type="button"
                               onClick={() => openDZSSingle(r)}

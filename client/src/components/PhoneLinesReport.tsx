@@ -492,14 +492,17 @@ export function PhoneLinesReport() {
                         {r.accountNo ? (
                           <span className="inline-flex items-center gap-1">
                             {r.accountNo}
-                            <button
-                              type="button"
-                              onClick={() => openDZSSingle(r)}
-                              title="فتح DZS وقياس هذا الرقم"
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              <Radar className="w-3.5 h-3.5" />
-                            </button>
+                            {/* القياس من التقارير للسوبر أدمن بس — بيبعت لطابور التنفيذ */}
+                            {showSpeedTools && (
+                              <button
+                                type="button"
+                                onClick={() => openDZSSingle(r)}
+                                title="فتح DZS وقياس هذا الرقم"
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                <Radar className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </span>
                         ) : "-"}
                       </TableCell>

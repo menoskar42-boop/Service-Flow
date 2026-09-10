@@ -356,7 +356,7 @@ export function ComplaintNoMeasureReport() {
                       <TableCell dir="ltr" className="text-left font-mono">
                         <span className="inline-flex items-center gap-1">
                           {r.accountNo ?? "-"}
-                          {r.accountNo && (
+                          {r.accountNo && showSpeedTools && (
                             <button
                               type="button"
                               onClick={() => openDZSSingle(r)}
