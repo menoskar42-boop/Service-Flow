@@ -4047,6 +4047,10 @@ export async function registerRoutes(
       LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
       LEFT JOIN line_subscriber_info si2 ON si2.phone_number = k.full_phone
+      -- مخزن أرقام الأكونت (Customer360 + الإدخال اليدوى). عمود الأكونت كان بيقرا من
+      -- **آخر قياس فقط** (case_138)، فالخط اللى ماتقاسش عمره كان بيفضل «بدون أكونت»
+      -- حتى بعد ما Customer360 يجيب أكونته — وبالتالى مايتقاسش أبداً (القياس محتاج أكونت).
+      LEFT JOIN line_accounts la ON la.full_phone = k.full_phone
       -- رقم مالوش فريم دلوقتى بس كان ليه بورت قبل كده (موجود فى جدول الخطوط المرفوعة)
       -- = اتشال من ملف البورتات فعلياً، مش لسه ماتفحصش. الفرق ده بيبان فى عمود «الحالة».
       LEFT JOIN removed_phone_ports rpp ON rpp.phone_number = k.full_phone`;
@@ -4088,7 +4092,8 @@ export async function registerRoutes(
                 LIMIT 1) AS "techName",
               pl.tel_num_txt AS "telNumTxt", k.full_phone AS "fullPhone",
               si2.sub_name AS "subName", si2.sub_add AS "subAdd",
-              c138p.account_no AS "accountNo",
+              -- القياس أولاً (زى ما كان) وبعده مخزن Customer360 — إضافة مش تغيير سلوك
+              COALESCE(NULLIF(btrim(c138p.account_no), ''), NULLIF(btrim(la.account_no), '')) AS "accountNo",
               c138p.current_speed AS "lineCurrentSpeed",
               c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",

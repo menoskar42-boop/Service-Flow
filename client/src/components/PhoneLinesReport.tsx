@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight, ChevronLeft, Loader2, Radar, Gauge } from "lucide-react";
+import { ChevronRight, ChevronLeft, Loader2, Radar, Gauge, IdCard } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import * as XLSX from "xlsx";
@@ -23,6 +23,8 @@ import { printTablePDF } from "@/lib/print-pdf";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
 import { ReviewSubscriberInfoButton } from "@/components/ReviewSubscriberInfoButton";
 import { useMobileLookup, phoneLookupKey, MobileValue } from "@/lib/mobile-lookup";
+import { openCustomer360 } from "@/lib/customer360";
+import { useToast } from "@/hooks/use-toast";
 
 // رابط بوابة DZS expresse — يُفتح في تاب جديد ويُمرَّر أرقام الأكونت فى الـ hash.
 const DZS_URL = "https://10.42.187.101:8080/expresse/";
@@ -92,6 +94,9 @@ export function PhoneLinesReport() {
   const [phoneTo, setPhoneTo] = useState("");     // نطاق: إلى رقم
   const [search, setSearch] = useState("");        // بحث نصّى فى كل الأعمدة
   const [page, setPage] = useState(1);
+  const [c360Busy, setC360Busy] = useState(false);  // جلب الأكونت من Customer360 شغّال
+  const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { data: filterOptions } = useQuery({
     queryKey: ["/api/phone-lines/filter-options"],
@@ -201,6 +206,65 @@ export function PhoneLinesReport() {
       openProfileOptimization(accounts, kind === "stop" ? { stopOnly: true } : { afterStop });
     } catch {
       alert("تعذّر تحميل بيانات النطاق");
+    }
+  };
+
+  // ── Customer360: جلب/تحديث رقم الأكونت لأرقام الفلتر الحالى ──────────────────
+  // بيشتغل على **نفس نطاق الفلتر** المعروض (سنترال/كابينة/بكس/من-إلى/بحث) — نفس
+  // مصدر بيانات التصدير بالظبط، فاللى بتشوفه هو اللى بيتبعت.
+  // الافتراضى: الأرقام **اللى مالهاش أكونت** بس — لأن ده الاستخدام الحقيقى (من غير
+  // أكونت مافيش قياس ولا رفع سرعة). Shift أو الإلغاء فى التأكيد = كل أرقام النطاق.
+  const handleC360 = async () => {
+    const hasFilter = !!(central || cabin || box || phoneFrom.trim() || phoneTo.trim() || search.trim());
+    if (!hasFilter) {
+      alert("اختر فلتر الأول (سنترال/كابينة/بكس أو نطاق أرقام أو بحث) — الجلب بيشتغل على النطاق المفلتر مش الجدول كله");
+      return;
+    }
+    setC360Busy(true);
+    try {
+      const params = new URLSearchParams({ page: "1", limit: "20000" });
+      if (central) params.set("central", central);
+      if (cabin) params.set("cabin", cabin);
+      if (box) params.set("box", box);
+      if (phoneFrom.trim()) params.set("phoneFrom", phoneFrom.trim());
+      if (phoneTo.trim()) params.set("phoneTo", phoneTo.trim());
+      if (search.trim()) params.set("search", search.trim());
+      const res = await fetch(`/api/phone-lines?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("تعذّر تحميل أرقام النطاق");
+      const json = await res.json();
+      const all = (json.data as PhoneLine[]) ?? [];
+      const missing = all.filter((r) => !String(r.accountNo ?? "").trim());
+      if (!all.length) { alert("مفيش أرقام فى النطاق المحدد"); return; }
+      let pick = missing;
+      if (!missing.length) {
+        if (!window.confirm(`كل أرقام النطاق (${all.length}) ليها أكونت بالفعل.\n\nموافق = إعادة جلب الأكونت لكلهم من Customer360\nإلغاء = مانعملش حاجة`)) return;
+        pick = all;
+      } else if (missing.length < all.length) {
+        // فيه أرقام بأكونت وأرقام من غيره → المستخدم يقرّر
+        const onlyMissing = window.confirm(
+          `${missing.length} رقم من ${all.length} فى النطاق ده من غير أكونت.\n\n` +
+          `موافق = جلب الأكونت للناقصين بس (${missing.length})\n` +
+          `إلغاء = إعادة الجلب لكل أرقام النطاق (${all.length})`);
+        pick = onlyMissing ? missing : all;
+      }
+      const phones = [...new Set(pick.map((r) => String(r.fullPhone ?? "").trim()).filter(Boolean))];
+      if (!phones.length) { alert("مفيش أرقام تليفون صالحة فى الاختيار ده"); return; }
+      // Customer360 بيلفّ على كل الأرقام جوّه **تاب واحد** (مهمة واحدة مش مقسّمة)،
+      // فالعدد الكبير معناه تشغيلة طويلة — نتأكد الأول.
+      if (phones.length > 200 &&
+          !window.confirm(`هيتبعت ${phones.length} رقم لجلب الأكونت من Customer360 فى تشغيلة واحدة — دى هتاخد وقت طويل. تأكيد؟`)) return;
+      await openCustomer360(phones);
+      toast({
+        title: "اتبعت لجلب الأكونت",
+        description: `${phones.length} رقم — هيتنفّذوا على جهاز التنفيذ، والأكونت هيظهر فى العمود أول ما يترجع.`,
+        duration: 6000,
+      });
+      // لما الأكونت يترجع، الجدول لازم يعيد القراءة
+      qc.invalidateQueries({ queryKey: ["/api/phone-lines"] });
+    } catch (e: any) {
+      alert(e?.message || "تعذّر بدء جلب الأكونت");
+    } finally {
+      setC360Busy(false);
     }
   };
 
@@ -360,6 +424,14 @@ export function PhoneLinesReport() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleRaisePO("stop")} className="text-orange-700 border-orange-200 gap-1" title="إيقاف الـ Nightly PO فقط لأرقام النطاق المحدد">
               <Gauge className="w-4 h-4" /> إيقاف PO
+            </Button>
+            {/* Customer360: جلب/تحديث رقم الأكونت لأرقام النطاق المفلتر — من غير أكونت
+                مافيش قياس ولا رفع سرعة، فده أول خطوة لأى خط جديد. */}
+            <Button variant="outline" size="sm" onClick={handleC360} disabled={c360Busy}
+              className="text-indigo-700 border-indigo-200 gap-1"
+              title="جلب رقم الأكونت من Customer360 لأرقام النطاق المفلتر (الناقصين افتراضياً)">
+              {c360Busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <IdCard className="w-4 h-4" />}
+              أكونت Customer360
             </Button>
             </>)}
             {/* مراجعة البيانات: يعيد جلب اسم/عنوان العميل من FCC للأرقام (بدون بيانات أو الكل) — سوبر أدمن. */}
