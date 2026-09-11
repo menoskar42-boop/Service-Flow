@@ -35,10 +35,27 @@ export type BoxFullResult =
   | { ok: true; inspectionId: number; created: boolean; phonesSent: number }
   | { ok: false; reason: string };
 
+// ── توحيد القيم جوّه SQL — نفس منطق shared/cab-norm.ts بالظبط ────────────────
+// الباج اللى الحتة دى اتعملت بسببه: المطابقة كانت **حرفية** (btrim = btrim)، والمتعذرات
+// بتكتب الكابينة بشرطة مايلة («2/6») وبيان التليفونات بشرطة عادية («2-6») — فنص
+// البكسيات كانت بترجع **صفر أرقام**، وفنى الصيانة يستلم فحص من غير أى رقم يراجعه.
+// (اتأكد فعلياً: «كابينة 4-6» رجّعت 6 أرقام و«كابينة 2/6» رجّعت 0 فى نفس التشغيلة.)
+// sf_ar_norm بتتكفّل بالأرقام العربية وتوحيد الحروف (ة/ه، ى/ي) وحالة الأحرف.
+const centralN = (e: string) =>
+  `btrim(regexp_replace(regexp_replace(sf_ar_norm(COALESCE(${e}::text, '')), '\\s*-\\s*', '-', 'g'), '\\s+', ' ', 'g'))`;
+const cabN = (e: string) =>
+  `btrim(regexp_replace(regexp_replace(regexp_replace(sf_ar_norm(COALESCE(${e}::text, '')), '[\\\\/_‐‑‒–—―]', '-', 'g'), '\\s*-\\s*', '-', 'g'), '\\s+', ' ', 'g'))`;
+// رقم البكس = الأرقام بس بدون أصفار بادئة («05» = «5») — نفس normBox
+const boxN = (e: string) => `(
+  CASE WHEN regexp_replace(sf_ar_norm(COALESCE(${e}::text, '')), '[^0-9]', '', 'g') = '' THEN ''
+       WHEN ltrim(regexp_replace(sf_ar_norm(COALESCE(${e}::text, '')), '[^0-9]', '', 'g'), '0') = '' THEN '0'
+       ELSE ltrim(regexp_replace(sf_ar_norm(COALESCE(${e}::text, '')), '[^0-9]', '', 'g'), '0') END)`;
+
 /**
  * أرقام التليفونات اللى على البكس من **بيان التليفونات** — نفس المصدر اللى كل
  * التقارير بتقرا منه (وبيشمل تصحيحات البيان لأنها بتتكتب فيه).
  * بنرجّع الرقم الكامل مع الترمنال كملاحظة عشان تساعد فنى الصيانة.
+ * المطابقة **موحّدة** (سنترال/كابينة/بكس) زى باقى النظام — شوف التعليق فوق.
  */
 export async function boxPhones(central: string, cabinet: string, box: string):
   Promise<{ phone: string; notes: string }[]> {
@@ -46,9 +63,10 @@ export async function boxPhones(central: string, cabinet: string, box: string):
     `SELECT COALESCE(pl.full_phone, '88' || pl.tel_no) AS phone,
             COALESCE(NULLIF(btrim(pl.dp_terminal), ''), '') AS terminal
        FROM phone_lines pl
-      WHERE btrim(pl.central) = btrim($1)
-        AND btrim(pl.cabin_number) = btrim($2)
-        AND btrim(pl.box_number) = btrim($3)
+      WHERE ${centralN("pl.central")} = ${centralN("$1")}
+        AND ${cabN("pl.cabin_number")} = ${cabN("$2")}
+        AND ${boxN("pl.box_number")} = ${boxN("$3")}
+        AND ${boxN("$3")} <> ''
       ORDER BY NULLIF(regexp_replace(COALESCE(pl.dp_terminal, ''), '\\D', '', 'g'), '')::int
                NULLS LAST, pl.tel_no
       LIMIT 500`,

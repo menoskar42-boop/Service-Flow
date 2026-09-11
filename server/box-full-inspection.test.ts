@@ -37,7 +37,9 @@ test("the opener is recorded as tech-name + source", () => {
 // أرقام البكس مصدرها بيان التليفونات — وهو نفسه اللى تصحيح البيان بيتكتب فيه.
 test("box phones come from phone_lines", () => {
   assert.match(trigger, /FROM phone_lines pl/);
-  assert.match(trigger, /btrim\(pl\.box_number\) = btrim\(\$3\)/);
+  // ⚠️ اتغيّرت: المطابقة الحرفية اتشالت لأنها كانت بترجّع صفر أرقام لأى كابينة
+  // مكتوبة بشرطة مايلة («2/6» مقابل «2-6») — التفاصيل فى box-phones-norm.test.ts
+  assert.match(trigger, /\$\{boxN\("pl\.box_number"\)\} = \$\{boxN\("\$3"\)\}/);
 });
 
 // البند الجديد + الجدول + المهمة — من غير المهمة الفنى مايقدرش يعلّم البند مكتمل.
