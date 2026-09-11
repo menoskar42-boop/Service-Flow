@@ -41,6 +41,13 @@ const ENDPOINT = "/api/phone-lines/no-mobile-complaints";
 const PAGE_SIZE = 50;
 
 const todayInCairo = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
+const oneMonthBefore = (isoDate: string) => {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const targetYear = month === 1 ? year - 1 : year;
+  const targetMonth = month === 1 ? 12 : month - 1;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+  return `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+};
 
 const formatDate = (value: string | null) => {
   if (!value) return "-";
@@ -52,7 +59,7 @@ const formatDate = (value: string | null) => {
 
 export function NoMobileComplaintsReport() {
   const today = todayInCairo();
-  const [dateFrom, setDateFrom] = useState(`${today.slice(0, 8)}01`);
+  const [dateFrom, setDateFrom] = useState(() => oneMonthBefore(today));
   const [dateTo, setDateTo] = useState(today);
   const [central, setCentral] = useState("");
   const [cabin, setCabin] = useState("");

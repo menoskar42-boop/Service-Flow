@@ -4296,7 +4296,12 @@ export async function registerRoutes(
       }).formatToParts(new Date());
       const cairoPart = (type: string) => cairoParts.find((p) => p.type === type)?.value || "";
       const cairoToday = `${cairoPart("year")}-${cairoPart("month")}-${cairoPart("day")}`;
-      const from = dateFrom || `${cairoToday.slice(0, 8)}01`;
+      const [todayYear, todayMonth, todayDay] = cairoToday.split("-").map(Number);
+      const previousMonthYear = todayMonth === 1 ? todayYear - 1 : todayYear;
+      const previousMonth = todayMonth === 1 ? 12 : todayMonth - 1;
+      const previousMonthLastDay = new Date(Date.UTC(previousMonthYear, previousMonth, 0)).getUTCDate();
+      const defaultFrom = `${previousMonthYear}-${String(previousMonth).padStart(2, "0")}-${String(Math.min(todayDay, previousMonthLastDay)).padStart(2, "0")}`;
+      const from = dateFrom || defaultFrom;
       const to = dateTo || cairoToday;
       const params: any[] = [from, to]; // $1 = من، $2 = إلى
 

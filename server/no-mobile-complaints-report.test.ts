@@ -81,3 +81,10 @@ test("uses the same date and report filters for totals and paged rows", () => {
     /const totalPages = data \? Math\.ceil\(data\.total \/ PAGE_SIZE\) : 1/,
   );
 });
+
+test("defaults the report to a rolling one-month window ending today", () => {
+  assert.match(clientReport, /const \[dateFrom, setDateFrom\] = useState\(\(\) => oneMonthBefore\(today\)\)/);
+  assert.match(reportRoute, /const \[todayYear, todayMonth, todayDay\] = cairoToday\.split\("-"\)\.map\(Number\)/);
+  assert.match(reportRoute, /const defaultFrom = `\$\{previousMonthYear\}-\$\{String\(previousMonth\)\.padStart\(2, "0"\)\}-\$\{String\(Math\.min\(todayDay, previousMonthLastDay\)\)\.padStart\(2, "0"\)\}`/);
+  assert.match(reportRoute, /const from = dateFrom \|\| defaultFrom/);
+});
