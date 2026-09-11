@@ -50,12 +50,20 @@
     class="btn btn-sm <%= query.status==='in_progress' ? 'btn-warning' : 'btn-outline-warning' %>">قيد التنفيذ</a>
   <a href="/technician?status=completed<%= query.q ? '&q='+encodeURIComponent(query.q) : '' %>"
     class="btn btn-sm <%= query.status==='completed' ? 'btn-success' : 'btn-outline-success' %>">مكتملة</a>
+  <!-- البكسيات الجاية من Service-Flow برد «بوكس مليان» — مطلوب مراجعة بياناتها -->
+  <a href="/technician?review=1"
+    class="btn btn-sm <%= query.review ? 'btn-info' : 'btn-outline-info' %>"
+    title="البكسيات اللى مطلوب مراجعة بياناتها (جاية من رد «بوكس مليان»)">
+    <i class="bi bi-clipboard-data me-1"></i>مراجعة بيانات البكس
+    <% if (typeof reviewCount !== 'undefined' && reviewCount > 0) { %>(<%= reviewCount %>)<% } %>
+  </a>
 </div>
 
 <% if (!tasks.length) { %>
 <div class="text-center text-muted py-5">
   <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
-  <%= query.q ? 'لا توجد نتائج للبحث.' : 'لا توجد مهام صيانة.' %>
+  <%= query.review ? 'مفيش بكسيات مطلوب مراجعة بياناتها دلوقتى.'
+       : (query.q ? 'لا توجد نتائج للبحث.' : 'لا توجد مهام صيانة.') %>
 </div>
 <% } else { %>
 <div class="list-group">
@@ -66,6 +74,7 @@
         <div class="fw-semibold mb-1">
           <i class="bi bi-box2 text-primary me-1"></i>بوكس <strong><%= t.box_number %></strong>
           <% if (t.rejection_reason) { %><span class="badge bg-danger ms-1"><i class="bi bi-arrow-counterclockwise"></i> مرتجع</span><% } %>
+          <% if (t.needs_data_review) { %><span class="badge bg-info text-dark ms-1"><i class="bi bi-clipboard-data"></i> مراجعة بيانات البكس</span><% } %>
         </div>
         <div class="small text-muted text-truncate">
           <i class="bi bi-building me-1"></i><%= t.exchange_name %>
@@ -74,6 +83,12 @@
         <% if (t.tech_name) { %>
         <div class="small text-muted mt-1">
           <i class="bi bi-person-badge me-1"></i><%= t.tech_name %>
+        </div>
+        <% } %>
+        <% if (t.needs_data_review) { %>
+        <div class="small text-info mt-1">
+          <i class="bi bi-telephone me-1"></i><%= t.phones_count || 0 %> رقم على البكس
+          <% if (t.opened_by_name) { %>&nbsp;·&nbsp;فتحها: <%= t.opened_by_name %><% } %>
         </div>
         <% } %>
       </div>

@@ -22,16 +22,27 @@ const techOrAdmin = requireRole('admin', 'technician');
 
 router.get('/', techOrAdmin, async (req, res) => {
   try {
-    const { status, q, exchange_id, cabinet_id, box_q, from, to } = req.query;
+    const { status, q, exchange_id, cabinet_id, box_q, from, to, review } = req.query;
 
     const exchanges = await db.all('SELECT id, name FROM exchanges ORDER BY name');
     const cabinets = exchange_id
       ? await db.all('SELECT id, number FROM cabinets WHERE exchange_id = ? ORDER BY number', [exchange_id])
       : [];
 
+    // «مراجعة بيانات البكس»: البند اللى بييجى من Service-Flow لما الفنى يرد «بوكس مليان».
+    // من غير العمودين دول مكانش فيه أى طريقة يعرف بيها فنى الصيانة إن البكس ده مطلوب
+    // مراجعة بياناته — المهمة كانت بتظهر زى أى مهمة عادية من غير أى علامة.
+    const REVIEW_OPEN = `(EXISTS (SELECT 1 FROM inspection_items ii
+                                   WHERE ii.inspection_id = i.id AND ii.item_key = 'data_review')
+                          AND NOT EXISTS (SELECT 1 FROM maintenance_item_status ms
+                                           WHERE ms.task_id = mt.id AND ms.item_key = 'data_review'
+                                             AND ms.is_done = 1))`;
     let sql = `SELECT mt.*, i.box_id, i.general_notes as inspection_notes,
       b.number as box_number, c.number as cabinet_number, e.name as exchange_name,
-      u.full_name as tech_name
+      u.full_name as tech_name,
+      i.opened_by_name as opened_by_name,
+      ${REVIEW_OPEN} AS needs_data_review,
+      (SELECT COUNT(*) FROM box_line_numbers bl WHERE bl.inspection_id = i.id)::int AS phones_count
       FROM maintenance_tasks mt
       JOIN inspections i ON i.id = mt.inspection_id
       JOIN boxes b ON b.id = i.box_id JOIN cabinets c ON c.id = b.cabinet_id
@@ -46,9 +57,20 @@ router.get('/', techOrAdmin, async (req, res) => {
     if (box_q)       { sql += ' AND b.number LIKE ?'; params.push(`%${box_q}%`); }
     if (from)        { sql += ' AND i.date >= ?'; params.push(from); }
     if (to)          { sql += ' AND i.date <= ?'; params.push(to); }
+    // فلتر «مراجعة بيانات البكس» — البكسيات اللى لسه مطلوب مراجعة بياناتها بس
+    if (review)      { sql += ` AND ${REVIEW_OPEN}`; }
     sql += " ORDER BY e.name, c.number, CASE WHEN b.number ~ '^[0-9]+$' THEN b.number::INTEGER ELSE 0 END, b.number";
 
     const tasks = await db.all(sql, params);
+
+    // عدّاد الزر — بيتحسب مستقل عن الفلتر الحالى عشان الفنى يشوف العدد دايماً
+    let reviewCount = 0;
+    try {
+      const rc = await db.get(`SELECT COUNT(*)::int AS n
+        FROM maintenance_tasks mt JOIN inspections i ON i.id = mt.inspection_id
+        WHERE COALESCE(i.is_archived, 0) = 0 AND mt.status <> 'completed' AND ${REVIEW_OPEN}`);
+      reviewCount = rc ? rc.n : 0;
+    } catch (e) { /* العدّاد إضافى — مايوقّفش الصفحة */ }
 
     let archivedTasks = [];
     if (!status && !q) {
@@ -65,7 +87,7 @@ router.get('/', techOrAdmin, async (req, res) => {
           ORDER BY mt.id DESC`);
     }
 
-    res.render('technician/list', { title: 'مهام الصيانة', tasks, archivedTasks, query: req.query, exchanges, cabinets });
+    res.render('technician/list', { title: 'مهام الصيانة', tasks, archivedTasks, query: req.query, exchanges, cabinets, reviewCount });
   } catch (e) {
     console.error('technician list error:', e.message);
     res.status(500).render('error', { title: 'خطأ', message: 'حدث خطأ أثناء تحميل المهام. حاول مرة أخرى.' });
