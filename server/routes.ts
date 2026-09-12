@@ -2594,6 +2594,28 @@ export async function registerRoutes(
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
+  // POST /api/exec-queue/requeue-all — «إعادة تشغيل الكل» (سوبر أدمن).
+  // نفس زرار إعادة التشغيل بتاع الباتش الواحد، بس على كل الباتشات دفعة واحدة —
+  // بدل ما تدوس على كل باتش عالق لوحده (٤ باتشات تحديث ملفات واقفة مع بعض مثلاً).
+  //
+  // بيلمس **اللى واقف بس**: المهام الـ claimed (اللى الجهاز ماخلّصهاش) والـ stale
+  // (اللى استنفدت محاولاتها واتلغت). عن قصد مابيلمسش:
+  //   • pending — دى مستنية دورها عادى ومفيش حاجة غلط فيها.
+  //   • أى مهمة موقوفة مؤقتاً (paused_at) — الإيقاف قرار صريح من المستخدم،
+  //     و«إعادة التشغيل» مالهاش حق تفكّه من ورا ظهره (زرار «استئناف الكل» موجود).
+  //   • done — اللى اتنفّذ فعلاً مايتعادش.
+  app.post("/api/exec-queue/requeue-all", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `UPDATE exec_jobs
+            SET status = 'pending', claimed_at = NULL, done_at = NULL, result = NULL, attempts = 0
+          WHERE status IN ('claimed', 'stale') AND paused_at IS NULL
+      RETURNING batch_id`);
+      const batches = new Set(rows.map((r: any) => r.batch_id).filter(Boolean));
+      res.json({ ok: true, requeued: rows.length, batches: batches.size });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // إيقاف مؤقت لباتش معيّن (سوبر أدمن): بيعلّم مهامه pending كـ paused فيتخطّاها جهاز التنفيذ
   // (claim) ويكمّل مباشرة التالى فى الترتيب — عكس /cancel، ده قابل للاستئناف ومش بيلغى حاجة.
   app.post("/api/exec-queue/pause", requireAuth, requireSuperAdmin, async (req, res) => {

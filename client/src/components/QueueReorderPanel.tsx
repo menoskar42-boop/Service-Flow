@@ -209,6 +209,28 @@ export function QueueReorderPanel() {
     } catch { alert("تعذّر إعادة التشغيل"); } finally { setRequeuing(null); }
   };
 
+  // «إعادة تشغيل الكل» — نفس زرار الباتش الواحد بس على كل اللى واقف دفعة واحدة.
+  // بيرجّع المهام الـ claimed (الجهاز ماخلّصهاش) والـ stale (اتلغت بعد المحاولات)
+  // للطابور. مابيلمسش المستنية عادى ولا الموقوفة مؤقتاً ولا اللى اتنفّذ خلاص.
+  const [requeuingAll, setRequeuingAll] = useState(false);
+  const stuckCount = [...priorityRows, ...rows].filter((b) => isStuck(b)).length;
+  const requeueAll = async () => {
+    const msg = stuckCount > 0
+      ? `فيه ${stuckCount} باتش باين إنه عالق.\nإعادة تشغيل الكل هترجّع كل المهام الواقفة (تحت التنفيذ + الملغاة) للطابور من أول وجديد.\nاللى اتنفّذ فعلاً مش هيتعاد، والموقوف مؤقتاً هيفضل موقوف. تأكيد؟`
+      : `إعادة تشغيل كل المهام الواقفة (تحت التنفيذ + الملغاة) ورجوعها للطابور من أول وجديد؟\nاللى اتنفّذ فعلاً مش هيتعاد، والموقوف مؤقتاً هيفضل موقوف.`;
+    if (!confirm(msg)) return;
+    setRequeuingAll(true);
+    try {
+      const r = await fetch("/api/exec-queue/requeue-all", { method: "POST", credentials: "include" });
+      const d = await r.json();
+      if (r.ok && d?.ok) {
+        await load();
+        alert(d.requeued ? `تم — رجّعنا ${d.requeued} مهمة من ${d.batches} باتش للطابور`
+                         : "مفيش أى مهمة واقفة ترجع للطابور دلوقتى.");
+      } else alert(d?.message || "تعذّر إعادة التشغيل");
+    } catch { alert("تعذّر إعادة التشغيل"); } finally { setRequeuingAll(false); }
+  };
+
   // إيقاف مؤقت/استئناف لكل الباتشات دفعة واحدة
   const anyPaused = [...priorityRows, ...rows].some((b) => b.paused);
   const togglePauseAll = async () => {
@@ -246,6 +268,17 @@ export function QueueReorderPanel() {
           >
             {pausing === "all" ? <Loader2 className="w-4 h-4 animate-spin" /> : anyPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
             {anyPaused ? "استئناف الكل" : "إيقاف مؤقت للكل"}
+          </Button>
+          <Button
+            onClick={requeueAll}
+            size="sm"
+            variant="outline"
+            disabled={requeuingAll || loading}
+            className={`gap-1 ${stuckCount > 0 ? "text-red-700 border-red-300" : "text-blue-700 border-blue-200"}`}
+            title="يرجّع كل المهام الواقفة (تحت التنفيذ + الملغاة) للطابور من أول وجديد — الموقوف مؤقتاً مايتلمسش"
+          >
+            {requeuingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+            إعادة تشغيل الكل{stuckCount > 0 ? ` (${stuckCount} عالق)` : ""}
           </Button>
           {/* () => load() مش load مباشرة — عشان onClick بيمرّر الحدث كأول باراميتر
               وكان هيتقرا كـ silent=true فيتحوّل التحديث اليدوى لتحديث صامت بغير قصد */}
