@@ -14,6 +14,11 @@ import test from "node:test";
 //             ACC5 (فى الطابور)، ACC6 (قياس من ٤ أيام)
 //   قياس → ACC7 (قياس من ٢٠ يوم) + ACC9 (لم يُقس أبداً)
 //   واستُبعد: ACC10 (فى الطابور)، وACC11/ACC12 (من غير فريم)
+// وبعد ما الاستبعاد بقى **بنفس النوع بس**، جولة تانية أثبتت:
+//   P_ONLY (ليه stop فى الطابور) → استُبعد من باتش الإيقاف ✅
+//   BOTH   (ليه measure فى الطابور) → **اتضاف** لباتش الإيقاف ✅ (قبل كده كان بيتستبعد)
+//   M_ONLY (ليه measure فى الطابور) → استُبعد من باتش القياس ✅
+//   CLEAN  (مش فى الطابور) → اتضاف لباتش القياس ✅
 const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
 const panel = readFileSync(
   new URL("../client/src/components/QueueReorderPanel.tsx", import.meta.url), "utf8");
@@ -41,7 +46,9 @@ test("the PO-stop batch mirrors the report and drops recent stops and queued lin
   assert.match(poFn, /m\.uploaded_at >= now\(\) - interval '3 days'/);   // القياس خلال ٣ أيام
   assert.match(poFn, /NOT COALESCE\(\$\{needsSpeedSql\("m"\)\}, false\)/); // نفس دالة التقرير
   assert.match(poFn, /pe\.last_stop_at IS NULL\s*\n\s*OR pe\.last_stop_at < now\(\) - make_interval\(days => \$\{AUTO_PO_STOP_SKIP_DAYS\}\)/);
-  assert.match(poFn, /\$\{notQueuedSql\("la\.account_no"\)\}/);
+  // الاستبعاد **بنفس السبب بس**: إيقاف PO بيستبعد اللى ليه إيقاف فى الطابور،
+  // ومابيستبعدش اللى ليه قياس — رقم مستنى قياس مالوش دعوة بإيقاف PO.
+  assert.match(poFn, /\$\{notQueuedSql\("la\.account_no", \["stop"\]\)\}/);
   assert.match(poFn, /\$\{hasFrameSql\("m\.full_phone"\)\}/);
   assert.match(routes, /const AUTO_PO_STOP_SKIP_DAYS = 3;/);
 });
@@ -53,7 +60,7 @@ test("the measure batch covers never-measured plus stale, minus queued", () => {
   assert.match(routes, /const AUTO_MEASURE_STALE_DAYS = 10;/);
   // NULL = لم يُقس أبداً، والتانى = آخر قياس أقدم من ١٠ أيام — الشرطين مع بعض
   assert.match(measFn, /c138p\.uploaded_at IS NULL\s*\n\s*OR c138p\.uploaded_at < now\(\) - make_interval\(days => \$\{AUTO_MEASURE_STALE_DAYS\}\)/);
-  assert.match(measFn, /\$\{notQueuedSql\("la\.account_no"\)\}/);
+  assert.match(measFn, /\$\{notQueuedSql\("la\.account_no", \["measure"\]\)\}/);
   assert.match(measFn, /\$\{hasFrameSql\("la\.full_phone"\)\}/);
   assert.match(measFn, /la\.account_no IS NOT NULL AND la\.account_no <> ''/);
 });
@@ -77,4 +84,14 @@ test("the panel shows whether today's run happened", () => {
   assert.match(panel, /التشغيل اليومى \(٩ صباحاً\)/);
   assert.match(panel, /auto\?\.doneToday/);
   assert.match(panel, /runAuto\(!!auto\?\.doneToday\)/);
+});
+
+// الدالة المشتركة نفسها لازم تفضل بسلوكها القديم لباقى التقارير (زرار «استبعاد
+// اللى فى الطابور») — التخصيص بالنوع للباتشات اليومية بس.
+test("the shared helper keeps its all-types default for the reports", () => {
+  assert.match(routes, /const notQueuedSql = \(accCol: string, types: readonly string\[\] = \["measure", "raise", "stop"\]\)/);
+  assert.match(routes, /e\.type IN \(\$\{types\.map\(\(t\) => `'\$\{t\.replace\(\/'\/g, "''"\)\}'`\)\.join\(", "\)\}\)/);
+  // التقارير بتنادى الدالة من غير types فبتاخد الافتراضى
+  assert.ok([...routes.matchAll(/notQueuedSql\("la\.account_no"\)/g)].length >= 4,
+    "report call sites must keep the default");
 });

@@ -725,9 +725,14 @@ const HAS_MOBILE_SET = `(
 const PORTS_LOCAL_PHONES_SQL = `SELECT phone_number FROM phone_ports
           WHERE regexp_replace(phone_number, '[^0-9]', '', 'g') ~ '^0*88[0-9]{7}$'`;
 
-const notQueuedSql = (accCol: string) => `NOT EXISTS (
+// types: أنواع المهام اللى الاستبعاد بيتحسب عليها. الافتراضى كل أنواع القياسات —
+// ده اللى زرار «استبعاد اللى فى الطابور» فى التقارير بيستخدمه.
+// أما **الباتشات اليومية التلقائية** فبتستخدم النوع بتاعها بس: باتش إيقاف PO
+// بيستبعد اللى ليه إيقاف فى الطابور، وباتش القياس بيستبعد اللى ليه قياس — رقم
+// مستنى قياس مالوش دعوة بإيقاف PO والعكس، فالاستبعاد المشترك كان بيمنع شغل صح.
+const notQueuedSql = (accCol: string, types: readonly string[] = ["measure", "raise", "stop"]) => `NOT EXISTS (
   SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
-   WHERE e.type IN ('measure','raise','stop')
+   WHERE e.type IN (${types.map((t) => `'${t.replace(/'/g, "''")}'`).join(", ")})
      AND qa.acc = ${accCol}
      AND (e.status IN ('pending','claimed')
           OR e.batch_id IN (SELECT b.batch_id FROM exec_jobs b
@@ -2658,8 +2663,9 @@ export async function registerRoutes(
           -- اتعملها إيقاف PO خلال آخر ٣ أيام → مانكررش
           AND (pe.last_stop_at IS NULL
                OR pe.last_stop_at < now() - make_interval(days => ${AUTO_PO_STOP_SKIP_DAYS}))
-          -- موجودة فى الطابور دلوقتى (أى نوع) → مانضيفهاش تانى
-          AND ${notQueuedSql("la.account_no")}`);
+          -- ليها **إيقاف PO** فى الطابور دلوقتى → مانضيفهاش تانى.
+          -- الاستبعاد بنفس السبب بس: رقم مستنى قياس مالوش دعوة بإيقاف PO.
+          AND ${notQueuedSql("la.account_no", ["stop"])}`);
     return rows.map((r: any) => String(r.acc).trim()).filter(Boolean);
   };
 
@@ -2677,7 +2683,8 @@ export async function registerRoutes(
           -- لم تُقس أبداً (NULL) أو آخر قياس أقدم من ١٠ أيام
           AND (c138p.uploaded_at IS NULL
                OR c138p.uploaded_at < now() - make_interval(days => ${AUTO_MEASURE_STALE_DAYS}))
-          AND ${notQueuedSql("la.account_no")}`);
+          -- ليها **قياس** فى الطابور دلوقتى → مانضيفهاش تانى (نفس السبب بس)
+          AND ${notQueuedSql("la.account_no", ["measure"])}`);
     return rows.map((r: any) => String(r.acc).trim()).filter(Boolean);
   };
 

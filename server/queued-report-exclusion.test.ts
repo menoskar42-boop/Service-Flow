@@ -20,7 +20,10 @@ test("queue exclusion is based on active jobs and active batches", () => {
   assert.ok(helperStart >= 0 && helperEnd > helperStart, "the shared queue exclusion helper must exist");
   const helper = routes.slice(helperStart, helperEnd);
 
-  assert.match(helper, /e\.type IN \('measure','raise','stop'\)/);
+  // الأنواع بقت بارامتر (الباتشات اليومية بتستبعد بنوعها هى بس)، والافتراضى
+  // للتقارير هو نفس التلاتة زى ما كان بالظبط.
+  assert.match(helper, /types: readonly string\[\] = \["measure", "raise", "stop"\]/);
+  assert.match(helper, /e\.type IN \(\$\{types\.map\(/);
   assert.match(helper, /qa\.acc = \$\{accCol\}/);
   assert.match(helper, /e\.status IN \('pending','claimed'\)/);
   assert.match(
