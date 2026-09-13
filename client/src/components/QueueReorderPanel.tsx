@@ -76,6 +76,10 @@ export function QueueReorderPanel() {
   const [rows, setRows] = useState<Batch[]>([]);
   const [priorityRows, setPriorityRows] = useState<PriorityBatch[]>([]);
   const [siteRows, setSiteRows] = useState<SiteRow[]>([]);
+  // حالة «التشغيل اليومى ٩ ص» — من غيرها مفيش أى طريقة تعرف إن الباتشات اتفتحت
+  const [auto, setAuto] = useState<{ today: string; hour: number; atHour: number;
+    lastDay: string | null; lastAt: string | null; doneToday: boolean } | null>(null);
+  const [autoRunning, setAutoRunning] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -97,11 +101,13 @@ export function QueueReorderPanel() {
     if (!silent) setLoading(true);
     const seqAtStart = reorderSeq.current;
     try {
-      const [r, rp, rs] = await Promise.all([
+      const [r, rp, rs, ra] = await Promise.all([
         fetch("/api/exec-queue/reorderable", { credentials: "include" }),
         fetch("/api/exec-queue/priority-preview", { credentials: "include" }),
         fetch("/api/exec-queue/sites", { credentials: "include" }),
+        fetch("/api/exec-queue/auto-batches", { credentials: "include" }),
       ]);
+      setAuto(await ra.json().catch(() => null));
       const d = await r.json();
       const dp = await rp.json();
       const ds = await rs.json().catch(() => ({ data: [] }));
@@ -231,6 +237,28 @@ export function QueueReorderPanel() {
     } catch { alert("تعذّر إعادة التشغيل"); } finally { setRequeuingAll(false); }
   };
 
+  // تشغيل «الباتشات اليومية» يدوياً — مالوش علاقة بالساعة (يشتغل حتى قبل ٩)
+  const runAuto = async (force: boolean) => {
+    const msg = force
+      ? "إعادة تشغيل الباتشات اليومية النهاردة تانى؟\nهيتفتح باتش إيقاف PO وباتش قياس جديدين بالأرقام المؤهّلة دلوقتى (اللى فى الطابور بيتستبعد)."
+      : "تشغيل الباتشات اليومية دلوقتى؟\nإيقاف PO + قياس — بنفس معايير التقارير، واللى فى الطابور بيتستبعد.";
+    if (!confirm(msg)) return;
+    setAutoRunning(true);
+    try {
+      const r = await fetch("/api/exec-queue/auto-batches/run", {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
+      });
+      const d = await r.json();
+      if (!r.ok) { alert(d?.message || "تعذّر التشغيل"); return; }
+      await load();
+      if (d.ran) alert(`تم — باتش إيقاف PO: ${d.stop} خط، باتش القياس: ${d.measure} خط`);
+      else if (d.reason === "already-today") alert("اتعملت النهاردة خلاص. لو عايز تعيدها استخدم «إعادة التشغيل».");
+      else alert(d?.reason ? `ماتنفّذتش: ${d.reason}` : "ماتنفّذتش");
+    } catch { alert("تعذّر التشغيل"); } finally { setAutoRunning(false); }
+  };
+
   // إيقاف مؤقت/استئناف لكل الباتشات دفعة واحدة
   const anyPaused = [...priorityRows, ...rows].some((b) => b.paused);
   const togglePauseAll = async () => {
@@ -285,6 +313,39 @@ export function QueueReorderPanel() {
           <Button onClick={() => load()} size="sm" variant="outline" className="gap-1" disabled={loading || saving}>{loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} تحديث</Button>
         </div>
       </div>
+
+      {/* التشغيل اليومى ٩ ص — بيفتح باتش إيقاف PO وباتش قياس تلقائياً */}
+      <Card className="p-4 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-bold flex items-center gap-2">
+            <ListOrdered className="w-5 h-5 text-emerald-700" /> التشغيل اليومى (٩ صباحاً)
+          </h3>
+          <div className="flex items-center gap-2">
+            {auto?.doneToday
+              ? <span className="text-xs px-2 py-1 rounded font-semibold bg-emerald-100 text-emerald-800">اتعمل النهاردة</span>
+              : <span className="text-xs px-2 py-1 rounded font-semibold bg-amber-100 text-amber-800">
+                  {auto && auto.hour < auto.atHour ? "لسه بدرى — هيتعمل ٩ ص" : "لسه ماتعملش"}
+                </span>}
+            <Button size="sm" variant="outline" disabled={autoRunning}
+              onClick={() => runAuto(!!auto?.doneToday)}
+              className="gap-1 text-emerald-700 border-emerald-200"
+              title="تشغيل الباتشات اليومية دلوقتى من غير ما تستنى ٩ الصبح">
+              {autoRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              {auto?.doneToday ? "إعادة التشغيل" : "شغّلها دلوقتى"}
+            </Button>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          كل يوم ٩ صباحاً بيتفتح <strong>باتش إيقاف PO</strong> (أرقام تقرير «تحتاج إيقاف PO» —
+          آخر قياس خلال ٣ أيام، ومستبعد اللى اتعمله إيقاف خلال ٣ أيام) و<strong>باتش قياس</strong>
+          (الخطوط اللى ليها أكونت ولم تُقس، واللى آخر قياس ليها أقدم من ١٠ أيام). اللى فى الطابور
+          بيتستبعد من الاتنين. لو جهاز التنفيذ كان مطفى، الباتش بيفضل مستنى فى الطابور وبيبدأ أول
+          ما الجهاز يرجع.
+        </p>
+        {auto?.lastAt && (
+          <p className="text-xs text-muted-foreground">آخر تشغيل: {fmt(auto.lastAt)} (يوم {auto.lastDay})</p>
+        )}
+      </Card>
 
       {/* ⛔ ليه الطلب واقف؟ الطابور مهمة واحدة لكل موقع — الشاشة دى بتقول مين ماسك كل موقع
           وكام طلب مستنى وراه، ومنها تقدر تفرّغ الموقع لو المهمة علقت. */}

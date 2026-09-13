@@ -1882,6 +1882,9 @@ export async function registerRoutes(
       // reload بيقتل الباتش الشغّال. بالمسح: كل طلب بينفّذ ريفريش واحد وخلاص.
       const { rows: rl } = await pool.query(
         `DELETE FROM app_state WHERE key = 'exec_reload' RETURNING value`);
+      // تعويض الباتشات اليومية: لو الجهاز كان مطفى الساعة ٩ (أو السيرفر كان نايم)،
+      // أول نبضة بعد التفعيل بتفتحها فوراً. الدالة بتخرج فوراً لو اتعملت النهاردة.
+      void runDailyAutoBatches("heartbeat");
       res.json({ ok: true, reload: rl[0]?.value ?? null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2591,6 +2594,164 @@ export async function registerRoutes(
           WHERE batch_id = $1 AND status IN ('claimed', 'stale', 'pending')`,
         [batchId]);
       res.json({ ok: true, requeued: rowCount ?? 0 });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // الباتشات اليومية التلقائية — كل يوم ٩ صباحاً بتوقيت القاهرة
+  // ══════════════════════════════════════════════════════════════════════════
+  // (١) إيقاف PO: أرقام تقرير «تحتاج إيقاف PO» — بنفس معيار التقرير بالحرف
+  //     (آخر قياس خلال ٣ أيام + مش محتاجة رفع سرعة) ومستبعد منها اللى فى الطابور
+  //     واللى اتعملها إيقاف خلال آخر ٣ أيام.
+  // (٢) قياس: الخطوط اللى ليها أكونت ولم تُقس أبداً + اللى آخر قياس ليها أقدم من
+  //     ١٠ أيام، ومستبعد منها اللى فى الطابور.
+  //
+  // ⚠️ الباتش بيتفتح فى الطابور **بصرف النظر عن جهاز التنفيذ**: الطابور نفسه هو
+  // التخزين الدائم، فالمهام بتفضل pending لحد ما جهاز يرجع ويسحبها. يعنى لو الجهاز
+  // كان مطفى الساعة ٩، الشغل بيبدأ أول ما يترفع من غير ما نحسب حاجة تانية.
+  // والسيرفر نفسه لو كان نايم الساعة ٩ (Replit بينيّم التطبيق)، التعويض بيحصل من
+  // مصدرين: الفحص الدورى كل ٥ دقايق، ونبضة جهاز التنفيذ نفسها (أول ما يتفعّل
+  // بيوقّظ السيرفر والنبضة بتنادى الدالة دى فوراً).
+  const AUTO_BATCH_HOUR = 9;              // ٩ صباحاً بتوقيت القاهرة
+  const AUTO_MEASURE_STALE_DAYS = 10;     // آخر قياس أقدم من ١٠ أيام
+  const AUTO_PO_STOP_SKIP_DAYS = 3;       // اتعمله إيقاف خلال ٣ أيام → استبعاد
+  let autoBatchDay = "";                  // حارس فى الذاكرة يوفّر ضربة قاعدة كل نبضة
+
+  const enqueueAutoBatch = async (type: "stop" | "measure", accounts: string[], note: string) => {
+    if (!accounts.length) return { count: 0, batchId: null as string | null };
+    const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    const site = SITE_OF_TYPE[type] || "10.42.187.101";
+    // مهمة لكل خط — نفس تقسيم /enqueue بالظبط عشان التقدّم والاستئناف يشتغلوا زى ما هما
+    const params: any[] = [type, "auto", note, 0, batchId, site, "تشغيل يومى تلقائى"];
+    const values = accounts.map((a) => { params.push(JSON.stringify([a])); return `($1, $${params.length}::jsonb, $2, $3, $4, $5, $6, $7)`; }).join(",");
+    await pool.query(
+      `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, requested_from)
+       VALUES ${values}`, params);
+    return { count: accounts.length, batchId };
+  };
+
+  /** أرقام أكونت تقرير «تحتاج إيقاف PO» المؤهّلة للتشغيل التلقائى. */
+  const autoPoStopAccounts = async (): Promise<string[]> => {
+    const { rows } = await pool.query(
+      `WITH latest AS (
+         SELECT DISTINCT ON (c.full_phone)
+                c.full_phone, c.score, c.uploaded_at,
+                CASE WHEN c.current_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
+                     ELSE NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9]','','g'),'')::numeric END AS cur_n,
+                CASE WHEN c.max_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
+                     ELSE NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9]','','g'),'')::numeric END AS mx_n
+           FROM case_138 c
+          WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
+          ORDER BY c.full_phone, c.id DESC
+       )
+       SELECT DISTINCT la.account_no AS acc
+         FROM latest m
+         JOIN line_accounts la ON la.full_phone = m.full_phone
+          AND la.account_no IS NOT NULL AND la.account_no <> ''
+         LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
+        WHERE ${hasFrameSql("m.full_phone")}
+          AND m.score IS NOT NULL AND m.score <= 100
+          -- آخر قياس مرّ عليه أقل من ٣ أيام (نفس شرط التقرير)
+          AND m.uploaded_at >= now() - interval '3 days'
+          -- مش محتاجة رفع سرعة — نفس الدالة المشتركة فمفيش تناقض مع التقرير
+          AND NOT COALESCE(${needsSpeedSql("m")}, false)
+          -- اتعملها إيقاف PO خلال آخر ٣ أيام → مانكررش
+          AND (pe.last_stop_at IS NULL
+               OR pe.last_stop_at < now() - make_interval(days => ${AUTO_PO_STOP_SKIP_DAYS}))
+          -- موجودة فى الطابور دلوقتى (أى نوع) → مانضيفهاش تانى
+          AND ${notQueuedSql("la.account_no")}`);
+    return rows.map((r: any) => String(r.acc).trim()).filter(Boolean);
+  };
+
+  /** أرقام أكونت القياس اليومى: لم تُقس أبداً أو آخر قياس أقدم من ١٠ أيام. */
+  const autoMeasureAccounts = async (): Promise<string[]> => {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT la.account_no AS acc
+         FROM line_accounts la
+         LEFT JOIN LATERAL (
+           SELECT c.uploaded_at FROM case_138 c
+            WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1
+         ) c138p ON true
+        WHERE la.account_no IS NOT NULL AND la.account_no <> ''
+          AND ${hasFrameSql("la.full_phone")}
+          -- لم تُقس أبداً (NULL) أو آخر قياس أقدم من ١٠ أيام
+          AND (c138p.uploaded_at IS NULL
+               OR c138p.uploaded_at < now() - make_interval(days => ${AUTO_MEASURE_STALE_DAYS}))
+          AND ${notQueuedSql("la.account_no")}`);
+    return rows.map((r: any) => String(r.acc).trim()).filter(Boolean);
+  };
+
+  /**
+   * بيتنادى من الفحص الدورى ومن نبضة جهاز التنفيذ. بيشتغل **مرة واحدة فى اليوم**:
+   * الحجز بيتم بجملة UPDATE شرطية على app_state فمفيش أى احتمال يتفتح باتش مكرر
+   * حتى لو اتنادت من أكتر من مكان فى نفس اللحظة.
+   */
+  type AutoBatchResult = { ran: boolean; reason?: string; stop: number; measure: number;
+                           stopBatchId?: string | null; measureBatchId?: string | null };
+  // ignoreHour: للتشغيل اليدوى بس — السوبر أدمن يقدر يشغّلها فى أى وقت من غير ما
+  // يستنى ٩ الصبح (من غيرها كان الزرار بيرجع «تمام» ومايعملش حاجة قبل ٩ بلا أى تفسير).
+  const runDailyAutoBatches = async (trigger: string, ignoreHour = false): Promise<AutoBatchResult> => {
+    try {
+      const { date, hour } = cairoNow();
+      if (!ignoreHour && hour < AUTO_BATCH_HOUR) return { ran: false, reason: "before-hour", stop: 0, measure: 0 };
+      if (autoBatchDay === date) return { ran: false, reason: "already-today", stop: 0, measure: 0 };
+      // حجز اليوم فى قاعدة البيانات — الرابح واحد بس، فمستحيل يتفتح باتش مكرر
+      const claim = await pool.query(
+        `INSERT INTO app_state (key, value, updated_at) VALUES ('auto_batches_last_day', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+          WHERE app_state.value IS DISTINCT FROM $1
+         RETURNING value`, [date]);
+      if (!claim.rowCount) { autoBatchDay = date; return { ran: false, reason: "already-today", stop: 0, measure: 0 }; }
+      autoBatchDay = date;
+
+      const stopAccs = await autoPoStopAccounts();
+      const stop = await enqueueAutoBatch("stop", stopAccs, "تحتاج إيقاف PO (تشغيل يومى ٩ ص)");
+      const measAccs = await autoMeasureAccounts();
+      const meas = await enqueueAutoBatch(
+        "measure", measAccs, `خطوط لها أكونت — لم تُقس أو أقدم من ${AUTO_MEASURE_STALE_DAYS} أيام (تشغيل يومى ٩ ص)`);
+      console.log(`[auto-batches] ${date} (${trigger}): إيقاف PO ${stop.count} خط، قياس ${meas.count} خط`);
+      return { ran: true, stop: stop.count, measure: meas.count,
+               stopBatchId: stop.batchId, measureBatchId: meas.batchId };
+    } catch (e: any) {
+      // الفشل مايكسرش النبضة ولا الفحص الدورى — والمحاولة بتتكرر بعد ٥ دقايق
+      autoBatchDay = "";
+      console.error("[auto-batches] failed:", e?.message || e);
+      return { ran: false, reason: e?.message || "error", stop: 0, measure: 0 };
+    }
+  };
+
+  // فحص دورى كل ٥ دقايق + تعويض بعد الإقلاع بشوية (السيرفر ممكن يكون كان نايم ٩ ص)
+  {
+    const wakeup = setTimeout(() => void runDailyAutoBatches("boot"), 30_000);
+    const tick = setInterval(() => void runDailyAutoBatches("tick"), 5 * 60 * 1000);
+    wakeup.unref(); tick.unref();
+  }
+
+  // GET /api/exec-queue/auto-batches — حالة التشغيل اليومى (سوبر أدمن): اتعمل النهاردة ولا لأ.
+  app.get("/api/exec-queue/auto-batches", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { date, hour } = cairoNow();
+      const { rows } = await pool.query(`SELECT value, updated_at FROM app_state WHERE key = 'auto_batches_last_day'`);
+      res.json({
+        today: date, hour, atHour: AUTO_BATCH_HOUR,
+        lastDay: rows[0]?.value ?? null,
+        lastAt: rows[0]?.updated_at ?? null,
+        doneToday: rows[0]?.value === date,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  // POST /api/exec-queue/auto-batches/run — تشغيل يدوى فورى (سوبر أدمن) للاختبار أو
+  // لو حبيت تعيدها بعد تعديل. force=1 بيتخطّى علامة «اتعمل النهاردة».
+  app.post("/api/exec-queue/auto-batches/run", requireAuth, requireSuperAdmin, async (req: any, res) => {
+    try {
+      if (req.body?.force) {
+        autoBatchDay = "";
+        await pool.query(`DELETE FROM app_state WHERE key = 'auto_batches_last_day'`);
+      }
+      // التشغيل اليدوى مالوش علاقة بالساعة — لو اتضغط الساعة ٨ يشتغل على طول
+      const r = await runDailyAutoBatches("manual", true);
+      res.json({ ok: true, ...r });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
