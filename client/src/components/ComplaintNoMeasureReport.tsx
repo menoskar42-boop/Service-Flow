@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
@@ -101,7 +102,7 @@ export function ComplaintNoMeasureReport() {
   const [box, setBox] = useState("");
   const [page, setPage] = useState(1);
   // زر «استبعاد اللى فى الطابور» — نفس زر باقى تقارير القياسات. مطفى افتراضياً.
-  const [excludeQueued, setExcludeQueued] = useState(false);
+  const [excludeQueued, setExcludeQueued] = useState<QueueExcludeValue>("");
   const [dzsLoading, setDzsLoading] = useState(false);
   const [dzsCount, setDzsCount] = useState<number | null>(null);
 
@@ -123,7 +124,7 @@ export function ComplaintNoMeasureReport() {
     if (central) params.set("central", central);
     if (cabin) params.set("cabin", cabin);
     if (box) params.set("box", box);
-    if (excludeQueued) params.set("excludeQueued", "1");
+    if (excludeQueued) params.set("excludeQueued", excludeQueued);
     return params;
   };
 
@@ -290,17 +291,11 @@ export function ComplaintNoMeasureReport() {
             </Button>
             </>)}
             {/* استبعاد الأرقام اللى فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر الشغل */}
-            <Button
-              variant={excludeQueued ? "default" : "outline"}
-              size="sm"
-              onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
-              className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
-              title="يشيل كل أرقام أى باتش لسه تحت التنفيذ فى الطابور — حتى اللى اتنفّذ منها فعلاً — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
-            >
-              {excludeQueued
-                ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded.toLocaleString("ar-EG")})` : ""}`
-                : "استبعاد اللى فى الطابور"}
-            </Button>
+            <QueueExcludeSelect
+              value={excludeQueued}
+              onChange={(v) => { setExcludeQueued(v); setPage(1); }}
+              excluded={data?.queuedExcluded ?? null}
+            />
             <RefreshButton />
             <Button variant="outline" size="sm" onClick={handleExport} className="text-green-700 border-green-200">
               تصدير Excel

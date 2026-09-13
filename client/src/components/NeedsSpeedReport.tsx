@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
@@ -144,7 +145,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
   const [showExcludedCabins, setShowExcludedCabins] = useState(false);
   // زر «استبعاد اللى فى الطابور»: بيشيل الأرقام اللى ليها مهمة منتظرة/شغّالة فى طابور
   // التنفيذ عشان مايتبعتوش تانى ويتكرّر نفس الشغل. مطفى افتراضياً — المستخدم هو اللى يقرّر.
-  const [excludeQueued, setExcludeQueued] = useState(false);
+  const [excludeQueued, setExcludeQueued] = useState<QueueExcludeValue>("");
   // فلتر اختيارى لاستبعاد الخطوط التى أحدث قياس لها اسكور 0.
   // الفلترة على السيرفر لتسرى على الجدول والعداد والتصدير وأدوات التنفيذ.
   const [excludeZeroScore, setExcludeZeroScore] = useState(false);
@@ -180,7 +181,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     if (box) params.set("box", box);
     if (search) params.set("search", search);
     if (isNeedsSpeed && showExcludedCabins) params.set("includeExcluded", "1");
-    if (excludeQueued) params.set("excludeQueued", "1");
+    if (excludeQueued) params.set("excludeQueued", excludeQueued);
     if (showPoStopFilter && poStoppedBefore) params.set(dateFilterParam, poStoppedBefore);
     if (showMeasuredFilter && measuredBefore) params.set("measuredBefore", measuredBefore);
     if (scoreFrom.trim()) params.set("scoreFrom", scoreFrom.trim());
@@ -456,18 +457,11 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
               </Button>
             )}
             {/* استبعاد الأرقام اللى فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر الشغل */}
-            <Button
-              variant={excludeQueued ? "default" : "outline"}
-              size="sm"
-              onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
-              className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
-              title="يشيل كل أرقام أى باتش لسه تحت التنفيذ فى الطابور — حتى اللى اتنفّذ منها فعلاً — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
-            >
-              <EyeOff className="w-4 h-4" />
-              {excludeQueued
-                ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded})` : ""}`
-                : "استبعاد اللى فى الطابور"}
-            </Button>
+            <QueueExcludeSelect
+              value={excludeQueued}
+              onChange={(v) => { setExcludeQueued(v); setPage(1); }}
+              excluded={data?.queuedExcluded ?? null}
+            />
             {isNeedsSpeed && (
               <Button
                 variant={excludeZeroScore ? "default" : "outline"}

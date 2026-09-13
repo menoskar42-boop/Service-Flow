@@ -86,12 +86,10 @@ test("the panel shows whether today's run happened", () => {
   assert.match(panel, /runAuto\(!!auto\?\.doneToday\)/);
 });
 
-// الدالة المشتركة نفسها لازم تفضل بسلوكها القديم لباقى التقارير (زرار «استبعاد
-// اللى فى الطابور») — التخصيص بالنوع للباتشات اليومية بس.
-test("the shared helper keeps its all-types default for the reports", () => {
+// ⚠️ اتحدّث: التقارير بقت هى كمان بتحدّد النوع (قائمة «استبعاد من الطابور»)،
+// فالافتراضى بقى للتوافق الخلفى بس — الروابط القديمة ?excludeQueued=1.
+test("the shared helper keeps an all-types default for old links", () => {
   assert.match(routes, /const notQueuedSql = \(accCol: string, types: readonly string\[\] = \["measure", "raise", "stop"\]\)/);
   assert.match(routes, /e\.type IN \(\$\{types\.map\(\(t\) => `'\$\{t\.replace\(\/'\/g, "''"\)\}'`\)\.join\(", "\)\}\)/);
-  // التقارير بتنادى الدالة من غير types فبتاخد الافتراضى
-  assert.ok([...routes.matchAll(/notQueuedSql\("la\.account_no"\)/g)].length >= 4,
-    "report call sites must keep the default");
+  assert.match(routes, /if \(v === "1" \|\| v === "true"\) return QUEUE_EXCLUDE_TYPES;/);
 });

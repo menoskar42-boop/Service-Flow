@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -132,7 +133,7 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
   // زر «استبعاد اللى فى الطابور»: بيشيل الأرقام اللى ليها مهمة منتظرة/شغّالة فى طابور
   // التنفيذ عشان مايتبعتوش تانى. مفعّل افتراضياً فى تقرير «لها أكونت ولم تُقَس» بس —
   // هو التقرير اللى بيتقاس منه بالجملة دايماً؛ الباقى المستخدم هو اللى يقرّر.
-  const [excludeQueued, setExcludeQueued] = useState(!!neverMeasured);
+  const [excludeQueued, setExcludeQueued] = useState<QueueExcludeValue>(neverMeasured ? "measure" : "");
   const [staleOn, setStaleOn] = useState(false);
   // فلتر الشكوى: الكل / لها شكوى / ليس لها شكوى
   const [complaintFilter, setComplaintFilter] = useState<ComplaintFilter>("all");
@@ -262,7 +263,7 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
     if (!box && boxFrom) params.set("boxFrom", boxFrom);
     if (!box && boxTo)   params.set("boxTo",   boxTo);
     if (staleOn && staleDays.trim()) params.set("staleDays", staleDays.trim());
-    if (excludeQueued) params.set("excludeQueued", "1");
+    if (excludeQueued) params.set("excludeQueued", excludeQueued);
     if (complaintFilter !== "all") params.set("hasComplaint", complaintFilter === "has" ? "1" : "0");
     if (scoreGt != null) params.set("scoreGt", String(scoreGt));
     // اسكور مساوٍ بالظبط: السيرفر بيقارن بـ > و < بس، والاسكور عدد صحيح
@@ -599,17 +600,11 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
             )}
             {/* استبعاد الأرقام اللى فى طابور التنفيذ — عشان مايتبعتوش تانى ويتكرّر الشغل.
                 مفعّل افتراضياً فى «لها أكونت ولم تُقَس» بس. */}
-            <Button
-              variant={excludeQueued ? "default" : "outline"}
-              size="sm"
-              onClick={() => { setExcludeQueued((v) => !v); setPage(1); }}
-              className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
-              title="يشيل كل أرقام أى باتش لسه تحت التنفيذ فى الطابور — حتى اللى اتنفّذ منها فعلاً — عشان مايتبعتوش تانى ويتكرّر نفس الشغل"
-            >
-              {excludeQueued
-                ? `الطابور مستبعَد ✓${data?.queuedExcluded ? ` (${data.queuedExcluded.toLocaleString("ar-EG")})` : ""}`
-                : "استبعاد اللى فى الطابور"}
-            </Button>
+            <QueueExcludeSelect
+              value={excludeQueued}
+              onChange={(v) => { setExcludeQueued(v); setPage(1); }}
+              excluded={data?.queuedExcluded ?? null}
+            />
             {/* فلتر الشكوى — نفس الاختيار يُطبّق على الجدول والقياس والتصدير */}
             <select
               value={complaintFilter}

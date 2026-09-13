@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, EyeOff, X } from "lucide-react";
+import { Loader2, FileSpreadsheet, Printer, Repeat, Radar, Gauge, X } from "lucide-react";
 import { openProfileOptimization } from "@/lib/profile-optimization";
 import { dispatchSpeedTool } from "@/lib/exec-queue";
 import { Measurement138Button, type Measurement138 } from "@/components/Measurement138Button";
@@ -120,7 +121,7 @@ export function RegularizedFaultsRangeReport() {
   const [repeatedOnly, setRepeatedOnly] = useState(false);
   const [closeReasonF, setCloseReasonF] = useState(""); // فلتر سبب الإغلاق (مثال: عطل يخص راوتر العميل)
   // استبعاد أرقام الأكونت الموجودة فى أى باتش قياس/رفع سرعة/إيقاف ما زال فى الطابور
-  const [excludeQueued, setExcludeQueued] = useState(false);
+  const [excludeQueued, setExcludeQueued] = useState<QueueExcludeValue>("");
   // فلترى نطاق (على المعروض زى «المكرر فقط» و«سبب الإغلاق») — بيسرو تلقائياً على
   // العدّاد وتصدير Excel/PDF وأزرار القياس/رفع السرعة/الإيقاف لأنهم كلهم على displayed.
   const [speedFrom, setSpeedFrom] = useState("");
@@ -138,7 +139,7 @@ export function RegularizedFaultsRangeReport() {
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
       if (measuredBefore) p.set("measuredBefore", measuredBefore);
-      if (excludeQueued) p.set("excludeQueued", "1");
+      if (excludeQueued) p.set("excludeQueued", excludeQueued);
       const res = await fetch(`/api/reports/regularized-faults-range?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -488,16 +489,10 @@ export function RegularizedFaultsRangeReport() {
         >
           <Repeat className="w-4 h-4" /> {repeatedOnly ? "عرض الكل" : "المكرر فقط"}
         </Button>
-        <Button
-          variant={excludeQueued ? "default" : "outline"}
-          size="sm"
-          onClick={() => setExcludeQueued((v) => !v)}
-          className={`gap-1 ${excludeQueued ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
-          title="استبعاد كل أرقام الأكونت الموجودة حالياً فى طابور القياس أو رفع السرعة أو الإيقاف"
-        >
-          <EyeOff className="w-4 h-4" />
-          {excludeQueued ? "الطابور مستبعَد ✓" : "استبعاد اللى فى الطابور"}
-        </Button>
+        <QueueExcludeSelect
+          value={excludeQueued}
+          onChange={setExcludeQueued}
+        />
         <span className="text-sm text-muted-foreground">إجمالي: <strong>{displayed.length}</strong> عطل</span>
         {showSpeedTools && (<>
         <Button

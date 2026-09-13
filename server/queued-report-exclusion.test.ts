@@ -35,12 +35,16 @@ test("queue exclusion is based on active jobs and active batches", () => {
 });
 
 test("the with-account report applies the shared rule and reports the excluded count", () => {
-  assert.match(accountReport, /const queuedClause = excludeQueuedOn\(req\) \? ` AND \$\{notQueuedSql\("la\.account_no"\)\}` : ""/);
+  // بقى بياخد النوع المختار من القائمة بدل زرار تشغيل/إطفاء
+  assert.match(accountReport, /const queuedTypes = excludeQueuedTypes\(req\);/);
+  assert.match(accountReport, /const queuedClause = queuedTypes \? ` AND \$\{notQueuedSql\("la\.account_no", queuedTypes\)\}` : ""/);
   assert.match(accountReport, /beforeExclRes/);
   assert.match(accountReport, /queuedExcluded = beforeExclRes \? Math\.max\(0, .* - total\)/);
   assert.match(accountReport, /queuedExcluded/);
 
-  assert.match(withAccountClient, /params\.set\("excludeQueued", "1"\)/);
-  assert.match(withAccountClient, /setExcludeQueued/);
-  assert.match(withAccountClient, /الطابور مستبعَد/);
+  // الواجهة بقت بتبعت **النوع** المختار من القائمة بدل "1"، والعدّاد بقى جوّه
+  // المكوّن المشترك QueueExcludeSelect بدل نص على الزرار.
+  assert.match(withAccountClient, /params\.set\("excludeQueued", excludeQueued\)/);
+  assert.match(withAccountClient, /<QueueExcludeSelect/);
+  assert.match(withAccountClient, /excluded=\{data\?\.queuedExcluded \?\? null\}/);
 });

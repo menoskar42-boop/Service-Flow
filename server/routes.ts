@@ -692,10 +692,19 @@ const sp = phoneNormSql;
 // subquery **غير مرتبطة** عن قصد: الـ planner بيعملها Hash Anti Join فبتتحسب مرة
 // واحدة بدل مرة لكل صف (اتقاست: 10 آلاف خط × 6500 مهمة = 15ms). والـ IN جوّاها
 // كمان غير مرتبطة (بتتبنى مرة واحدة كقائمة batch_id نشطة، وعليها exec_jobs_batch_idx).
-// الزر اللى فى الواجهة: ?excludeQueued=1
-const excludeQueuedOn = (req: any) => {
-  const v = String(req?.query?.excludeQueued ?? "");
-  return v === "1" || v === "true";
+// القائمة اللى فى الواجهة: ?excludeQueued=measure | stop | raise (أو أكتر من نوع
+// مفصولين بفاصلة). القيمة القديمة `1`/`true` لسه شغّالة ومعناها **كل الأنواع** —
+// عشان أى رابط أو صفحة محفوظة تفضل تشتغل بنفس نتيجتها.
+// بترجّع أنواع المهام اللى الاستبعاد يتحسب عليها، أو null يعنى مفيش استبعاد.
+const QUEUE_EXCLUDE_TYPES = ["measure", "raise", "stop"] as const;
+const excludeQueuedTypes = (req: any): readonly string[] | null => {
+  const v = String(req?.query?.excludeQueued ?? "").trim();
+  if (!v) return null;
+  if (v === "1" || v === "true") return QUEUE_EXCLUDE_TYPES;
+  const picked = v.split(",").map((x) => x.trim())
+    .filter((x): x is typeof QUEUE_EXCLUDE_TYPES[number] =>
+      (QUEUE_EXCLUDE_TYPES as readonly string[]).includes(x));
+  return picked.length ? Array.from(new Set(picked)) : null;
 };
 // الأرقام اللى ليها رقم موبايل من أى مصدر (يدوى/أوامر شغل/طلبات FTTH) — نفس أولوية
 // البحث المستخدَمة فى «بحث برقم التليفون». مجموعة **غير مرتبطة** بالصف عن قصد: الـ
@@ -5296,7 +5305,8 @@ export async function registerRoutes(
     // (subquery غير مرتبطة عشان تتحسب مرة واحدة بدل مرة لكل صف.)
     // بزر من الواجهة (excludeQueued) — مش تلقائى. الاستثناء الوحيد: تقرير «لها أكونت
     // ولم تُقَس» الواجهة بتبعت الزر مفعّل فيه افتراضياً.
-    const queuedClause = excludeQueuedOn(req) ? ` AND ${notQueuedSql("la.account_no")}` : "";
+    const queuedTypes = excludeQueuedTypes(req);
+    const queuedClause = queuedTypes ? ` AND ${notQueuedSql("la.account_no", queuedTypes)}` : "";
 
     // الإجمالى بدون فلتر «أقدم من» (مع باقى الفلاتر) — للعرض والتشخيص
     const grandRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${c138Join} ${where}${c138Where}`, baseParams);
@@ -6015,11 +6025,12 @@ export async function registerRoutes(
     if (faultOnly) conds.push(`(${inCurrentFaultsSql} OR ${inRegularizedTodaySql})`);
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
-    if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
+    const queuedTypes = excludeQueuedTypes(req);
+    if (queuedTypes) conds.push(notQueuedSql("la.account_no", queuedTypes));
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
-    const queuedExcluded = excludeQueuedOn(req)
+    const queuedExcluded = queuedTypes
       ? Math.max(0, ((await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${whereNoQ}`, params)).rows[0].c as number) - total)
       : 0;
     const offset = (pageNum - 1) * pageSize;
@@ -6139,11 +6150,12 @@ export async function registerRoutes(
     }
     const whereNoQ = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — مش تلقائى
-    if (excludeQueuedOn(req)) conds.push(notQueuedSql("la.account_no"));
+    const queuedTypes = excludeQueuedTypes(req);
+    if (queuedTypes) conds.push(notQueuedSql("la.account_no", queuedTypes));
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
-    const queuedExcluded = excludeQueuedOn(req)
+    const queuedExcluded = queuedTypes
       ? Math.max(0, ((await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${whereNoQ}`, params)).rows[0].c as number) - total)
       : 0;
     const offset = (pageNum - 1) * pageSize;
@@ -6508,12 +6520,13 @@ export async function registerRoutes(
        ) c138p ON true`;
     const whereNoQ = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
     // بزر من الواجهة (excludeQueued) — يشيل اللى فى طابور التنفيذ عشان مايتبعتش تانى
-    if (excludeQueuedOn(req)) plConds.push(notQueuedSql("la.account_no"));
+    const queuedTypes = excludeQueuedTypes(req);
+    if (queuedTypes) plConds.push(notQueuedSql("la.account_no", queuedTypes));
     const where = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
 
     const totalRes = await pool.query(`${regCte} SELECT COUNT(DISTINCT la.full_phone)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
-    const queuedExcluded = excludeQueuedOn(req)
+    const queuedExcluded = queuedTypes
       ? Math.max(0, ((await pool.query(`${regCte} SELECT COUNT(DISTINCT la.full_phone)::int AS c ${joinClause} ${whereNoQ}`, params)).rows[0].c as number) - total)
       : 0;
     const offset = (pageNum - 1) * pageSize;
@@ -11945,9 +11958,10 @@ export async function registerRoutes(
       // نفس زر «استبعاد اللى فى الطابور» الموجود فى تقارير القياسات:
       // استبعاد الرقم لو له أى مهمة قياس/رفع سرعة/إيقاف داخل باتش ما زال نشطاً.
       // كل فرع من الـ UNION له alias مختلف لآخر أكونت فى شيت 138.
-      if (excludeQueuedOn(req)) {
-        cdConds.push(notQueuedSql("c138p.account_no"));
-        rcConds.push(notQueuedSql("rc138p.account_no"));
+      const qTypes = excludeQueuedTypes(req);
+      if (qTypes) {
+        cdConds.push(notQueuedSql("c138p.account_no", qTypes));
+        rcConds.push(notQueuedSql("rc138p.account_no", qTypes));
       }
       // الفني يرى الأعطال التابعة له فقط. نستخدم فنى المنطقة الفعلى فى يوم الشكوى
       // مع دعم تغطية الزميل أثناء الوردية.
