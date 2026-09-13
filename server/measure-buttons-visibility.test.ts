@@ -30,8 +30,26 @@ test("report speed tools are limited to the super admin", () => {
   assert.doesNotMatch(hook, /useSpeedToolsVisible[\s\S]*?ROLES\.EXTERNAL/);
 });
 
-test("phone lookup keeps the tools open to everyone who reaches it", () => {
-  assert.match(lookup, /const canUseTools = true;/);
+// ⚠️ الاختبار ده اتقلب بعد باج حقيقى: خلّينا canUseTools = true عشان «القياس يظهر
+// لكل المستخدمين فى بحث برقم التليفون»، فالفنى محمد بقى يقدر يقيس خط تابع لحسن عبد
+// الفتاح. الطلب كان معناه «فى صفحة البحث مش فى التقارير» — مش إلغاء قيد خطوط الفنى.
+test("a technician can only use the tools on their own lines", () => {
+  assert.doesNotMatch(lookup, /const canUseTools = true;/,
+    "the per-technician restriction must never be flattened to true again");
+  assert.match(lookup, /const canUseTools =\s*\n\s*isSuper \|\|\s*\n\s*user\?\.role === ROLES\.ADMIN \|\|\s*\n\s*user\?\.role === ROLES\.EXTERNAL \|\|\s*\n\s*!!line\?\.ownedByMe;/);
+});
+
+// خط زميل مغطَّى بتصريح = مسموح **بس** لو عليه عطل على الشاشة أو اتنظّم النهاردة
+// (محمود بيقيس خطوط سامى اللى على الشاشة فقط). المنطق ده فى ownedByMe على السيرفر.
+test("coverage only opens a colleague's line while it has a live fault", () => {
+  const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
+  const i = routes.indexOf('-- ownedByMe: خطوطى أنا');
+  assert.ok(i >= 0, "the ownedByMe expression must stay documented");
+  const expr = routes.slice(i, routes.indexOf('AS "ownedByMe"', i));
+  assert.match(expr, /\$4::text\[\]/, "own worker codes");
+  assert.match(expr, /\$5::text\[\]/, "covered colleagues' worker codes");
+  assert.match(expr, /FROM ticket_dsl_current tc/, "covered lines need a live ticket");
+  assert.match(expr, /FROM manual_faults mf/);
 });
 
 for (const f of ROW_MEASURE_REPORTS) {
