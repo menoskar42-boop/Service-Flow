@@ -31,7 +31,7 @@ test("the maintenance session carries the worker code", () => {
 });
 
 test("the scope is the technician's own cabinets, and admin sees all", () => {
-  assert.match(dr, /if \(user\.role === 'admin' \|\| SEES_ALL_SF_ROLES\.includes\(String\(user\.sf_role \|\| ''\)\)\)/);
+  assert.match(dr, /if \(user\.role === 'admin' \|\| user\.role === 'technician'\s*\n\s*\|\| SEES_ALL_SF_ROLES\.includes\(String\(user\.sf_role \|\| ''\)\)\)/);
   // مالوش كود عامل → مايشوفش حاجة (مش يشوف الكل)
   assert.match(dr, /if \(!code\) return \{ clause: ' AND 1 = 0', params: \[\] \}/);
   assert.match(dr, /FROM public\.cabinet_technicians ct/);
@@ -79,7 +79,9 @@ test("data review is its own screen, separate from the maintenance tasks", () =>
 // بـ sf_role (دور Service-Flow الأصلى) مش بدور الصيانة.
 // مُثبت end-to-end: سامى (فنى) → بوكس 11 بس | مهندس الكوابل (external) → 11 و22.
 test("external affairs reviews every box, the technician only their own", () => {
-  assert.match(dr, /const SEES_ALL_SF_ROLES = \['external', 'super_admin', 'admin'\];/);
+  assert.match(dr, /const SEES_ALL_SF_ROLES = \['external', 'super_admin', 'admin', 'maintenance_tech'\];/);
+  // فنى الصيانة مالوش كباين فى cabinet_technicians، فلو اتفلتر بيها الشاشة تطلع فاضية
+  assert.match(dr, /user\.role === 'technician'/);
   assert.match(app, /sf_role: req\.user\.role,/);
   const list = readFileSync(
     new URL("./maintenance/app/views/data_review/list.ejs", import.meta.url), "utf8");
@@ -96,6 +98,10 @@ test("finishing a review closes an auto-created task on the spot", () => {
   assert.match(dr, /async function finishDataReview\(taskId, userId\)/);
   assert.match(dr, /if \(!insp \|\| !Number\(insp\.auto_created\)\) return \{ closed: false \};/,
     "a real inspection must never be closed by a data review");
+  // ⚠️ تراجُع حقيقى: قفل مهمة **بدأ فيها** فنى الصيانة كان بيخفى زراير رفع الصور
+  // (ظاهرة وقت in_progress بس) — فالفنى يصوّر قبل/بعد الصيانة والصور مش بتتضاف.
+  assert.match(dr, /if \(String\(insp\.status\) !== 'pending'\) return \{ closed: false \};/,
+    "a task the technician already started must stay open");
   assert.match(dr, /UPDATE maintenance_tasks SET status='completed', completed_at=now\(\)/);
   // ولو الفحص التلقائى فيه بند تانى محتاج شغل، المهمة مابتتقفلش
   assert.match(dr, /ii\.value IN \('bad','yes'\) AND ii\.item_key <> 'data_review'/);
@@ -111,4 +117,14 @@ test("both screens share one finish path", () => {
   assert.match(tech, /if \(req\.params\.itemKey === 'data_review'\)/);
   assert.match(tech, /const \{ finishDataReview \} = require\('\.\/data_review'\);/);
   assert.match(dr, /module\.exports\.finishDataReview = finishDataReview;/);
+});
+
+// زراير رفع الصور فى شاشة فنى الصيانة ظاهرة وقت in_progress بس — فأى حاجة بتقفل
+// المهمة بتخفيها. الاختبار ده بيثبّت الربط عشان مايتكسرش تانى.
+test("the photo uploader only exists while the task is in progress", () => {
+  const detail = readFileSync(
+    new URL("./maintenance/app/views/technician/detail.ejs", import.meta.url), "utf8");
+  assert.match(detail, /<% if \(task\.status === 'in_progress'\) \{ %>\s*\n<script>/,
+    "the uploader script is gated on in_progress");
+  assert.match(detail, /رفع صور وفيديو بعد الصيانة/);
 });

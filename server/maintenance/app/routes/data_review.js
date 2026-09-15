@@ -38,9 +38,12 @@ const CAB_N = (e) => `btrim(regexp_replace(regexp_replace(
  * ⚠️ الاتنين (الشئون الخارجية والفنى) بياخدوا نفس دور inspector فى الصيانة،
  * فالتفرقة بتتم بـ sf_role مش بدور الصيانة.
  */
-const SEES_ALL_SF_ROLES = ['external', 'super_admin', 'admin'];
+// فنى الصيانة كمان بيشوف الكل: هو مش فنى منطقة ومالوش كباين فى cabinet_technicians،
+// فلو فلترناه بكباينه كانت الشاشة هتطلعله فاضية دايماً — وهو أصلاً اللى بيقف على البكس.
+const SEES_ALL_SF_ROLES = ['external', 'super_admin', 'admin', 'maintenance_tech'];
 function ownScope(user) {
-  if (user.role === 'admin' || SEES_ALL_SF_ROLES.includes(String(user.sf_role || ''))) {
+  if (user.role === 'admin' || user.role === 'technician'
+      || SEES_ALL_SF_ROLES.includes(String(user.sf_role || ''))) {
     return { clause: '', params: [] };
   }
   const code = String(user.worker_code || '').trim();
@@ -185,10 +188,15 @@ async function finishDataReview(taskId, userId) {
     [taskId, userId]);
 
   const insp = await db.get(`
-    SELECT i.id, i.box_id, COALESCE(i.auto_created, 0) AS auto_created
+    SELECT i.id, i.box_id, COALESCE(i.auto_created, 0) AS auto_created, mt.status
       FROM maintenance_tasks mt JOIN inspections i ON i.id = mt.inspection_id
      WHERE mt.id = ?`, [taskId]);
   if (!insp || !Number(insp.auto_created)) return { closed: false };
+  // ⚠️ لو فنى الصيانة ضغط «بدء العمل» يبقى شغّال على البكس فعلاً — ساعتها البند
+  // بيتعلّم وبس والمهمة **ماتتقفلش**. قفلها كان بيخفى زراير رفع الصور (ظاهرة وقت
+  // in_progress بس)، فالفنى يبقى بيصوّر قبل/بعد الصيانة والصور مش بتتضاف.
+  // القفل الفورى للمهمة اللى لسه ماحدش بدأها (pending) — وده وضع شاشة المراجعة.
+  if (String(insp.status) !== 'pending') return { closed: false };
 
   // فيه بند تانى محتاج شغل ولسه مش متعلّم؟ ساعتها المهمة مش خلصانة
   const undone = await db.get(`
