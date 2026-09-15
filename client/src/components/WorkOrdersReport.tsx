@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
-import { Upload, FileDown, FileText, Loader2, BarChart3, Search, X } from "lucide-react";
+import { Upload, FileDown, FileText, Loader2, BarChart3, Search, X, UserRoundX } from "lucide-react";
 import { RefreshButton } from "@/components/RefreshButton";
 import { ROLES } from "@shared/schema";
 import { TECHNICIAN_NAMES } from "@shared/technicians";
@@ -49,6 +49,14 @@ interface WorkOrdersReportProps {
   showUpload?: boolean;
 }
 
+const formatWorkOrderDate = (d: string | null) =>
+  d ? format(new Date(d), "yyyy/MM/dd HH:mm", { locale: ar }) : "-";
+
+const hasClosingTechnician = (value: unknown) => {
+  const name = String(value ?? "").trim().toLowerCase();
+  return name !== "" && name !== "-" && name !== "null" && name !== "undefined";
+};
+
 export function WorkOrdersReport({ category = "success", over24 = false, title, showUpload = true }: WorkOrdersReportProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -57,7 +65,8 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [search, setSearch] = useState("");   // بحث برقم التليفون أو رقم أمر الشغل
+  const [search, setSearch] = useState("");
+  const [missingTechOnly, setMissingTechOnly] = useState(false);
 
   const { data: allOrders = [], isFetching } = useQuery<WorkOrder[]>({
     queryKey: ["/api/work-orders", dateFrom, dateTo, category, over24],
@@ -93,17 +102,41 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
     new Date(uploadedAtIso).toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" }) ===
     new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Cairo" });
 
-  // فلتر البحث: أرقام فقط عشان يطابق سواء كتبت 88-2656325 أو 2656325 أو 882656325.
-  // بيطبَّق على القائمة المعروضة والتصدير (Excel/PDF) والعدّاد — كلهم بيقروا orders.
+  // البحث يطابق كل الحقول الظاهرة فى الجدول، بما فيها رقم الموبايل الذى يأتى
+  // من mobileLookup بعد تحميل البيانات. والنتيجة نفسها تستخدم للعداد والتصدير.
   const orders = useMemo(() => {
-    const q = search.replace(/\D/g, "");
-    if (!q) return allOrders;
+    const q = search.trim().toLocaleLowerCase();
+    const digitQ = q.replace(/\D/g, "");
+    const digits = (value: unknown) => String(value ?? "").replace(/\D/g, "");
+    const dateFields = (value: string | null) => {
+      if (!value) return [];
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? [value]
+        : [value, formatWorkOrderDate(value), format(parsed, "dd/MM/yyyy", { locale: ar })];
+    };
+
     return allOrders.filter((o) => {
-      const phone = String(o.phoneNumber ?? "").replace(/\D/g, "");
-      const wo = String(o.workOrderId ?? "");
-      return phone.includes(q) || wo.includes(q);
+      if (missingTechOnly && hasClosingTechnician(o.techName)) return false;
+      if (!q) return true;
+      const mobile = mobileLookup[phoneLookupKey(o.phoneNumber)] ?? "";
+      const fields: unknown[] = [
+        o.centralName,
+        o.workOrderId,
+        o.phoneNumber,
+        mobile,
+        o.serviceType,
+        ...dateFields(o.closeDate),
+        o.itemName,
+        o.cableQuantity,
+        o.techName,
+      ];
+      return fields.some((value) =>
+        String(value ?? "").toLocaleLowerCase().includes(q) ||
+        (digitQ.length > 0 && digits(value).includes(digitQ)),
+      );
     });
-  }, [allOrders, search]);
+  }, [allOrders, search, missingTechOnly, mobileLookup]);
 
   // ── تعديل اسم الفنى (سوبر أدمن بس) ────────────────────────────────────────
   // اسم من الفنيين الخمسة **مايتعدّلش** — السيرفر بيرفضه كمان (409)، والدروب ليست
@@ -165,8 +198,7 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
     e.target.value = "";
   };
 
-  const formatDate = (d: string) =>
-    format(new Date(d), "yyyy/MM/dd HH:mm", { locale: ar });
+  const formatDate = (d: string) => formatWorkOrderDate(d);
 
   // ── Excel export ──
   const handleExportExcel = () => {
@@ -286,15 +318,15 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
             )}
           </div>
 
-          {/* بحث برقم التليفون أو رقم أمر الشغل */}
+          {/* بحث شامل لكل أعمدة الجدول */}
           <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-muted-foreground block mb-1">بحث برقم التليفون أو رقم أمر الشغل</label>
+            <label className="text-xs text-muted-foreground block mb-1">بحث فى كل عناصر الجدول</label>
             <div className="relative">
               <Search className="w-4 h-4 absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="مثال: 2656325 أو 91230387"
+                placeholder="سنترال / أمر شغل / تليفون / موبايل / خدمة / صنف / فنى"
                 className="w-full text-sm pr-8"
               />
               {search && (
@@ -309,6 +341,17 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
               )}
             </div>
           </div>
+          <Button
+            type="button"
+            variant={missingTechOnly ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMissingTechOnly((value) => !value)}
+            className={`gap-1 whitespace-nowrap ${missingTechOnly ? "bg-amber-600 hover:bg-amber-700 text-white" : "text-amber-700 border-amber-300"}`}
+            title="إظهار أوامر الشغل التى لا يوجد لها فنى إغلاق"
+          >
+            <UserRoundX className="w-4 h-4" />
+            {missingTechOnly ? "عرض كل الفنيين" : "بدون فني إغلاق"}
+          </Button>
 
           {/* تحديث — يعيد جلب أوامر الشغل و«آخر تحديث» من غير refresh للمتصفح */}
           <RefreshButton queryKeys={["/api/work-orders", "/api/upload-times"]} />
@@ -365,8 +408,11 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
       <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
         {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
         <span>إجمالي: <strong className="text-foreground">{orders.length}</strong> امر شغل</span>
-        {search.replace(/\D/g, "") && (
-          <span className="text-xs">(نتيجة البحث — من إجمالى {allOrders.length})</span>
+        {(search.trim() || missingTechOnly) && (
+          <span className="text-xs">
+            (نتيجة الفلترة — من إجمالى {allOrders.length}
+            {missingTechOnly ? " — بدون فني إغلاق" : ""})
+          </span>
         )}
         {/* آخر تحديث للجدول — عشان تتأكد إن الرفع (اليدوى أو من سكربت WFM) وصل فعلاً */}
         {lastUpload && (
@@ -400,8 +446,8 @@ export function WorkOrdersReport({ category = "success", over24 = false, title, 
                   <TableCell colSpan={9} className="text-center py-16 text-muted-foreground">
                     {isFetching
                       ? "جاري التحميل..."
-                      : search.replace(/\D/g, "")
-                        ? "مفيش أمر شغل بالرقم ده — جرّب رقم تانى أو امسح البحث"
+                      : search.trim() || missingTechOnly
+                        ? "لا توجد نتائج بهذه الفلاتر"
                         : "لا توجد بيانات — اختر نطاق تاريخ أو ارفع ملف تركيبات"}
                   </TableCell>
                 </TableRow>

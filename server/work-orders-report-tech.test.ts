@@ -56,3 +56,15 @@ test("saving a name refreshes both reports", () => {
   assert.match(report, /invalidateQueries\(\{ queryKey: \["\/api\/work-orders"\] \}\)/);
   assert.match(report, /invalidateQueries\(\{ queryKey: \["\/api\/reports\/work-orders-no-cable"\] \}\)/);
 });
+
+test("search covers every visible work-order field and can isolate missing closing technicians", () => {
+  for (const field of [
+    "o.centralName", "o.workOrderId", "o.phoneNumber", "mobile",
+    "o.serviceType", "o.closeDate", "o.itemName", "o.cableQuantity", "o.techName",
+  ]) {
+    assert.match(report, new RegExp(field.replace(".", "\\.")), `${field} must be searchable`);
+  }
+  assert.match(report, /const \[missingTechOnly, setMissingTechOnly\] = useState\(false\)/);
+  assert.match(report, /hasClosingTechnician\(o\.techName\)/);
+  assert.match(report, /بدون فني إغلاق/);
+});
