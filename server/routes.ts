@@ -7102,6 +7102,58 @@ export async function registerRoutes(
     res.json(rows);
   });
 
+  // GET /api/reports/other-work-orders — «أوامر شغل أخرى (بدون سلك)».
+  // الأنواع اللى مش نقل ولا تركيب ومابتستهلكش سلك: تفعيل/إلغاء خدمة مضافة،
+  // التحقق من إتاحة رقم، المعاينة. اتشالت من تقرير أوامر الشغل ومن «بدون كمية سلك»
+  // عشان ماتلخبطش الأرقام، والتقرير ده هو مكانها — نفس القائمة بالظبط
+  // (NO_CABLE_WO_TYPES_LC) فمفيش أمر بيقع بين التقريرين ولا بيتكرر فيهم.
+  app.get("/api/reports/other-work-orders", requireAuth, async (req: any, res) => {
+    try {
+      if (req.user?.role === ROLES.SALES || req.user?.role === ROLES.SALES_ADMIN) {
+        return res.status(403).json({ message: "غير مسموح" });
+      }
+      const { dateFrom = "", dateTo = "", q = "", type = "" } = req.query as Record<string, string>;
+      const params: any[] = [];
+      const typeList = NO_CABLE_WO_TYPES_LC.map((t) => `'${t.replace(/'/g, "''")}'`).join(", ");
+      const conds: string[] = [
+        `lower(btrim(COALESCE(w.work_order_type_raw, ''))) = ANY(ARRAY[${typeList}])`,
+      ];
+      if (dateFrom) { params.push(dateFrom); conds.push(`w.close_date >= $${params.length}::date`); }
+      if (dateTo) { params.push(dateTo); conds.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }
+      // فلتر النوع: بيتقارن موحّد (حروف صغيرة) فمينفعش يتحقن نص فى الاستعلام
+      if (type.trim()) { params.push(type.trim().toLowerCase()); conds.push(`lower(btrim(COALESCE(w.work_order_type_raw, ''))) = $${params.length}`); }
+      if (q.trim()) {
+        params.push(arQ(q));
+        const p = `$${params.length}`;
+        conds.push(`(${n("w.phone_number")} LIKE ${p} OR ${n("w.work_order_id")} LIKE ${p}
+                  OR ${n("w.tech_name")} LIKE ${p} OR ${n("w.central_name")} LIKE ${p}
+                  OR ${n("w.work_order_type_raw")} LIKE ${p})`);
+      }
+      const { rows } = await pool.query(
+        `SELECT w.id, w.central_name AS "centralName", w.work_order_id AS "workOrderId",
+                w.phone_number AS "phoneNumber", w.work_order_type_raw AS "workOrderType",
+                w.close_date AS "closeDate", w.close_category AS "closeCategory",
+                w.creation_date AS "creationDate", w.msan_code AS "msanCode",
+                -- اسم الفنى = فنى الإغلاق من الشيت (مع التعديل اليدوى لو موجود)
+                COALESCE(NULLIF(btrim(ovr.tech_name), ''), w.tech_name) AS "techName",
+                w.worker_code AS "workerCode"
+           FROM work_orders w
+           LEFT JOIN work_order_tech_overrides ovr
+             ON ovr.central_name = w.central_name AND ovr.work_order_id = w.work_order_id
+          WHERE ${conds.join(" AND ")}
+          ORDER BY w.close_date DESC NULLS LAST, w.work_order_id DESC
+          LIMIT 20000`, params);
+      // الأنواع الموجودة فعلاً (لقائمة الفلتر) — من نفس النطاق الزمنى
+      const { rows: types } = await pool.query(
+        `SELECT DISTINCT btrim(w.work_order_type_raw) AS type
+           FROM work_orders w
+          WHERE lower(btrim(COALESCE(w.work_order_type_raw, ''))) = ANY(ARRAY[${typeList}])
+            AND btrim(COALESCE(w.work_order_type_raw, '')) <> ''
+          ORDER BY 1`);
+      res.json({ data: rows, types: types.map((t: any) => t.type) });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   // GET /api/reports/work-orders-no-cable — أوامر الشغل اللى لسه مالهاش كمية سلك.
   // كمية السلك مابتيجيش من ملف أوامر الشغل خالص — الفنى بيدخّلها من «استكمال بيانات»
   // فتتخزّن فى cable_entries. فالتقرير ده = أوامر الشغل اللى مالهاش صف مقابل هناك.
