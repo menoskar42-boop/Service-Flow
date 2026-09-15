@@ -307,12 +307,11 @@ export function NoMobileComplaintsReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">سبب الإغلاق</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">نوع الشكوى</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">الفني</TableHead>
-                  <TableHead className="text-right font-bold whitespace-nowrap">الفحص</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data?.data.length === 0 ? (
-                  <TableRow><TableCell colSpan={15} className="text-center py-10 text-muted-foreground">لا توجد شكاوى منتظمة بدون رقم موبايل فى النطاق</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={14} className="text-center py-10 text-muted-foreground">لا توجد شكاوى منتظمة بدون رقم موبايل فى النطاق</TableCell></TableRow>
                 ) : data?.data.map((row) => (
                   <TableRow key={`${row.source}-${row.id}`} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="whitespace-nowrap">
@@ -340,6 +339,19 @@ export function NoMobileComplaintsReport() {
                            <button onClick={() => startEdit(row)} className="inline-flex items-center gap-1 text-xs text-blue-700 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50" title="إضافة رقم موبايل">
                              <Phone className="w-3 h-3" /> + إضافة
                            </button>
+                           {/* الرقم اللى فعلاً مالوش موبايل: بيتشال من التقرير زى ما بيحصل
+                               مع «معلَّمة بدون أكونت». الزرار ده كان آخر عمود فى جدول بـ15
+                               عمود — يعنى برّه الشاشة ومحدش بيوصله. اتنقل جنب «إضافة». */}
+                           <button
+                             onClick={() => markChecked(row.fullPhone)}
+                             disabled={markingPhone === row.fullPhone}
+                             title="اتفحص وطلع فعلاً مالوش رقم محمول — يتشال من التقرير"
+                             className="inline-flex items-center gap-1 text-xs text-emerald-700 border border-emerald-300 rounded px-2 py-0.5 hover:bg-emerald-50 disabled:opacity-40"
+                           >
+                             {markingPhone === row.fullPhone
+                               ? <Loader2 className="w-3 h-3 animate-spin" />
+                               : <CheckCheck className="w-3 h-3" />} مفيش موبايل
+                           </button>
                          </span>
                       )}
                     </TableCell>
@@ -353,11 +365,6 @@ export function NoMobileComplaintsReport() {
                     <TableCell>{row.closeCode || "-"}</TableCell>
                     <TableCell className="whitespace-normal break-words min-w-[140px]">{row.complaintTypeName || "-"}</TableCell>
                     <TableCell className="whitespace-nowrap text-indigo-700">{row.techName || "-"}</TableCell>
-                    <TableCell>
-                      <button onClick={() => markChecked(row.fullPhone)} disabled={markingPhone === row.fullPhone} title="اتفقص وطلع فعلاً مالوش رقم محمول" className="inline-flex items-center gap-1 text-xs text-emerald-700 border border-emerald-300 rounded px-2 py-0.5 hover:bg-emerald-50 disabled:opacity-40">
-                        {markingPhone === row.fullPhone ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCheck className="w-3 h-3" />} تم الفحص
-                      </button>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

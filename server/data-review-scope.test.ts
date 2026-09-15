@@ -31,7 +31,7 @@ test("the maintenance session carries the worker code", () => {
 });
 
 test("the scope is the technician's own cabinets, and admin sees all", () => {
-  assert.match(dr, /if \(user\.role === 'admin'\) return \{ clause: '', params: \[\] \}/);
+  assert.match(dr, /if \(user\.role === 'admin' \|\| SEES_ALL_SF_ROLES\.includes\(String\(user\.sf_role \|\| ''\)\)\)/);
   // مالوش كود عامل → مايشوفش حاجة (مش يشوف الكل)
   assert.match(dr, /if \(!code\) return \{ clause: ' AND 1 = 0', params: \[\] \}/);
   assert.match(dr, /FROM public\.cabinet_technicians ct/);
@@ -72,4 +72,17 @@ test("data review is its own screen, separate from the maintenance tasks", () =>
   for (const item of ["box_height", "box_cover", "connector_fix", "electricity_conflict"]) {
     assert.ok(!detail.includes(item), `the data-review screen must not show ${item}`);
   }
+});
+
+// الشئون الخارجية (ومنها مهندس الكوابل) بتشوف **كل** البكسيات المحتاجة مراجعة،
+// والفنى كباينه بس — والاتنين بياخدوا نفس دور inspector فى الصيانة، فالتفرقة
+// بـ sf_role (دور Service-Flow الأصلى) مش بدور الصيانة.
+// مُثبت end-to-end: سامى (فنى) → بوكس 11 بس | مهندس الكوابل (external) → 11 و22.
+test("external affairs reviews every box, the technician only their own", () => {
+  assert.match(dr, /const SEES_ALL_SF_ROLES = \['external', 'super_admin', 'admin'\];/);
+  assert.match(app, /sf_role: req\.user\.role,/);
+  const list = readFileSync(
+    new URL("./maintenance/app/views/data_review/list.ejs", import.meta.url), "utf8");
+  assert.match(list, /seesAll/);
+  assert.match(dr, /seesAll: scope\.clause === ''/);
 });

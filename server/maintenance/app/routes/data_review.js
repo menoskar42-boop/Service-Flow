@@ -30,9 +30,19 @@ const CAB_N = (e) => `btrim(regexp_replace(regexp_replace(
   translate(COALESCE(${e}, ''), '٠١٢٣٤٥٦٧٨٩', '0123456789'),
   '[\\\\/_‐‑‒–—―]', '-', 'g'), '\\s*-\\s*', '-', 'g'))`;
 
-/** شرط «الكابينة دى بتاعة الفنى ده» — أو null للأدمن (بيشوف الكل). */
+/**
+ * نطاق الرؤية:
+ *   • الأدمن + **الشئون الخارجية** (sf_role = external، ومنها مهندس الكوابل)
+ *     → كل البكسيات اللى محتاجة مراجعة.
+ *   • فنى إزالة الأعطال → كباينه هو بس.
+ * ⚠️ الاتنين (الشئون الخارجية والفنى) بياخدوا نفس دور inspector فى الصيانة،
+ * فالتفرقة بتتم بـ sf_role مش بدور الصيانة.
+ */
+const SEES_ALL_SF_ROLES = ['external', 'super_admin', 'admin'];
 function ownScope(user) {
-  if (user.role === 'admin') return { clause: '', params: [] };
+  if (user.role === 'admin' || SEES_ALL_SF_ROLES.includes(String(user.sf_role || ''))) {
+    return { clause: '', params: [] };
+  }
   const code = String(user.worker_code || '').trim();
   if (!code) return { clause: ' AND 1 = 0', params: [] };   // مالوش كود → مايشوفش حاجة
   return {
@@ -61,7 +71,8 @@ router.get('/', requireLogin, async (req, res) => {
        ORDER BY e.name, c.number,
                 CASE WHEN b.number ~ '^[0-9]+$' THEN b.number::INTEGER ELSE 0 END, b.number`,
       scope.params);
-    res.render('data_review/list', { title: 'مراجعة بيانات البكس', rows });
+    res.render('data_review/list', {
+      title: 'مراجعة بيانات البكس', rows, seesAll: scope.clause === '' });
   } catch (e) {
     console.error('data-review list error:', e.message);
     res.status(500).render('error', { title: 'خطأ', message: 'تعذّر تحميل قائمة مراجعة البيانات.' });

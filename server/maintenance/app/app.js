@@ -118,8 +118,12 @@ app.use(async (req, res, next) => {
         if (row && row.id != null) {
           // worker_code لازم يكون فى الجلسة: شاشة «مراجعة بيانات البكس» بتفلتر بكباين
           // الفنى من public.cabinet_technicians، ومن غيره كانت بترجّع فاضية دايماً.
+          // sf_role = دور Service-Flow الأصلى. لازم نحتفظ بيه لأن الشئون الخارجية
+          // والفنى الاتنين بياخدوا دور inspector فى الصيانة، بس صلاحيتهم فى شاشة
+          // «مراجعة بيانات البكس» مختلفة: الشئون الخارجية بتشوف الكل والفنى كباينه بس.
           req.session.user = { id: row.id, username: row.username, full_name: row.full_name,
-                               role: row.role, worker_code: row.worker_code || null, sso: true };
+                               role: row.role, sf_role: req.user.role,
+                               worker_code: row.worker_code || null, sso: true };
         }
       }
     }

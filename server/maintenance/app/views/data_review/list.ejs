@@ -6,7 +6,8 @@
 
 <p class="text-muted small">
   دى البكسيات اللى اترد عليها <strong>«بوكس مليان»</strong> ومطلوب مراجعة أرقامها.
-  <% if (user.role !== 'admin') { %>بتظهر لك <strong>كباينك انت بس</strong>.<% } %>
+  <% if (seesAll) { %>بتظهر لك <strong>كل البكسيات</strong>.
+  <% } else { %>بتظهر لك <strong>كباينك انت بس</strong>.<% } %>
   الشاشة دى <strong>مخصوصة لمراجعة الأرقام</strong> — ملهاش علاقة بمهام الصيانة.
 </p>
 
