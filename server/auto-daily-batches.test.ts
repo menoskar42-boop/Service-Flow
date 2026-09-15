@@ -32,8 +32,9 @@ test("the schedule runs at 09:00 Cairo, once a day", () => {
 });
 
 test("a missed 9am is made up from the tick and from the executor heartbeat", () => {
-  assert.match(routes, /setInterval\(\(\) => void runDailyAutoBatches\("tick"\), 5 \* 60 \* 1000\)/);
-  assert.match(routes, /setTimeout\(\(\) => void runDailyAutoBatches\("boot"\), 30_000\)/);
+  // الـ tick بقى بينده الباتشات اليومية وجلب WFM مع بعض
+  assert.match(routes, /setInterval\(\(\) => \{[\s\S]{0,160}?runDailyAutoBatches\("tick"\)[\s\S]{0,160}?\}, 5 \* 60 \* 1000\)/);
+  assert.match(routes, /setTimeout\(\(\) => \{[\s\S]{0,160}?runDailyAutoBatches\("boot"\)[\s\S]{0,160}?\}, 30_000\)/);
   // النبضة = أول ما جهاز التنفيذ يتفعّل بعد ٩، الباتش بيتفتح فوراً
   assert.match(routes, /void runDailyAutoBatches\("heartbeat"\);/);
 });

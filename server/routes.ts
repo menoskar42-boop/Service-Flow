@@ -1932,6 +1932,7 @@ export async function registerRoutes(
       // تعويض الباتشات اليومية: لو الجهاز كان مطفى الساعة ٩ (أو السيرفر كان نايم)،
       // أول نبضة بعد التفعيل بتفتحها فوراً. الدالة بتخرج فوراً لو اتعملت النهاردة.
       void runDailyAutoBatches("heartbeat");
+      void runWfmFetch("heartbeat");
       res.json({ ok: true, reload: rl[0]?.value ?? null });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -2730,6 +2731,61 @@ export async function registerRoutes(
     return rows.map((r: any) => String(r.acc).trim()).filter(Boolean);
   };
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // جلب أوامر الشغل من WFM تلقائياً — ١١ صباحاً و٢ الضهر بتوقيت القاهرة
+  // ══════════════════════════════════════════════════════════════════════════
+  // نفس اللى بيعمله زر «جلب من WFM»: مهمة wfmreport فى الطابور، وسكربت التامبر منكى
+  // بيكمّل لوحده (دخول → Voice Installation Raw Data → آخر ٣٠ يوم → Export → رفع تلقائى).
+  // المفتاح «-» صورى لأن المهمة على مستوى الموقع كله مش رقم بعينه.
+  const WFM_FETCH_HOURS = [11, 14];       // ١١ ص و٢ م بتوقيت القاهرة
+  let wfmFetchSlotDone = "";              // حارس فى الذاكرة: «اليوم:الساعة»
+
+  const runWfmFetch = async (trigger: string) => {
+    try {
+      const { date, hour } = cairoNow();
+      // أحدث ميعاد **فات** النهاردة. بنشغّل ده بس — فلو السيرفر كان نايم من ١٠ لـ ٣
+      // بيتعوّض ميعاد الساعة ٢ مرة واحدة، مش الاتنين ورا بعض على الفاضى.
+      const due = [...WFM_FETCH_HOURS].filter((h) => hour >= h).pop();
+      if (due == null) return;
+      const slot = `${date}:${due}`;
+      if (wfmFetchSlotDone === slot) return;
+      // حجز الميعاد فى قاعدة البيانات — جملة شرطية واحدة فمستحيل يتبعت مرتين
+      const claim = await pool.query(
+        `INSERT INTO app_state (key, value, updated_at) VALUES ('wfm_fetch_last_slot', $1, now())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+          WHERE app_state.value IS DISTINCT FROM $1
+         RETURNING value`, [slot]);
+      if (!claim.rowCount) { wfmFetchSlotDone = slot; return; }
+      wfmFetchSlotDone = slot;
+
+      // لو فيه جلب لسه فى الطابور (منتظر أو شغّال) مانضيفش تانى — الملف واحد
+      const { rows: dup } = await pool.query(
+        `SELECT id FROM exec_jobs WHERE type = 'wfmreport' AND status IN ('pending','claimed') LIMIT 1`);
+      if (dup.length) { console.log(`[wfm-fetch] ${slot} (${trigger}): فيه جلب فى الطابور بالفعل`); return; }
+
+      const batchId = "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      await pool.query(
+        `INSERT INTO exec_jobs (type, accounts, requested_by, note, priority, batch_id, site, requested_from)
+         VALUES ('wfmreport', $1::jsonb, 'auto', $2, 2, $3, $4, 'تشغيل يومى تلقائى')`,
+        [JSON.stringify(["-"]), `جلب أوامر الشغل من WFM (تشغيل يومى ${due}:00)`,
+         batchId, SITE_OF_TYPE["wfmreport"] || "wfm.te.eg"]);
+      console.log(`[wfm-fetch] ${slot} (${trigger}): اتحطّ فى الطابور`);
+    } catch (e: any) {
+      wfmFetchSlotDone = "";
+      console.error("[wfm-fetch] failed:", e?.message || e);
+    }
+  };
+
+  // GET /api/exec-queue/wfm-fetch — حالة الجلب التلقائى (سوبر أدمن)
+  app.get("/api/exec-queue/wfm-fetch", requireAuth, requireSuperAdmin, async (_req, res) => {
+    try {
+      const { date, hour } = cairoNow();
+      const { rows } = await pool.query(`SELECT value, updated_at FROM app_state WHERE key = 'wfm_fetch_last_slot'`);
+      res.json({ today: date, hour, hours: WFM_FETCH_HOURS,
+                 lastSlot: rows[0]?.value ?? null, lastAt: rows[0]?.updated_at ?? null });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
   /**
    * بيتنادى من الفحص الدورى ومن نبضة جهاز التنفيذ. بيشتغل **مرة واحدة فى اليوم**:
    * الحجز بيتم بجملة UPDATE شرطية على app_state فمفيش أى احتمال يتفتح باتش مكرر
@@ -2771,8 +2827,14 @@ export async function registerRoutes(
 
   // فحص دورى كل ٥ دقايق + تعويض بعد الإقلاع بشوية (السيرفر ممكن يكون كان نايم ٩ ص)
   {
-    const wakeup = setTimeout(() => void runDailyAutoBatches("boot"), 30_000);
-    const tick = setInterval(() => void runDailyAutoBatches("tick"), 5 * 60 * 1000);
+    const wakeup = setTimeout(() => {
+      void runDailyAutoBatches("boot");
+      void runWfmFetch("boot");
+    }, 30_000);
+    const tick = setInterval(() => {
+      void runDailyAutoBatches("tick");
+      void runWfmFetch("tick");
+    }, 5 * 60 * 1000);
     wakeup.unref(); tick.unref();
   }
 
