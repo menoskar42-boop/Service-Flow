@@ -203,6 +203,15 @@ router.post('/:id/items/:itemKey/toggle', techOrAdmin, async (req, res) => {
     const task = await db.get('SELECT * FROM maintenance_tasks WHERE id = ?', [req.params.id]);
     if (!task) return res.redirect('/technician');
 
+    // «مراجعة بيانات البكس» مالهاش دعوة بدورة الصيانة (بدء العمل ← صورة ← إكمال ←
+    // موافقة المراقب): بتتقفل على طول لو الفحص اتفتح تلقائياً عشانها. نفس الدالة
+    // اللى بتستخدمها شاشة /data-review فالسلوك واحد من الطريقين.
+    if (req.params.itemKey === 'data_review') {
+      const { finishDataReview } = require('./data_review');
+      await finishDataReview(req.params.id, req.session.user.id);
+      return res.redirect(`/technician/${req.params.id}`);
+    }
+
     const existing = await db.get('SELECT * FROM maintenance_item_status WHERE task_id = ? AND item_key = ?', [req.params.id, req.params.itemKey]);
     if (existing) {
       const newDone = existing.is_done ? 0 : 1;

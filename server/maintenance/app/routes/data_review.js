@@ -164,18 +164,64 @@ router.post('/:id/phones/:phoneId/delete', requireLogin, async (req, res) => {
   res.redirect(`/data-review/${req.params.id}`);
 });
 
-// إنهاء المراجعة — نفس علامة البند اللى تقرير «بوكس مليان تمت مراجعتها» بيقرا منها
+/**
+ * إنهاء بند «مراجعة بيانات البكس» — نفس العلامة اللى تقرير «بوكس مليان تمت
+ * مراجعتها» بيقرا منها.
+ *
+ * وبيقفل المهمة على طول لو الفحص **اتفتح تلقائياً** (auto_created) — يعنى موجود
+ * أصلاً عشان المراجعة دى بس. مافيش معنى إن مراجعة أرقام تعدّى بدورة الصيانة
+ * الكاملة (بدء العمل ← صورة بعد الصيانة ← إكمال ← موافقة المراقب)، وكانت بتفضل
+ * ظاهرة كمهمة صيانة مفتوحة بعد ما المراجعة تخلص.
+ *
+ * ⚠️ الفحص اللى عمله فاحص حقيقى **مايتقفلش**: البند بيتعلّم مكتمل وبس، وشغل
+ * الصيانة بتاعه بيكمّل دورته عادى.
+ */
+async function finishDataReview(taskId, userId) {
+  await db.run(`
+    INSERT INTO maintenance_item_status (task_id, item_key, is_done, done_at, done_by)
+    VALUES (?, 'data_review', 1, now(), ?)
+    ON CONFLICT (task_id, item_key)
+    DO UPDATE SET is_done = 1, done_at = now(), done_by = EXCLUDED.done_by`,
+    [taskId, userId]);
+
+  const insp = await db.get(`
+    SELECT i.id, i.box_id, COALESCE(i.auto_created, 0) AS auto_created
+      FROM maintenance_tasks mt JOIN inspections i ON i.id = mt.inspection_id
+     WHERE mt.id = ?`, [taskId]);
+  if (!insp || !Number(insp.auto_created)) return { closed: false };
+
+  // فيه بند تانى محتاج شغل ولسه مش متعلّم؟ ساعتها المهمة مش خلصانة
+  const undone = await db.get(`
+    SELECT COUNT(*)::int AS c FROM inspection_items ii
+     WHERE ii.inspection_id = ? AND ii.value IN ('bad','yes') AND ii.item_key <> 'data_review'
+       AND NOT EXISTS (SELECT 1 FROM maintenance_item_status ms
+                        WHERE ms.task_id = ? AND ms.item_key = ii.item_key AND ms.is_done = 1)`,
+    [insp.id, taskId]);
+  if (undone && Number(undone.c) > 0) return { closed: false };
+
+  await db.run("UPDATE maintenance_tasks SET status='completed', completed_at=now(), technician_id=COALESCE(technician_id, ?) WHERE id = ?",
+    [userId, taskId]);
+  // البكس اترفع لـ needs_maintenance وقت فتح الفحص التلقائى — نرجّعه زى ما كان
+  // طالما مافيش فحص **حقيقى** مفتوح عليه (مش بتاعنا).
+  const realOpen = await db.get(`
+    SELECT COUNT(*)::int AS c FROM inspections i2
+      JOIN maintenance_tasks t2 ON t2.inspection_id = i2.id
+     WHERE i2.box_id = ? AND COALESCE(i2.auto_created, 0) = 0
+       AND t2.status <> 'completed' AND COALESCE(i2.is_archived, 0) = 0`, [insp.box_id]);
+  if (!realOpen || Number(realOpen.c) === 0) {
+    await db.run("UPDATE boxes SET status='pending_inspection', updated_at=now() WHERE id = ? AND status = 'needs_maintenance'",
+      [insp.box_id]);
+  }
+  return { closed: true };
+}
+
 router.post('/:id/done', requireLogin, async (req, res) => {
   try {
     const task = await allowedTask(req.session.user, req.params.id);
     if (!task) return res.redirect('/data-review');
-    await db.run(`
-      INSERT INTO maintenance_item_status (task_id, item_key, is_done, done_at, done_by)
-      VALUES (?, 'data_review', 1, now(), ?)
-      ON CONFLICT (task_id, item_key)
-      DO UPDATE SET is_done = 1, done_at = now(), done_by = EXCLUDED.done_by`,
-      [task.task_id, req.session.user.id]);
-    req.session.flash = { type: 'success', msg: 'تمت مراجعة بيانات البكس.' };
+    const r = await finishDataReview(task.task_id, req.session.user.id);
+    req.session.flash = { type: 'success',
+      msg: r.closed ? 'تمت مراجعة بيانات البكس وقفلت المهمة.' : 'تمت مراجعة بيانات البكس.' };
   } catch (e) {
     console.error('data-review done error:', e.message);
     req.session.flash = { type: 'danger', msg: 'تعذّر إنهاء المراجعة.' };
@@ -184,3 +230,5 @@ router.post('/:id/done', requireLogin, async (req, res) => {
 });
 
 module.exports = router;
+// بيتستخدم كمان من شاشة فنى الصيانة عشان البندين يتصرّفوا بنفس الطريقة
+module.exports.finishDataReview = finishDataReview;

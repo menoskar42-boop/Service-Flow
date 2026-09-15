@@ -86,3 +86,29 @@ test("external affairs reviews every box, the technician only their own", () => 
   assert.match(list, /seesAll/);
   assert.match(dr, /seesAll: scope\.clause === ''/);
 });
+
+// مراجعة الأرقام مالهاش دعوة بدورة الصيانة (بدء العمل ← صورة بعد الصيانة ←
+// إكمال ← موافقة المراقب). الفحص اللى اتفتح **تلقائياً** عشان المراجعة بس بيتقفل
+// على طول، والفحص اللى عمله فاحص حقيقى بيكمّل دورته عادى.
+// مُثبت end-to-end: بكس 11 (auto) → المهمة completed والبكس رجع pending_inspection.
+//                   بكس 22 (فحص حقيقى فيه غطاء مكسور) → المهمة فضلت pending.
+test("finishing a review closes an auto-created task on the spot", () => {
+  assert.match(dr, /async function finishDataReview\(taskId, userId\)/);
+  assert.match(dr, /if \(!insp \|\| !Number\(insp\.auto_created\)\) return \{ closed: false \};/,
+    "a real inspection must never be closed by a data review");
+  assert.match(dr, /UPDATE maintenance_tasks SET status='completed', completed_at=now\(\)/);
+  // ولو الفحص التلقائى فيه بند تانى محتاج شغل، المهمة مابتتقفلش
+  assert.match(dr, /ii\.value IN \('bad','yes'\) AND ii\.item_key <> 'data_review'/);
+  // البكس يرجع زى ما كان بس لو مافيش فحص حقيقى مفتوح عليه
+  assert.match(dr, /COALESCE\(i2\.auto_created, 0\) = 0\s*\n\s*AND t2\.status <> 'completed'/);
+  assert.match(dr, /UPDATE boxes SET status='pending_inspection'[\s\S]{0,80}?AND status = 'needs_maintenance'/);
+});
+
+// الطريقين (شاشة المراجعة وشاشة فنى الصيانة) لازم يتصرّفوا بنفس الطريقة.
+test("both screens share one finish path", () => {
+  const tech = readFileSync(
+    new URL("./maintenance/app/routes/technician.js", import.meta.url), "utf8");
+  assert.match(tech, /if \(req\.params\.itemKey === 'data_review'\)/);
+  assert.match(tech, /const \{ finishDataReview \} = require\('\.\/data_review'\);/);
+  assert.match(dr, /module\.exports\.finishDataReview = finishDataReview;/);
+});
