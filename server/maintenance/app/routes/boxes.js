@@ -302,4 +302,96 @@ router.post('/photos/:photoId/location', requireLogin, async (req, res) => {
   res.json({ ok: true, lat: parseFloat(lat), lng: parseFloat(lng) });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// دمج الكباين المكرّرة — «2/1» و«2-1» كابينة واحدة
+// ══════════════════════════════════════════════════════════════════════════════
+// الباج: تكامل «بوكس مليان» كان بيدوّر على الكابينة بالنص الخام، والمتعذرات بتكتبها
+// بشرطة مايلة («2/1») وبرنامج الصيانة متخزّن فيه «2-1» — فاتفتحت كباين مكرّرة
+// (سنترال دير الجنادلة بقى ١٢ كابينة بدل ٦). التكامل نفسه اتصلّح (بيقارن موحّد)،
+// والصفحة دى بتنضّف اللى اتعمل قبل الإصلاح.
+//
+// القاعدة: الكابينة **الأصلية** هى اللى فيها بوكسات أكتر (وعند التساوى الأقدم).
+// كل بوكس فى المكرّرة بيروح للأصلية؛ ولو فيه بوكس بنفس الرقم هناك، الفحوصات والصور
+// بتتنقل للبوكس الموجود والمكرّر يتمسح. مفيش أى بيانات بتضيع.
+const cabKey = (s) => String(s ?? '')
+  .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+  .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+  .replace(/[\\/_\u2010\u2011\u2012\u2013\u2014\u2015]/g, '-')
+  .replace(/\s*-\s*/g, '-').replace(/\s+/g, ' ').trim();
+const boxKey = (s) => {
+  const d = String(s ?? '')
+    .replace(/[\u0660-\u0669]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[^0-9]/g, '');
+  return d ? String(parseInt(d, 10)) : '';
+};
+
+/** بيرجّع مجموعات الكباين المكرّرة: { exchange, keep, drop[] } */
+async function duplicateCabinetGroups() {
+  const rows = await db.all(`
+    SELECT c.id, c.number, c.exchange_id, e.name AS exchange_name,
+           (SELECT COUNT(*) FROM boxes b WHERE b.cabinet_id = c.id)::int AS box_count
+      FROM cabinets c JOIN exchanges e ON e.id = c.exchange_id
+     ORDER BY c.exchange_id, c.id`);
+  const byKey = new Map();
+  for (const r of rows) {
+    const k = `${r.exchange_id}|${cabKey(r.number)}`;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(r);
+  }
+  const groups = [];
+  for (const list of byKey.values()) {
+    if (list.length < 2) continue;
+    // الأصلية = الأكتر بوكسات، وعند التساوى الأقدم (أصغر id)
+    const sorted = [...list].sort((a, b) => b.box_count - a.box_count || a.id - b.id);
+    groups.push({ exchangeName: sorted[0].exchange_name, keep: sorted[0], drop: sorted.slice(1) });
+  }
+  return groups;
+}
+
+router.get('/cabinets/duplicates', adminOnly, async (req, res) => {
+  try {
+    const groups = await duplicateCabinetGroups();
+    res.render('boxes/cabinet_duplicates', { title: 'كباين مكرّرة', groups });
+  } catch (e) {
+    console.error('duplicates preview error:', e.message);
+    res.status(500).render('error', { title: 'خطأ', message: 'تعذّر حساب الكباين المكرّرة.' });
+  }
+});
+
+router.post('/cabinets/duplicates/merge', adminOnly, async (req, res) => {
+  try {
+    const groups = await duplicateCabinetGroups();
+    let movedBoxes = 0, mergedBoxes = 0, removedCabinets = 0;
+    for (const g of groups) {
+      const keepBoxes = await db.all('SELECT id, number FROM boxes WHERE cabinet_id = ?', [g.keep.id]);
+      for (const d of g.drop) {
+        const dupBoxes = await db.all('SELECT id, number FROM boxes WHERE cabinet_id = ?', [d.id]);
+        for (const b of dupBoxes) {
+          const twin = keepBoxes.find((k) => boxKey(k.number) === boxKey(b.number));
+          if (twin) {
+            // نفس البوكس موجود فى الأصلية → ننقل الفحوصات والصور ونمسح المكرّر
+            await db.run('UPDATE inspections SET box_id = ? WHERE box_id = ?', [twin.id, b.id]);
+            await db.run('UPDATE photos SET box_id = ? WHERE box_id = ?', [twin.id, b.id]);
+            await db.run('DELETE FROM boxes WHERE id = ?', [b.id]);
+            mergedBoxes++;
+          } else {
+            await db.run('UPDATE boxes SET cabinet_id = ? WHERE id = ?', [g.keep.id, b.id]);
+            keepBoxes.push({ id: b.id, number: b.number });
+            movedBoxes++;
+          }
+        }
+        await db.run('DELETE FROM cabinets WHERE id = ?', [d.id]);
+        removedCabinets++;
+      }
+    }
+    req.session.flash = { type: 'success',
+      msg: `تم الدمج: ${removedCabinets} كابينة مكرّرة اتشالت، ${movedBoxes} بوكس اتنقل، ${mergedBoxes} بوكس اتدمج فى بوكس موجود.` };
+    res.redirect('/boxes/cabinets/duplicates');
+  } catch (e) {
+    console.error('duplicates merge error:', e.message);
+    req.session.flash = { type: 'danger', msg: 'تعذّر الدمج: ' + e.message };
+    res.redirect('/boxes/cabinets/duplicates');
+  }
+});
+
 module.exports = router;

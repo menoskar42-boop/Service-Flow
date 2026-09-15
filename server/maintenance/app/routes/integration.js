@@ -94,6 +94,26 @@ router.get('/overlap-distance-pending', async (req, res) => {
 //   3. نسجّل أرقام التليفونات اللى على البكس (الفنى بيعدّلها/يحذفها بعدين).
 //   4. نسجّل «تم الفتح بواسطة» = اسم الفنى + جهة الفتح (OM / طلبات).
 // idempotent: نداء تانى لنفس البكس بيحدّث نفس الفحص ومابيكرّرش الأرقام.
+// ── توحيد أسماء السناتر وأرقام الكباين والبكسيات ─────────────────────────────
+// نسخة مطابقة لـ shared/cab-norm.ts (الملف ده CommonJS جوّه تطبيق الصيانة فمينفعش
+// يستورد منه). أى تعديل هناك لازم ينزل هنا — فيه اختبار بيقارن الاتنين.
+const toAsciiDigits = (s) => String(s ?? "")
+  .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+  .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+const centralNorm = (s) => String(s ?? "")
+  .replace(/[\u0623\u0625\u0622\u0671]/g, "\u0627")   // أ إ آ ٱ → ا
+  .replace(/\u0629/g, "\u0647")                        // ة → ه
+  .replace(/[\u0649]/g, "\u064a")                      // ى → ي
+  .replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
+const cabNorm = (s) => toAsciiDigits(s)
+  .replace(/[\\/_\u2010\u2011\u2012\u2013\u2014\u2015]/g, "-")
+  .replace(/\s*-\s*/g, "-").replace(/\s+/g, " ").trim();
+// رقم البكس = الأرقام بس من غير أصفار بادئة («05» = «5»)
+const boxNorm = (s) => {
+  const d = toAsciiDigits(s).replace(/[^0-9]/g, "");
+  return d ? String(parseInt(d, 10)) : "";
+};
+
 const CHECKLIST_KEYS = [
   ['connector_fix', 'good_bad'], ['box_fix', 'good_bad'], ['box_cover', 'good_bad'],
   ['box_numbering', 'good_bad'], ['box_height', 'good_bad'], ['branch_path', 'good_bad'],
@@ -116,14 +136,36 @@ router.post('/box-data-review', express.json({ limit: '1mb' }), async (req, res)
       return res.status(400).json({ error: 'central و cabinet و box مطلوبين' });
     }
 
-    // (1) السنترال/الكابينة/البكس — بننشئهم لو مش موجودين
+    // (1) السنترال/الكابينة/البكس — بندوّر بالمقارنة **الموحّدة** الأول
+    // ⚠️ باج حقيقى: المقارنة كانت بالنص الخام، والمتعذرات بتكتب الكابينة بشرطة
+    // مايلة («2/1») وبرنامج الصيانة متخزّن فيه «2-1» — فاتفتحت كباين **مكرّرة**
+    // (سنترال دير الجنادلة بقى ١٢ كابينة بدل ٦). المقارنة دلوقتى بـ cabNorm/boxNorm
+    // (نفس منطق shared/cab-norm.ts) فبنلاقى الكابينة الموجودة ومابنعملش واحدة جديدة،
+    // والإنشاء بيحصل بس لما تكون مش موجودة فعلاً.
     let ex = await db.get('SELECT id FROM exchanges WHERE name = ?', [central]);
-    if (!ex) ex = await db.get('INSERT INTO exchanges (name) VALUES (?) RETURNING id', [central]);
+    if (!ex) {
+      // السنترال كمان: المقارنة الموحّدة بتلاقى «دير الجنادله» = «دير الجنادلة»
+      const exs = await db.all('SELECT id, name FROM exchanges');
+      const hit = exs.find((r) => centralNorm(r.name) === centralNorm(central));
+      ex = hit ? { id: hit.id }
+               : await db.get('INSERT INTO exchanges (name) VALUES (?) RETURNING id', [central]);
+    }
     let cab = await db.get('SELECT id FROM cabinets WHERE exchange_id = ? AND number = ?', [ex.id, cabinet]);
-    if (!cab) cab = await db.get('INSERT INTO cabinets (exchange_id, number) VALUES (?, ?) RETURNING id', [ex.id, cabinet]);
+    if (!cab) {
+      const cabs = await db.all('SELECT id, number FROM cabinets WHERE exchange_id = ?', [ex.id]);
+      const hit = cabs.find((r) => cabNorm(r.number) === cabNorm(cabinet));
+      cab = hit ? { id: hit.id }
+                : await db.get('INSERT INTO cabinets (exchange_id, number) VALUES (?, ?) RETURNING id', [ex.id, cabinet]);
+    }
     let bx = await db.get('SELECT id, status FROM boxes WHERE cabinet_id = ? AND number = ?', [cab.id, box]);
-    if (!bx) bx = await db.get(
-      "INSERT INTO boxes (cabinet_id, number, status) VALUES (?, ?, 'pending_inspection') RETURNING id, status", [cab.id, box]);
+    if (!bx) {
+      const bxs = await db.all('SELECT id, number, status FROM boxes WHERE cabinet_id = ?', [cab.id]);
+      const hit = bxs.find((r) => boxNorm(r.number) === boxNorm(box));
+      bx = hit ? { id: hit.id, status: hit.status }
+               : await db.get(
+                   "INSERT INTO boxes (cabinet_id, number, status) VALUES (?, ?, 'pending_inspection') RETURNING id, status",
+                   [cab.id, box]);
+    }
 
     // (2) فحص غير مكتمل للبكس ده؟ (مش مؤرشف، والمهمة بتاعته مش completed)
     let insp = await db.get(

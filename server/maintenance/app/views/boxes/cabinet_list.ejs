@@ -1,7 +1,15 @@
 <%- include('../partials/header') %>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="mb-0"><i class="bi bi-grid me-2"></i><%= title %></h4>
-  <a href="/boxes/exchanges" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> السنترالات</a>
+  <div class="d-flex gap-2">
+    <% if (user.role === 'admin') { %>
+    <a href="/boxes/cabinets/duplicates" class="btn btn-outline-danger btn-sm"
+       title="«2/1» و«2-1» كابينة واحدة — الصفحة دى بتلمّ المكرّر وتدمجه">
+      <i class="bi bi-diagram-2"></i> كباين مكرّرة
+    </a>
+    <% } %>
+    <a href="/boxes/exchanges" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-right"></i> السنترالات</a>
+  </div>
 </div>
 
 <% if (user.role === 'admin') { %>

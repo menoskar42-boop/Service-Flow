@@ -29,7 +29,7 @@
       <select name="cabinet_id" class="form-select form-select-sm" onchange="this.form.submit()" <%= !(cabinets||[]).length ? 'disabled' : '' %>>
         <option value="">كل الكباين</option>
         <% (cabinets||[]).forEach(c => { %>
-        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <%= c.number %></option>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <bdi dir="ltr"><%= c.number %></bdi></option>
         <% }) %>
       </select>
     </div>
@@ -38,7 +38,7 @@
       <select name="box_id" class="form-select form-select-sm" <%= !(boxes||[]).length ? 'disabled' : '' %>>
         <option value="">كل البوكسات</option>
         <% (boxes||[]).forEach(b => { %>
-        <option value="<%= b.id %>" <%= query.box_id == b.id ? 'selected' : '' %>>بوكس <%= b.number %></option>
+        <option value="<%= b.id %>" <%= query.box_id == b.id ? 'selected' : '' %>>بوكس <bdi dir="ltr"><%= b.number %></bdi></option>
         <% }) %>
       </select>
     </div>
@@ -126,7 +126,7 @@
           <% const bx = cabData.boxes[boxNum]; %>
           <tr>
             <% if (bi === 0) { %>
-            <td class="fw-semibold text-center align-middle" rowspan="<%= boxNums.length %>">كابينة <%= cabNum %></td>
+            <td class="fw-semibold text-center align-middle" rowspan="<%= boxNums.length %>">كابينة <bdi dir="ltr"><%= cabNum %></bdi></td>
             <% } %>
             <td class="text-center fw-bold"><%= boxNum %></td>
             <td class="text-center">
