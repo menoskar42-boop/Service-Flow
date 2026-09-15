@@ -62,7 +62,11 @@ export const SF_ROLE_TO_MAINT: Record<string, string> = {
   super_admin: "admin",
   admin: "admin",
   external: "inspector",
-  tech: "technician",
+  // ⚠️ فنى إزالة الأعطال مش فنى صيانة: كان بياخد technician فيشوف كل مهام الصيانة
+  // وهى مش شغله. بقى زى الشئون الخارجية، وشغل مراجعة بيانات البكس بتاعه فى شاشة
+  // مستقلة (/data-review) مفلترة بكباينه. لازم يفضل مطابق لنسخة CJS فى
+  // server/maintenance/app/app.js — فيه اختبار بيثبّت ده.
+  tech: "inspector",
   maintenance_tech: "technician",
 };
 

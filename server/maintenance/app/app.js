@@ -85,7 +85,11 @@ const SF_ROLE_TO_MAINT = {
   super_admin: "admin",
   admin: "admin",
   external: "inspector",
-  tech: "technician",
+  // ⚠️ فنى إزالة الأعطال مش فنى صيانة: كان بياخد دور technician فيشوف **كل** مهام
+  // الصيانة (بنود ارتفاع البكس والغطاء… إلخ) وهى مش شغله. بقى زى الشئون الخارجية
+  // (inspector) — كل فيما يخصه — وشغل مراجعة بيانات البكس بتاعه فى شاشة مستقلة
+  // (/data-review) مفلترة بكباينه.
+  tech: "inspector",
   maintenance_tech: "technician",
 };
 app.use(async (req, res, next) => {
@@ -108,11 +112,14 @@ app.use(async (req, res, next) => {
              role = EXCLUDED.role,
              full_name = EXCLUDED.full_name,
              worker_code = COALESCE(EXCLUDED.worker_code, users.worker_code)
-           RETURNING id, username, role, full_name`,
+           RETURNING id, username, role, full_name, worker_code`,
           [uname, "sso:" + uname, mrole, fullName, workerCode],
         );
         if (row && row.id != null) {
-          req.session.user = { id: row.id, username: row.username, full_name: row.full_name, role: row.role, sso: true };
+          // worker_code لازم يكون فى الجلسة: شاشة «مراجعة بيانات البكس» بتفلتر بكباين
+          // الفنى من public.cabinet_technicians، ومن غيره كانت بترجّع فاضية دايماً.
+          req.session.user = { id: row.id, username: row.username, full_name: row.full_name,
+                               role: row.role, worker_code: row.worker_code || null, sso: true };
         }
       }
     }
@@ -127,6 +134,9 @@ app.use("/auth", require("./routes/auth"));
 app.use("/boxes", require("./routes/boxes"));
 app.use("/inspector", require("./routes/inspector"));
 app.use("/technician", require("./routes/technician"));
+// «مراجعة بيانات البكس» — شاشة مستقلة عن مهام الصيانة، فنى إزالة الأعطال بيشوف
+// كباينه هو بس فيها. requireLogin بس هنا، والصلاحية بتتفلتر جوّه الراوتر بالكباين.
+app.use("/data-review", require("./routes/data_review"));
 app.use("/reports/service-flow", require("./routes/service_flow"));
 app.use("/reports", require("./routes/reports"));
 app.use("/admin", require("./routes/admin"));
