@@ -247,8 +247,26 @@ function isDeactivationWO(rawType: string, closeReason: string): boolean {
   return DEACTIVATION_CLOSE_REASONS_LC.includes(r);
 }
 
+// أنواع أوامر الشغل اللى تُحسب **تركيب جديد** فى ملف أوامر الشغل (تصدير WFM).
+// أى نوع تانى بيتحسب «نقل» (ما عدا أوامر الرفع النهائى — دى بتتحوّل لجدول تانى).
+//
+// CVMSANInstallation = الحالة الجديدة «Convergent» (العميل بيتعاقد على صوت وداتا فى
+// نفس أمر الشغل) — أعلنتها إدارة الدعم الفنى 2026-09-15، وهى **تركيب جديد** فبتتصرف
+// لها كمية سلك. من غير السطر ده كانت بتتحسب «نقل» وتختفى من تقرير كمية السلك.
+// المقارنة بعد تطبيع (شيل المسافات + حروف صغيرة) عشان تمسك «CV MSAN Installation»
+// و«CVMSAN Installation» وأى صيغة بمسافات مختلفة.
+const WO_SHEET_INSTALL_TYPES = [
+  "Fixed Voice Installation MSAN",
+  "CVMSANInstallation",
+];
+const woTypeKey = (s: unknown) => String(s ?? "").toLowerCase().replace(/\s+/g, "");
+const WO_SHEET_INSTALL_KEYS = new Set(WO_SHEET_INSTALL_TYPES.map(woTypeKey));
+/** نوع أمر الشغل ده تركيب جديد؟ (ملف أوامر الشغل) */
+const isWoSheetInstall = (rawType: unknown) => WO_SHEET_INSTALL_KEYS.has(woTypeKey(rawType));
+
 const INSTALL_TYPES = [
   "FVInstallationMSAN",
+  "CVMSANInstallation",           // Convergent: صوت + داتا فى نفس أمر الشغل
   "FVChPhoneNoNewLoc",
   "FVInstallationTDM",
   "FTTHNewSubVS",
@@ -6891,9 +6909,10 @@ export async function registerRoutes(
         if (!centralName) { skipped++; continue; }
         const workOrderId  = parseInt(String(g(r, iWorkOrder, 1)));
         const phoneNumber  = String(g(r, iPhone, 7)).replace(/^'/, "").trim();
-        // IIf([Work Order Type]="Fixed Voice Installation MSAN";"تركيب جديد";"نقل")
+        // تركيب جديد = أى نوع فى WO_SHEET_INSTALL_TYPES (Installation MSAN أو
+        // CVMSANInstallation الجديدة)، وأى نوع تانى = نقل.
         const rawServiceType = String(g(r, iService, 5)).trim();
-        const serviceType  = rawServiceType === "Fixed Voice Installation MSAN" ? "تركيب جديد" : "نقل";
+        const serviceType  = isWoSheetInstall(rawServiceType) ? "تركيب جديد" : "نقل";
         // ⚠️ السطر اللى فوق بيحطّ **أى** نوع مش «Installation MSAN» على إنه «نقل» —
         // بما فيهم أوامر رفع/إلغاء الخط نهائياً. ودى مش تركيب ولا نقل ومابيتصرفلهاش
         // سلك، فكانت بتظهر فى تقارير النقل وفى «أوامر شغل بدون كمية سلك» غلط.
