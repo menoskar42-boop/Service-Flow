@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Cable, Search, Save, FileSpreadsheet, Printer, AlertTriangle } from "lucide-react";
+import { Loader2, Cable, Search, Save, FileSpreadsheet, Printer, AlertTriangle, Info } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ROLES } from "@shared/schema";
 import { preferFullName } from "@shared/technicians";
@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
 import { printTablePDF } from "@/lib/print-pdf";
+import { LineInfoDialog } from "@/components/LineInfoDialog";
 import { format } from "date-fns";
 
 // أوامر الشغل اللى لسه مالهاش كمية سلك — نفس مصدر تقرير «أوامر شغل بدون كمية سلك»
@@ -60,6 +61,8 @@ const COLS = ["#", "رقم امر الشغل", "رقم التليفون", "اس�
 
 export function WorkOrdersNoCableEntry() {
   const { toast } = useToast();
+  // رقم الخط اللى نافذة «بيان الخط» مفتوحة عليه (null = مقفولة)
+  const [infoPhone, setInfoPhone] = useState<string | null>(null);
   const qc = useQueryClient();
   const [dateFrom, setDateFrom] = useState(cairoMonthStart);
   const [dateTo, setDateTo] = useState(cairoToday);
@@ -314,7 +317,23 @@ export function WorkOrdersNoCableEntry() {
                 <TableRow key={r.id} className="hover:bg-muted/30 transition-colors">
                   <TableCell className="text-muted-foreground">{i + 1}</TableCell>
                   <TableCell className="font-mono">{r.workOrderId ?? "-"}</TableCell>
-                  <TableCell className="font-mono font-semibold text-blue-700">{r.phoneNumber ?? "-"}</TableCell>
+                  <TableCell className="font-mono font-semibold text-blue-700">
+                    <span className="inline-flex items-center gap-1">
+                      {r.phoneNumber ?? "-"}
+                      {/* بيان الخط: الاسم والعنوان + البيانات الفنية + كود كابينة المسان —
+                          عشان الفنى يفتكر الخط ويقدّر كمية السلك من غير ما يسيب الشاشة */}
+                      {r.phoneNumber && (
+                        <button
+                          type="button"
+                          onClick={() => setInfoPhone(String(r.phoneNumber))}
+                          title="بيان الخط: الاسم والعنوان والبيانات الفنية وكود كابينة المسان"
+                          className="text-muted-foreground hover:text-primary shrink-0"
+                        >
+                          <Info className="w-4 h-4" />
+                        </button>
+                      )}
+                    </span>
+                  </TableCell>
                   <TableCell>{r.centralName || "-"}</TableCell>
                   <TableCell>{r.serviceType || "-"}</TableCell>
                   <TableCell>
@@ -393,6 +412,13 @@ export function WorkOrdersNoCableEntry() {
           </TableBody>
         </Table>
       </div>
+
+      {/* نافذة بيان الخط — بتتحمّل أول ما تتفتح بس */}
+      <LineInfoDialog
+        phone={infoPhone ?? ""}
+        open={!!infoPhone}
+        onOpenChange={(v) => { if (!v) setInfoPhone(null); }}
+      />
     </Card>
   );
 }
