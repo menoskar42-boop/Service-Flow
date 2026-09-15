@@ -19,7 +19,7 @@
       <select name="cabinet_id" class="form-select form-select-sm">
         <option value="">كل الكباين</option>
         <% cabinets.forEach(c => { %>
-        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <bdi dir="ltr"><%= c.number %></bdi></option>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة &lrm;<%= c.number %></option>
         <% }) %>
       </select>
     </div>

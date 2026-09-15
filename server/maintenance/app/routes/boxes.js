@@ -324,6 +324,16 @@ const boxKey = (s) => {
     .replace(/[^0-9]/g, '');
   return d ? String(parseInt(d, 10)) : '';
 };
+// ⚠️ «بوكس 14» و«بوكس 14 مناول» **بوكسين مختلفين** وموجودين فى نفس الكابينة فعلاً.
+// المقارنة بالأرقام بس كانت هتدمجهم فى واحد وتضيّع فحص. فالقاعدة:
+//   (١) تطابق نصّى تام → نفس البوكس أكيد.
+//   (٢) وإلا: تطابق رقمى **بس لو الاتنين أرقام صافية** («05» = «5»).
+// أى بوكس فيه كلام («مناول») مابيتدمجش مع رقم صافى أبداً — بيتنقل كما هو.
+const isPlainNum = (s) => /^[0-9\u0660-\u0669]+$/.test(String(s ?? '').trim());
+const findTwin = (list, b) =>
+  list.find((k) => String(k.number).trim() === String(b.number).trim())
+  || list.find((k) => isPlainNum(k.number) && isPlainNum(b.number)
+                      && boxKey(k.number) === boxKey(b.number));
 
 /** بيرجّع مجموعات الكباين المكرّرة: { exchange, keep, drop[] } */
 async function duplicateCabinetGroups() {
@@ -367,7 +377,7 @@ router.post('/cabinets/duplicates/merge', adminOnly, async (req, res) => {
       for (const d of g.drop) {
         const dupBoxes = await db.all('SELECT id, number FROM boxes WHERE cabinet_id = ?', [d.id]);
         for (const b of dupBoxes) {
-          const twin = keepBoxes.find((k) => boxKey(k.number) === boxKey(b.number));
+          const twin = findTwin(keepBoxes, b);
           if (twin) {
             // نفس البوكس موجود فى الأصلية → ننقل الفحوصات والصور ونمسح المكرّر
             await db.run('UPDATE inspections SET box_id = ? WHERE box_id = ?', [twin.id, b.id]);

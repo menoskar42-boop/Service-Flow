@@ -23,7 +23,9 @@ test("the integration matches an existing cabinet before creating one", () => {
   // السنترال والكابينة والبكس — التلاتة بيتقارنوا موحّدين قبل الإنشاء
   assert.match(integration, /const hit = exs\.find\(\(r\) => centralNorm\(r\.name\) === centralNorm\(central\)\)/);
   assert.match(integration, /const hit = cabs\.find\(\(r\) => cabNorm\(r\.number\) === cabNorm\(cabinet\)\)/);
-  assert.match(integration, /const hit = bxs\.find\(\(r\) => boxNorm\(r\.number\) === boxNorm\(box\)\)/);
+  // البكس: تطابق نصّى تام الأول، وبعده تطابق رقمى بس لو الاتنين أرقام صافية
+  assert.match(integration, /const hit = bxs\.find\(\(r\) => String\(r\.number\)\.trim\(\) === String\(box\)\.trim\(\)\)/);
+  assert.match(integration, /boxNorm\(r\.number\) === boxNorm\(box\)/);
 });
 
 test("the maintenance normalizers mirror shared/cab-norm", () => {
@@ -76,4 +78,32 @@ test("numbers are isolated from the page's RTL direction", () => {
     assert.equal(bare.length, 0,
       `${v} still renders a number straight after Arabic text (${bare.length} sites)`);
   }
+});
+
+// ⚠️ <option> محتواه **نص فقط** — المتصفح بيرمى أى وسم جوّاه، فـ<bdi> ماكانتش
+// بتشتغل هناك والقائمة فضلت تعرض «كابينة 8-1» والجدول «1-8». البديل النصّى LRM.
+test("dropdowns use a plain directional mark, never a tag", () => {
+  const views = ["boxes/list.ejs", "technician/list.ejs", "inspector/list.ejs",
+                 "reports/maintenance.ejs", "reports/comprehensive.ejs"];
+  for (const v of views) {
+    const src = readFileSync(new URL(`./maintenance/app/views/${v}`, import.meta.url), "utf8");
+    for (const line of src.split("\n")) {
+      if (!line.includes("<option")) continue;
+      assert.ok(!line.includes("<bdi"), `${v}: <bdi> inside <option> is dropped by the browser`);
+      if (/<%=\s*[a-z]\.number\s*%>/i.test(line)) {
+        assert.ok(line.includes("&lrm;"), `${v}: a cabinet number in <option> needs &lrm;`);
+      }
+    }
+  }
+});
+
+// «بوكس 14» و«بوكس 14 مناول» بوكسين مختلفين فى نفس الكابينة — الدمج مايلزقهمش.
+test("a plain-number box is never merged into a named one", () => {
+  for (const src of [boxes, integration]) {
+    assert.match(src, /const isPlainNum = \(s\) => \/\^\[0-9\\u0660-\\u0669\]\+\$\/\.test/);
+  }
+  assert.match(boxes, /list\.find\(\(k\) => String\(k\.number\)\.trim\(\) === String\(b\.number\)\.trim\(\)\)/,
+    "an exact match wins first");
+  assert.match(boxes, /isPlainNum\(k\.number\) && isPlainNum\(b\.number\)/);
+  assert.match(integration, /isPlainNum\(r\.number\) && isPlainNum\(box\)/);
 });

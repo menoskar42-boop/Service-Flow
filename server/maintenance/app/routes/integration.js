@@ -113,6 +113,8 @@ const boxNorm = (s) => {
   const d = toAsciiDigits(s).replace(/[^0-9]/g, "");
   return d ? String(parseInt(d, 10)) : "";
 };
+// «14» رقم صافى، «14 مناول» لأ — والاتنين بوكسين مختلفين فى نفس الكابينة
+const isPlainNum = (s) => /^[0-9\u0660-\u0669]+$/.test(String(s ?? "").trim());
 
 const CHECKLIST_KEYS = [
   ['connector_fix', 'good_bad'], ['box_fix', 'good_bad'], ['box_cover', 'good_bad'],
@@ -160,7 +162,11 @@ router.post('/box-data-review', express.json({ limit: '1mb' }), async (req, res)
     let bx = await db.get('SELECT id, status FROM boxes WHERE cabinet_id = ? AND number = ?', [cab.id, box]);
     if (!bx) {
       const bxs = await db.all('SELECT id, number, status FROM boxes WHERE cabinet_id = ?', [cab.id]);
-      const hit = bxs.find((r) => boxNorm(r.number) === boxNorm(box));
+      // نفس قاعدة الدمج: تطابق نصّى تام، وإلا تطابق رقمى بس لو الاتنين أرقام صافية.
+      // «بوكس 14» غير «بوكس 14 مناول» — والاتنين بيتواجدوا فى نفس الكابينة.
+      const hit = bxs.find((r) => String(r.number).trim() === String(box).trim())
+        || bxs.find((r) => isPlainNum(r.number) && isPlainNum(box)
+                           && boxNorm(r.number) === boxNorm(box));
       bx = hit ? { id: hit.id, status: hit.status }
                : await db.get(
                    "INSERT INTO boxes (cabinet_id, number, status) VALUES (?, ?, 'pending_inspection') RETURNING id, status",

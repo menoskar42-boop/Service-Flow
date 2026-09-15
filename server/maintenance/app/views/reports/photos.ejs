@@ -29,7 +29,7 @@
       <select name="cabinet_id" class="form-select form-select-sm" onchange="this.form.submit()" <%= !(cabinets||[]).length ? 'disabled' : '' %>>
         <option value="">كل الكباين</option>
         <% (cabinets||[]).forEach(c => { %>
-        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة <bdi dir="ltr"><%= c.number %></bdi></option>
+        <option value="<%= c.id %>" <%= query.cabinet_id == c.id ? 'selected' : '' %>>كابينة &lrm;<%= c.number %></option>
         <% }) %>
       </select>
     </div>
@@ -38,7 +38,7 @@
       <select name="box_id" class="form-select form-select-sm" <%= !(boxes||[]).length ? 'disabled' : '' %>>
         <option value="">كل البوكسات</option>
         <% (boxes||[]).forEach(b => { %>
-        <option value="<%= b.id %>" <%= query.box_id == b.id ? 'selected' : '' %>>بوكس <bdi dir="ltr"><%= b.number %></bdi></option>
+        <option value="<%= b.id %>" <%= query.box_id == b.id ? 'selected' : '' %>>بوكس &lrm;<%= b.number %></option>
         <% }) %>
       </select>
     </div>
