@@ -147,6 +147,10 @@ app.use("/admin", require("./routes/admin"));
 
 app.get("/", (req, res) => {
   if (!req.session.user) return res.redirect("/auth/login");
+  // فنى إزالة الأعطال شغله هنا هو **مراجعة بيانات البكس** بس — مالوش دعوة بالفحوصات
+  // ولا بالبوكسات. فبيفتح عليها على طول. (بياخد دور inspector زى الشئون الخارجية،
+  // فالتفرقة بـ sf_role — دور Service-Flow الأصلى.)
+  if (String(req.session.user.sf_role || "") === "tech") return res.redirect("/data-review");
   if (req.session.user.role === "technician") return res.redirect("/technician");
   return res.redirect("/boxes");
 });

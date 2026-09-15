@@ -128,3 +128,19 @@ test("the photo uploader only exists while the task is in progress", () => {
     "the uploader script is gated on in_progress");
   assert.match(detail, /رفع صور وفيديو بعد الصيانة/);
 });
+
+// فنى إزالة الأعطال شغله فى برنامج الصيانة هو مراجعة بيانات البكس بس — فبيفتح
+// عليها على طول. باقى المستخدمين الافتراضى بتاعهم مااتغيّرش.
+// مُثبت end-to-end على سيرفر حقيقى:
+//   tech → /data-review | maintenance_tech → /technician
+//   external / admin / super_admin → /boxes
+test("the fault-removal technician lands on the data review screen", () => {
+  const root = app.slice(app.indexOf('app.get("/", (req, res)'), app.indexOf('app.use((err'));
+  assert.match(root, /if \(String\(req\.session\.user\.sf_role \|\| ""\) === "tech"\) return res\.redirect\("\/data-review"\);/);
+  // الشرط بتاعه لازم ييجى **قبل** شرط دور الصيانة عشان مايتسبقش
+  assert.ok(root.indexOf('"/data-review"') < root.indexOf('"/technician"'),
+    "the tech rule must be checked before the maintenance-tech rule");
+  // الافتراضى القديم زى ما هو
+  assert.match(root, /if \(req\.session\.user\.role === "technician"\) return res\.redirect\("\/technician"\);/);
+  assert.match(root, /return res\.redirect\("\/boxes"\);/);
+});
