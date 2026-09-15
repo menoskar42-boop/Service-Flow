@@ -48,3 +48,23 @@ test("a technician may call the lookup", () => {
   assert.match(ep, /req\.user\?\.role === ROLES\.SALES\) return res\.status\(403\)/);
   assert.doesNotMatch(ep, /ROLES\.TECH\) return res\.status\(403\)/);
 });
+
+// ⚠️ باج حقيقى: أوامر الشغل بتخزّن الرقم **بشرطة** («88-2650848»)، والـ endpoint كان
+// بياخده زى ما هو فـ short يطلع «-2650848» ومايطابقش حاجة — فالنافذة تقول «مفيش
+// بيان» رغم إن نفس الرقم شغّال من شاشة البحث (المستخدم بيكتب أرقام بس).
+// مُثبت على سيرفر حقيقى: «88-2650848» و«882650848» و«2650848» التلاتة بيرجّعوا
+// نفس البيان (الاسم + الكابينة 2-8 + المسان 11-2-26-24 + فنى المنطقة اسلام).
+test("the lookup accepts the phone in any stored format", () => {
+  const start = routes.indexOf('app.get("/api/phone-lines/lookup"');
+  const ep = routes.slice(start, routes.indexOf('app.get("/api/phone-lines/', start + 50));
+  assert.match(ep, /const digits = phone\.replace\(\/\\D\/g, ""\);/);
+  assert.match(ep, /const short = digits\.replace\(\/\^88\/, ""\);/);
+  assert.match(ep, /const full = digits\.startsWith\("88"\) \? digits : "88" \+ digits;/);
+  // raw كمان لازم يبقى أرقام بس
+  assert.match(ep, /\[digits, short, full, codes\.own, codes\.covered\]/);
+  assert.doesNotMatch(ep, /const short = phone\.replace\(\/\^88\/, ""\);/);
+});
+
+test("the dialog also sends digits only", () => {
+  assert.match(dlg, /String\(phone\)\.replace\(\/\\D\/g, ""\)/);
+});

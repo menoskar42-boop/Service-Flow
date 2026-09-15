@@ -255,6 +255,21 @@ function isDeactivationWO(rawType: string, closeReason: string): boolean {
 // لها كمية سلك. من غير السطر ده كانت بتتحسب «نقل» وتختفى من تقرير كمية السلك.
 // المقارنة بعد تطبيع (شيل المسافات + حروف صغيرة) عشان تمسك «CV MSAN Installation»
 // و«CVMSAN Installation» وأى صيغة بمسافات مختلفة.
+// أنواع أوامر الشغل اللى **مابتستهلكش سلك** خالص — مش تركيب ولا نقل.
+// قاعدة الاستيراد إن أى نوع مش تركيب = «نقل»، فالأنواع دى كانت بتدخل على إنها نقل
+// وتفضل فى «أوامر شغل بدون كمية سلك» للأبد مستنية كمية سلك مش هتيجى أبداً.
+// اتصادت من ملف WFM حقيقى: رقم 88-2650848 ظهر ٣ مرات بتلات أوامر
+// VAS Activation/Deactivation اتقفلوا 16:51 و16:52 و16:57 نفس اليوم.
+//   • VAS Activation/Deactivation = تفعيل/إلغاء خدمة مضافة على نفس الخط.
+//   • FV Change Phone Number Availability and Validation = التحقق من إتاحة رقم.
+//   • Manual Survey = معاينة (بتتفلتر أصلاً بصيغة الرقم، ومحطوطة هنا صراحةً).
+const NO_CABLE_WO_TYPES_LC = [
+  "vas activation/deactivation",
+  "fv change phone number availability and validation",
+  "fixed voice manual survey",
+  "fvmanualsurvey",
+];
+
 const WO_SHEET_INSTALL_TYPES = [
   "Fixed Voice Installation MSAN",
   "CVMSANInstallation",
@@ -6205,9 +6220,13 @@ export async function registerRoutes(
     if (req.user?.role === ROLES.SALES) return res.status(403).json({ message: "غير مسموح" });
     const phone = String((req.query as Record<string, string>).phone || "").trim();
     if (!phone) return res.status(400).json({ message: "أدخل رقم التليفون" });
-    // مطابقة الرقم الكامل أو القصير (مع/بدون بادئة 88)
-    const short = phone.replace(/^88/, "");
-    const full = phone.startsWith("88") ? phone : "88" + phone;
+    // مطابقة الرقم الكامل أو القصير (مع/بدون بادئة 88).
+    // ⚠️ لازم نشيل أى رموز الأول: أوامر الشغل بتخزّن الرقم بشرطة («88-2650848»)،
+    // ولما اتبعت زى ما هو كان short = «-2650848» فمايطابقش حاجة والبيان يرجع فاضى
+    // رغم إن نفس الرقم شغّال من شاشة البحث (المستخدم بيكتب أرقام بس).
+    const digits = phone.replace(/\D/g, "");
+    const short = digits.replace(/^88/, "");
+    const full = digits.startsWith("88") ? digits : "88" + digits;
     const codes = await coverageCodes(req.user);   // {own, covered} لحساب ownedByMe
     // نبحث فى phone_lines (بيانات فنية) وإلا نرجّع البيانات من line_accounts / case_138 /
     // الشكاوى — علشان يظهر أى رقم له أكونت أو قياس أو شكوى حتى لو مالوش بيانات فنية.
@@ -6401,7 +6420,8 @@ export async function registerRoutes(
          ) x WHERE NULLIF(btrim(x.m),'') IS NOT NULL ORDER BY pr LIMIT 1
        ) mob ON true
        LIMIT 1`,
-      [phone, short, full, codes.own, codes.covered],
+      // raw = الأرقام بس كمان (الرقم بشرطة مستحيل يطابق full_phone المخزّن)
+      [digits, short, full, codes.own, codes.covered],
     );
     const line = rows[0];
     if (!line || !line.hasData) return res.json({ found: false });
@@ -7097,6 +7117,10 @@ export async function registerRoutes(
         `(w.close_category IS NULL OR w.close_category = 'Success')`,
         // مالهاش كمية سلك: لا فى work_orders ولا فى cable_entries
         `COALESCE(NULLIF(w.cable_quantity, ''), ce.cable_quantity) IS NULL`,
+        // والأنواع اللى مابتستهلكش سلك أصلاً (تفعيل خدمة / التحقق من إتاحة رقم /
+        // معاينة) مالهاش دعوة بالتقرير ده — شوف NO_CABLE_WO_TYPES_LC.
+        `lower(btrim(COALESCE(w.work_order_type_raw, ''))) <> ALL(ARRAY[${
+          NO_CABLE_WO_TYPES_LC.map((t) => `'${t.replace(/'/g, "''")}'`).join(", ")}])`,
       ];
       if (dateFrom) { params.push(dateFrom); conds.push(`w.close_date >= $${params.length}::date`); }
       if (dateTo) { params.push(dateTo); conds.push(`w.close_date < ($${params.length}::date + interval '1 day')`); }

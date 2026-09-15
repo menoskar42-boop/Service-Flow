@@ -37,7 +37,9 @@ export function LineInfoDialog({ phone, open, onOpenChange }: {
     // بنجيب البيان بس لما النافذة تتفتح فعلاً — مش مع كل صف فى الجدول
     enabled: open && !!phone,
     queryFn: async () => {
-      const res = await fetch(`/api/phone-lines/lookup?phone=${encodeURIComponent(phone)}`,
+      // أرقام بس: أوامر الشغل بتخزّن الرقم بشرطة («88-2650848») والسيرفر بيطبّع
+      // برضه، بس بنبعته نضيف من هنا كمان عشان الطلب يبقى واضح.
+      const res = await fetch(`/api/phone-lines/lookup?phone=${encodeURIComponent(String(phone).replace(/\D/g, ""))}`,
         { credentials: "include" });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || "تعذّر جلب بيان الخط");
       // شكل الرد: { found: boolean, line: {...} } — نفس اللى بحث برقم التليفون بيقراه
