@@ -37,3 +37,26 @@ test("the no-cable report filters them out", () => {
   assert.match(ep, /\^88\[0-9\]\{7\}\$/);
   assert.match(ep, /w\.close_category IS NULL OR w\.close_category = 'Success'/);
 });
+
+// نفس الاستبعاد على **تقرير أوامر الشغل** — الأنواع دى مش نقل ولا تركيب فمالهاش
+// مكان هناك كمان. مُثبت على نفس ملفات WFM الحقيقية: 154 → 151 صف (التلات أوامر
+// VAS بتوع 88-2650848 اتشالوا)، و144 تركيب + 7 نقل حقيقى فضلوا زى ما هم.
+test("the work-orders report filters them out too", () => {
+  const start = routes.indexOf('app.get("/api/work-orders", requireAuth');
+  const ep = routes.slice(start, start + 2000);
+  assert.match(ep, /lower\(btrim\(COALESCE\(w\.work_order_type_raw, ''\)\)\) <> ALL\(ARRAY\[/);
+  assert.match(ep, /NO_CABLE_WO_TYPES_LC\.map/);
+});
+
+// ⚠️ اسم الفنى = **فنى الإغلاق** من الشيت، ومايتبدلش بفنى المنطقة أبداً.
+// مُثبت على بيانات حقيقية: أمر نقل قافله «حسن» على خط كابينته بتاعة «اسلام»
+// → التقريرين الاتنين عرضوا «حسن».
+// والاسم اللى مش من الخمسة («انور عبد الفتاح») فضل زى ما هو وtechKnown=false
+// (يعنى لسه قابل للتعديل والتسجيل التلقائى) — المنطق ده مااتلمسش.
+test("the displayed technician stays the closing technician", () => {
+  const start = routes.indexOf('app.get("/api/work-orders", requireAuth');
+  const ep = routes.slice(start, start + 3000);
+  assert.match(ep, /COALESCE\(NULLIF\(btrim\(ovr\.tech_name\), ''\), w\.tech_name\) AS "techName"/);
+  // مافيش أى fallback لفنى المنطقة فى اسم الفنى نفسه
+  assert.doesNotMatch(ep.slice(0, ep.indexOf('AS "techName"')), /areaTechSql/);
+});
