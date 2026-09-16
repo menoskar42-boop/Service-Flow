@@ -263,7 +263,7 @@ const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
           وضيف اللى مش موجود. لما تخلّص، علّم بند <strong>«مراجعة بيانات البكس»</strong> فوق إنه مكتمل.
         </p>
         <div class="table-responsive">
-          <table class="table table-sm align-middle">
+          <table class="table table-sm align-middle box-phones-table">
             <thead class="table-light">
               <tr><th style="width:40px">#</th><th>رقم التليفون</th><th>ملاحظات</th>
                   <th style="width:150px">المصدر</th><th style="width:170px">إجراء</th></tr>
@@ -276,8 +276,8 @@ const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
               <tr>
                 <form method="post" action="/technician/<%= task.id %>/phones/<%= ph.id %>">
                   <td class="text-muted"><%= idx + 1 %></td>
-                  <td><input name="phone" value="<%= ph.phone %>" class="form-control form-control-sm" dir="ltr" required></td>
-                  <td><input name="notes" value="<%= ph.notes || '' %>" class="form-control form-control-sm" placeholder="ملاحظة (اختيارى)"></td>
+                  <td><input name="phone" value="<%= ph.phone %>" class="form-control form-control-sm box-phone-input" dir="ltr" required></td>
+                  <td><input name="notes" value="<%= ph.notes || '' %>" class="form-control form-control-sm box-notes-input" placeholder="ملاحظة (اختيارى)"></td>
                   <td>
                     <span class="badge <%= ph.source === 'technician' ? 'bg-info' : 'bg-secondary' %>">
                       <%= ph.source === 'technician' ? 'إضافة الفنى' : 'من الموقع' %>
@@ -299,11 +299,11 @@ const _afterVideos  = (typeof afterVideos  !== 'undefined') ? afterVideos  : [];
         <form method="post" action="/technician/<%= task.id %>/phones" class="row g-2 align-items-end mt-1">
           <div class="col-sm-4">
             <label class="form-label small mb-1">إضافة رقم</label>
-            <input name="phone" class="form-control form-control-sm" dir="ltr" placeholder="882657400" required>
+            <input name="phone" class="form-control form-control-sm box-phone-input" dir="ltr" placeholder="882657400" required>
           </div>
           <div class="col-sm-5">
             <label class="form-label small mb-1">ملاحظات</label>
-            <input name="notes" class="form-control form-control-sm" placeholder="ترمنال 3 (اختيارى)">
+            <input name="notes" class="form-control form-control-sm box-notes-input" placeholder="ترمنال 3 (اختيارى)">
           </div>
           <div class="col-sm-3">
             <button class="btn btn-sm btn-success w-100" type="submit"><i class="bi bi-plus-lg"></i> إضافة</button>

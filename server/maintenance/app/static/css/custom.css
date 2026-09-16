@@ -136,3 +136,16 @@ body {
   unicode-bidi: isolate;
   direction: ltr;
 }
+
+/* ── جدول أرقام البكس: خانة الرقم ماتضيقش على الموبايل ───────────────────────
+   الباج: خانة «رقم التليفون» كانت بتتزنق على شاشة الموبايل فالرقم يتقصّ
+   (882656666 كان بيبان 88265666). الخانات بتتقسّم عرض الجدول بالتساوى، فالحل
+   إن الرقم ياخد عرض أدنى يكفّى ٩ أرقام والجدول يتزحلق أفقياً بدل ما يزنقه. */
+.box-phone-input {
+  min-width: 10.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.box-notes-input { min-width: 8rem; }
+/* الجدول بيتزحلق جوّه .table-responsive — نمنع لفّ الخانات عشان الزحلقة تشتغل */
+.box-phones-table td,
+.box-phones-table th { white-space: nowrap; }
