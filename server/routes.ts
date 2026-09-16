@@ -2876,12 +2876,21 @@ export async function registerRoutes(
   //   • أى مهمة موقوفة مؤقتاً (paused_at) — الإيقاف قرار صريح من المستخدم،
   //     و«إعادة التشغيل» مالهاش حق تفكّه من ورا ظهره (زرار «استئناف الكل» موجود).
   //   • done — اللى اتنفّذ فعلاً مايتعادش.
+  //
+  // ⚠️ والأهم: بيشتغل **على الباتشات اللى على الشاشة بس** — يعنى اللى فيها مهمة نشطة
+  // (pending/claimed)، بالظبط نفس مجموعة `BATCHES_BY_ACTIVE_PRIORITY` اللى بتغذّى
+  // قايمة الطابور. من غير الحد ده كان الزرار بيصطاد **كل** مهمة stale فى تاريخ الجدول
+  // كله (الباتشات الملغاة والقديمة من أسابيع) — المستخدم شايف ٤ باتشات واقفة فيضغط
+  // «إعادة تشغيل الكل» فيرجع ٤١ باتش وعشرات الآلاف من المهام للطابور. الباتش القديم
+  // اللى خرج من الشاشة مش «واقف»: يا اتلغى يا خلص، والإنقاذ التلقائى بيتولّى العالق
+  // الحديث لوحده.
   app.post("/api/exec-queue/requeue-all", requireAuth, requireSuperAdmin, async (_req, res) => {
     try {
       const { rows } = await pool.query(
         `UPDATE exec_jobs
             SET status = 'pending', claimed_at = NULL, done_at = NULL, result = NULL, attempts = 0
           WHERE status IN ('claimed', 'stale') AND paused_at IS NULL
+            AND batch_id IN (${BATCHES_BY_ACTIVE_PRIORITY})
       RETURNING batch_id`);
       const batches = new Set(rows.map((r: any) => r.batch_id).filter(Boolean));
       res.json({ ok: true, requeued: rows.length, batches: batches.size });

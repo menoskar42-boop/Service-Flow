@@ -41,3 +41,24 @@ test("the panel has one button for it, with a stuck counter", () => {
   // تأكيد قبل التنفيذ — العملية بترجّع شغل جارى لأوله
   assert.match(panel, /if \(!confirm\(msg\)\) return;\s*\n\s*setRequeuingAll\(true\)/);
 });
+
+// الباج اللى حصل فعلاً: المستخدم شايف ٤ باتشات واقفة، ضغط «إعادة تشغيل الكل»،
+// فرجع ٤١ باتش (وعشرات الآلاف من المهام) — لأن الشرط مكانش محدود بالباتشات
+// الظاهرة، فصطاد كل مهمة stale فى تاريخ الجدول كله (الملغى والقديم من أسابيع).
+test("it only restarts the batches the queue list actually shows", () => {
+  // نفس المجموعة اللى بتغذّى قايمة الطابور — لازم تبقى نفس التعريف حرفياً
+  assert.match(ep, /AND batch_id IN \(\$\{BATCHES_BY_ACTIVE_PRIORITY\}\)/);
+  const defStart = routes.indexOf("const BATCHES_BY_ACTIVE_PRIORITY = `");
+  assert.ok(defStart >= 0, "BATCHES_BY_ACTIVE_PRIORITY must exist");
+  const def = routes.slice(defStart, routes.indexOf("`;", defStart));
+  assert.match(def, /status IN \('pending','claimed'\) AND batch_id IS NOT NULL/);
+  // ونفس المجموعة هى اللى الشاشة بتقرأ منها (priority-preview + الأولوية المتأخرة)
+  const previewAt = routes.indexOf('app.get("/api/exec-queue/priority-preview"');
+  assert.ok(routes.slice(previewAt, previewAt + 1600).includes("${BATCHES_BY_ACTIVE_PRIORITY}"));
+});
+
+test("the confirmation says out loud that old batches will not come back", () => {
+  assert.match(panel, /const shownCount = new Set\(\[\.\.\.priorityRows, \.\.\.rows\]\.map\(\(b\) => b\.batchId\)\)\.size/);
+  assert.match(panel, /الظاهرين فى القايمة دى بس/);
+  assert.match(panel, /الباتشات القديمة اللى خلصت أو اتلغت مش هتترجع/);
+});
