@@ -71,15 +71,20 @@ export function LineDataCorrectionsReport() {
   const [dateFrom, setDateFrom] = useState(cairoMonthStart);
   const [dateTo, setDateTo] = useState(cairoToday);
   const [search, setSearch] = useState("");
-  const [onlyMismatch, setOnlyMismatch] = useState(false);
+  // الافتراضى: عدم التطابق بس — ده شغل مسئول البيانات. الزرار لسه موجود لو حب
+  // يشوف الكل (المطابق و«مراجعة فقط»).
+  const [onlyMismatch, setOnlyMismatch] = useState(true);
+  // latest = التصحيح السارى لكل رقم | superseded = التصحيحات السابقة اللى اتلغت بأحدث منها
+  const [scope, setScope] = useState<"latest" | "superseded">("latest");
   const [busy, setBusy] = useState<number | null>(null);
 
   const { data: rows = [], isFetching } = useQuery<Row[]>({
-    queryKey: ["/api/line-data-corrections", dateFrom, dateTo],
+    queryKey: ["/api/line-data-corrections", dateFrom, dateTo, scope],
     queryFn: async () => {
       const p = new URLSearchParams();
       if (dateFrom) p.set("dateFrom", dateFrom);
       if (dateTo) p.set("dateTo", dateTo);
+      p.set("scope", scope);
       const res = await fetch(`/api/line-data-corrections?${p}`, { credentials: "include" });
       if (!res.ok) throw new Error("فشل التحميل");
       return res.json();
@@ -170,6 +175,10 @@ export function LineDataCorrectionsReport() {
         كل رقم بعته فنى، ومعاه اللى دخّله يدوياً جنب اللى رجع من مراجعة البيان الفنى.
         أى اختلاف بيتعلّم <strong>«عدم تطابق»</strong> عشان مسئول البيانات يصحّحه — وبعد
         التصحيح يضغط <strong>«تم التصحيح»</strong> فتتبعت مراجعة تانية وتتقارن من أول وجديد.
+        <br />
+        كل رقم ليه <strong>تصحيح واحد سارى</strong> (آخر واحد اتبعت). لو الرقم اتعمله
+        تصحيح تانى، الأقدم بيروح <strong>«التصحيحات السابقة»</strong>. والشاشة بتفتح على
+        <strong> عدم التطابق فقط</strong> — اضغط الزرار لو عايز تشوف الكل.
       </p>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -193,9 +202,20 @@ export function LineDataCorrectionsReport() {
           variant={onlyMismatch ? "default" : "outline"} size="sm"
           onClick={() => setOnlyMismatch((v) => !v)}
           className={`mb-1 gap-1 ${onlyMismatch ? "bg-red-600 hover:bg-red-700 text-white" : "text-red-700 border-red-200"}`}
-          title="عرض اللى فيه اختلاف بين المُدخَل والمراجعة فقط"
+          title={onlyMismatch ? "دلوقتى بيعرض اللى فيه اختلاف بس — اضغط عشان تشوف الكل"
+                              : "عرض اللى فيه اختلاف بين الصحيح والمراجعة فقط"}
         >
-          عدم التطابق ({mismatchCount})
+          {onlyMismatch ? `عدم التطابق فقط (${mismatchCount})` : `عرض الكل — عدم التطابق (${mismatchCount})`}
+        </Button>
+        {/* كل رقم ليه تصحيح واحد سارى (الأحدث). اللى قبله بيتشال هنا. */}
+        <Button
+          variant={scope === "superseded" ? "default" : "outline"} size="sm"
+          onClick={() => setScope((v) => (v === "latest" ? "superseded" : "latest"))}
+          className={`mb-1 gap-1 ${scope === "superseded"
+            ? "bg-slate-700 hover:bg-slate-800 text-white" : "text-slate-700 border-slate-300"}`}
+          title="كل رقم ليه تصحيح واحد سارى (الأحدث) — ده سجلّ التصحيحات الأقدم اللى اتلغت بأحدث منها"
+        >
+          {scope === "superseded" ? "التصحيحات السابقة ✓" : "التصحيحات السابقة"}
         </Button>
         <div className="flex-1" />
         {isFetching && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground mb-2" />}

@@ -7420,6 +7420,16 @@ export async function registerRoutes(
     if (dateFrom) { params.push(dateFrom); conds.push(`(c.created_at AT TIME ZONE 'Africa/Cairo')::date >= $${params.length}::date`); }
     if (dateTo)   { params.push(dateTo);   conds.push(`(c.created_at AT TIME ZONE 'Africa/Cairo')::date <= $${params.length}::date`); }
     const mine = conds.length ? `AND ${conds.join(" AND ")}` : "";
+    // كل رقم ليه **تصحيح واحد ساريـ**: الأحدث. الرقم اللى اتعمله تصحيح على بكس 51
+    // وبعدين على 52، الـ 52 هو السارى والـ 51 بقى «سابق».
+    //   scope=latest (الافتراضى) → الأحدث لكل رقم
+    //   scope=superseded         → التصحيحات السابقة (تقرير منفصل)
+    // ⚠️ التمييز بالرقم الكامل: نفس الخط ممكن يتبعت أكتر من مرة بصيغ مختلفة.
+    const scope = String((req.query as Record<string, string>).scope || "latest");
+    const LATEST_PER_PHONE = `c.id = (SELECT c2.id FROM line_data_corrections c2
+                                       WHERE c2.phone_full = c.phone_full
+                                       ORDER BY c2.created_at DESC, c2.id DESC LIMIT 1)`;
+    const scopeCond = scope === "superseded" ? `NOT (${LATEST_PER_PHONE})` : LATEST_PER_PHONE;
     const { rows } = await pool.query(
       `SELECT c.id, c.phone_local AS "phoneLocal", c.phone_full AS "phoneFull",
               c.central, c.cabin_number AS "cabinNumber", c.box_number AS "boxNumber",
@@ -7438,7 +7448,7 @@ export async function registerRoutes(
               ${CORR_HAS_TYPED} AS "hasTyped"
          FROM line_data_corrections c
          LEFT JOIN line_subscriber_info si ON si.phone_number = c.phone_full
-        WHERE true ${mine}
+        WHERE ${scopeCond} ${mine}
         ORDER BY ${CORR_MISMATCH} DESC, c.requested_at DESC
         LIMIT 5000`, params);
     res.json(rows);
