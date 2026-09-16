@@ -114,7 +114,9 @@ test("the DP terminal is a free-text optional field that joins the comparison", 
   assert.match(routes, /NULLIF\(btrim\(c\.dp_terminal\), ''\)\) IS NOT NULL\)/);
   // وظاهر فى التقرير: المُدخَل جنب اللى رجع من المراجعة
   assert.match(rep, /cmpCell\(r\.dpTerminal, r\.fetchedTerminal, r\.reviewed\)/);
-  assert.match(rep, /"الترمنال \(الصحيح\)"[\\s\\S]*?"الترمنال \(المراجعة\)"/);
+  // العمودين بقوا مش ورا بعض: «الصحيح» كلهم الأول وبعدين «المراجعة»
+  assert.match(rep, /"الترمنال \(الصحيح\)"/);
+  assert.match(rep, /"الترمنال \(المراجعة\)"/);
 });
 
 // زر «تصحيح بيان» فى «بحث برقم التليفون» — نفس الخانات بالظبط، والرقم متملّى من البحث.
