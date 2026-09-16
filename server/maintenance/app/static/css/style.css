@@ -130,3 +130,22 @@ body {
   .hover-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.08); transform: none; }
   .photo-thumb:hover { border-color: #dee2e6; }
 }
+
+/* ── جدول أرقام البكس: خانة الرقم ماتضيقش على الموبايل ───────────────────────
+   الباج: خانة «رقم التليفون» كانت بتتزنق على شاشة الموبايل فالرقم يتقصّ
+   (882656666 كان بيبان 88265666)، وخانة الملاحظات كمان («ترمنال 3» تبان «ترمنال»).
+   خانات الجدول بتتقسّم العرض بالتساوى، فالحل إن الرقم ياخد عرض أدنى يكفّى ٩ أرقام
+   والجدول يتزحلق أفقياً جوّه .table-responsive بدل ما يزنق الخانات.
+   ⚠️ القواعد دى لازم تفضل هنا: custom.css **مش محمّل** فى القوالب (الهيدر بيحمّل
+   style.css بس)، فأى قاعدة بتتحطّ هناك مابتشتغلش. */
+.box-phone-input {
+  min-width: 10.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.box-notes-input { min-width: 8rem; }
+.box-phones-table td,
+.box-phones-table th { white-space: nowrap; }
+/* الزحلقة الأفقية للجدول مان نعتمدش فيها على .table-responsive بتاعة Bootstrap:
+   الـ CDN ممكن يكون محجوب على شبكة الفنى (فلتر الويب)، وساعتها الصفحة بتفضل
+   شغّالة بس من غير أى ستايل من Bootstrap — والجدول يطلع برّه الشاشة. */
+.box-phones-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }

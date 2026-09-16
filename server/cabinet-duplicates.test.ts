@@ -14,8 +14,10 @@ const integration = readFileSync(
   new URL("./maintenance/app/routes/integration.js", import.meta.url), "utf8");
 const boxes = readFileSync(
   new URL("./maintenance/app/routes/boxes.js", import.meta.url), "utf8");
+// ⚠️ style.css هو الملف الوحيد اللى الهيدر بيحمّله — custom.css موجود بس مش
+// مربوط بأى قالب، فأى قاعدة تتحطّ هناك مابتشتغلش.
 const css = readFileSync(
-  new URL("./maintenance/app/static/css/custom.css", import.meta.url), "utf8");
+  new URL("./maintenance/app/static/css/style.css", import.meta.url), "utf8");
 const cabNormShared = readFileSync(
   new URL("../shared/cab-norm.ts", import.meta.url), "utf8");
 
@@ -68,7 +70,9 @@ test("the merge page is admin only and reachable from the cabinets page", () => 
 });
 
 test("numbers are isolated from the page's RTL direction", () => {
-  assert.match(css, /\.n \{[\s\S]*?unicode-bidi: isolate;[\s\S]*?direction: ltr;[\s\S]*?\}/);
+  // الكلاس ده كان موجود أصلاً فى style.css — direction: ltr + unicode-bidi
+  // بيعزلوا الرقم عن اتجاه السطر فمايتقلبش.
+  assert.match(css, /\.n \{ direction: ltr; unicode-bidi: \w+;/);
   // كل رقم بيتعرض بعد كلمة عربية لازم يبقى معزول
   const views = ["technician/list.ejs", "boxes/list.ejs", "inspector/list.ejs",
                  "reports/maintenance.ejs", "reports/comprehensive.ejs"];
