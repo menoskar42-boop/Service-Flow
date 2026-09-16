@@ -16,11 +16,21 @@ const rep = readFileSync(
 const start = routes.indexOf('app.get("/api/line-data-corrections"');
 const ep = routes.slice(start, routes.indexOf('app.post("/api/line-data-corrections/:id/review"'));
 
+// «الأحدث» = **تاريخ الإدخال** (created_at) — مش رقم الصف ولا ترتيب الحفظ.
+// مُثبت بالحالة الصعبة على سيرفر حقيقى: الصف الأحدث بتاريخ الإدخال (22:35) اتحفظ
+// **الأول** فأخد id أصغر (id=1)، والأقدم (21:45) أخد id=2:
+//   السارى   → id=1 بكس 51 ✅   (لو الترتيب كان بالـ id كان هيطلع غلط)
+//   السابقة  → id=2 بكس 52 ✅
+// created_at معرَّف NOT NULL DEFAULT now() فمافيش صف من غير تاريخ يتصدّر الترتيب.
 test("only the newest correction per phone is current", () => {
   assert.match(ep, /const LATEST_PER_PHONE = `c\.id = \(SELECT c2\.id FROM line_data_corrections c2/);
   assert.match(ep, /WHERE c2\.phone_full = c\.phone_full/, "grouped by the full phone number");
   assert.match(ep, /ORDER BY c2\.created_at DESC, c2\.id DESC LIMIT 1/,
-    "the id breaks the tie when two land in the same second");
+    "created_at first — the id only breaks a same-instant tie");
+  // العمود اللى بيتعرض كـ«تاريخ الإدخال» هو نفسه اللى الترتيب بيتم عليه
+  assert.match(ep, /\(c\.created_at AT TIME ZONE 'Africa\/Cairo'\) AS "createdAt"/);
+  const db = readFileSync(new URL("./db.ts", import.meta.url), "utf8");
+  assert.match(db, /created_at timestamptz NOT NULL DEFAULT now\(\)/);
 });
 
 test("the superseded ones are a separate view, never mixed in", () => {
