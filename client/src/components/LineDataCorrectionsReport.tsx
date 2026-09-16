@@ -53,8 +53,8 @@ const fmtDt = (d: string | null) => {
 };
 
 const COLS = ["#", "رقم التليفون", "بواسطة", "تاريخ الإدخال", "السنترال (المُدخَل)", "السنترال (المراجعة)",
-  "الكابينة (المُدخَل)", "الكابينة (المراجعة)", "البكس (المُدخَل)", "البكس (المراجعة)",
-  "الترمنال (المُدخَل)", "الترمنال (المراجعة)", "اسم العميل", "العنوان", "الحالة",
+  "الكابينة (الصحيح)", "الكابينة (المراجعة)", "البكس (الصحيح)", "البكس (المراجعة)",
+  "الترمنال (الصحيح)", "الترمنال (المراجعة)", "اسم العميل", "العنوان", "الحالة",
   "تم التصحيح بواسطة", "تاريخ التصحيح"];
 
 export function LineDataCorrectionsReport() {
@@ -219,11 +219,11 @@ export function LineDataCorrectionsReport() {
               <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الإدخال</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المُدخَل)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المراجعة)</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (المُدخَل)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (الصحيح)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (المراجعة)</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">البكس (المُدخَل)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">البكس (الصحيح)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">البكس (المراجعة)</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (المُدخَل)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (الصحيح)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (المراجعة)</TableHead>
               <TableHead className="text-right font-bold">اسم العميل</TableHead>
               <TableHead className="text-right font-bold">العنوان</TableHead>
