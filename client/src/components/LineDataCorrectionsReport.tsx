@@ -52,9 +52,12 @@ const fmtDt = (d: string | null) => {
   return `${t.getUTCFullYear()}/${p(t.getUTCMonth() + 1)}/${p(t.getUTCDate())} ${p(t.getUTCHours())}:${p(t.getUTCMinutes())}`;
 };
 
-const COLS = ["#", "رقم التليفون", "بواسطة", "تاريخ الإدخال", "السنترال (المُدخَل)", "السنترال (المراجعة)",
-  "الكابينة (الصحيح)", "الكابينة (المراجعة)", "البكس (الصحيح)", "البكس (المراجعة)",
-  "الترمنال (الصحيح)", "الترمنال (المراجعة)", "اسم العميل", "العنوان", "الحالة",
+// الترتيب: البيانات **الصحيحة** (اللى الفنى بعتها) كلها الأول، وبعدها بيانات
+// **المراجعة** كلها — بدل ما يبقوا متبادلين عمود وعمود.
+const COLS = ["#", "رقم التليفون", "بواسطة", "تاريخ الإدخال",
+  "السنترال (الصحيح)", "الكابينة (الصحيح)", "البكس (الصحيح)", "الترمنال (الصحيح)",
+  "السنترال (المراجعة)", "الكابينة (المراجعة)", "البكس (المراجعة)", "الترمنال (المراجعة)",
+  "اسم العميل", "العنوان", "الحالة",
   "تم التصحيح بواسطة", "تاريخ التصحيح"];
 
 export function LineDataCorrectionsReport() {
@@ -131,8 +134,8 @@ export function LineDataCorrectionsReport() {
 
   const exportRows = () => shown.map((r, i) => [
     i + 1, r.phoneFull, r.submittedBy ?? "", fmtDt(r.createdAt),
-    r.central ?? "", r.fetchedCentral ?? "", r.cabinNumber ?? "", r.fetchedCabin ?? "",
-    r.boxNumber ?? "", r.fetchedBox ?? "", r.dpTerminal ?? "", r.fetchedTerminal ?? "",
+    r.central ?? "", r.cabinNumber ?? "", r.boxNumber ?? "", r.dpTerminal ?? "",
+    r.fetchedCentral ?? "", r.fetchedCabin ?? "", r.fetchedBox ?? "", r.fetchedTerminal ?? "",
     r.subName ?? "", r.subAdd ?? "", statusText(r),
     r.resolvedBy ?? "", r.resolvedAt ? fmtDt(r.resolvedAt) : "",
   ]);
@@ -217,13 +220,13 @@ export function LineDataCorrectionsReport() {
               <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">اتبعت بواسطة</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الإدخال</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المُدخَل)</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المراجعة)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">السنترال (الصحيح)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (الصحيح)</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (المراجعة)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">البكس (الصحيح)</TableHead>
-              <TableHead className="text-right font-bold whitespace-nowrap">البكس (المراجعة)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (الصحيح)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">السنترال (المراجعة)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">الكابينة (المراجعة)</TableHead>
+              <TableHead className="text-right font-bold whitespace-nowrap">البكس (المراجعة)</TableHead>
               <TableHead className="text-right font-bold whitespace-nowrap">الترمنال (المراجعة)</TableHead>
               <TableHead className="text-right font-bold">اسم العميل</TableHead>
               <TableHead className="text-right font-bold">العنوان</TableHead>
@@ -244,13 +247,15 @@ export function LineDataCorrectionsReport() {
                 <TableCell className="font-mono font-semibold text-blue-700">{r.phoneFull}</TableCell>
                 <TableCell className="whitespace-nowrap">{r.submittedBy || "-"}</TableCell>
                 <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap">{fmtDt(r.createdAt)}</TableCell>
+                {/* الصحيح (اللى الفنى بعته) — الأربعة ورا بعض */}
                 {cmpCell(r.central, r.fetchedCentral, r.reviewed)}
-                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedCentral || "-"}</TableCell>
                 {cmpCell(r.cabinNumber, r.fetchedCabin, r.reviewed)}
-                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedCabin || "-"}</TableCell>
                 {cmpCell(r.boxNumber, r.fetchedBox, r.reviewed)}
-                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedBox || "-"}</TableCell>
                 {cmpCell(r.dpTerminal, r.fetchedTerminal, r.reviewed)}
+                {/* المراجعة — الأربعة ورا بعض */}
+                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedCentral || "-"}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedCabin || "-"}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedBox || "-"}</TableCell>
                 <TableCell className="whitespace-nowrap text-muted-foreground">{r.fetchedTerminal || "-"}</TableCell>
                 <TableCell className="max-w-[160px] truncate">{r.subName || "-"}</TableCell>
                 <TableCell className="max-w-[200px] truncate">{r.subAdd || "-"}</TableCell>
