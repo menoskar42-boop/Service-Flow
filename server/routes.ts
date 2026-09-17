@@ -1274,16 +1274,34 @@ async function recordDailySnapshot(dateStr: string) {
   return { faults: faults.length, installations: installs.length, surveys: surveys.length };
 }
 
-// تاريخ القاهرة (YYYY-MM-DD) وساعة القاهرة الحالية.
+// تاريخ القاهرة (YYYY-MM-DD) وساعة القاهرة الحالية (0..23).
+//
+// ⚠️ `hour12: false` **مش** مضمون إنه يدّى 0 عند منتصف الليل: على كذا نسخة من ICU
+// بيتحوّل لدورة h24 فبيرجّع "24" الساعة ١٢ بالليل. ولأن كل المهام المجدولة هنا
+// شرطها `hour < الساعة المطلوبة`، كان "24" بيخلّى الشرط يفشل والباتش اليومى
+// يتفتح **٠٠:٠٠ بدل ٩ الصبح** (أول دورة فحص بعد ما تاريخ القاهرة يقلب) — وده
+// اللى ظهر فعلاً فى تواريخ الباتشات: 00:00 و00:04 بدل 09:00.
+// الحل: نثبّت `hourCycle: "h23"` صراحةً، ونعالج "24" و NaN كمان لو ICU اتصرّف غلط.
 function cairoNow() {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Cairo", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", hour12: false,
+    hour: "2-digit", hourCycle: "h23",
   });
   const parts = fmt.formatToParts(new Date());
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const date = `${get("year")}-${get("month")}-${get("day")}`;
-  const hour = parseInt(get("hour"), 10);
+  let hour = parseInt(get("hour"), 10);
+  if (hour === 24) hour = 0;                    // دورة h24: منتصف الليل = ٢٤
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) {
+    // مسار احتياطى مستقل تماماً (١٢ ساعة + ص/م) — أحسن من رقم غلط يفتح باتشات
+    // فى نص الليل. لو ده كمان فشل بنرجّع ساعة UTC عشان الجدولة ماتقفش خالص.
+    const p12 = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Africa/Cairo", hour: "numeric", hour12: true,
+    }).formatToParts(new Date());
+    const h12 = parseInt(p12.find((p) => p.type === "hour")?.value ?? "", 10);
+    const pm = /p/i.test(p12.find((p) => p.type === "dayPeriod")?.value ?? "");
+    hour = Number.isFinite(h12) ? (h12 % 12) + (pm ? 12 : 0) : new Date().getUTCHours();
+  }
   return { date, hour };
 }
 
