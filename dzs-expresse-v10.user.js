@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DZS Expresse Continuous Flow v10.7 (Service-Flow 138 sheet + auto-upload)
-// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.21: تصحيح اختيار «A recent fix (past 24h)» — الـ label من نوع ui-outputlabel من غير for، فبنختار الـ .ui-radiobutton-box بفهرس الخيار المستخرَج من آى دى/كلاس الـ label (الأثبت). v10.20: القياس الجاى من «بحث برقم التليفون» (sf_fix=recent) يختار «A recent fix was performed on the line over the past 24 hours» فى شاشة Real-time Analysis قبل ضغط Yes؛ الافتراضى بدون العلامة يفضل «No fix performed on the line». v10.19: جهاز التنفيذ بيبعت الأرقام خط-خط (كل خط مهمة حسب الأولوية) فكل تشغيلة = خط واحد؛ رجّعنا منطق فتح التاب المستقر (v10.17) للاستخدام اليدوى متعدد الخطوط؛ ومع الرفع التلقائى لـ138 وقفنا تنزيل CSV التلقائى (نسيبه للزر اليدوى) عشان مايبقاش مئات الملفات. v10.18 (متراجَع عنه): انتقال داخلى فى نفس التاب. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
-// @version      10.21.0
+// @description  Measures DZS → CSV شيت-138 + رفع تلقائى لـ case_138. v10.22: بيسجّل كمان «Profile Optimization Status» (الكلام اللى قدّام اللابل فى ClearView) — بيتحفظ فى شيت 138 وفى الـ CSV وبيتبعت مع القياس. v10.21: تصحيح اختيار «A recent fix (past 24h)» — الـ label من نوع ui-outputlabel من غير for، فبنختار الـ .ui-radiobutton-box بفهرس الخيار المستخرَج من آى دى/كلاس الـ label (الأثبت). v10.20: القياس الجاى من «بحث برقم التليفون» (sf_fix=recent) يختار «A recent fix was performed on the line over the past 24 hours» فى شاشة Real-time Analysis قبل ضغط Yes؛ الافتراضى بدون العلامة يفضل «No fix performed on the line». v10.19: جهاز التنفيذ بيبعت الأرقام خط-خط (كل خط مهمة حسب الأولوية) فكل تشغيلة = خط واحد؛ رجّعنا منطق فتح التاب المستقر (v10.17) للاستخدام اليدوى متعدد الخطوط؛ ومع الرفع التلقائى لـ138 وقفنا تنزيل CSV التلقائى (نسيبه للزر اليدوى) عشان مايبقاش مئات الملفات. v10.18 (متراجَع عنه): انتقال داخلى فى نفس التاب. v10.17: حارس تعارض مع سكربت رفع السرعة (يقف لو #sf_po أو PO_ACTIVE). v10.16: (1) إصلاح الدومين → service-flow-menoskar42 (شرطة واحدة) عشان القياسات تتحفظ فورًا. (2) إرجاع منع نوم الشاشة/الجهاز أثناء القياس. v10.10: (1) "read-when-ready" — يقرا ويقفل ويفتح التالى أول ما القياس يخلّص (ثانيتين بعده) بدل انتظار 90ث ثابتة. (2) رسالة "POP_O/PerTone data is missing" → 101 ويكمّل. (3) رسالة البلوك (busy) → 5 محاولات بحد أقصى ثم 104 والتالى، ومايفتحش تابات قبل النتيجة. (4) وضع الفرض sf_force=1 (من تقرير الخطوط score>100): يتجاهل الحالات المخزّنة ويعمل real-time فعلى. v10.9: فتح التالى وقت الإغلاق فقط (مفيش تداخل real-time/busy). v10.8: إصلاح deadlock. v10.7: retry على Resource Allocator.
+// @version      10.22.0
 // @match        *://10.42.187.101:8080/expresse/*
 // @connect      service-flow-menoskar42.replit.app
 // @grant        none
@@ -243,7 +243,7 @@
   const CURRENT_LINE_ID = allDone ? null : LINE_IDS[lineIndex];
 
   let lineDetailsDone = false, yesClicked = false, processingComplete = false, iAmTheDownloader = false, rtRequested = false;
-  let earlyScore = "", earlyCur = "", earlyMax = "";
+  let earlyScore = "", earlyCur = "", earlyMax = "", earlyPo = "";
 
   /* ================== HELPERS ================== */
   const isBadReading = (v) => !v || /^n\/?a$/i.test(String(v).trim());
@@ -349,11 +349,34 @@
     }
     return SCORE_NO_FIELD;
   }
+  // 🆕 v10.22: «Profile Optimization Status» — الكلام اللى مكتوب قدّام اللابل فى شاشة
+  // ClearView بالكامل (سطرين عادة: «PO is running.» / «PO is not currently running.PO was
+  // completed on …» + الجملة التفسيرية). بنخزّنه زى ما هو عشان الفنى يعرف الخط اتعمله
+  // تحسين بروفايل ولا لأ من غير ما يفتح الشاشة تانى.
+  // ⚠️ بنلمّه فى سطر واحد وبنستبدل الفاصلة المنقوطة — لأن فاصل الـ CSV هنا ";".
+  function cleanOneLine(t) {
+    return String(t || "").replace(/\s+/g, " ").replace(/;/g, "،").trim();
+  }
+  function findProfileOptimizationStatus() {
+    let v = findValueCellByLabel("Profile Optimization Status");
+    if (!v) v = findValueCellByLabel("Profile Optimisation Status");   // إملاء بريطانى
+    if (!v) {
+      // احتياطى لو اللابل اتغيّر شكله (نقطتين/مسافات): بناخد اللى بعده من نص الصفحة
+      // لحد اللابل اللى بعده.
+      const m = (document.body.innerText || "").match(
+        /Profile\s+Optimi[sz]ation\s+Status\s*:?\s*([\s\S]{0,600}?)(?:\n\s*(?:Diagnostics|Dispatch\s+Score|Cable\s+Diagnostics)\b|$)/i);
+      if (m) v = m[1];
+    }
+    return cleanOneLine(v).slice(0, 600);
+  }
+
   function captureEarly() {
     const c = findSynchRateDS(), m = findMaxAchievableDS(), s = findDispatchScore();
     if (!isBadReading(c)) earlyCur = c;
     if (!isBadReading(m)) earlyMax = m;
     if (!isBadReading(s)) earlyScore = s;
+    const po = findProfileOptimizationStatus();
+    if (po) earlyPo = po;   // بيظهر من أول تحميل الشاشة، فبنمسكه بدرى ومانفقدهوش
     return !isBadReading(earlyCur) || !isBadReading(earlyMax);
   }
 
@@ -385,13 +408,14 @@
         body: JSON.stringify({ items: [{
           phoneShort: rec.phoneShort, complainNo: rec.complainNo, score: rec.dispatchScore,
           currentSpeed: rec.currentSpeed, maxSpeed: rec.maxSpeed, fullPhone: rec.fullPhone, accountNo: rec.accountNo,
+          poStatus: rec.poStatus,
         }] }),
       }).then(r => r.json()).then(j => console.log("☁️ 138 updated:", rec.accountNo, j))
         .catch(e => console.warn("☁️ 138 update failed:", e));
     } catch (e) { console.warn("post err", e); }
   }
 
-  function saveResult(lineId, score, currentSpeed, maxSpeed, source) {
+  function saveResult(lineId, score, currentSpeed, maxSpeed, source, poStatus) {
     const results = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
     if (results.some(r => r.lineId === lineId)) return;
     const meta = getMeta(lineId);
@@ -399,11 +423,13 @@
       lineId, accountNo: lineId,
       complainNo: meta.complaint, phoneShort: meta.short, fullPhone: meta.full,
       dispatchScore: score, currentSpeed: currentSpeed || "", maxSpeed: maxSpeed || "",
+      poStatus: poStatus || "",
       readingSource: source || "بعد", timestamp: new Date().toISOString(),
     };
     results.push(rec);
     localStorage.setItem(RESULTS_KEY, JSON.stringify(results));
     console.log("💾 Saved:", lineId, "score:", score, "cur:", currentSpeed || "-", "max:", maxSpeed || "-",
+                "| PO:", (poStatus || "-").slice(0, 60),
                 "| phone:", meta.short || "-", "| complaint:", meta.complaint || "-",
                 "(" + results.length + "/" + UNIQUE_LINE_COUNT + ")");
     updateDownloadButton();
@@ -415,10 +441,10 @@
     const results = JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]");
     if (!results.length) { alert("لا توجد نتائج للتنزيل حتى الآن."); return false; }
     const SEP = ";";
-    const header = ["رقم التلفون","رقم الشكوي","score","السرعه الحاليه","اقصى سرعه","رقم التليفون كاملا","رقم الاكونت","القراية (قبل/بعد)"].join(SEP);
+    const header = ["رقم التلفون","رقم الشكوي","score","السرعه الحاليه","اقصى سرعه","رقم التليفون كاملا","رقم الاكونت","القراية (قبل/بعد)","حالة تحسين البروفايل"].join(SEP);
     const rows = results.map(r => [
       r.phoneShort || "", r.complainNo || "", r.dispatchScore || "", r.currentSpeed || "", r.maxSpeed || "",
-      r.fullPhone || "", r.accountNo || r.lineId || "", r.readingSource || "",
+      r.fullPhone || "", r.accountNo || r.lineId || "", r.readingSource || "", r.poStatus || "",
     ].join(SEP)).join("\n");
     const csv = "﻿" + header + "\n" + rows;
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -522,7 +548,8 @@
     if (isBadReading(max) && !isBadReading(earlyMax)) { max = earlyMax; usedEarly = true; }
     let score = finalScore;
     if (isBadReading(score) && !isBadReading(earlyScore)) score = earlyScore;
-    saveResult(CURRENT_LINE_ID, score, cur, max, usedEarly ? "قبل" : "بعد");
+    const po = findProfileOptimizationStatus() || earlyPo;
+    saveResult(CURRENT_LINE_ID, score, cur, max, usedEarly ? "قبل" : "بعد", po);
     maybeDownloadFinal();
     if (iAmTheDownloader) { showFinalMessage(); return; } // آخر خط — يفضل مفتوح للـ CSV
     stopHeartbeat();            // حرّر سلوت هذا التاب فوراً (AXON خلّص الـ real-time خلاص)
@@ -531,7 +558,8 @@
   function handleSpecialAndClose(score) {
     if (processingComplete) return;
     processingComplete = true;
-    saveResult(CURRENT_LINE_ID, score, "", "", "-");
+    // حتى فى الحالات الخاصة (خارج الخدمة/مش متركّب…) بنسجّل حالة البروفايل لو الشاشة عرضتها
+    saveResult(CURRENT_LINE_ID, score, "", "", "-", findProfileOptimizationStatus() || earlyPo);
     maybeDownloadFinal();
     if (iAmTheDownloader) { showFinalMessage(); return; } // آخر خط — يفضل مفتوح للـ CSV
     stopHeartbeat();            // 🆕 حرّر سلوت هذا التاب فوراً قبل فتح التالى — يمنع deadlock لو كل التابات وصلت حالة خاصة معاً
@@ -539,6 +567,7 @@
   }
 
   window.DZS_test = findDispatchScore;
+  window.DZS_po = findProfileOptimizationStatus;   // 🆕 v10.22: اختبار قراية حالة البروفايل
   window.DZS_synch = findSynchRateDS;
   window.DZS_maxbr = findMaxAchievableDS;
   window.DZS_showResults = () => console.table(JSON.parse(localStorage.getItem(RESULTS_KEY) || "[]"));

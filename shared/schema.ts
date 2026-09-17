@@ -617,6 +617,9 @@ export const case138 = pgTable("case_138", {
   uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
   uploadedById: integer("uploaded_by_id").references(() => users.id),
   measuredBy: text("measured_by"), // مين طلب آخر قياس لهذا الرقم (من op_intents)
+  // «Profile Optimization Status» زى ما هو مكتوب فى شاشة ClearView وقت القياس
+  // (مثال: «PO is running. Currently, the line profile is being optimized…»).
+  poStatus: text("po_status"),
   // مصدر الصف: 'dzs' = قياس اتعمل من أداة القياس (تاريخ لازم يتحفظ)، فاضى = صف
   // جاى من رفع شيت 138. رفعة الشيت بتستبدل صفوف الشيت القديمة بس ومابتلمسش
   // قياسات dzs — التقارير بتعتمد على تاريخ القياسات ده.

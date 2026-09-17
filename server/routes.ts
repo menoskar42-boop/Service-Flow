@@ -8834,12 +8834,15 @@ export async function registerRoutes(
         const { rows: oi } = await pool.query(`SELECT username FROM op_intents WHERE account = $1 AND op_type = 'measure'`, [accountNo]);
         measuredBy = oi[0]?.username || null;
       }
+      // «Profile Optimization Status» زى ما السكربت قراه من شاشة ClearView (نص حر).
+      // بنقصّه على 600 حرف — الشاشة بتعرض سطرين، وأى حاجة أطول من كده مش منها.
+      const poStatus = (it.poStatus ?? "").toString().replace(/\s+/g, " ").trim().slice(0, 600) || null;
       await pool.query(
         `INSERT INTO case_138
-           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, measured_by, complain_time, source)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now(), 'dzs')`,
+           (phone_short, complain_no, score, current_speed, max_speed, full_phone, account_no, measured_by, po_status, complain_time, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now(), 'dzs')`,
         [phoneShort, complainNo, toInt(it.score), (it.currentSpeed ?? "").toString().trim() || null,
-         (it.maxSpeed ?? "").toString().trim() || null, fullPhone, accountNo, measuredBy],
+         (it.maxSpeed ?? "").toString().trim() || null, fullPhone, accountNo, measuredBy, poStatus],
       );
       inserted++;
     }

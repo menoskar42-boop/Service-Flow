@@ -1358,6 +1358,9 @@ export async function ensureSchema() {
   // القديمة بس ومابتلمسش قياسات dzs — تقارير «خرجت بعد القياس» بتعتمد على تاريخ
   // القياسات، وكانت الرفعة بتمسحه فالخط يختفى من التقرير رغم إن اسكوره ماتغيّرش.
   await pool.query(`ALTER TABLE case_138 ADD COLUMN IF NOT EXISTS source text`);
+  // «Profile Optimization Status» اللى أداة القياس بتقراه من شاشة ClearView وترفعه
+  // مع الاسكور — نص حر زى ما هو («PO is running…» / «PO is not currently running…»).
+  await pool.query(`ALTER TABLE case_138 ADD COLUMN IF NOT EXISTS po_status text`);
   await pool.query(`CREATE INDEX IF NOT EXISTS case_138_source_idx ON case_138 (source)`);
   await pool.query(`ALTER TABLE line_po_events ADD COLUMN IF NOT EXISTS last_raise_by text`);
   await pool.query(`ALTER TABLE line_po_events ADD COLUMN IF NOT EXISTS last_stop_by text`);
