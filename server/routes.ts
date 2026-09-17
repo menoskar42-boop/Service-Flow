@@ -772,10 +772,16 @@ const PORTS_LOCAL_PHONES_SQL = `SELECT phone_number FROM phone_ports
 // أما **الباتشات اليومية التلقائية** فبتستخدم النوع بتاعها بس: باتش إيقاف PO
 // بيستبعد اللى ليه إيقاف فى الطابور، وباتش القياس بيستبعد اللى ليه قياس — رقم
 // مستنى قياس مالوش دعوة بإيقاف PO والعكس، فالاستبعاد المشترك كان بيمنع شغل صح.
+// ⚠️ المقارنة لازم تبقى **بعد btrim على الطرفين**: كل مسارات الإضافة للطابور
+// (/enqueue والباتشات اليومية) بتعمل .trim() للرقم قبل ما تخزّنه، فالطابور فيه
+// النسخة النضيفة، لكن العمود اللى بنقارن بيه (line_accounts.account_no مثلاً) جاى
+// من شيت إكسل وممكن يكون فيه مسافة فى الأول أو الآخر. من غير btrim الرقم ده
+// مابيتشالش أبداً من أى استبعاد — وكان بيترمى فى باتش القياس اليومى كل يوم بنفس
+// العدد بالظبط (الباتش بتاع ١٦/٩ و١٧/٩ طلعوا ١٢٥٤ خط بالظبط بسبب ده).
 const notQueuedSql = (accCol: string, types: readonly string[] = ["measure", "raise", "stop"]) => `NOT EXISTS (
   SELECT 1 FROM exec_jobs e, jsonb_array_elements_text(e.accounts) qa(acc)
    WHERE e.type IN (${types.map((t) => `'${t.replace(/'/g, "''")}'`).join(", ")})
-     AND qa.acc = ${accCol}
+     AND btrim(qa.acc) = btrim(${accCol})
      AND (e.status IN ('pending','claimed')
           OR e.batch_id IN (SELECT b.batch_id FROM exec_jobs b
                              WHERE b.status IN ('pending','claimed')
@@ -2692,7 +2698,8 @@ export async function registerRoutes(
           WHERE c.full_phone IS NOT NULL AND c.full_phone <> ''
           ORDER BY c.full_phone, c.id DESC
        )
-       SELECT DISTINCT la.account_no AS acc
+       -- btrim: الرقم اللى فيه مسافة والرقم النضيف نفس الأكونت — DISTINCT لازم يوحّدهم
+       SELECT DISTINCT btrim(la.account_no) AS acc
          FROM latest m
          JOIN line_accounts la ON la.full_phone = m.full_phone
           AND la.account_no IS NOT NULL AND la.account_no <> ''
@@ -2715,7 +2722,7 @@ export async function registerRoutes(
   /** أرقام أكونت القياس اليومى: لم تُقس أبداً أو آخر قياس أقدم من ١٠ أيام. */
   const autoMeasureAccounts = async (): Promise<string[]> => {
     const { rows } = await pool.query(
-      `SELECT DISTINCT la.account_no AS acc
+      `SELECT DISTINCT btrim(la.account_no) AS acc
          FROM line_accounts la
          LEFT JOIN LATERAL (
            SELECT c.uploaded_at FROM case_138 c

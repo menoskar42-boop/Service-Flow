@@ -24,7 +24,8 @@ test("queue exclusion is based on active jobs and active batches", () => {
   // للتقارير هو نفس التلاتة زى ما كان بالظبط.
   assert.match(helper, /types: readonly string\[\] = \["measure", "raise", "stop"\]/);
   assert.match(helper, /e\.type IN \(\$\{types\.map\(/);
-  assert.match(helper, /qa\.acc = \$\{accCol\}/);
+  // btrim على الطرفين — الطابور بيخزّن الرقم بعد trim والعمود ممكن يكون فيه مسافة
+  assert.match(helper, /btrim\(qa\.acc\) = btrim\(\$\{accCol\}\)/);
   assert.match(helper, /e\.status IN \('pending','claimed'\)/);
   assert.match(
     helper,
