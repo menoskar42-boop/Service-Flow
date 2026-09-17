@@ -899,6 +899,22 @@ const needsSpeedSql = (a: string) => `(
           AND ${a}.score > 15 AND ${a}.score < 101)
          OR (${a}.score < 16 AND ${a}.cur_n < 10000)))`;
 
+// ── «الـ PO لسه مش متوقف» — تعريف واحد للتقرير وللباتش اليومى ─────────────────
+// حالة تحسين البروفايل (case_138.po_status) اللى أداة القياس بتقراها من شاشة
+// ClearView بتحسم إذا كان الخط محتاج إيقاف PO ولا لأ:
+//   • فاضية                                   → مش معروف → **يدخل** (يمكن محتاج إيقاف)
+//   • «PO is running»                         → شغّال دلوقتى → **يدخل** (ده بالظبط اللى بيتقفل)
+//   • «PO is not currently running» / «is not running» → واقف خلاص → **يخرج**
+//   • «never been run/optimized»              → عمره ما اتعمل → مفيش حاجة تتقفل → **يخرج**
+//   • أى نص تانى مش معروف                      → **يدخل** (مانستبعدش إلا لما نتأكد إنه واقف)
+// ⚠️ ترتيب الفحص مهم: «PO is not currently running» بتحتوى «running»، فلازم النفى
+// يتفحص الأول — عشان كده الشرط مكتوب كنفى صريح مش كتطابق على «running».
+const poNotStoppedSql = (col: string) => `(
+    ${col} IS NULL OR btrim(${col}) = ''
+    OR NOT (${col} ~* 'PO\\s+is\\s+not\\s+(currently\\s+)?running'
+            OR ${col} ~* 'never\\s+(been\\s+)?(run|optimi[sz]ed)')
+  )`;
+
 // ── تبعية الخط لفنى (تُستخدم فى نسبة الإزالة ونسبة التكرار وتقارير التفاصيل) ──
 // فنى المنطقة = صاحب الكابينة (cabinet_technicians)، لكن لو كان فى «راحه/إجازة» يوم
 // الشكوى فالمسؤول فعلياً هو فنى الوردية القائم بالعمل مكانه (shift_schedules.covers).
@@ -2708,7 +2724,7 @@ export async function registerRoutes(
     const { rows } = await pool.query(
       `WITH latest AS (
          SELECT DISTINCT ON (c.full_phone)
-                c.full_phone, c.score, c.uploaded_at,
+                c.full_phone, c.score, c.po_status, c.uploaded_at,
                 CASE WHEN c.current_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
                      ELSE NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9]','','g'),'')::numeric END AS cur_n,
                 CASE WHEN c.max_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.max_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
@@ -2729,6 +2745,8 @@ export async function registerRoutes(
           AND m.uploaded_at >= now() - interval '3 days'
           -- مش محتاجة رفع سرعة — نفس الدالة المشتركة فمفيش تناقض مع التقرير
           AND NOT COALESCE(${needsSpeedSql("m")}, false)
+          -- الـ PO لسه شغّال (أو حالته مش معروفة) — نفس شرط التقرير بالحرف
+          AND ${poNotStoppedSql("m.po_status")}
           -- اتعملها إيقاف PO خلال آخر ٣ أيام → مانكررش
           AND (pe.last_stop_at IS NULL
                OR pe.last_stop_at < now() - make_interval(days => ${AUTO_PO_STOP_SKIP_DAYS}))
@@ -6237,6 +6255,9 @@ export async function registerRoutes(
           -- لا تحتاج رفع سرعة = عكس معيار needs-speed بالظبط (نفس الدالة المشتركة،
           -- فالتقريرين مايتناقضوش أبداً: اللى بيخرج من هنا بيدخل هناك والعكس).
           AND NOT COALESCE(${needsSpeedSql("latest")}, false)
+          -- الـ PO لازم يكون لسه شغّال (أو حالته مش معروفة) — اللى حالته «واقف خلاص»
+          -- مالوش لازمة هنا، الإيقاف اتعمل عليه فعلاً.
+          AND ${poNotStoppedSql("latest.po_status")}
       ) m
       JOIN line_accounts la ON la.full_phone = m.full_phone AND la.account_no IS NOT NULL AND la.account_no <> ''
       LEFT JOIN phone_lines pl ON pl.full_phone = m.full_phone
