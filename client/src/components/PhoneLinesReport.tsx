@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
@@ -288,6 +289,7 @@ export function PhoneLinesReport() {
       "رقم التليفون الكامل": r.fullPhone,
       "رقم الأكونت": r.accountNo,
       "آخر قياس": r.lastMeasScore,
+      "حالة تحسين البروفايل": r.poStatus ?? "",
       "السرعة الحالية": r.lineCurrentSpeed,
       "أقصى سرعة": r.lineMaxSpeed,
       "السنترال": r.central,

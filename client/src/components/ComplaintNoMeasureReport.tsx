@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
@@ -46,6 +47,7 @@ interface Row {
   lineCurrentSpeed: string | null;
   lineMaxSpeed: string | null;
   lastMeasScore: number | null;
+  poStatus: string | null;   // حالة تحسين البروفايل وقت القياس
   lastMeasTime: string | null;
   lastPoRaiseAt: string | null;
   lastPoStopAt: string | null;
@@ -204,6 +206,7 @@ export function ComplaintNoMeasureReport() {
       "تاريخ الشكوى": fmtDate(r.complaintTime),
       "آخر قياس": fmtDate(r.lastMeasTime),
       "الاسكور": r.lastMeasScore ?? "",
+      "حالة تحسين البروفايل": r.poStatus ?? "",
       "السرعة الحالية": r.lineCurrentSpeed ?? "",
       "أقصى سرعة": r.lineMaxSpeed ?? "",
       "السنترال": r.central,
@@ -226,9 +229,9 @@ export function ComplaintNoMeasureReport() {
     const all = json.data as Row[];
     printTablePDF({
       title: `شكاوى بدون قياس بعدها (${dateFrom} → ${dateTo})`,
-      columns: ["#", "التليفون الكامل", "الأكونت", "تاريخ الشكوى", "آخر قياس", "الاسكور", "السنترال", "الكابينه", "البكس"],
+      columns: ["#", "التليفون الكامل", "الأكونت", "تاريخ الشكوى", "آخر قياس", "الاسكور", "حالة PO", "السنترال", "الكابينه", "البكس"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", fmtDate(r.complaintTime), fmtDate(r.lastMeasTime),
-        r.lastMeasScore ?? "", r.central, r.cabinNumber, r.boxNumber]),
+        r.lastMeasScore ?? "", poStatusShort(r.poStatus), r.central, r.cabinNumber, r.boxNumber]),
     });
   };
 
@@ -332,6 +335,7 @@ export function ComplaintNoMeasureReport() {
                     <TableHead className="text-right font-bold whitespace-nowrap">تاريخ الشكوى</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">آخر قياس</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">حالة PO</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
@@ -366,6 +370,7 @@ export function ComplaintNoMeasureReport() {
                       <TableCell className="whitespace-nowrap">{fmtDate(r.complaintTime)}</TableCell>
                       <TableCell className="whitespace-nowrap">{fmtDate(r.lastMeasTime)}</TableCell>
                       <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
+                      <TableCell><PoStatusCell value={r.poStatus} /></TableCell>
                       <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>
                       <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>

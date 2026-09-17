@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
@@ -249,6 +250,7 @@ export function RegularizedFaultsRangeReport() {
       "السرعة الحالية": f.lineCurrentSpeed,
       "أقصى سرعة": f.lineMaxSpeed,
       "الاسكور": f.lastMeasScore,
+      "حالة تحسين البروفايل": f.poStatus ?? "",
       "تاريخ آخر قياس": fmtDt(f.lastMeasTime ?? null),
       "حالة الانتظام": f.regStatus,
       "أول إغلاق": fmtDt(f.firstCloseDate),
@@ -279,11 +281,11 @@ export function RegularizedFaultsRangeReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-       <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>رقم الموبايل</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
+       <th>#</th><th>المصدر</th><th>السنترال</th><th>التليفون</th><th>رقم الموبايل</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>حالة PO</th><th>تكرار</th><th>Status</th><th>سبب الإغلاق</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>نوع الشكوى</th>
       <th>تاريخ آخر قياس</th>
-      <th>حالة الانتظام</th><th>أول إغلاق</th><th>آخر إغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th><th>السرعة الحالية</th><th>أقصى سرعة</th><th>الاسكور</th>
+      <th>حالة الانتظام</th><th>أول إغلاق</th><th>آخر إغلاق</th><th>كود العامل</th><th>اسم الفنى</th><th>Voice</th><th>Data</th><th>السرعة الحالية</th><th>أقصى سرعة</th><th>الاسكور</th><th>حالة PO</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -297,7 +299,7 @@ export function RegularizedFaultsRangeReport() {
            <td>${esc(f.mobile)}</td>
           <td>${esc(f.accountNo)}</td>
           <td>${esc(f.curMeasScore)}</td>
-          <td>${esc(f.lastMeasScore)}</td>
+          <td>${esc(f.lastMeasScore)}</td><td>${esc(poStatusShort(f.poStatus))}</td>
           <td>${esc(f.repeatStatus)}</td>
           <td style="font-size:9px">${esc(f.statusCode)}</td>
           <td style="font-size:9px">${esc(closeReason(f.closeCode))}</td>
@@ -318,7 +320,7 @@ export function RegularizedFaultsRangeReport() {
           <td>${esc(f.dataStatus)}</td>
           <td>${esc(f.lineCurrentSpeed)}</td>
           <td>${esc(f.lineMaxSpeed)}</td>
-          <td>${esc(f.lastMeasScore)}</td>
+          <td>${esc(f.lastMeasScore)}</td><td>${esc(poStatusShort(f.poStatus))}</td>
         </tr>`).join("");
       pages += `
         <section class="page">
@@ -572,6 +574,7 @@ export function RegularizedFaultsRangeReport() {
                 <TableHead className="text-right font-bold text-white">السرعة الحالية</TableHead>
                 <TableHead className="text-right font-bold text-white">أقصى سرعة</TableHead>
                 <TableHead className="text-right font-bold text-white">الاسكور</TableHead>
+                <TableHead className="text-right font-bold text-white">حالة PO</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -660,6 +663,7 @@ export function RegularizedFaultsRangeReport() {
                   <TableCell className="font-mono">{f.lineCurrentSpeed || "-"}</TableCell>
                   <TableCell className="font-mono">{f.lineMaxSpeed || "-"}</TableCell>
                   <TableCell>{f.lastMeasScore ?? "-"}</TableCell>
+                  <TableCell><PoStatusCell value={f.poStatus} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

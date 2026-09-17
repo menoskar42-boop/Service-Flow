@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -203,6 +204,7 @@ export function RegularizedFaultsReport() {
       "رقم الأكونت": f.accountNo,
       "القياس الحالى (نفس الشكوى)": f.curMeasScore,
       "آخر قياس للرقم": f.lastMeasScore,
+      "حالة تحسين البروفايل": f.poStatus ?? "",
       "موقف التكرار": f.repeatStatus,
       "Status Code": dispStatus(f.statusCode),
       "MSAN Code": f.msanCode,
@@ -241,7 +243,7 @@ export function RegularizedFaultsReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(faults.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
+      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>حالة PO</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>الوقت الفعلى</th><th>نوع الشكوى</th>
       <th>حالة الانتظام</th><th>اسم الفنى</th><th>تاريخ الإغلاق</th><th>كود العامل</th><th>Voice</th><th>Data</th>
@@ -256,7 +258,7 @@ export function RegularizedFaultsReport() {
           <td>${esc(f.phoneShort)}</td>
           <td>${esc(f.accountNo)}</td>
           <td>${esc(f.curMeasScore)}</td>
-          <td>${esc(f.lastMeasScore)}</td>
+          <td>${esc(f.lastMeasScore)}</td><td>${esc(poStatusShort(f.poStatus))}</td>
           <td>${esc(f.repeatStatus)}</td>
           <td style="font-size:9px">${esc(dispStatus(f.statusCode))}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { useQuery } from "@tanstack/react-query";
@@ -247,6 +248,7 @@ export function CurrentFaultsReport() {
       "رقم الأكونت": f.accountNo,
       "القياس الحالى (نفس الشكوى)": f.curMeasScore,
       "آخر قياس للرقم": f.lastMeasScore,
+      "حالة تحسين البروفايل": f.poStatus ?? "",
       "موقف التكرار": f.repeatStatus,
       "Status Code": dispStatus(f.statusCode),
       "MSAN Code": f.msanCode,
@@ -285,7 +287,7 @@ export function CurrentFaultsReport() {
     const ROWS_PER_PAGE = 10;
     const totalPages = Math.max(1, Math.ceil(displayed.length / ROWS_PER_PAGE));
     const headRow = `<tr>
-      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>تكرار</th><th>Status</th>
+      <th>#</th><th>السنترال</th><th>التليفون</th><th>الأكونت</th><th>قياس حالى</th><th>آخر قياس</th><th>حالة PO</th><th>تكرار</th><th>Status</th>
       <th>MSAN</th><th>Frame</th>
       <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>وقت الشكوى</th><th>الوقت الفعلى</th><th>نوع الشكوى</th>
       <th>تصنيف</th><th>كود العامل</th><th>اسم الفنى</th><th>نوع العطل</th><th>Voice</th><th>Data</th>
@@ -300,7 +302,7 @@ export function CurrentFaultsReport() {
           <td>${esc(f.phoneShort)}</td>
           <td>${esc(f.accountNo)}</td>
           <td>${esc(f.curMeasScore)}</td>
-          <td>${esc(f.lastMeasScore)}</td>
+          <td>${esc(f.lastMeasScore)}</td><td>${esc(poStatusShort(f.poStatus))}</td>
           <td>${esc(f.repeatStatus)}</td>
           <td style="font-size:9px">${esc(dispStatus(f.statusCode))}</td>
           <td style="font-size:9px">${esc(f.msanCode)}</td>
@@ -633,6 +635,7 @@ export function CurrentFaultsReport() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-gray-100 rounded overflow-hidden">
                   {([
                     ["الاسكور", repeatFor.lastMeasScore],
+                    ["حالة تحسين البروفايل", poStatusShort(repeatFor.poStatus)],
                     ["السرعة الحالية", (repeatFor as any).lineCurrentSpeed],
                     ["أقصى سرعة", (repeatFor as any).lineMaxSpeed],
                     ["تاريخ آخر قياس", repeatFor.lastMeasTime ? fmtDt(repeatFor.lastMeasTime) : "-"],

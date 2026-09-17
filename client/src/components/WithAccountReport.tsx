@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
@@ -410,6 +411,7 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
       "رقم الأكونت": r.accountNo,
       "مصدر الأكونت": r.accountSource === "manual" ? "يدوى" : "شيت 138",
       "آخر قياس": r.lastMeasScore,
+      "حالة تحسين البروفايل": r.poStatus ?? "",
       "السرعة الحالية": r.lineCurrentSpeed,
       "أقصى سرعة": r.lineMaxSpeed,
       "السنترال": r.central,
@@ -710,6 +712,7 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
                     {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>}
                     {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>}
                     {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>}
+                    {!neverMeasured && <TableHead className="text-right font-bold whitespace-nowrap">حالة PO</TableHead>}
                     <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الكابينه</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم البكس</TableHead>
@@ -814,6 +817,7 @@ export function WithAccountReport({ scoreGt, scoreEq, editorsOnly, showC360, nev
                       {!neverMeasured && <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>}
                       {!neverMeasured && <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>}
                       {!neverMeasured && <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>}
+                      {!neverMeasured && <TableCell><PoStatusCell value={r.poStatus} /></TableCell>}
                       <TableCell className="whitespace-nowrap">{r.central || "-"}</TableCell>
                       <TableCell className="font-medium">{r.cabinNumber || "-"}</TableCell>
                       <TableCell className="font-medium">{r.boxNumber || "-"}</TableCell>

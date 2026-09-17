@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import PoStatusCell from "./PoStatusCell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Gauge } from "lucide-react";
 
@@ -9,6 +10,8 @@ export interface Measurement138 {
   lastMeasScore?: string | number | null;
   lastMeasComplainNo?: string | null;
   lastMeasTime?: string | null;
+  /** «Profile Optimization Status» من شاشة ClearView وقت القياس (نص حر من AXON) */
+  poStatus?: string | null;
   lineCurrentSpeed?: string | null;
   lineMaxSpeed?: string | null;
   // القياس الحالى لنفس رقم الشكوى
@@ -28,8 +31,9 @@ const fmtDt = (d?: string | null) => {
 
 const val = (v: any) => (v === null || v === undefined || v === "" ? "-" : String(v));
 
-function Block({ title, score, cur, max, when, complainNo }: {
+function Block({ title, score, cur, max, when, complainNo, poStatus }: {
   title: string; score: any; cur: any; max: any; when?: string | null; complainNo?: string | null;
+  poStatus?: string | null;
 }) {
   const has = !(score === null || score === undefined || score === "");
   return (
@@ -42,6 +46,12 @@ function Block({ title, score, cur, max, when, complainNo }: {
           <div>أقصى سرعة: <strong>{val(max)}</strong></div>
           {complainNo !== undefined && <div>رقم الشكوى: <strong>{val(complainNo)}</strong></div>}
           {when !== undefined && <div className="col-span-2">وقت القياس: {fmtDt(when)}</div>}
+          {poStatus ? (
+            <div className="col-span-2">
+              حالة تحسين البروفايل: <PoStatusCell value={poStatus} />
+              <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{poStatus}</div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="text-xs text-muted-foreground">لا يوجد قياس</div>
@@ -66,7 +76,7 @@ export function Measurement138Button({ m }: { m: Measurement138 }) {
           <Gauge className="w-4 h-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-2 space-y-2" dir="rtl" align="end">
+      <PopoverContent className="w-80 p-2 space-y-2" dir="rtl" align="end">
         <Block
           title="القياس الحالى (نفس رقم الشكوى)"
           score={m.curMeasScore} cur={m.curMeasCurrentSpeed} max={m.curMeasMaxSpeed} when={m.curMeasTime}
@@ -74,7 +84,7 @@ export function Measurement138Button({ m }: { m: Measurement138 }) {
         <Block
           title="آخر قياس للرقم (أى شكوى)"
           score={m.lastMeasScore} cur={m.lineCurrentSpeed} max={m.lineMaxSpeed}
-          when={m.lastMeasTime} complainNo={m.lastMeasComplainNo}
+          when={m.lastMeasTime} complainNo={m.lastMeasComplainNo} poStatus={m.poStatus}
         />
       </PopoverContent>
     </Popover>

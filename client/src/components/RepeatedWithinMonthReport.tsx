@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ interface RepeatedRow {
   repeatCount: number | null;
   accountNo: string | null;
   lastMeasScore: number | null;
+  poStatus: string | null;   // حالة تحسين البروفايل وقت القياس
   lineCurrentSpeed: string | null;
   lineMaxSpeed: string | null;
   lastMeasTime: string | null;
@@ -176,6 +178,7 @@ export function RepeatedWithinMonthReport() {
       "كود الفنى": r.workerCode,
       "اسم الفنى": r.techName,
       "آخر اسكور": r.lastMeasScore,
+      "حالة تحسين البروفايل": r.poStatus ?? "",
       "السرعة الحالية": r.lineCurrentSpeed,
       "أقصى سرعة": r.lineMaxSpeed,
       "توقيت آخر قياس للخط": fmtDt(r.lastMeasTime),
@@ -198,7 +201,7 @@ export function RepeatedWithinMonthReport() {
         <th>فني إغلاق آخر شكوى</th>
         <th>رقم الشكوى السابقة</th><th>تاريخ الشكوى السابقة</th><th>سبب إغلاق الشكوى السابقة</th>
         <th>فني إغلاق الشكوى السابقة</th>
-        <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th><th>توقيت آخر قياس للخط</th>
+        <th>الكابينه</th><th>البكس</th><th>ترمنال</th><th>كود الفنى</th><th>اسم الفنى</th><th>آخر اسكور</th><th>حالة PO</th><th>توقيت آخر قياس للخط</th>
     </tr>`;
     let pages = "";
     for (let p = 0; p < totalPages; p++) {
@@ -224,7 +227,7 @@ export function RepeatedWithinMonthReport() {
           <td>${esc(r.dpTerminal)}</td>
            <td>${esc(r.workerCode)}</td>
           <td>${esc(r.techName)}</td>
-           <td>${esc(r.lastMeasScore)}</td>
+           <td>${esc(r.lastMeasScore)}</td><td>${esc(poStatusShort(r.poStatus))}</td>
            <td style="font-size:9px">${esc(fmtDt(r.lastMeasTime))}</td>
         </tr>`).join("");
       pages += `
@@ -387,6 +390,7 @@ export function RepeatedWithinMonthReport() {
                  <TableHead className="text-right font-bold text-white">كود الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">اسم الفنى</TableHead>
                 <TableHead className="text-right font-bold text-white">آخر اسكور</TableHead>
+                <TableHead className="text-right font-bold text-white">حالة PO</TableHead>
                  <TableHead className="text-right font-bold text-white">توقيت آخر قياس للخط</TableHead>
               </TableRow>
             </TableHeader>
@@ -453,6 +457,7 @@ export function RepeatedWithinMonthReport() {
                   <TableCell dir="ltr" className="text-left font-mono">{r.workerCode || "-"}</TableCell>
                   <TableCell className="max-w-[120px] truncate">{r.techName || "-"}</TableCell>
                   <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
+                    <TableCell><PoStatusCell value={r.poStatus} /></TableCell>
                   <TableCell dir="ltr" className="text-left whitespace-nowrap">{fmtDt(r.lastMeasTime)}</TableCell>
                 </TableRow>
               ))}

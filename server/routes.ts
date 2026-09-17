@@ -1072,6 +1072,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
          c138p.current_speed     AS "lineCurrentSpeed",
          c138p.max_speed         AS "lineMaxSpeed",
          c138p.score             AS "lastMeasScore",
+         c138p.po_status             AS "poStatus",
          c138p.complain_no       AS "lastMeasComplainNo",
          (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
          c138c.score             AS "curMeasScore",
@@ -1117,7 +1118,7 @@ async function queryRegularizedFaults(opts: { central?: string; q?: string; date
               ON ${sp("si.phone_number")} = ${sp("t.phone_number")}
        -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
        LEFT JOIN LATERAL (
-         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at
          FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
          ORDER BY c.id DESC LIMIT 1
        ) c138p ON true
@@ -4391,7 +4392,7 @@ export async function registerRoutes(
     // ربط بشيت القياسات 138 (آخر قياس لكل رقم) — المطابقة بالتليفون الكامل:
     // case_138.full_phone = phone_lines.full_phone (الاتنين بصيغة 88+رقم).
     const c138Join = `LEFT JOIN LATERAL (
-        SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+        SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at
         FROM case_138 c WHERE c.full_phone = k.full_phone
         ORDER BY c.id DESC LIMIT 1
       ) c138p ON true
@@ -4425,6 +4426,7 @@ export async function registerRoutes(
               c138p.current_speed AS "lineCurrentSpeed",
               c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
+              c138p.po_status AS "poStatus",
               c138p.complain_no AS "lastMeasComplainNo",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
@@ -5405,7 +5407,7 @@ export async function registerRoutes(
     }
     const where = `WHERE ${conds.join(" AND ")}`;
     const joinClause = `FROM line_accounts la LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone LEFT JOIN line_po_events pe ON pe.account_no = la.account_no`;
-    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
+    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
     // فلاتر اختيارية على الاسكور والسرعة — تحتاج c138Join دائماً (موجود فى الـ query)
     // ملاحظة: current_speed مخزّنة كنص → لازم نحوّلها لرقم قبل المقارنة (وإلا تتعمل مقارنة نصية غلط)
     const numCurSpeed = `NULLIF(regexp_replace(COALESCE(c138p.current_speed, ''), '[^0-9]', '', 'g'), '')::numeric`;
@@ -5462,6 +5464,7 @@ export async function registerRoutes(
               la.account_no AS "accountNo", la.source AS "accountSource",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
+              c138p.po_status AS "poStatus",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
@@ -5522,7 +5525,7 @@ export async function registerRoutes(
       LEFT JOIN phone_lines pl ON pl.full_phone = k.full_phone
       LEFT JOIN phone_ports pp ON pp.phone_number = k.full_phone
       LEFT JOIN line_accounts la ON la.full_phone = k.full_phone`;
-    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = k.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
+    const c138Join = `LEFT JOIN LATERAL (SELECT c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at FROM case_138 c WHERE c.full_phone = k.full_phone ORDER BY c.id DESC LIMIT 1) c138p ON true`;
 
     const totalRes = await pool.query(`SELECT COUNT(*)::int AS c ${joinClause} ${where}`, params);
     const total = totalRes.rows[0].c as number;
@@ -5538,6 +5541,7 @@ export async function registerRoutes(
               pl.tel_num_txt AS "telNumTxt", k.full_phone AS "fullPhone",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
+              c138p.po_status AS "poStatus",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
        ${joinClause} ${c138Join} ${where}
        ORDER BY pl.central NULLS LAST, LPAD(COALESCE(pl.cabin_number,''), 8, '0'), LPAD(COALESCE(pl.box_number,''), 8, '0'), k.full_phone
@@ -5960,7 +5964,7 @@ export async function registerRoutes(
     const speedN = (col: string) =>
       `CASE WHEN c.${col} LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.${col},''),'[^0-9.]','','g'),'')::numeric * 1024
             ELSE NULLIF(regexp_replace(COALESCE(c.${col},''),'[^0-9]','','g'),'')::numeric END`;
-    const measCols = `c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+    const measCols = `c.full_phone, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.uploaded_at,
                  ${speedN("current_speed")} AS cur_n,
                  ${speedN("max_speed")} AS mx_n`;
     // معيار «محتاج رفع سرعة» مطبَّق على أى قراءة (آخر قياس أو اللى قبله) — مصدر واحد
@@ -6172,6 +6176,7 @@ export async function registerRoutes(
               la.account_no AS "accountNo", la.source AS "accountSource",
               m.current_speed AS "lineCurrentSpeed", m.max_speed AS "lineMaxSpeed",
               m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
+              m.po_status AS "poStatus",
               (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               cpl.complain_no AS "complaintNo",
               -- ⚠️ خام من غير AT TIME ZONE: أوقات الشيت (430D/التذاكر) متخزّنة أصلاً
@@ -6212,7 +6217,7 @@ export async function registerRoutes(
     const joinClause = `FROM (
         SELECT * FROM (
           SELECT DISTINCT ON (c.full_phone)
-                 c.full_phone, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at,
+                 c.full_phone, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.uploaded_at,
                  -- توحيد وحدة السرعة إلى Kbps: القيم اللى فيها كسر عشري (زى 0.5 / 2.5) مخزّنة بالميجابت → × 1024.
                  -- بدون ده كان الشرط (< 200) بيعتبر خط VDSL بالميجابت (0.5/2.5) خطاً ميتاً ويستبعده بالغلط.
                  CASE WHEN c.current_speed LIKE '%.%' THEN NULLIF(regexp_replace(COALESCE(c.current_speed,''),'[^0-9.]','','g'),'')::numeric * 1024
@@ -6297,6 +6302,7 @@ export async function registerRoutes(
               la.account_no AS "accountNo", la.source AS "accountSource",
               m.current_speed AS "lineCurrentSpeed", m.max_speed AS "lineMaxSpeed",
               m.score AS "lastMeasScore", m.complain_no AS "lastMeasComplainNo",
+              m.po_status AS "poStatus",
               (m.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               NULL AS "complaintNo", NULL AS "complaintTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
@@ -6376,6 +6382,7 @@ export async function registerRoutes(
               (na.marked_at AT TIME ZONE 'Africa/Cairo')         AS "noAccountAt",
               c.current_speed AS "currentSpeed", c.max_speed AS "maxSpeed",
               c.score AS "score", (c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
+              c.po_status AS "poStatus",
               c.measured_by AS "measuredBy",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt", pe.last_raise_by AS "raisedBy",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt", pe.last_stop_by AS "stoppedBy",
@@ -6467,7 +6474,7 @@ export async function registerRoutes(
        ) ctc ON true
        LEFT JOIN msan_tech_overrides mto ON mto.cabin_code = ctc.cabin_code
        LEFT JOIN LATERAL (
-         SELECT c2.full_phone, c2.current_speed, c2.max_speed, c2.score, c2.uploaded_at, c2.measured_by
+         SELECT c2.full_phone, c2.current_speed, c2.max_speed, c2.score, c2.po_status, c2.uploaded_at, c2.measured_by
          FROM case_138 c2 WHERE c2.full_phone = COALESCE(pl.full_phone, t.full) ORDER BY c2.id DESC LIMIT 1
        ) c ON true
        LEFT JOIN LATERAL (
@@ -6649,7 +6656,7 @@ export async function registerRoutes(
        LEFT JOIN phone_lines pl ON pl.full_phone = la.full_phone
        LEFT JOIN phone_ports pp ON pp.phone_number = la.full_phone
        LEFT JOIN LATERAL (
-         SELECT c.current_speed, c.max_speed, c.score, c.uploaded_at
+         SELECT c.current_speed, c.max_speed, c.score, c.po_status, c.uploaded_at
          FROM case_138 c WHERE c.full_phone = la.full_phone ORDER BY c.id DESC LIMIT 1
        ) c138p ON true`;
     const whereNoQ = plConds.length ? `WHERE ${plConds.join(" AND ")}` : "";
@@ -6675,6 +6682,7 @@ export async function registerRoutes(
               (regm.ref_time AT TIME ZONE 'Africa/Cairo') AS "complaintTime",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore",
+              c138p.po_status AS "poStatus",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
               (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
@@ -11699,6 +11707,7 @@ export async function registerRoutes(
               pp.operator AS "operator", pp.onu AS "onu",
               c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
               c138p.score AS "lastMeasScore", c138p.complain_no AS "lastMeasComplainNo",
+              c138p.po_status AS "poStatus",
               (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
               c138c.score AS "curMeasScore", c138c.current_speed AS "curMeasCurrentSpeed",
               c138c.max_speed AS "curMeasMaxSpeed", (c138c.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "curMeasTime",
@@ -11719,7 +11728,7 @@ export async function registerRoutes(
          ORDER BY (ct.cabin_code IS NOT NULL AND ct.cabin_code <> '') DESC, tn.tech_name NULLS LAST LIMIT 1
        ) ctc ON true
        LEFT JOIN LATERAL (
-         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.uploaded_at
+         SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.uploaded_at
          FROM case_138 c WHERE c.full_phone = mf.full_phone ORDER BY c.id DESC LIMIT 1
        ) c138p ON true
        LEFT JOIN LATERAL (
@@ -11975,6 +11984,7 @@ export async function registerRoutes(
              c138p.current_speed     AS "lineCurrentSpeed",
              c138p.max_speed         AS "lineMaxSpeed",
              c138p.score             AS "lastMeasScore",
+             c138p.po_status             AS "poStatus",
              c138p.complain_no       AS "lastMeasComplainNo",
              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
              c138c.score             AS "curMeasScore",
@@ -12002,7 +12012,7 @@ export async function registerRoutes(
              ON ${sp("si.phone_number")} = ${sp("t.phone_number")}
            -- آخر قياس للرقم من شيت 138 (أى شكوى) — المطابقة بالتليفون الكامل (88+الرقم)
            LEFT JOIN LATERAL (
-             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at
              FROM case_138 c WHERE c.full_phone = '88' || t.phone_number
              ORDER BY c.id DESC LIMIT 1
            ) c138p ON true
@@ -12279,6 +12289,7 @@ export async function registerRoutes(
              c138p.current_speed      AS "lineCurrentSpeed",
              c138p.max_speed          AS "lineMaxSpeed",
              c138p.score              AS "lastMeasScore",
+             c138p.po_status              AS "poStatus",
              c138p.complain_no        AS "lastMeasComplainNo",
              (c138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
              c138c.score              AS "curMeasScore",
@@ -12298,7 +12309,7 @@ export async function registerRoutes(
            LEFT JOIN technician_names tn  ON tn.worker_code = ct.worker_code
            LEFT JOIN manual_close_by mcb  ON mcb.complain_no = cd.complain_no
            LEFT JOIN LATERAL (
-             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at
              FROM case_138 c WHERE c.full_phone = '88' || cd.phone_number
              ORDER BY c.id DESC LIMIT 1
            ) c138p ON true
@@ -12375,6 +12386,7 @@ export async function registerRoutes(
              rc138p.current_speed     AS "lineCurrentSpeed",
              rc138p.max_speed         AS "lineMaxSpeed",
              rc138p.score             AS "lastMeasScore",
+             rc138p.po_status             AS "poStatus",
              rc138p.complain_no       AS "lastMeasComplainNo",
              (rc138p.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime",
              rc138c.score             AS "curMeasScore",
@@ -12393,7 +12405,7 @@ export async function registerRoutes(
            LEFT JOIN cabinet_technicians ct2 ON ct2.central_name = rc.exchange_name AND ct2.cabin_number = rc.cabinet_no
            LEFT JOIN technician_names tn2   ON tn2.worker_code = ct2.worker_code
            LEFT JOIN LATERAL (
-             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.complain_no, c.complain_time, c.uploaded_at
+             SELECT c.account_no, c.current_speed, c.max_speed, c.score, c.po_status, c.complain_no, c.complain_time, c.uploaded_at
              FROM case_138 c WHERE c.full_phone = '88' || rc.phone_number
              ORDER BY c.id DESC LIMIT 1
            ) rc138p ON true
@@ -12581,6 +12593,7 @@ export async function registerRoutes(
                 -- كانت هتبقى معطّلة عليها.
                 COALESCE(c138.account_no, la.account_no) AS "accountNo",
                 c138.score                          AS "lastMeasScore",
+                c138.po_status                          AS "poStatus",
                 c138.current_speed                  AS "lineCurrentSpeed",
                 c138.max_speed                      AS "lineMaxSpeed",
                 (c138.uploaded_at AT TIME ZONE 'Africa/Cairo') AS "lastMeasTime"
@@ -12591,7 +12604,7 @@ export async function registerRoutes(
           AND ct.cabin_number = COALESCE(pl.cabin_number, qual.cabinet)
          LEFT JOIN technician_names tn ON tn.worker_code = ct.worker_code
          LEFT JOIN LATERAL (
-           SELECT c.account_no, c.score, c.current_speed, c.max_speed, c.uploaded_at
+           SELECT c.account_no, c.score, c.po_status, c.current_speed, c.max_speed, c.uploaded_at
            FROM case_138 c WHERE c.full_phone = '88' || qual.phone ORDER BY c.id DESC LIMIT 1
          ) c138 ON true
          LEFT JOIN line_accounts la ON la.full_phone = '88' || qual.phone
@@ -14138,13 +14151,14 @@ export async function registerRoutes(
                 la.account_no AS "accountNo", la.source AS "accountSource",
                 c138p.current_speed AS "lineCurrentSpeed", c138p.max_speed AS "lineMaxSpeed",
                 c138p.score AS "lastMeasScore",
+                c138p.po_status AS "poStatus",
                 (pe.last_raise_at AT TIME ZONE 'Africa/Cairo') AS "lastPoRaiseAt",
                 (pe.last_stop_at AT TIME ZONE 'Africa/Cairo') AS "lastPoStopAt"
          FROM phone_lines pl
          LEFT JOIN line_accounts la ON la.full_phone = pl.full_phone
          LEFT JOIN line_po_events pe ON pe.account_no = la.account_no
          LEFT JOIN LATERAL (
-           SELECT c.current_speed, c.max_speed, c.score
+           SELECT c.current_speed, c.max_speed, c.score, c.po_status
            FROM case_138 c WHERE c.full_phone = pl.full_phone ORDER BY c.id DESC LIMIT 1
          ) c138p ON true
          WHERE pl.cabin_number = ANY($1)

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { QueueExcludeSelect, type QueueExcludeValue } from "@/components/QueueExcludeSelect";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
@@ -45,6 +46,7 @@ interface SpeedLine {
   lineCurrentSpeed: string | null;
   lineMaxSpeed: string | null;
   lastMeasScore: number | null;
+  poStatus: string | null;   // حالة تحسين البروفايل وقت القياس
   lastMeasTime: string | null;
   complaintNo: string | null;
   complaintTime: string | null;
@@ -271,6 +273,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
       "رقم التليفون الكامل": r.fullPhone,
       "رقم الأكونت": r.accountNo ?? "",
       "الاسكور": r.lastMeasScore ?? "",
+      "حالة تحسين البروفايل": r.poStatus ?? "",
       "السرعة الحالية": r.lineCurrentSpeed ?? "",
       "أقصى سرعة": r.lineMaxSpeed ?? "",
       "تاريخ آخر قياس": fmtDateTime(r.lastMeasTime),
@@ -298,10 +301,10 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
     const all = json.data as SpeedLine[];
     printTablePDF({
       title: title ?? "أرقام محتاجة رفع سرعة",
-      columns: ["#", "التليفون الكامل", "الأكونت", "الاسكور", "سرعة حالية", "أقصى سرعة",
+      columns: ["#", "التليفون الكامل", "الأكونت", "الاسكور", "حالة PO", "سرعة حالية", "أقصى سرعة",
         ...(showFaultCol ? ["فى الأعطال"] : []), "رقم الشكوى", "السنترال", "الكابينه", "البكس"],
       rows: all.map((r, i) => [i + 1, r.fullPhone, r.accountNo ?? "", r.lastMeasScore ?? "",
-        r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
+        poStatusShort(r.poStatus), r.lineCurrentSpeed ?? "", r.lineMaxSpeed ?? "",
         ...(showFaultCol ? [faultLabel(r)] : []),
         r.complaintNo ?? "", r.central, r.cabinNumber, r.boxNumber]),
     });
@@ -540,6 +543,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم التليفون الكامل</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">الاسكور</TableHead>
+                    <TableHead className="text-right font-bold whitespace-nowrap">حالة PO</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
                     <TableHead className="text-right font-bold whitespace-nowrap">تاريخ آخر قياس</TableHead>
@@ -579,6 +583,7 @@ export function NeedsSpeedReport({ requireComplaint = false, endpoint = "/api/ph
                         </span>
                       </TableCell>
                       <TableCell>{scoreBadge(r.lastMeasScore)}</TableCell>
+                      <TableCell><PoStatusCell value={r.poStatus} /></TableCell>
                       <TableCell className="font-mono">{r.lineCurrentSpeed ?? "-"}</TableCell>
                       <TableCell className="font-mono">{r.lineMaxSpeed ?? "-"}</TableCell>
                       <TableCell dir="ltr" className="text-left text-xs whitespace-nowrap text-muted-foreground">{fmtDateTime(r.lastMeasTime)}</TableCell>

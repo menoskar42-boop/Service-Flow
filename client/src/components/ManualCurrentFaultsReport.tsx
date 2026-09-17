@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { poStatusShort } from "./PoStatusCell";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ interface Row {
   portType: string | null; voiceStatus: string | null; dataStatus: string | null; operator: string | null; onu: string | null;
   lineCurrentSpeed: string | null; lineMaxSpeed: string | null;
   lastMeasScore: number | null; lastMeasComplainNo: string | null; lastMeasTime: string | null;
+  poStatus: string | null;   // حالة تحسين البروفايل وقت القياس
   curMeasScore: number | null; curMeasCurrentSpeed: string | null; curMeasMaxSpeed: string | null; curMeasTime: string | null;
   lastPoRaiseAt: string | null; lastPoStopAt: string | null;
   mobile: string | null;
@@ -136,7 +138,7 @@ export function ManualCurrentFaultsReport() {
     // «سجّل العطل» (اسم اللى بلّغ) جنب التاريخ والرقم — كان آخر عمود فمكانش بيبان
     // للفنى غير بعد تمرير أفقى طويل.
     "تاريخ العطل", "رقم التليفون", "رقم الموبايل", "سجّل العطل", "السنترال", "الكابينة", "البكس", "كود MSAN", "اسم الفنى", "الفريم",
-    "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "تاريخ آخر قياس", "القياس الحالى",
+    "رقم الأكونت", "السرعة الحالية", "أقصى سرعة", "الاسكور", "حالة PO", "تاريخ آخر قياس", "القياس الحالى",
     "Shelf", "Slot", "Port", "Port Type", "voice", "data", "operator", "ONU",
     "آخر رفع سرعة", "آخر إيقاف PO",
   ];
@@ -144,7 +146,7 @@ export function ManualCurrentFaultsReport() {
   const toRow = (x: Row) => [
     fmt(x.flaggedAt), x.fullPhone || x.phoneShort || "-", mobileLookup[phoneLookupKey(x.phoneShort || x.fullPhone)] || "-", dash(x.flaggedBy),
     dash(x.central), dash(x.cabinNumber), dash(x.boxNumber), dash(x.msanCode), dash(x.techName), dash(x.frame),
-    dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed), dash(x.lastMeasScore), fmt(x.lastMeasTime), dash(x.curMeasScore),
+    dash(x.accountNo), dash(x.lineCurrentSpeed), dash(x.lineMaxSpeed), dash(x.lastMeasScore), dash(poStatusShort(x.poStatus)), fmt(x.lastMeasTime), dash(x.curMeasScore),
     dash(x.shelf), dash(x.slot), dash(x.portNumber), dash(x.portType),
     dash(x.voiceStatus), dash(x.dataStatus), dash(x.operator), dash(x.onu), fmt(x.lastPoRaiseAt), fmt(x.lastPoStopAt),
   ];

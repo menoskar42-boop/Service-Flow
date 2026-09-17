@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import PoStatusCell, { poStatusShort } from "./PoStatusCell";
 import { useSpeedToolsVisible, useIsSuperAdmin } from "@/lib/use-speed-tools";
 import { useSpeedToolSource } from "@/hooks/use-speed-tool-source";
 import { Card } from "@/components/ui/card";
@@ -31,6 +32,7 @@ interface OpenTicketLine {
   lineCurrentSpeed: number | null;
   lineMaxSpeed: number | null;
   lastMeasScore: number | null;
+  poStatus: string | null;   // حالة تحسين البروفايل وقت القياس
   ticketNumber: string;
   faultType: string;
   ticketCreatedAt: string;
@@ -140,6 +142,7 @@ export function OpenTicketLinesReport() {
       "رقم التليفون": l.telNo,
       "رقم الأكونت": l.accountNo ?? "",
       "آخر قياس": l.lastMeasScore ?? "",
+      "حالة تحسين البروفايل": l.poStatus ?? "",
       "السرعة الحالية": l.lineCurrentSpeed ?? "",
       "أقصى سرعة": l.lineMaxSpeed ?? "",
       "السنترال": l.central,
@@ -162,7 +165,7 @@ export function OpenTicketLinesReport() {
         "سرعة حالية", "أقصى سرعة", "السنترال", "الكابينه", "البكس"],
       rows: filtered.map((l, i) => [
         i + 1, l.ticketNumber, l.faultType, l.fullPhone, l.accountNo ?? "",
-        l.lastMeasScore ?? "", l.lineCurrentSpeed ?? "", l.lineMaxSpeed ?? "",
+        l.lastMeasScore ?? "", poStatusShort(l.poStatus), l.lineCurrentSpeed ?? "", l.lineMaxSpeed ?? "",
         l.central, l.cabinNumber, l.boxNumber,
       ]),
     });
@@ -261,6 +264,7 @@ export function OpenTicketLinesReport() {
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الموبايل</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">رقم الأكونت</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">آخر قياس</TableHead>
+                  <TableHead className="text-right font-bold whitespace-nowrap">حالة PO</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السرعة الحالية</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">أقصى سرعة</TableHead>
                   <TableHead className="text-right font-bold whitespace-nowrap">السنترال</TableHead>
@@ -301,6 +305,7 @@ export function OpenTicketLinesReport() {
                     <TableCell><MobileValue mobile={mobileLookup[phoneLookupKey(l.telNo || l.fullPhone)]} /></TableCell>
                     <TableCell dir="ltr" className="text-left font-mono">{l.accountNo || "-"}</TableCell>
                     <TableCell>{scoreBadge(l.lastMeasScore)}</TableCell>
+                    <TableCell><PoStatusCell value={l.poStatus} /></TableCell>
                     <TableCell className="font-mono">{l.lineCurrentSpeed ?? "-"}</TableCell>
                     <TableCell className="font-mono">{l.lineMaxSpeed ?? "-"}</TableCell>
                     <TableCell className="whitespace-nowrap">{l.central || "-"}</TableCell>
